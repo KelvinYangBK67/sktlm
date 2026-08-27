@@ -1,0 +1,28 @@
+GRETIL IAST Sample Conversion Report
+
+Sample files: 6
+
+- 4_rellit\vaisn\vaimp_cu.txt
+  raw: data\processed\gretil_raw\4_rellit\vaisn\vaimp_cu.txt (213447 chars, 7671 lines)
+  deva: data\processed\gretil_devanagari\4_rellit\vaisn\vaimp_cu.txt (192997 chars, 6872 lines, om_sign_count=158)
+  suspicious: none
+- 4_rellit\vaisn\caitcanu.txt
+  raw: data\processed\gretil_raw\4_rellit\vaisn\caitcanu.txt (25787 chars, 669 lines)
+  deva: data\processed\gretil_devanagari\4_rellit\vaisn\caitcanu.txt (21813 chars, 516 lines, om_sign_count=0)
+  suspicious: none
+- 4_rellit\vaisn\kumukumu.txt
+  raw: data\processed\gretil_raw\4_rellit\vaisn\kumukumu.txt (6502 chars, 117 lines)
+  deva: data\processed\gretil_devanagari\4_rellit\vaisn\kumukumu.txt (5455 chars, 77 lines, om_sign_count=0)
+  suspicious: none
+- 4_rellit\vaisn\ss3_paru.txt
+  raw: data\processed\gretil_raw\4_rellit\vaisn\ss3_paru.txt (168977 chars, 3857 lines)
+  deva: data\processed\gretil_devanagari\4_rellit\vaisn\ss3_paru.txt (146947 chars, 3127 lines, om_sign_count=0)
+  suspicious: none
+- 4_rellit\buddh\avsata_u.txt
+  raw: data\processed\gretil_raw\4_rellit\buddh\avsata_u.txt (664933 chars, 2645 lines)
+  deva: data\processed\gretil_devanagari\4_rellit\buddh\avsata_u.txt (571971 chars, 1941 lines, om_sign_count=0)
+  suspicious: none
+- 4_rellit\buddh\abhisdhu.txt
+  raw: data\processed\gretil_raw\4_rellit\buddh\abhisdhu.txt (240176 chars, 3987 lines)
+  deva: data\processed\gretil_devanagari\4_rellit\buddh\abhisdhu.txt (210956 chars, 3884 lines, om_sign_count=0)
+  suspicious: none

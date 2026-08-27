@@ -1,0 +1,37 @@
+Corpus Summary: ambuda-text
+
+Total txt files: 221
+Successful files: 221
+Failed files: 0
+Total normalized characters: 10172548
+Total normalized lines: 347408
+
+Longest files (top 10):
+- mahabharatam.txt: 6535113 chars, 232317 lines
+- ramayanam.txt: 1584936 chars, 56803 lines
+- shishupalavadham.txt: 172099 chars, 4934 lines
+- raghuvamsham.txt: 168943 chars, 4855 lines
+- bhattikavyam.txt: 153325 chars, 5066 lines
+- saundaranandam.txt: 115544 chars, 3274 lines
+- kiratarjuniyam.txt: 114087 chars, 3119 lines
+- shrivyasayogicaritam.txt: 94816 chars, 1141 lines
+- bodhicaryavatara.txt: 79538 chars, 2764 lines
+- suryashatakam-tika.txt: 78320 chars, 210 lines
+
+Shortest files (top 10):
+- ekashloki.txt: 345 chars, 17 lines
+- shriyoganjaneyapancaratnam.txt: 466 chars, 20 lines
+- shrinrsimhapancaratnam.txt: 574 chars, 30 lines
+- atmapujopanishat.txt: 607 chars, 10 lines
+- mayapancakam.txt: 666 chars, 37 lines
+- pratahsmaranastotram.txt: 686 chars, 34 lines
+- shatpadistotram.txt: 690 chars, 46 lines
+- shivasaptatinamastotram.txt: 706 chars, 25 lines
+- shivapancaksharastotram.txt: 714 chars, 39 lines
+- yatipancakam.txt: 714 chars, 37 lines
+
+Suspicious files:
+- none
+
+Failures:
+- none

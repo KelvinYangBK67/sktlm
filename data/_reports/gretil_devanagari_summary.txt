@@ -1,0 +1,34 @@
+GRETIL IAST to Devanagari Summary
+
+Input .txt files: 2126
+Successful files: 2126
+Failed files: 0
+Total output characters: 318071782
+Total output lines: 8020453
+
+Shortest outputs:
+- 6_sastra\3_phil\buddh\santts_u.txt: 176 chars, 36 lines
+- 4_rellit\buddh\satyas_pu.txt: 523 chars, 10 lines
+- 4_rellit\buddh\satyas_tu.txt: 523 chars, 10 lines
+- 4_rellit\buddh\pamsuavu.txt: 527 chars, 15 lines
+- tei\transformations\html\sa_satyasUtra.txt: 542 chars, 11 lines
+- 4_rellit\buddh\mrtvts_u.txt: 573 chars, 16 lines
+- tei\transformations\html\sa_mRtyuvaJcanatArAsAdhana.txt: 579 chars, 22 lines
+- tei\transformations\html\sa_hastavAlaprakaraNavRtti.txt: 679 chars, 21 lines
+- 6_sastra\3_phil\buddh\bsa009_u.txt: 680 chars, 21 lines
+- 6_sastra\3_phil\buddh\bsa012_u.txt: 731 chars, 18 lines
+
+Longest outputs:
+- 2_epic\mbh\mbh1-18u.txt: 8816319 chars, 224741 lines
+- tei\transformations\html\sa_somadeva-kathAsaritsAgara.txt: 2650187 chars, 170280 lines
+- 5_poetry\4_narr\sokss_mu.txt: 2628321 chars, 149581 lines
+- tei\transformations\html\sa_zatasAhasrikAprajJApAramitA-1.txt: 2059130 chars, 25012 lines
+- tei\transformations\html\sa_mokSopAya.txt: 2045584 chars, 78057 lines
+- tei\transformations\html\sa_jayatIrtha-nyAyasudhA.txt: 2037993 chars, 56592 lines
+- tei\transformations\html\sa_paJcaviMzatisAhasrikA-prajJApAramitA1-8.txt: 1862455 chars, 26285 lines
+- 5_poetry\4_narr\sokss_pu.txt: 1848581 chars, 65220 lines
+- 6_sastra\1_gram\pmbhasuu.txt: 1817108 chars, 4380 lines
+- tei\transformations\html\sa_zatasAhasrikA-prajJApAramitA-2.txt: 1705654 chars, 22972 lines
+
+Failures:
+- none

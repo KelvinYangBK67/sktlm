@@ -1,0 +1,28 @@
+Weighted Tokenizer Corpus Summary
+
+Manifest: data\manifests\corpus_manifest.csv
+Output: data\tokenizer_corpora\weighted_full_v2_danda_split.txt
+Seed: sanskrit_llm_weighted_tokenizer_v1
+Input files: 2347
+Input lines: 8367861
+Output lines: 6253102
+Output characters: 244917080
+Extra lines from danda/double-danda splitting: 1200687
+
+Comma rule:
+- legal residual comma -> danda
+- line-start comma or comma preceded by whitespace -> deleted
+
+Line splitting:
+- split on danda and double danda
+- keep the boundary mark at the end of each emitted line
+
+Source/layer totals:
+- ambuda:ambuda: files=221, avg_weight=0.652, input_lines=347408, output_lines=61332, output_chars=2496841
+- gretil:epic: files=64, avg_weight=1.000, input_lines=858159, output_lines=871717, output_chars=31750406
+- gretil:other: files=666, avg_weight=0.533, input_lines=2838649, output_lines=1528851, output_chars=58018254
+- gretil:poetry: files=236, avg_weight=0.976, input_lines=756291, output_lines=695726, output_chars=26099620
+- gretil:purana: files=56, avg_weight=0.700, input_lines=637014, output_lines=438539, output_chars=15358374
+- gretil:rellit: files=442, avg_weight=0.672, input_lines=824836, output_lines=621038, output_chars=27574188
+- gretil:sastra: files=531, avg_weight=0.980, input_lines=1522463, output_lines=1538450, output_chars=65627124
+- gretil:veda: files=131, avg_weight=0.756, input_lines=583041, output_lines=497449, output_chars=17992273

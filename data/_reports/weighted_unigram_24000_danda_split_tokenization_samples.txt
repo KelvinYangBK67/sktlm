@@ -1,0 +1,36 @@
+Weighted Unigram 24000 Danda-Split Tokenization Samples
+
+Model: tokenizer\weighted_unigram_24000_danda_split.model
+
+[epic-mahabharata] data/processed/ambuda-text/mahabharatam.txt
+text: समासीनानभ्यगच्छद्ब्रह्मर्षीन्संशितव्रतान्।
+pieces (14): ▁स मासीन ान भ्य गच्छ द्ब्रह्म र्षी न्स ं श ित व्रत ान् ।
+
+[epic-ramayana] data/processed/ambuda-text/ramayanam.txt
+text: तपःस्वाध्यायनिरतं तपस्वी वाग्विदां वरम्।
+pieces (9): ▁तपः स्वाध्याय निरत ं ▁तपस्वी ▁वाग् विदां ▁वरम् ।
+
+[poetry-raghuvamsha] data/processed/ambuda-text/raghuvamsham.txt
+text: वागर्थाव् इव संपृक्तौ वागर्थप्रतिपत्तये।
+pieces (12): ▁वाग र्थ ाव् ▁इव ▁सं पृक्त ौ ▁वाग र्थ प्रति पत्तये ।
+
+[poetry-kumarasambhava] data/processed/ambuda-text/kumarasambhavam.txt
+text: अस्त्य् उत्तरस्यां दिशि देवतात्मा हिमालयो नाम नगाधिराजः।
+pieces (17): ▁अस्त्य ् ▁उत्तरस्य ां ▁दि श ि ▁देवत ात्मा ▁हि माल यो ▁नाम ▁नग ाधिराज ः ।
+
+[rellit-vaishnava-bhakti] data/processed/gretil_devanagari/4_rellit/vaisn/vaimp_cu.txt
+text: वर्षिष्ठस्सर्व भक्तानां सर्व दा धन दो वरः
+pieces (11): ▁वर्ष िष्ठ स्सर्व ▁भक्त ानां ▁सर्व ▁दा ▁धन ▁द ो ▁वरः
+
+[veda-rigveda] data/processed/gretil_devanagari/1_veda/1_sam/1_rv/rv_01_u.txt
+text: अग्निः पूर्वेभिरृषिभिरीड्यो नूतनैरुत
+pieces (11): ▁अग्निः ▁पूर्व ेभिर ृषि भिर ी ड ्यो ▁नूतन ैर ुत
+
+[manual] text: रामो गच्छति।
+pieces (3): ▁रामो ▁गच्छति ।
+
+[manual] text: अहं भक्तिं करोमि।
+pieces (5): ▁अहं ▁भक्ति ं ▁करोमि ।
+
+[manual] text: सोऽहम्।
+pieces (3): ▁स ोऽहम् ।

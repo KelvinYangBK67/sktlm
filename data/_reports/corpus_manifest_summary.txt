@@ -1,0 +1,111 @@
+Corpus Manifest Summary
+
+Total files: 2347
+Raw characters: 328244330
+Effective weighted characters: 245950631
+
+Layer weights:
+- veda: 0.8
+- epic: 1.0
+- poetry: 1.0
+- sastra: 1.0
+- other/purana/rellit/ambuda: 0.7
+- duplicate TEI: layer_weight * 0.2
+- duplicate Ambuda: 0.2; unique Ambuda: 0.7
+
+Layer totals:
+- ambuda: files=221, chars=10172548, effective_chars=2526755, effective_percent=1.03%
+- epic: files=64, chars=31768491, effective_chars=31768491, effective_percent=12.92%
+- other: files=666, chars=103702229, effective_chars=58267521, effective_percent=23.69%
+- poetry: files=236, chars=26352892, effective_chars=26241138, effective_percent=10.67%
+- purana: files=56, chars=21967050, effective_chars=15376934, effective_percent=6.25%
+- rellit: files=442, chars=41814130, effective_chars=27780899, effective_percent=11.30%
+- sastra: files=531, chars=67623828, effective_chars=65949476, effective_percent=26.81%
+- veda: files=131, chars=24843162, effective_chars=18039413, effective_percent=7.33%
+
+Duplicate status counts:
+- ambuda_unchecked_short: 59
+- ambuda_unique: 141
+- ambuda_word_overlap: 21
+- exact: 122
+- prefix_in_candidate: 128
+- primary: 1325
+- tei_unchecked_short: 17
+- tei_unique: 534
+
+TEI duplicate examples:
+- prefix_in_candidate: data/processed/gretil_devanagari/tei/transformations/html/sa_abhinanda-kAdambarIkathAsAra.txt -> 5_poetry/2_kavya/akadambu.txt weight=0.140
+- exact: data/processed/gretil_devanagari/tei/transformations/html/sa_abhinavagupta-bodhapaJcadazikA.txt -> 6_sastra/3_phil/saiva/bodhpanu.txt weight=0.140
+- exact: data/processed/gretil_devanagari/tei/transformations/html/sa_abhinavagupta-kramastotra.txt -> 6_sastra/3_phil/saiva/kramstou.txt weight=0.140
+- exact: data/processed/gretil_devanagari/tei/transformations/html/sa_abhinavagupta-paramArthasAra.txt -> 6_sastra/3_phil/saiva/parmartu.txt weight=0.140
+- exact: data/processed/gretil_devanagari/tei/transformations/html/sa_abhinavagupta-paryantapaJcAzikA.txt -> 6_sastra/3_phil/saiva/parypanu.txt weight=0.140
+- exact: data/processed/gretil_devanagari/tei/transformations/html/sa_abhisamayAlaMkAra.txt -> 6_sastra/3_phil/buddh/bsa026_u.txt weight=0.140
+- prefix_in_candidate: data/processed/gretil_devanagari/tei/transformations/html/sa_AdyanAtha-anuttaraprakAzapaJcAzikA.txt -> 6_sastra/3_phil/saiva/adyappau.txt weight=0.140
+- prefix_in_candidate: data/processed/gretil_devanagari/tei/transformations/html/sa_AGgirasasmRti.txt -> 6_sastra/4_dharma/smrti/angirspu.txt weight=0.140
+- prefix_in_candidate: data/processed/gretil_devanagari/tei/transformations/html/sa_agnipurANa.txt -> 3_purana/agp_bi_u.txt weight=0.140
+- exact: data/processed/gretil_devanagari/tei/transformations/html/sa_ahorAtravratacaityasevAnuzaMsAvadAna.txt -> 4_rellit/buddh/ahovcs_u.txt weight=0.140
+- prefix_in_candidate: data/processed/gretil_devanagari/tei/transformations/html/sa_amarasiMha-nAmaliGgAnuzAsana.txt -> 6_sastra/2_lex/amark1hu.txt weight=0.140
+- prefix_in_candidate: data/processed/gretil_devanagari/tei/transformations/html/sa_amaru-amaruzataka.txt -> 5_poetry/2_kavya/amaru_u.txt weight=0.200
+- prefix_in_candidate: data/processed/gretil_devanagari/tei/transformations/html/sa_AnandabhaTTa-vallAlacarita.txt -> 5_poetry/2_kavya/anvallcu.txt weight=0.140
+- prefix_in_candidate: data/processed/gretil_devanagari/tei/transformations/html/sa_Anandakanda.txt -> 6_sastra/7_ayur/anandk_u.txt weight=0.140
+- prefix_in_candidate: data/processed/gretil_devanagari/tei/transformations/html/sa_annaMbhaTTa-tarkasaMgraha-comm.txt -> 6_sastra/3_phil/nyaya/antsdi_u.txt weight=0.200
+- exact: data/processed/gretil_devanagari/tei/transformations/html/sa_appayadIkSita-vairAgyazatakam.txt -> 5_poetry/2_kavya/appvairu.txt weight=0.200
+- exact: data/processed/gretil_devanagari/tei/transformations/html/sa_AryabhaTa-AryabhaTIya.txt -> 6_sastra/8_jyot/aryabh_u.txt weight=0.140
+- exact: data/processed/gretil_devanagari/tei/transformations/html/sa_Aryadeva-caryAmelAvaNapradIpa.txt -> 6_sastra/3_phil/buddh/bsa048_u.txt weight=0.140
+- exact: data/processed/gretil_devanagari/tei/transformations/html/sa_Aryadeva-catuHzatikA.txt -> 6_sastra/3_phil/buddh/bsa028_u.txt weight=0.140
+- exact: data/processed/gretil_devanagari/tei/transformations/html/sa_Aryadeva-cittavizuddhiprakaraNa.txt -> 6_sastra/3_phil/buddh/bsa006_u.txt weight=0.140
+- prefix_in_candidate: data/processed/gretil_devanagari/tei/transformations/html/sa_AryazUra-jAtakamAlA.txt -> 6_sastra/3_phil/buddh/bsa032_u.txt weight=0.140
+- prefix_in_candidate: data/processed/gretil_devanagari/tei/transformations/html/sa_AryazUra-pAramitAsamAsa.txt -> 6_sastra/3_phil/buddh/bsa050_u.txt weight=0.140
+- exact: data/processed/gretil_devanagari/tei/transformations/html/sa_asaGga-trizatikAyAH-prajJApAramitAyAH-kArikAsaptatiH.txt -> 4_rellit/buddh/atrisatu.txt weight=0.140
+- exact: data/processed/gretil_devanagari/tei/transformations/html/sa_asaGga-zarIrArthagAthA.txt -> 6_sastra/3_phil/buddh/asycsaru.txt weight=0.140
+- exact: data/processed/gretil_devanagari/tei/transformations/html/sa_atiza-bodhipathapradIpa.txt -> 6_sastra/3_phil/buddh/bsa004_u.txt weight=0.140
+- exact: data/processed/gretil_devanagari/tei/transformations/html/sa_azvaghoSa-buddhacarita-alt.txt -> 5_poetry/2_kavya/asvbuc2u.txt weight=0.140
+- prefix_in_candidate: data/processed/gretil_devanagari/tei/transformations/html/sa_azvaghoSa-saundarAnanda-edmatsunami.txt -> 5_poetry/2_kavya/asvsaunu.txt weight=0.140
+- prefix_in_candidate: data/processed/gretil_devanagari/tei/transformations/html/sa_azvaghoSa-saundarAnanda.txt -> 5_poetry/2_kavya/asvsau2u.txt weight=0.140
+- exact: data/processed/gretil_devanagari/tei/transformations/html/sa_azvaghoSa-vajrasUcI.txt -> 6_sastra/3_phil/buddh/bsa020_u.txt weight=0.140
+- prefix_in_candidate: data/processed/gretil_devanagari/tei/transformations/html/sa_AzvalAyanazrautasUtra.txt -> 1_veda/5_vedang/1_srauta/asvss_u.txt weight=0.160
+
+Ambuda duplicate examples:
+- word_overlap: data/processed/ambuda-text/amarushatakam.txt -> 5_poetry/2_kavya/amaru_u.txt weight=0.200
+- word_overlap: data/processed/ambuda-text/bhattikavyam.txt -> 5_poetry/2_kavya/bhattiku.txt weight=0.200
+- word_overlap: data/processed/ambuda-text/bodhicaryavatara.txt -> tei/transformations/html/sa_zAntideva-bodhicaryAvatAra.txt weight=0.200
+- word_overlap: data/processed/ambuda-text/brahmabindupanishat.txt -> 1_veda/4_upa/brbiuppu.txt weight=0.200
+- word_overlap: data/processed/ambuda-text/caurapancashika.txt -> tei/transformations/html/sa_bilhaNa-caurapaJcAzikA.txt weight=0.200
+- word_overlap: data/processed/ambuda-text/dutavakyam.txt -> 5_poetry/3_drama/bhasdutu.txt weight=0.200
+- word_overlap: data/processed/ambuda-text/hamsadutam.txt -> 5_poetry/2_kavya/ruphamdu.txt weight=0.200
+- word_overlap: data/processed/ambuda-text/kaivalyopanishat.txt -> 1_veda/4_upa/kaivup_u.txt weight=0.200
+- word_overlap: data/processed/ambuda-text/kiratarjuniyam.txt -> 5_poetry/2_kavya/bhakirpu.txt weight=0.200
+- word_overlap: data/processed/ambuda-text/kokilasandesha.txt -> tei/transformations/html/sa_uddaNDa-kokilasaMdesa.txt weight=0.200
+- word_overlap: data/processed/ambuda-text/kumarasambhavam.txt -> 5_poetry/2_kavya/kakumspu.txt weight=0.200
+- word_overlap: data/processed/ambuda-text/mahabharatam.txt -> 2_epic/mbh/mbh1-18u.txt weight=0.200
+- word_overlap: data/processed/ambuda-text/meghadutam-kale.txt -> 5_poetry/2_kavya/meghdk_u.txt weight=0.200
+- word_overlap: data/processed/ambuda-text/mukundamala.txt -> 5_poetry/2_kavya/kulmukuu.txt weight=0.200
+- word_overlap: data/processed/ambuda-text/raghuvamsham.txt -> 5_poetry/2_kavya/kragh_pu.txt weight=0.200
+- word_overlap: data/processed/ambuda-text/ramayanam.txt -> tei/transformations/html/sa_rAmAyaNa.txt weight=0.200
+- word_overlap: data/processed/ambuda-text/rtusamharam.txt -> 5_poetry/2_kavya/kalrs_pu.txt weight=0.200
+- word_overlap: data/processed/ambuda-text/saundaranandam.txt -> tei/transformations/html/sa_azvaghoSa-saundarAnanda-edmatsunami.txt weight=0.200
+- word_overlap: data/processed/ambuda-text/shatakatrayam.txt -> 5_poetry/5_subhas/bharst_u.txt weight=0.200
+- word_overlap: data/processed/ambuda-text/shishupalavadham.txt -> 5_poetry/2_kavya/maghspvu.txt weight=0.200
+- word_overlap: data/processed/ambuda-text/vatukopanishat.txt -> 1_veda/4_upa/sirup_u.txt weight=0.200
+
+Largest unique-or-unchecked Ambuda files:
+- unique: data/processed/ambuda-text/shrivyasayogicaritam.txt ->  weight=0.700
+- unique: data/processed/ambuda-text/suryashatakam-tika.txt ->  weight=0.700
+- unique: data/processed/ambuda-text/shivopanishat.txt ->  weight=0.700
+- unique: data/processed/ambuda-text/abhishekanatakam.txt ->  weight=0.700
+- unique: data/processed/ambuda-text/naraabharanam.txt ->  weight=0.700
+- unique: data/processed/ambuda-text/somanathashatakam.txt ->  weight=0.700
+- unique: data/processed/ambuda-text/suryashatakam.txt ->  weight=0.700
+- unique: data/processed/ambuda-text/anyoktimuktalata.txt ->  weight=0.700
+- unique: data/processed/ambuda-text/urubhangam.txt ->  weight=0.700
+- unique: data/processed/ambuda-text/shivanandalahari.txt ->  weight=0.700
+- unique: data/processed/ambuda-text/charucharya-prakash.txt ->  weight=0.700
+- unique: data/processed/ambuda-text/madhyamavyayoga.txt ->  weight=0.700
+- unique: data/processed/ambuda-text/svatmanirupanam.txt ->  weight=0.700
+- unique: data/processed/ambuda-text/dutaghatotkacam.txt ->  weight=0.700
+- unique: data/processed/ambuda-text/aparokshanubhuti.txt ->  weight=0.700
+- unique: data/processed/ambuda-text/itihasopanishat.txt ->  weight=0.700
+- unique: data/processed/ambuda-text/vishnupadadikeshantastotram.txt ->  weight=0.700
+- unique: data/processed/ambuda-text/atharvanadvitiyopanishat.txt ->  weight=0.700
+- unique: data/processed/ambuda-text/devicatuhshashtyupacarapujastotram.txt ->  weight=0.700
+- unique: data/processed/ambuda-text/charucharya.txt ->  weight=0.700
