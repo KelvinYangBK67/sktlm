@@ -1,0 +1,12 @@
+run_id: tokenizer_bpe24k_legacy_seed0
+data: {manifest: data/manifests/corpus_manifest.csv, split: test, max_train_segments: 128, max_eval_segments: 64}
+representation: {script: devanagari, spacing: legacy_joined}
+tokenizer:
+  type: bpe
+  vocab_size: 24000
+  model_path: tokenizer/weighted_bpe_24000_danda_split.model
+  legacy_artifact: true
+  training_representation: devanagari_legacy_joined
+model: {type: none}
+seed: 0
+evaluation: {prediction_examples: 5, sandhi_patterns: ["ोऽपि", "ोऽ", "ेऽ"]}

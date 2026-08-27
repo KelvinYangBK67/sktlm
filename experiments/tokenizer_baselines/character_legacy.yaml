@@ -1,0 +1,7 @@
+run_id: tokenizer_character_legacy_seed0
+data: {manifest: data/manifests/corpus_manifest.csv, split: test, max_train_segments: 128, max_eval_segments: 64}
+representation: {script: devanagari, spacing: legacy_joined}
+tokenizer: {type: character}
+model: {type: none}
+seed: 0
+evaluation: {prediction_examples: 5, sandhi_patterns: ["ोऽपि", "ोऽ", "ेऽ"]}

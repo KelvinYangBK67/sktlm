@@ -3,3 +3,9 @@
 /data/interim/
 /data/processed/
 /data/tokenizer_corpora/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+artifacts/
+*.egg-info/

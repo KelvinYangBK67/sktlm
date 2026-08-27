@@ -1,0 +1,28 @@
+data:
+  manifest: data/manifests/corpus_manifest.csv
+  eval_split: dev
+  max_train_segments: 128
+  max_eval_segments: 32
+representation:
+  script: devanagari
+  spacing: observed
+tokenizer:
+  type: character
+model:
+  type: tiny_transformer
+  context_length: 32
+  n_embd: 64
+  n_head: 2
+  n_layer: 2
+  dropout: 0.0
+training:
+  output_dir: artifacts/tiny_controlled
+  batch_size: 8
+  learning_rate: 0.001
+  max_steps: 20
+  eval_interval: 5
+  max_train_examples: 64
+  max_eval_examples: 16
+seed: 0
+evaluation:
+  normalized_likelihood: [bits_per_character, bits_per_byte]

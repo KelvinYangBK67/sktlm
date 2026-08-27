@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sktlm"
+version = "0.2.0"
+description = "Controlled Sanskrit corpus, tokenization, and language-model experiments"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "sentencepiece",
+    "PyYAML",
+    "regex",
+    "torch",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+sktlm-normalize = "sktlm.data.normalize.devanagari:main"
+sktlm-iast-to-devanagari = "sktlm.data.transliterate.iast_devanagari:main"
+sktlm-build-manifest = "sktlm.data.manifest:main"
+sktlm-build-weighted-corpus = "sktlm.data.weighted_corpus:main"
+sktlm-train-tokenizer = "sktlm.tokenizers.sentencepiece:main"
+sktlm-vocab-review = "sktlm.diagnostics.vocab:main"
+sktlm-train-tiny = "sktlm.training.tiny:main"
+sktlm-prepare-gretil = "sktlm.data.prepare_gretil:main"
+sktlm-normalize-corpus = "sktlm.data.normalize.corpus:main"
+sktlm-inspect-tokenization = "sktlm.tokenizers.inspect:main"
+sktlm-generate = "sktlm.models.generation:main"
+sktlm-experiment = "sktlm.experiment.runner:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra"

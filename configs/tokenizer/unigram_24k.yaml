@@ -1,0 +1,3 @@
+type: unigram
+vocab_size: 24000
+model_path: tokenizer/weighted_unigram_24000_danda_split.model
