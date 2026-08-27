@@ -7,6 +7,8 @@ only explicit script, spacing, tokenizer, or model configuration.
 
 The current framework provides:
 
+- a whitelist-only formal GRETIL canonical IAST corpus builder with provenance,
+  hashes, cleaning audit, and unknown-character reporting;
 - canonical physical-line segments with stable `document_id`, `segment_id`, and
   split metadata;
 - independent `iast`/`devanagari` script transforms and `observed`,
@@ -26,6 +28,19 @@ The current framework provides:
 python -m pip install -e ".[test]"
 python -m pytest
 ```
+
+Build and validate the formal GRETIL canonical corpus from the exact paths in
+`notes/whitelist.txt`:
+
+```bash
+sktlm-build-gretil-canonical
+sktlm-validate-gretil-canonical
+```
+
+This formal path writes `data/manifests/canonical_corpus.csv` and preserves
+source-provided IAST word boundaries and accents. It does not use the legacy
+pilot cleaning, spacing, transliteration, tokenizer, or model pipeline. See
+`docs/canonical_corpus.md` for the construction and QC contract.
 
 Run a provenance and tokenizer-diagnostics pass without model training:
 

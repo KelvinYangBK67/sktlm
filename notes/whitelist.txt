@@ -1,0 +1,349 @@
+# GRETIL Canonical Corpus Whitelist v3 — CONSERVATIVE FREEZE CANDIDATE
+# Project: sktlm / Sanskrit tokenizer corpus construction
+#
+# Raw root:
+# D:\Repositories\sanskrit_llm\data\raw\gretil\
+#
+# This file supersedes v2 for corpus selection.
+#
+# POLICY
+# - INCLUDE only. There is NO REVIEW layer.
+# - If work identity / witness relation / language status is uncertain: discard.
+# - One canonical witness family per work.
+# - Split files are retained only when they are complementary divisions of one work.
+# - Alternate analytic/index/commentarial/concatenated witnesses are excluded.
+# - Saṃhitā, grammar, lexicography, mixed-language drama, Jaina mixed-language
+#   material, Indonesian material, and TEI duplicates are excluded from this
+#   main whitelist.
+# - Paths below are relative raw-GRETIL .htm paths.
+#
+# V2 -> V3
+# - v2 INCLUDE: 294
+# - removed in conservative pass: 48
+# - v3 INCLUDE: 246
+# - exact duplicate paths in v3: 0
+#
+# Work-family audit:
+# - obvious same-basename families remaining are complementary divisions
+#   (e.g. MBh parvans, Rāmāyaṇa kāṇḍas, Bhāgavata skandhas, Vinayavastu
+#   divisions, Ratnāvalī books), not alternate witnesses.
+#
+
+# ====================================================================
+# 1. LATE VEDIC CORE
+# ====================================================================
+1_veda/2_bra/gopbra_u.htm
+1_veda/2_bra/kausibru.htm
+1_veda/2_bra/pncvbr1u.htm
+1_veda/2_bra/pncvbr2u.htm
+1_veda/2_bra/satapath/sb_01_u.htm
+1_veda/2_bra/satapath/sb_02_u.htm
+1_veda/2_bra/satapath/sb_03_u.htm
+1_veda/2_bra/satapath/sb_04_u.htm
+1_veda/2_bra/satapath/sb_05_u.htm
+1_veda/2_bra/satapath/sb_06_u.htm
+1_veda/2_bra/satapath/sb_07_u.htm
+1_veda/2_bra/satapath/sb_08_u.htm
+1_veda/2_bra/satapath/sb_09_u.htm
+1_veda/2_bra/satapath/sb_10_u.htm
+1_veda/2_bra/satapath/sb_11_u.htm
+1_veda/2_bra/satapath/sb_13_u.htm
+1_veda/2_bra/satapath/sb_14_u.htm
+1_veda/3_ara/sankharu.htm
+1_veda/4_upa/aitup__u.htm
+1_veda/4_upa/brup___u.htm
+1_veda/4_upa/chup___u.htm
+1_veda/4_upa/isup___u.htm
+1_veda/4_upa/kathop_u.htm
+1_veda/4_upa/mandup_u.htm
+1_veda/4_upa/prasup_u.htm
+1_veda/4_upa/svetu_pu.htm
+1_veda/5_vedang/1_srauta/apsulb_u.htm
+1_veda/5_vedang/1_srauta/asvss_u.htm
+1_veda/5_vedang/1_srauta/sankhssu.htm
+1_veda/5_vedang/1_srauta/vaitss_u.htm
+1_veda/5_vedang/2_grhya/asvgs_u.htm
+1_veda/5_vedang/2_grhya/jaimigsu.htm
+1_veda/5_vedang/2_grhya/kaussu_u.htm
+1_veda/5_vedang/2_grhya/kauthgsu.htm
+1_veda/5_vedang/2_grhya/manavgsu.htm
+1_veda/5_vedang/2_grhya/sankhgsu.htm
+1_veda/5_vedang/2_grhya/vargs_u.htm
+1_veda/5_vedang/2_paris/avpari_u.htm
+1_veda/5_vedang/2_paris/avpray_u.htm
+1_veda/5_vedang/3_pratis/rgvidh_u.htm
+
+# ====================================================================
+# 2. EPIC
+# ====================================================================
+2_epic/mbh/mbh_01_u.htm
+2_epic/mbh/mbh_02_u.htm
+2_epic/mbh/mbh_03_u.htm
+2_epic/mbh/mbh_04_u.htm
+2_epic/mbh/mbh_05_u.htm
+2_epic/mbh/mbh_06_u.htm
+2_epic/mbh/mbh_07_u.htm
+2_epic/mbh/mbh_08_u.htm
+2_epic/mbh/mbh_09_u.htm
+2_epic/mbh/mbh_10_u.htm
+2_epic/mbh/mbh_11_u.htm
+2_epic/mbh/mbh_12_u.htm
+2_epic/mbh/mbh_13_u.htm
+2_epic/mbh/mbh_14_u.htm
+2_epic/mbh/mbh_15_u.htm
+2_epic/mbh/mbh_16_u.htm
+2_epic/mbh/mbh_17_u.htm
+2_epic/mbh/mbh_18_u.htm
+2_epic/mbh/ext/hv_conpu.htm
+2_epic/mbh/ext/hv_apppu.htm
+2_epic/ramayana/ram_01_u.htm
+2_epic/ramayana/ram_02_u.htm
+2_epic/ramayana/ram_03_u.htm
+2_epic/ramayana/ram_04_u.htm
+2_epic/ramayana/ram_05_u.htm
+2_epic/ramayana/ram_06_u.htm
+2_epic/ramayana/ram_07_u.htm
+
+# ====================================================================
+# 3. PURĀṆA
+# ====================================================================
+3_purana/agp_bi_u.htm
+3_purana/bhagp/bhp_01u.htm
+3_purana/bhagp/bhp_02u.htm
+3_purana/bhagp/bhp_03u.htm
+3_purana/bhagp/bhp_04u.htm
+3_purana/bhagp/bhp_05u.htm
+3_purana/bhagp/bhp_06u.htm
+3_purana/bhagp/bhp_07u.htm
+3_purana/bhagp/bhp_08u.htm
+3_purana/bhagp/bhp_09u.htm
+3_purana/bhagp/bhp_10u.htm
+3_purana/bhagp/bhp_11u.htm
+3_purana/bhagp/bhp_12u.htm
+3_purana/brahmap/brahmppu.htm
+3_purana/brndp1_u.htm
+3_purana/brndp2_u.htm
+3_purana/brndp3_u.htm
+3_purana/garup1_u.htm
+3_purana/garup2_u.htm
+3_purana/garup3_u.htm
+3_purana/kurmp1_u.htm
+3_purana/kurmp2_u.htm
+3_purana/lip_1_pu.htm
+3_purana/lip_2__u.htm
+3_purana/mkp1-93u.htm
+3_purana/mtp176pu.htm
+3_purana/nardp1_u.htm
+3_purana/nardp2_u.htm
+3_purana/narsippu.htm
+3_purana/sivap1_u.htm
+3_purana/sivap7_u.htm
+3_purana/skp031pu.htm
+3_purana/skprevku.htm
+3_purana/vamp__u.htm
+3_purana/vd2127_u.htm
+3_purana/vd3343pu.htm
+3_purana/vipce_pu.htm
+
+# ====================================================================
+# 4. BUDDHIST SANSKRIT / BHS — RELIGIOUS, NARRATIVE, VINAYA
+# ====================================================================
+4_rellit/buddh/avsata_u.htm
+4_rellit/buddh/divyav_u.htm
+4_rellit/buddh/mhvastuu.htm
+4_rellit/buddh/vimkn_u.htm
+4_rellit/buddh/sukhvylu.htm
+4_rellit/buddh/sukhvysu.htm
+4_rellit/buddh/udanav_u.htm
+4_rellit/buddh/asmahsuu.htm
+4_rellit/buddh/srabhu_u.htm
+4_rellit/buddh/vinsutru.htm
+4_rellit/buddh/bhivin_u.htm
+4_rellit/buddh/vinv01_u.htm
+4_rellit/buddh/vinv02_u.htm
+4_rellit/buddh/vinv03_u.htm
+4_rellit/buddh/vinv04_u.htm
+4_rellit/buddh/vinv05_u.htm
+4_rellit/buddh/vinv_06u.htm
+4_rellit/buddh/vinv07_u.htm
+4_rellit/buddh/vinv08_u.htm
+4_rellit/buddh/vinv09_u.htm
+4_rellit/buddh/vinv10_u.htm
+4_rellit/buddh/vinv11_u.htm
+4_rellit/buddh/vinv12_u.htm
+4_rellit/buddh/vinv13_u.htm
+4_rellit/buddh/vinv14_u.htm
+4_rellit/buddh/vinv15_u.htm
+4_rellit/buddh/vinv16_u.htm
+4_rellit/buddh/vinv171u.htm
+4_rellit/buddh/vinv172u.htm
+
+# ====================================================================
+# 5. BUDDHIST PHILOSOPHY
+# ====================================================================
+6_sastra/3_phil/buddh/nagmmk_u.htm
+6_sastra/3_phil/buddh/nagvigvu.htm
+6_sastra/3_phil/buddh/nrat_1_u.htm
+6_sastra/3_phil/buddh/nrat_2_u.htm
+6_sastra/3_phil/buddh/nrat_4_u.htm
+6_sastra/3_phil/buddh/pramanvu.htm
+6_sastra/3_phil/buddh/santbcpu.htm
+6_sastra/3_phil/buddh/vakobhau.htm
+
+# ====================================================================
+# 6. ŚAIVA RELIGIOUS / TANTRIC SANSKRIT
+# ====================================================================
+4_rellit/saiva/kirtm_pu.htm
+4_rellit/saiva/kubjt_pu.htm
+4_rellit/saiva/malinivu.htm
+4_rellit/saiva/mrgt1mpu.htm
+4_rellit/saiva/mrgt3mpu.htm
+4_rellit/saiva/mrgt4mpu.htm
+4_rellit/saiva/parakspu.htm
+4_rellit/saiva/pasupspu.htm
+4_rellit/saiva/sivsutru.htm
+4_rellit/saiva/svact_pu.htm
+4_rellit/saiva/todaltpu.htm
+4_rellit/saiva/vinst_pu.htm
+
+# ====================================================================
+# 7. VAIṢṆAVA RELIGIOUS SANSKRIT
+# ====================================================================
+4_rellit/vaisn/astavgpu.htm
+4_rellit/vaisn/hbhvil_u.htm
+4_rellit/vaisn/ss1_tatu.htm
+4_rellit/vaisn/ss2_bhgu.htm
+4_rellit/vaisn/ss3_paru.htm
+4_rellit/vaisn/ss4_krsu.htm
+4_rellit/vaisn/ss5_bhku.htm
+4_rellit/vaisn/ss6_priu.htm
+4_rellit/vaisn/satvtanu.htm
+4_rellit/vaisn/vaimp__u.htm
+4_rellit/vaisn/yamcatpu.htm
+4_rellit/vaisn/yamsr_pu.htm
+
+# ====================================================================
+# 8. CLASSICAL KĀVYA
+# ====================================================================
+5_poetry/2_kavya/akadambu.htm
+5_poetry/2_kavya/amaru_u.htm
+5_poetry/2_kavya/asvbuc2u.htm
+5_poetry/2_kavya/asvsau2u.htm
+5_poetry/2_kavya/bhakirpu.htm
+5_poetry/2_kavya/bhattiku.htm
+5_poetry/2_kavya/bicauppu.htm
+5_poetry/2_kavya/dandkc_u.htm
+5_poetry/2_kavya/jaygit2u.htm
+5_poetry/2_kavya/kakumspu.htm
+5_poetry/2_kavya/kalrs_pu.htm
+5_poetry/2_kavya/kmeghdpu.htm
+5_poetry/2_kavya/kragh_pu.htm
+5_poetry/2_kavya/maghspvu.htm
+5_poetry/2_kavya/nkalivpu.htm
+5_poetry/2_kavya/padnscpu.htm
+5_poetry/2_kavya/ramodtpu.htm
+
+# ====================================================================
+# 9. NARRATIVE / SUBHĀṢITA / HISTORICAL
+# ====================================================================
+5_poetry/4_narr/brkas_pu.htm
+5_poetry/4_narr/hitop_u.htm
+5_poetry/4_narr/sokss_pu.htm
+5_poetry/4_narr/suksaptu.htm
+5_poetry/4_narr/ttrkhy1u.htm
+5_poetry/4_narr/ttrkhy2u.htm
+5_poetry/5_subhas/bharst_u.htm
+5_poetry/5_subhas/ksdarppu.htm
+5_poetry/5_subhas/msubhs_u.htm
+5_poetry/5_subhas/valsubhu.htm
+5_poetry/5_subhas/vidsrgpu.htm
+5_poetry/6_hist/jonart_pu.htm
+
+# ====================================================================
+# 10. NĀṬYA / CHANDAS THEORY
+# ====================================================================
+5_poetry/1_natya/bharnatu.htm
+5_poetry/1_natya/dhandasu.htm
+5_poetry/1_chandas/jvrtmspu.htm
+5_poetry/1_chandas/kedvratu.htm
+5_poetry/1_chandas/kvrtrsuu.htm
+
+# ====================================================================
+# 11. NON-BUDDHIST PHILOSOPHY
+# ====================================================================
+6_sastra/3_phil/mimamsa/jaimsutu.htm
+6_sastra/3_phil/nyaya/gaunys_u.htm
+6_sastra/3_phil/nyaya/antarkpu.htm
+6_sastra/3_phil/vaisesik/vaissu1u.htm
+6_sastra/3_phil/samkhya/isvskaru.htm
+6_sastra/3_phil/yoga/patyog_u.htm
+6_sastra/3_phil/yoga/hathyopu.htm
+6_sastra/3_phil/yoga/ghers__u.htm
+6_sastra/3_phil/vedanta/brahmsuu.htm
+6_sastra/3_phil/vedanta/gaukarpu.htm
+6_sastra/3_phil/vedanta/samkupad_u.htm
+6_sastra/3_phil/vedanta/yamgaspu.htm
+6_sastra/3_phil/vedanta/yamis_pu.htm
+6_sastra/3_phil/vedanta/yamss_pu.htm
+6_sastra/3_phil/saiva/parmartu.htm
+6_sastra/3_phil/saiva/pratyabu.htm
+6_sastra/3_phil/saiva/tantralu.htm
+6_sastra/3_phil/saiva/paratriu.htm
+
+# ====================================================================
+# 12. DHARMAŚĀSTRA
+# ====================================================================
+6_sastra/4_dharma/sutra/apastd_u.htm
+6_sastra/4_dharma/sutra/baudhd_u.htm
+6_sastra/4_dharma/sutra/gautdh_u.htm
+6_sastra/4_dharma/sutra/vaikhd_u.htm
+6_sastra/4_dharma/sutra/vasist_u.htm
+6_sastra/4_dharma/smrti/angirspu.htm
+6_sastra/4_dharma/smrti/brhasppu.htm
+6_sastra/4_dharma/smrti/katy2p_u.htm
+6_sastra/4_dharma/smrti/manu2p_u.htm
+6_sastra/4_dharma/smrti/nars2_pu.htm
+6_sastra/4_dharma/smrti/pars2_pu.htm
+6_sastra/4_dharma/smrti/visnu_pu.htm
+6_sastra/4_dharma/smrti/yajn2_pu.htm
+
+# ====================================================================
+# 13. ARTHA / KĀMA
+# ====================================================================
+6_sastra/5_artha/kautil_u.htm
+6_sastra/6_kama/kamasutu.htm
+
+# ====================================================================
+# 14. ĀYURVEDA / RASAŚĀSTRA
+# ====================================================================
+6_sastra/7_ayur/anandk_u.htm
+6_sastra/7_ayur/bhavpr_u.htm
+6_sastra/7_ayur/caraka_u.htm
+6_sastra/7_ayur/vagaah_u.htm
+6_sastra/7_ayur/rasarnpu.htm
+6_sastra/7_ayur/rasadhpu.htm
+6_sastra/7_ayur/yogasatu.htm
+
+# ====================================================================
+# 15. JYOTIṢA / MATHEMATICS / ASTRONOMY
+# ====================================================================
+6_sastra/8_jyot/aryabh_u.htm
+6_sastra/8_jyot/bijaganu.htm
+6_sastra/8_jyot/brhajj_u.htm
+6_sastra/8_jyot/brhats_u.htm
+6_sastra/8_jyot/brsphutu.htm
+6_sastra/8_jyot/lilavatu.htm
+6_sastra/8_jyot/surysidu.htm
+
+# ====================================================================
+# FREEZE RULE
+# ====================================================================
+# A filtering script should treat every non-empty, non-comment line above
+# as an INCLUDE path. Anything not listed here is excluded by default.
+#
+# Before canonical conversion:
+# - assert every listed path exists;
+# - assert no duplicate relative paths;
+# - preserve relative directory structure;
+# - use conservative IAST cleaning;
+# - report unknown characters rather than silently deleting them.

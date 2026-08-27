@@ -1,0 +1,33 @@
+Formal GRETIL canonical IAST corpus
+=====================================
+whitelist_document_count: 246
+successfully_processed_count: 246
+missing_source_count: 0
+total_canonical_chars: 59943668
+total_canonical_lines: 2191186
+nonempty_lines: 1101320
+accented_document_count: 13
+unknown_character_count: 583
+documents_with_unknown_characters: 12
+unknown_character_types: 7
+empty_documents: 0
+suspiciously_small_files_under_100_chars: 0
+stale_outputs_removed: 0
+selection_policy: exact paths from notes/whitelist.txt
+canonical_script: iast
+word_boundary_policy: preserve source-provided boundaries; no desandhi, inferred segmentation, joining, or transliteration
+accent_policy: preserve source accents
+unknown_character_policy: preserve and report
+
+documents_by_layer:
+  epic: 27
+  poetry: 34
+  purana: 37
+  religious_literature: 53
+  sastra: 55
+  veda: 40
+
+documents_by_split:
+  dev: 19
+  test: 19
+  train: 208
