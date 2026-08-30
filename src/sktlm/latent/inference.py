@@ -98,6 +98,15 @@ class SegmentInference:
     top_analysis_mass: float
 
 
+@dataclass(frozen=True, slots=True)
+class TrainingSegmentInference:
+    log_partition: float
+    identity_mass: float
+    latent_mass: float
+    expected_lexical_tokens: float
+    expected_counts: dict[PhonologicalForm, float]
+
+
 def _trim_paths(paths: list[TokenPath], limit: int) -> list[TokenPath]:
     paths.sort(
         key=lambda path: (
@@ -113,7 +122,7 @@ def evaluate_token_lattice(
     lattice: TokenLattice,
     scorer: FormScorer,
     *,
-    top_k: int,
+    top_k: int | None,
 ) -> TokenEvaluation:
     outgoing = lattice.outgoing_edges
     incoming = lattice.incoming_edges
@@ -152,6 +161,15 @@ def evaluate_token_lattice(
         if edge.identity_edge and edge.start == 0 and edge.end == node_count - 1:
             identity_log_score = score
 
+    if top_k is None:
+        return TokenEvaluation(
+            log_partition=log_z,
+            edge_posteriors=tuple(posteriors),
+            expected_score=expected_score,
+            identity_log_score=identity_log_score,
+            top_paths=(),
+        )
+
     paths_by_node: list[list[TokenPath]] = [[] for _ in range(node_count)]
     paths_by_node[0] = [TokenPath(0.0, (), (), ())]
     for node in range(node_count - 1):
@@ -187,14 +205,15 @@ def _evaluate_factor(
     scorer: FormScorer,
     *,
     whitespace_merge_penalty: float,
-    top_k: int,
+    top_k: int | None,
 ) -> FactorEvaluation:
     if factor.merged_word is not None:
         score = scorer.score(factor.merged_word) - (
             whitespace_merge_penalty * factor.ignored_whitespace
         )
         path = TokenPath(score, (factor.merged_word,), (), ())
-        return FactorEvaluation(factor, score, score, -math.inf, None, (path,))
+        paths = () if top_k is None else (path,)
+        return FactorEvaluation(factor, score, score, -math.inf, None, paths)
     assert factor.lattice is not None
     token = evaluate_token_lattice(factor.lattice, scorer, top_k=top_k)
     return FactorEvaluation(
@@ -315,6 +334,61 @@ def _outer_top_paths(
                 top_k,
             )
     return tuple(states[-1].get("END", ()))
+
+
+def infer_training_segment(
+    graph: CandidateGraph,
+    scorer: FormScorer,
+    *,
+    whitespace_merge_penalty: float,
+) -> TrainingSegmentInference:
+    '''Exact marginals needed by EM training, without inspection decoding.'''
+
+    evaluations = tuple(
+        _evaluate_factor(
+            factor,
+            scorer,
+            whitespace_merge_penalty=whitespace_merge_penalty,
+            top_k=None,
+        )
+        for factor in graph.factors
+    )
+    forward = _outer_forward(graph, evaluations)
+    log_z = forward[-1].get('END', -math.inf)
+    if log_z == -math.inf:
+        raise ValueError('Candidate graph has no complete analysis.')
+    backward = _outer_backward(graph, evaluations)
+
+    expected_counts: dict[PhonologicalForm, float] = defaultdict(float)
+    for evaluation in evaluations:
+        factor = evaluation.factor
+        prefix = forward[factor.start_token].get(factor.incoming.key, -math.inf)
+        suffix = backward[factor.end_token].get(factor.outgoing.key, -math.inf)
+        if prefix == -math.inf or suffix == -math.inf:
+            continue
+        factor_mass = math.exp(prefix + evaluation.log_score + suffix - log_z)
+        if factor.merged_word is not None:
+            expected_counts[factor.merged_word] += factor_mass
+            continue
+        assert evaluation.token is not None
+        for edge, conditional_mass in evaluation.token.edge_posteriors:
+            expected_counts[edge.word] += factor_mass * conditional_mass
+
+    identity_forward = _outer_forward(graph, evaluations, identity_only=True)
+    identity_log_z = identity_forward[-1].get('END', -math.inf)
+    identity_mass = (
+        0.0
+        if identity_log_z == -math.inf
+        else min(1.0, math.exp(identity_log_z - log_z))
+    )
+    expected_tokens = sum(expected_counts.values())
+    return TrainingSegmentInference(
+        log_partition=log_z,
+        identity_mass=identity_mass,
+        latent_mass=1.0 - identity_mass,
+        expected_lexical_tokens=expected_tokens,
+        expected_counts=dict(expected_counts),
+    )
 
 
 def infer_segment(

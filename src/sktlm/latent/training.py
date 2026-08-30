@@ -25,7 +25,9 @@ from sktlm.latent.inference import (
     AnalysisPosterior,
     NeutralFormScorer,
     SegmentInference,
+    TrainingSegmentInference,
     infer_segment,
+    infer_training_segment,
 )
 from sktlm.latent.phonology import PhonologicalForm
 from sktlm.latent.store import LexiconStore
@@ -125,7 +127,7 @@ class PassMetrics:
     def update(
         self,
         segment: ObservedSegment,
-        inference: SegmentInference,
+        inference: SegmentInference | TrainingSegmentInference,
         *,
         overflowed_tokens: int,
         candidate_factors: int,
@@ -445,11 +447,10 @@ def _training_pass(
                 telemetry.elapsed('training_candidate_generation', started)
                 candidate_counts = candidate_graph_statistics(graph)
                 started = telemetry.now()
-                inference = infer_segment(
+                inference = infer_training_segment(
                     graph,
                     scorer,
                     whitespace_merge_penalty=config.whitespace_merge_penalty,
-                    top_k=1,
                 )
                 telemetry.elapsed('training_inference', started)
                 started = telemetry.now()
