@@ -180,47 +180,71 @@ class LexiconStore:
             self.connection.execute(
                 "CREATE TABLE IF NOT EXISTS counts_next ("
                 "form_key TEXT PRIMARY KEY, "
-                "iast TEXT NOT NULL, "
-                "phoneme_ids TEXT NOT NULL, "
                 "expected_count REAL NOT NULL"
-                ")"
+                ") WITHOUT ROWID"
             )
             self._set_training_checkpoint(checkpoint)
+
+    def _has_expanded_form_payload(self, table: str) -> bool:
+        if table not in {'counts_next', 'inspection_counts'}:
+            raise ValueError(f'Unsupported count table: {table}')
+        return any(
+            str(row[1]) == 'iast'
+            for row in self.connection.execute(f'PRAGMA table_info({table})')
+        )
 
     def _count_rows(
         self,
         counts: Iterable[tuple[PhonologicalForm, float]],
-    ) -> list[tuple[str, str, str, float]]:
+        *,
+        expanded: bool,
+    ) -> list[tuple[Any, ...]]:
         started = time.perf_counter()
-        rows = [
-            (
-                form.key,
-                form.iast,
-                " ".join(form.phoneme_ids),
-                float(value),
-            )
-            for form, value in counts
-            if value > 0.0
-        ]
+        if expanded:
+            rows = [
+                (
+                    form.key,
+                    form.iast,
+                    ' '.join(form.phoneme_ids),
+                    float(value),
+                )
+                for form, value in counts
+                if value > 0.0
+            ]
+        else:
+            rows = [
+                (form.key, float(value))
+                for form, value in counts
+                if value > 0.0
+            ]
         self.telemetry.elapsed('sqlite_count_row_serialization', started)
         self.telemetry.increment('sqlite_count_rows_serialized', len(rows))
         return rows
 
     def _upsert_counts(
         self,
-        rows: Iterable[tuple[str, str, str, float]],
+        counts: Iterable[tuple[PhonologicalForm, float]],
         *,
         table: str,
     ) -> None:
-        rows = list(rows)
+        expanded = self._has_expanded_form_payload(table)
+        rows = self._count_rows(counts, expanded=expanded)
         started = time.perf_counter()
-        self.connection.executemany(
-            f"INSERT INTO {table}(form_key, iast, phoneme_ids, expected_count) "
-            "VALUES (?, ?, ?, ?) "
-            "ON CONFLICT(form_key) DO UPDATE SET "
-            "expected_count = expected_count + excluded.expected_count",
-            rows,
-        )
+        if expanded:
+            self.connection.executemany(
+                f"INSERT INTO {table}(form_key, iast, phoneme_ids, expected_count) "
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(form_key) DO UPDATE SET "
+                "expected_count = expected_count + excluded.expected_count",
+                rows,
+            )
+        else:
+            self.connection.executemany(
+                f'INSERT INTO {table}(form_key, expected_count) VALUES (?, ?) '
+                'ON CONFLICT(form_key) DO UPDATE SET '
+                'expected_count = expected_count + excluded.expected_count',
+                rows,
+            )
         self.telemetry.elapsed('sqlite_count_upsert', started)
         self.telemetry.increment('sqlite_count_upsert_calls')
         self.telemetry.increment('sqlite_count_upsert_rows', len(rows))
@@ -232,7 +256,7 @@ class LexiconStore:
         table: str = "counts_next",
     ) -> None:
         with self.connection:
-            self._upsert_counts(self._count_rows(counts), table=table)
+            self._upsert_counts(counts, table=table)
 
     def begin_document_counts(self) -> None:
         started = time.perf_counter()
@@ -248,7 +272,7 @@ class LexiconStore:
     ) -> None:
         if not self.connection.in_transaction:
             raise RuntimeError("Document counts require an open transaction.")
-        self._upsert_counts(self._count_rows(counts), table="counts_next")
+        self._upsert_counts(counts, table="counts_next")
 
     def commit_document(self, checkpoint: dict[str, Any]) -> None:
         if not self.connection.in_transaction:
@@ -283,14 +307,17 @@ class LexiconStore:
                 self.connection.execute("DROP INDEX IF EXISTS lexicon_form_key")
                 self.connection.execute("DROP TABLE lexicon")
             self.connection.execute(
-                "CREATE TABLE lexicon AS "
-                "SELECT form_key, iast, phoneme_ids, expected_count, "
-                "(expected_count + ?) / ? AS probability "
-                "FROM counts_next",
-                (alpha, denominator),
+                'CREATE TABLE lexicon ('
+                'form_key TEXT PRIMARY KEY, '
+                'expected_count REAL NOT NULL, '
+                'probability REAL NOT NULL'
+                ') WITHOUT ROWID'
             )
             self.connection.execute(
-                "CREATE UNIQUE INDEX lexicon_form_key ON lexicon(form_key)"
+                'INSERT INTO lexicon(form_key, expected_count, probability) '
+                'SELECT form_key, expected_count, '
+                '(expected_count + ?) / ? FROM counts_next',
+                (alpha, denominator),
             )
             self.connection.execute("DROP TABLE counts_next")
             self._set_training_checkpoint(checkpoint)
@@ -338,10 +365,8 @@ class LexiconStore:
             self.connection.execute(
                 "CREATE TABLE inspection_counts ("
                 "form_key TEXT PRIMARY KEY, "
-                "iast TEXT NOT NULL, "
-                "phoneme_ids TEXT NOT NULL, "
                 "expected_count REAL NOT NULL"
-                ")"
+                ") WITHOUT ROWID"
             )
             self.connection.execute("DROP TABLE IF EXISTS surface_usage")
             self.connection.execute(
@@ -379,7 +404,7 @@ class LexiconStore:
     def export_lexicon(self, path: Path, *, usage_threshold: float) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         query = """
-            SELECT i.form_key, i.iast, i.phoneme_ids, i.expected_count,
+            SELECT i.form_key, i.expected_count,
                    COALESCE(l.probability, 0.0),
                    COALESCE(s.variant_count, 0),
                    COALESCE(c.context_count, 0)
@@ -412,7 +437,18 @@ class LexiconStore:
                 query,
                 (usage_threshold, usage_threshold),
             ):
-                writer.writerow(row)
+                form = PhonologicalForm.from_key(str(row[0]))
+                writer.writerow(
+                    (
+                        row[0],
+                        form.iast,
+                        ' '.join(form.phoneme_ids),
+                        row[1],
+                        row[2],
+                        row[3],
+                        row[4],
+                    )
+                )
 
     def complexity_summary(
         self,
@@ -443,9 +479,13 @@ class LexiconStore:
 
     def top_lexicon(self, limit: int) -> list[tuple[str, float, float]]:
         return [
-            (str(row[0]), float(row[1]), float(row[2] or 0.0))
+            (
+                PhonologicalForm.from_key(str(row[0])).iast,
+                float(row[1]),
+                float(row[2] or 0.0),
+            )
             for row in self.connection.execute(
-                "SELECT iast, expected_count, "
+                "SELECT form_key, expected_count, "
                 "(SELECT probability FROM lexicon l WHERE l.form_key = i.form_key) "
                 "FROM inspection_counts i ORDER BY expected_count DESC, form_key LIMIT ?",
                 (limit,),
@@ -458,9 +498,9 @@ class LexiconStore:
         threshold: float,
     ) -> list[tuple[str, float]]:
         return [
-            (str(row[0]), float(row[1]))
+            (PhonologicalForm.from_key(str(row[0])).iast, float(row[1]))
             for row in self.connection.execute(
-                "SELECT iast, expected_count FROM inspection_counts "
+                "SELECT form_key, expected_count FROM inspection_counts "
                 "WHERE expected_count <= ? ORDER BY expected_count DESC, form_key LIMIT ?",
                 (threshold, limit),
             )
