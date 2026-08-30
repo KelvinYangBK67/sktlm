@@ -5,7 +5,6 @@
 /data/canonical/
 /data/representations/
 /data/tokenizer_corpora/
-/data/_reports/
 /data/canonical_candidate/
 /reports/cleaning/generated/
 __pycache__/

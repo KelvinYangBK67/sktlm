@@ -1,7 +1,7 @@
 Vocab Review Extract
 
 Vocab: tokenizer\weighted_unigram_24000_danda_split.vocab
-CSV: data\_reports\vocab_review_weighted_unigram_24000_danda_split.csv
+CSV: reports\baselines\vocab_review_weighted_unigram_24000_danda_split.csv
 Total vocab rows: 24000
 Rows matching at least one category: 6623
 

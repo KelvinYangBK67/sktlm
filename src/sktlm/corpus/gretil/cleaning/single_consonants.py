@@ -39,18 +39,18 @@ DEFAULT_OUTPUT_ROOT = Path(
     "data/intermediate/gretil/pre_m0_single_consonant_candidate_gretil_iast"
 )
 DEFAULT_SPEC = Path("configs/corpus/pre_m0_single_consonant_keep.tsv")
-DEFAULT_BEFORE_AUDIT = Path("data/_reports/pre_m0_single_letter_tokens.tsv")
+DEFAULT_BEFORE_AUDIT = Path("reports/cleaning/pre_m0_single_letter_tokens.tsv")
 DEFAULT_MATERIALIZED = Path(
-    "data/_reports/pre_m0_single_consonant_keep_whitelist.tsv"
+    "reports/cleaning/pre_m0_single_consonant_keep_whitelist.tsv"
 )
 DEFAULT_AFTER_DETAILS = Path(
-    "data/_reports/pre_m0_single_letter_tokens_after_cleanup.tsv"
+    "reports/cleaning/pre_m0_single_letter_tokens_after_cleanup.tsv"
 )
 DEFAULT_AFTER_SUMMARY = Path(
-    "data/_reports/pre_m0_single_letter_summary_after_cleanup.tsv"
+    "reports/cleaning/pre_m0_single_letter_summary_after_cleanup.tsv"
 )
 DEFAULT_AFTER_BY_FILE = Path(
-    "data/_reports/pre_m0_single_letter_by_file_after_cleanup.tsv"
+    "reports/cleaning/pre_m0_single_letter_by_file_after_cleanup.tsv"
 )
 DEFAULT_DETAILS = Path(
     "reports/cleaning/pre_m0_single_consonant_cleanup_details.tsv"
@@ -697,11 +697,26 @@ def _validate_no_confirmed_english(root: Path) -> None:
 
 
 def _write_cleanup_rows(path: Path, rows: tuple[CleanupRow, ...]) -> None:
-    fields = tuple(CleanupRow.__dataclass_fields__)
+    # Whole-line removals have an empty `after`, and exact context may itself
+    # end in a source space.  A fixed final field keeps the generated TSV
+    # diff-clean without changing evidence cells.
+    fields = tuple(
+        field for field in CleanupRow.__dataclass_fields__ if field != "before"
+    ) + ("before", "record_status")
     _write_tsv(
         path,
         fields,
-        [{field: getattr(row, field) for field in fields} for row in rows],
+        [
+            {
+                **{
+                    field: getattr(row, field)
+                    for field in fields
+                    if field != "record_status"
+                },
+                "record_status": "recorded",
+            }
+            for row in rows
+        ],
     )
 
 

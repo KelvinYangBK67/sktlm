@@ -47,9 +47,9 @@ DEFAULT_CANDIDATE_CHECKPOINT = Path(
     "reports/cleaning/checkpoints/"
     "pre_m0_non_sanskrit_candidates_before_tokenizer_final.tsv"
 )
-DEFAULT_SINGLE_DETAILS = Path("data/_reports/pre_m0_single_letter_tokens.tsv")
-DEFAULT_SINGLE_SUMMARY = Path("data/_reports/pre_m0_single_letter_summary.tsv")
-DEFAULT_SINGLE_BY_FILE = Path("data/_reports/pre_m0_single_letter_by_file.tsv")
+DEFAULT_SINGLE_DETAILS = Path("reports/cleaning/pre_m0_single_letter_tokens.tsv")
+DEFAULT_SINGLE_SUMMARY = Path("reports/cleaning/pre_m0_single_letter_summary.tsv")
+DEFAULT_SINGLE_BY_FILE = Path("reports/cleaning/pre_m0_single_letter_by_file.tsv")
 
 REMOVED_SOURCES = (
     "5_poetry/4_narr/suksaptu.htm",
@@ -519,7 +519,9 @@ def audit_single_letters(
     ]
     _write_tsv(
         details_path,
-        ("file", "line_no", "token", "context", "prev_line", "next_line"),
+        # Keep the always-present context last so an empty next_line does not
+        # serialize as trailing TSV whitespace.
+        ("file", "line_no", "token", "prev_line", "next_line", "context"),
         details,
     )
     _write_tsv(
@@ -544,11 +546,26 @@ def _removed_raw_hashes(raw_root: Path) -> dict[str, str]:
 def _write_cleanup_details(
     path: Path, details: tuple[CleanupDetail, ...]
 ) -> None:
-    fields = tuple(CleanupDetail.__dataclass_fields__)
+    # `after` is intentionally empty for whole-unit deletions, and exact
+    # context may itself end in a source space.  A fixed final field keeps the
+    # generated TSV diff-clean without changing evidence cells.
+    fields = tuple(
+        field for field in CleanupDetail.__dataclass_fields__ if field != "before"
+    ) + ("before", "record_status")
     _write_tsv(
         path,
         fields,
-        [{field: getattr(row, field) for field in fields} for row in details],
+        [
+            {
+                **{
+                    field: getattr(row, field)
+                    for field in fields
+                    if field != "record_status"
+                },
+                "record_status": "recorded",
+            }
+            for row in details
+        ],
     )
 
 

@@ -4,12 +4,34 @@ from pathlib import Path
 import pytest
 
 from sktlm.corpus.gretil.cleaning.single_consonants import (
+    CleanupRow,
     KeepEntry,
     VAIMP,
     _clean_one_file,
+    _write_cleanup_rows,
     _validate_no_confirmed_english,
     materialize_keep_whitelist,
 )
+
+
+def test_cleanup_row_tsv_has_a_nonblank_final_field(tmp_path: Path) -> None:
+    output = tmp_path / "details.tsv"
+    row = CleanupRow(
+        file="x.txt",
+        original_line_no=1,
+        category="standalone_consonant",
+        rule="delete",
+        token="k",
+        occurrence_count=1,
+        before="source context ",
+        after="",
+    )
+    _write_cleanup_rows(output, (row,))
+
+    lines = output.read_text(encoding="utf-8").splitlines()
+    assert lines[0].endswith("\trecord_status")
+    assert lines[1].endswith("\trecorded")
+    assert not lines[1].endswith((" ", "\t"))
 
 
 def _write_tsv(path: Path, fields: tuple[str, ...], rows: list[dict[str, object]]) -> None:

@@ -42,7 +42,7 @@ manifest and report under the corresponding checkpoints directories.
    candidate. The stage includes an exact occurrence gate and a surviving-token
    subsequence guard: it cannot add, split, or rewrite Sanskrit lexical tokens.
    Its standalone single-letter scan is read-only and writes the three requested
-   TSV files under data/_reports.
+   TSV files under reports/cleaning.
 9. Run sktlm-close-gretil-pre-m0-single-consonants. Before changing any line,
    it materializes and validates the exact `file + original line + token +
    occurrence count + context` KEEP list against the pre-cleanup audit. It
@@ -134,7 +134,7 @@ or single-letter deletion belongs to this stage.
 
 The occurrence specification is tracked at
 `configs/corpus/pre_m0_single_consonant_keep.tsv`; the materialized copy under
-`data/_reports` binds every entry to its original checkpoint context. File-level
+`reports/cleaning` binds every entry to its original checkpoint context. File-level
 or token-level widening is forbidden. Standalone vowels and signs are never
 targets of the consonant rule. A whole adjudicated editorial/apparatus unit may
 still contain such a token; in that case the unit rule, not the single-letter

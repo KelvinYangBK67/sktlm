@@ -10,9 +10,33 @@ from sktlm.corpus.gretil.cleaning.tokenizer_final import (
     KAUSSU,
     SS2,
     VAIMP,
+    CleanupDetail,
+    _write_cleanup_details,
     audit_single_letters,
     clean_editorial_text,
 )
+
+
+def test_cleanup_detail_tsv_has_a_nonblank_final_field(tmp_path: Path) -> None:
+    output = tmp_path / "details.tsv"
+    detail = CleanupDetail(
+        file="x.txt",
+        line_no=1,
+        rule="delete",
+        category="editorial",
+        action="delete_line",
+        occurrence_count=1,
+        removed_span_count=1,
+        removed_line_count=1,
+        before="source context ",
+        after="",
+    )
+    _write_cleanup_details(output, (detail,))
+
+    lines = output.read_text(encoding="utf-8").splitlines()
+    assert lines[0].endswith("\trecord_status")
+    assert lines[1].endswith("\trecorded")
+    assert not lines[1].endswith((" ", "\t"))
 
 
 def test_kaussu_removes_complete_division_suffix_only() -> None:
@@ -92,7 +116,7 @@ def test_single_letter_audit_observes_token_boundaries_and_avagraha(
             "file",
             "line_no",
             "token",
-            "context",
             "prev_line",
             "next_line",
+            "context",
         ]

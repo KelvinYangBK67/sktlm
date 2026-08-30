@@ -1,499 +1,499 @@
-file	line_no	rule	category	action	occurrence_count	removed_span_count	removed_line_count	before	after
-1_veda/5_vedang/2_grhya/kaussu_u.txt	4023	kaussu_sutra_division_emended_suffix	mixed_line_editorial_suffix	remove_editorial_suffix	2	1	0	yathāśakti yathābalaṃ hutādo 'nye ahutādo 'nye | vaiśvadevaṃ havir ubhaye saṃ caranti | te samyañca iha mādayantām iṣam ūrjaṃ yajamānā yam ichata sūtra division emended |	yathāśakti yathābalaṃ hutādo 'nye ahutādo 'nye | vaiśvadevaṃ havir ubhaye saṃ caranti | te samyañca iha mādayantām iṣam ūrjaṃ yajamānā yam ichata |
-3_purana/agp_bi_u.txt	699	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	827	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	935	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	1084	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	1204	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	1289	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	1534	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	1665	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	1756	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	1906	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	2067	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	2140	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	2395	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	2538	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	2674	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	2751	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	2818	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	2916	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	3174	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	3339	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	3456	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	3616	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	3670	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	3805	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	4108	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	4391	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	4442	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	4864	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	4895	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	5147	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	5311	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	5566	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	5633	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	5982	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	6173	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	6274	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	6394	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	6477	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	6740	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	6849	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	7008	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	7196	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	7332	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	7490	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	7720	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	7807	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	7878	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	7960	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	8037	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	8186	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	8397	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	8503	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	8631	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	8751	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	9027	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	9090	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	9255	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	9398	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	9568	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	9883	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	10084	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	10367	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	10458	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	10621	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	10843	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	10970	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	11130	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	11169	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	11269	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	11387	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	11442	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	11496	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	11756	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	11863	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	12329	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	12694	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	12777	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	12909	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	13293	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter |
-3_purana/agp_bi_u.txt	13525	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	13602	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	14081	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	14221	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	14528	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	14887	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	15101	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	15227	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	15371	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	15673	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	15706	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	15795	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	15889	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	16296	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	16576	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	16709	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	17162	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	18184	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	18846	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	18943	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	18990	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	19047	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	19164	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	19403	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	19573	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	19813	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	20137	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	20300	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	20412	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	20621	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	20773	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	20825	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	20927	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	21000	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	21051	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	21343	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	21771	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	22017	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	22383	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	22436	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	22618	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	22837	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	23282	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	23426	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	23616	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	23745	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	24054	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	24262	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	24375	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	24444	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	24477	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	24576	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	24683	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	24828	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	25080	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	25127	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	25231	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	25278	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	25388	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	25467	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	25540	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	25637	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	25727	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	25840	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	25928	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	26156	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	26311	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	26466	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	26556	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	26601	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	26682	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	26827	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	26920	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	26957	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	27046	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	27147	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	27326	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	27411	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	27615	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	27948	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	28034	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	28073	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	28254	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	28356	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	28564	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	28647	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	28801	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	28922	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	29130	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	29345	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	29540	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	29790	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	29877	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	29993	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	30254	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	30378	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	30701	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	30749	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	30861	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	31050	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	31097	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	31118	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	31151	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	31186	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	31290	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	31424	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	31520	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	31545	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	31602	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	31695	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	31784	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	31830	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	31893	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	31969	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	32012	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	32055	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	32095	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	32226	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	32324	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	32417	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	32478	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	32577	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	32666	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	32800	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	32928	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	33029	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	33082	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	33212	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	33247	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	33323	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	33625	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	33799	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	34161	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	34339	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	34394	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	34601	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	34835	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	34928	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	35021	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	35203	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	35562	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	35680	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	35761	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	35890	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	36067	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	36297	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	36458	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	36563	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	36869	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	36924	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	37089	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	37160	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	37339	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	37533	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	37661	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	37788	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	37888	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	38217	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	38327	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	38444	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	38704	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	38878	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	39202	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	39547	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	39668	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	39711	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	39863	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	39938	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	40097	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	40140	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	40318	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	40415	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	40486	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	40654	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	40953	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	41087	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	41309	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	41472	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	41709	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	42083	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	42538	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	42938	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	43073	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	43200	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	43359	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	43515	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	43612	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	43722	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	43843	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	43996	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	44183	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	44260	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	44371	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	44508	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	44697	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	44812	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	45064	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	45191	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	45284	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	45491	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	45801	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	46018	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	46178	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	46253	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	46500	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	46568	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	46958	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	47087	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	47250	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	47568	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	47828	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	47875	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	48003	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	48200	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	48445	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	48648	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	48834	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	48943	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	49022	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	49141	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	49395	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	49558	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	49653	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	49790	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	49875	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	50072	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	50155	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	50262	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	50428	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	50555	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	50650	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	50856	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	51039	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	51160	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	51321	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	51439	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	51530	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	51568	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	51743	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	51852	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	51913	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	52142	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	52223	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	52293	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	52447	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	52568	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	52693	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	52824	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	52919	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	52948	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	52981	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	53090	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	53187	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	53246	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	53289	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	53442	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	53479	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	53599	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	53786	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	53911	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	54160	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	54221	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	54332	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	54483	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	54793	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	54946	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	55035	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	55153	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	55350	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	55493	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	55526	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	55592	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	55915	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	55984	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	56033	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	56151	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	56244	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	56383	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	56457	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	56594	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	56639	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	57058	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	57233	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	57414	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	57757	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	57890	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	57949	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	58166	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	58299	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	58422	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	58639	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	58835	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	59020	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	59191	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	59297	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	59472	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	59587	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	59784	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	59895	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	60002	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	60147	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	60491	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	60763	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	60934	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	61272	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	61417	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	61586	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	61643	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	62047	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-3_purana/agp_bi_u.txt	62284	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1	chapter
-4_rellit/vaisn/ss2_bhgu.txt	9779	ss2_confirmed_editorial_line	english_or_apparatus_line	delete_line	1	1	1	separately numbered sections |
-4_rellit/vaisn/ss2_bhgu.txt	9781	ss2_confirmed_editorial_line	english_or_apparatus_line	delete_line	1	1	1	the yadavpur edition | but this doesnt seem to be necessary |
-4_rellit/vaisn/ss2_bhgu.txt	9809	ss2_confirmed_editorial_line	english_or_apparatus_line	delete_line	1	1	1	discussed above in section
-4_rellit/vaisn/ss2_bhgu.txt	9831	ss2_confirmed_editorial_line	english_or_apparatus_line	delete_line	1	1	1	variant | sanandanādyair munibhir vibhāvyam |
-4_rellit/vaisn/ss2_bhgu.txt	9841	ss2_confirmed_editorial_line	english_or_apparatus_line	delete_line	1	1	1	critical edition |
-4_rellit/vaisn/ss2_bhgu.txt	9847	ss2_confirmed_editorial_line	english_or_apparatus_line	delete_line	1	1	1	section above |
-4_rellit/vaisn/ss2_bhgu.txt	9855	ss2_confirmed_editorial_line	english_or_apparatus_line	delete_line	1	1	1	sections and above |
-4_rellit/vaisn/ss2_bhgu.txt	9863	ss2_confirmed_editorial_line	english_or_apparatus_line	delete_line	1	1	1	in section tamaḥ
-4_rellit/vaisn/ss2_bhgu.txt	9867	ss2_confirmed_editorial_line	english_or_apparatus_line	delete_line	1	1	1	discussed above in section
-4_rellit/vaisn/ss3_paru.txt	6329	ss3_confirmed_editorial_line	english_editorial_line	delete_line	1	1	1	commentary to
-4_rellit/vaisn/ss3_paru.txt	6335	ss3_confirmed_editorial_line	english_editorial_line	delete_line	1	1	1	above | section
-4_rellit/vaisn/vaimp__u.txt	275	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | vṛṣabhāyai | eds || vṛṣahāyai
-4_rellit/vaisn/vaimp__u.txt	3283	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	edition | vahetāṃ | edition | hetāṃ va
-4_rellit/vaisn/vaimp__u.txt	3449	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition omits this verse
-4_rellit/vaisn/vaimp__u.txt	3475	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition omits this verse
-4_rellit/vaisn/vaimp__u.txt	3477	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition omits this verse
-4_rellit/vaisn/vaimp__u.txt	3499	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | bhṛgv ādi saptarṣīn
-4_rellit/vaisn/vaimp__u.txt	3523	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	edition | āvāhayāmi mīndram | edition | āvāhayāmīndram
-4_rellit/vaisn/vaimp__u.txt	3551	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	edition | ābhjāmyava āvyaṃ | edition | ābhajāny apāvyaṃ | ābhajāmy apāvaṃ
-4_rellit/vaisn/vaimp__u.txt	3631	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | juhotā
-4_rellit/vaisn/vaimp__u.txt	3693	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	edition adds here glām pāṭhāṃtaram | glām is a variant reading |
-4_rellit/vaisn/vaimp__u.txt	3833	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | apadhānāya
-4_rellit/vaisn/vaimp__u.txt	4337	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | drohiṇyai
-4_rellit/vaisn/vaimp__u.txt	4533	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | mahantāya
-4_rellit/vaisn/vaimp__u.txt	5199	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	edition | haritāvāya | edition | harāya
-4_rellit/vaisn/vaimp__u.txt	5241	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | hastamāya
-4_rellit/vaisn/vaimp__u.txt	5263	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	edition | viṣṇu bhūta yutāya | edition | viṣṇu bhūtāya
-4_rellit/vaisn/vaimp__u.txt	5729	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | drohiṇyai
-4_rellit/vaisn/vaimp__u.txt	5771	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | pramattāyai
-4_rellit/vaisn/vaimp__u.txt	5773	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	edition | ajeyam | edition | ajayāyai
-4_rellit/vaisn/vaimp__u.txt	5895	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	edition | kardamādyāya | edition | kardamāya
-4_rellit/vaisn/vaimp__u.txt	6037	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	edition | saro jābhyas | edition | svara jābhyas
-4_rellit/vaisn/vaimp__u.txt	6179	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | vipāyai
-4_rellit/vaisn/vaimp__u.txt	6241	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | īśāya
-4_rellit/vaisn/vaimp__u.txt	6283	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	edition | vitadhāya | edition | vitathāya
-4_rellit/vaisn/vaimp__u.txt	6359	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | sanduṣāya
-4_rellit/vaisn/vaimp__u.txt	6717	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | na
-4_rellit/vaisn/vaimp__u.txt	6719	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | avamānayan tu
-4_rellit/vaisn/vaimp__u.txt	6985	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | subahaṇyo
-4_rellit/vaisn/vaimp__u.txt	7083	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | vīrañjaty | eds || virañjaty
-4_rellit/vaisn/vaimp__u.txt	7085	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | sasatvaṃ
-4_rellit/vaisn/vaimp__u.txt	7107	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | yajāmaho
-4_rellit/vaisn/vaimp__u.txt	7129	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | ādadau no
-4_rellit/vaisn/vaimp__u.txt	7131	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | pṛte
-4_rellit/vaisn/vaimp__u.txt	7133	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | vyāpūrayan no tharate
-4_rellit/vaisn/vaimp__u.txt	7167	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	editions | uṣopa | edition | upoṣa
-4_rellit/vaisn/vaimp__u.txt	7191	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	editions || vṛtyā | edition || vṛttyā
-4_rellit/vaisn/vaimp__u.txt	7213	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | parāṃbarāyā
-4_rellit/vaisn/vaimp__u.txt	7215	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	editions | tatrīṇy | edition | tat trīṇy
-4_rellit/vaisn/vaimp__u.txt	7239	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | sāniyaśchaty
-4_rellit/vaisn/vaimp__u.txt	7241	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | vṛttyā | eds || vṛtyā
-4_rellit/vaisn/vaimp__u.txt	7279	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	edition | padhā | edition | pathā
-4_rellit/vaisn/vaimp__u.txt	7281	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | sañjīvati | eds || sañjīvatī
-4_rellit/vaisn/vaimp__u.txt	7341	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | manthī
-4_rellit/vaisn/vaimp__u.txt	7433	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	editions | bhavatodarāt | edition | bhavatodharāt
-4_rellit/vaisn/vaimp__u.txt	7441	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition omits this verse
-4_rellit/vaisn/vaimp__u.txt	7445	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition omits this verse
-4_rellit/vaisn/vaimp__u.txt	7451	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition omits this verse
-4_rellit/vaisn/vaimp__u.txt	8067	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	accentuation in the edition | bibharti
-4_rellit/vaisn/vaimp__u.txt	8461	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | taṃ
-4_rellit/vaisn/vaimp__u.txt	8499	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition bhūtānāṃ
-4_rellit/vaisn/vaimp__u.txt	8607	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | rūpāya
-4_rellit/vaisn/vaimp__u.txt	8629	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | supuṇyātmakam
-4_rellit/vaisn/vaimp__u.txt	8673	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | dmanā
-4_rellit/vaisn/vaimp__u.txt	8849	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | ṛṣamāṇaṃ
-4_rellit/vaisn/vaimp__u.txt	8923	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	editions | ṛcīnām
-4_rellit/vaisn/vaimp__u.txt	8943	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | kādraveyā | eds || kārdraveyā
-4_rellit/vaisn/vaimp__u.txt	8979	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | yava vaṃśa yavau
-4_rellit/vaisn/vaimp__u.txt	9023	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	edition | brahma | edition | brahmā
-4_rellit/vaisn/vaimp__u.txt	9065	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | āṃ
-4_rellit/vaisn/vaimp__u.txt	9131	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | bhagavaṃ ddhyātvā | eds || bhagavad dhyātvā
-4_rellit/vaisn/vaimp__u.txt	9149	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | aśu gāḥ
-4_rellit/vaisn/vaimp__u.txt	9269	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	edition | yatiñcat | edition | yatiñcit
-4_rellit/vaisn/vaimp__u.txt	9291	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	edition | ahaṃ | edition | āhaṃ
-4_rellit/vaisn/vaimp__u.txt	9665	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	edition || tharāyai | edition || tharāya
-4_rellit/vaisn/vaimp__u.txt	10149	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	edition | mānasī | edition | mānasi
-4_rellit/vaisn/vaimp__u.txt	10253	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	editions | āhaṃ | corrected to ahaṃ |
-4_rellit/vaisn/vaimp__u.txt	10507	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | saptathānāṃ
-4_rellit/vaisn/vaimp__u.txt	10509	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | vāhur
-4_rellit/vaisn/vaimp__u.txt	10947	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | vandhyo
-4_rellit/vaisn/vaimp__u.txt	11165	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | tvāṣṭrī
-4_rellit/vaisn/vaimp__u.txt	11225	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | tapo dhanā
-4_rellit/vaisn/vaimp__u.txt	11869	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	edition | śambhuḥ | edition | śambaḥ
-4_rellit/vaisn/vaimp__u.txt	12061	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	edition | saṃvidhānā | edition || saṃvidānā
-4_rellit/vaisn/vaimp__u.txt	12521	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1	edition | vithaviṣyate
-4_rellit/vaisn/vaimp__u.txt	13407	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1	edition | udārāṅgyai | edition | dhārāṅgyai
-6_sastra/7_ayur/anandk_u.txt	21587	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	pattratālaka || phys | properties	pattratālaka
-6_sastra/7_ayur/anandk_u.txt	21593	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	piṇḍatālaka || phys | properties	piṇḍatālaka
-6_sastra/7_ayur/anandk_u.txt	22249	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	śukatuṇḍa || phys | properties	śukatuṇḍa
-6_sastra/7_ayur/anandk_u.txt	22255	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	haṃsapāda || properties	haṃsapāda
-6_sastra/7_ayur/anandk_u.txt	22303	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	pāṣāṇagairika || phys | properties	pāṣāṇagairika
-6_sastra/7_ayur/anandk_u.txt	22591	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	kaṅkuṣṭha || medic | properties	kaṅkuṣṭha
-6_sastra/7_ayur/anandk_u.txt	22653	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	kāsīsa || medic | properties	kāsīsa
-6_sastra/7_ayur/anandk_u.txt	22695	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	sindūra || medic | properties	sindūra
-6_sastra/7_ayur/anandk_u.txt	22755	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	srotoñjana || medic | properties	srotoñjana
-6_sastra/7_ayur/anandk_u.txt	22797	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	puṣpāñjana || medic | properties	puṣpāñjana
-6_sastra/7_ayur/anandk_u.txt	22981	anandk_english_metadata_line	english_metadata_line	delete_line	1	1	1	sea salt || medic | properties
-6_sastra/7_ayur/anandk_u.txt	23031	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	sauvarcala || medic | properties	sauvarcala
-6_sastra/7_ayur/anandk_u.txt	24143	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	tīkṣṇaloha || medic | properties	tīkṣṇaloha
-6_sastra/7_ayur/anandk_u.txt	24151	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	muṇḍa || medic | properties	muṇḍa
-6_sastra/7_ayur/anandk_u.txt	24167	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	khura || phys | properties	khura
-6_sastra/7_ayur/anandk_u.txt	24171	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	miśraka || phys | properties	miśraka
-6_sastra/7_ayur/anandk_u.txt	24375	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	rājarīti || properties	rājarīti
-6_sastra/7_ayur/anandk_u.txt	24381	anandk_english_metadata_line	english_metadata_line	delete_line	1	1	1	brass || medic | properties
-6_sastra/7_ayur/anandk_u.txt	24929	anandk_english_metadata_line	english_metadata_line	delete_line	1	1	1	pearl || medic | properties
-6_sastra/7_ayur/anandk_u.txt	24975	anandk_english_metadata_line	english_metadata_line	delete_line	1	1	1	coral || medic | properties
-6_sastra/7_ayur/anandk_u.txt	25043	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	puṣparāga || medic | properties	puṣparāga
-6_sastra/8_jyot/brhajj_u.txt	83	brhajj_repeated_a_junk	non_textual_junk_line	delete_line	1	1	1	aaaaaaaaaaaaaaaaa
+file	line_no	rule	category	action	occurrence_count	removed_span_count	removed_line_count	after	before	record_status
+1_veda/5_vedang/2_grhya/kaussu_u.txt	4023	kaussu_sutra_division_emended_suffix	mixed_line_editorial_suffix	remove_editorial_suffix	2	1	0	yathāśakti yathābalaṃ hutādo 'nye ahutādo 'nye | vaiśvadevaṃ havir ubhaye saṃ caranti | te samyañca iha mādayantām iṣam ūrjaṃ yajamānā yam ichata |	yathāśakti yathābalaṃ hutādo 'nye ahutādo 'nye | vaiśvadevaṃ havir ubhaye saṃ caranti | te samyañca iha mādayantām iṣam ūrjaṃ yajamānā yam ichata sūtra division emended |	recorded
+3_purana/agp_bi_u.txt	699	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	827	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	935	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	1084	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	1204	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	1289	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	1534	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	1665	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	1756	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	1906	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	2067	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	2140	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	2395	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	2538	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	2674	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	2751	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	2818	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	2916	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	3174	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	3339	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	3456	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	3616	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	3670	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	3805	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	4108	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	4391	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	4442	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	4864	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	4895	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	5147	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	5311	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	5566	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	5633	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	5982	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	6173	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	6274	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	6394	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	6477	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	6740	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	6849	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	7008	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	7196	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	7332	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	7490	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	7720	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	7807	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	7878	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	7960	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	8037	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	8186	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	8397	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	8503	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	8631	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	8751	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	9027	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	9090	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	9255	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	9398	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	9568	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	9883	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	10084	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	10367	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	10458	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	10621	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	10843	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	10970	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	11130	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	11169	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	11269	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	11387	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	11442	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	11496	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	11756	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	11863	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	12329	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	12694	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	12777	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	12909	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	13293	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter |	recorded
+3_purana/agp_bi_u.txt	13525	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	13602	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	14081	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	14221	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	14528	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	14887	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	15101	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	15227	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	15371	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	15673	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	15706	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	15795	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	15889	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	16296	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	16576	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	16709	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	17162	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	18184	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	18846	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	18943	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	18990	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	19047	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	19164	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	19403	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	19573	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	19813	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	20137	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	20300	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	20412	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	20621	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	20773	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	20825	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	20927	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	21000	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	21051	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	21343	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	21771	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	22017	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	22383	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	22436	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	22618	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	22837	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	23282	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	23426	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	23616	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	23745	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	24054	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	24262	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	24375	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	24444	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	24477	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	24576	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	24683	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	24828	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	25080	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	25127	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	25231	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	25278	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	25388	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	25467	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	25540	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	25637	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	25727	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	25840	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	25928	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	26156	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	26311	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	26466	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	26556	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	26601	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	26682	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	26827	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	26920	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	26957	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	27046	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	27147	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	27326	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	27411	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	27615	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	27948	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	28034	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	28073	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	28254	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	28356	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	28564	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	28647	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	28801	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	28922	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	29130	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	29345	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	29540	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	29790	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	29877	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	29993	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	30254	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	30378	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	30701	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	30749	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	30861	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	31050	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	31097	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	31118	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	31151	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	31186	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	31290	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	31424	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	31520	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	31545	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	31602	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	31695	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	31784	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	31830	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	31893	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	31969	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	32012	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	32055	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	32095	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	32226	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	32324	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	32417	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	32478	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	32577	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	32666	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	32800	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	32928	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	33029	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	33082	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	33212	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	33247	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	33323	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	33625	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	33799	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	34161	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	34339	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	34394	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	34601	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	34835	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	34928	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	35021	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	35203	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	35562	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	35680	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	35761	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	35890	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	36067	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	36297	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	36458	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	36563	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	36869	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	36924	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	37089	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	37160	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	37339	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	37533	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	37661	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	37788	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	37888	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	38217	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	38327	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	38444	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	38704	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	38878	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	39202	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	39547	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	39668	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	39711	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	39863	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	39938	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	40097	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	40140	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	40318	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	40415	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	40486	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	40654	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	40953	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	41087	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	41309	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	41472	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	41709	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	42083	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	42538	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	42938	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	43073	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	43200	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	43359	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	43515	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	43612	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	43722	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	43843	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	43996	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	44183	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	44260	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	44371	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	44508	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	44697	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	44812	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	45064	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	45191	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	45284	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	45491	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	45801	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	46018	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	46178	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	46253	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	46500	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	46568	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	46958	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	47087	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	47250	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	47568	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	47828	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	47875	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	48003	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	48200	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	48445	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	48648	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	48834	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	48943	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	49022	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	49141	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	49395	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	49558	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	49653	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	49790	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	49875	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	50072	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	50155	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	50262	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	50428	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	50555	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	50650	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	50856	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	51039	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	51160	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	51321	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	51439	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	51530	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	51568	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	51743	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	51852	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	51913	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	52142	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	52223	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	52293	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	52447	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	52568	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	52693	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	52824	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	52919	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	52948	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	52981	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	53090	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	53187	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	53246	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	53289	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	53442	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	53479	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	53599	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	53786	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	53911	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	54160	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	54221	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	54332	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	54483	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	54793	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	54946	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	55035	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	55153	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	55350	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	55493	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	55526	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	55592	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	55915	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	55984	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	56033	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	56151	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	56244	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	56383	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	56457	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	56594	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	56639	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	57058	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	57233	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	57414	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	57757	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	57890	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	57949	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	58166	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	58299	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	58422	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	58639	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	58835	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	59020	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	59191	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	59297	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	59472	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	59587	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	59784	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	59895	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	60002	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	60147	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	60491	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	60763	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	60934	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	61272	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	61417	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	61586	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	61643	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	62047	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+3_purana/agp_bi_u.txt	62284	agp_standalone_chapter	standalone_english_line	delete_line	1	1	1		chapter	recorded
+4_rellit/vaisn/ss2_bhgu.txt	9779	ss2_confirmed_editorial_line	english_or_apparatus_line	delete_line	1	1	1		separately numbered sections |	recorded
+4_rellit/vaisn/ss2_bhgu.txt	9781	ss2_confirmed_editorial_line	english_or_apparatus_line	delete_line	1	1	1		the yadavpur edition | but this doesnt seem to be necessary |	recorded
+4_rellit/vaisn/ss2_bhgu.txt	9809	ss2_confirmed_editorial_line	english_or_apparatus_line	delete_line	1	1	1		discussed above in section	recorded
+4_rellit/vaisn/ss2_bhgu.txt	9831	ss2_confirmed_editorial_line	english_or_apparatus_line	delete_line	1	1	1		variant | sanandanādyair munibhir vibhāvyam |	recorded
+4_rellit/vaisn/ss2_bhgu.txt	9841	ss2_confirmed_editorial_line	english_or_apparatus_line	delete_line	1	1	1		critical edition |	recorded
+4_rellit/vaisn/ss2_bhgu.txt	9847	ss2_confirmed_editorial_line	english_or_apparatus_line	delete_line	1	1	1		section above |	recorded
+4_rellit/vaisn/ss2_bhgu.txt	9855	ss2_confirmed_editorial_line	english_or_apparatus_line	delete_line	1	1	1		sections and above |	recorded
+4_rellit/vaisn/ss2_bhgu.txt	9863	ss2_confirmed_editorial_line	english_or_apparatus_line	delete_line	1	1	1		in section tamaḥ	recorded
+4_rellit/vaisn/ss2_bhgu.txt	9867	ss2_confirmed_editorial_line	english_or_apparatus_line	delete_line	1	1	1		discussed above in section	recorded
+4_rellit/vaisn/ss3_paru.txt	6329	ss3_confirmed_editorial_line	english_editorial_line	delete_line	1	1	1		commentary to	recorded
+4_rellit/vaisn/ss3_paru.txt	6335	ss3_confirmed_editorial_line	english_editorial_line	delete_line	1	1	1		above | section	recorded
+4_rellit/vaisn/vaimp__u.txt	275	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | vṛṣabhāyai | eds || vṛṣahāyai	recorded
+4_rellit/vaisn/vaimp__u.txt	3283	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		edition | vahetāṃ | edition | hetāṃ va	recorded
+4_rellit/vaisn/vaimp__u.txt	3449	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition omits this verse	recorded
+4_rellit/vaisn/vaimp__u.txt	3475	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition omits this verse	recorded
+4_rellit/vaisn/vaimp__u.txt	3477	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition omits this verse	recorded
+4_rellit/vaisn/vaimp__u.txt	3499	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | bhṛgv ādi saptarṣīn	recorded
+4_rellit/vaisn/vaimp__u.txt	3523	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		edition | āvāhayāmi mīndram | edition | āvāhayāmīndram	recorded
+4_rellit/vaisn/vaimp__u.txt	3551	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		edition | ābhjāmyava āvyaṃ | edition | ābhajāny apāvyaṃ | ābhajāmy apāvaṃ	recorded
+4_rellit/vaisn/vaimp__u.txt	3631	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | juhotā	recorded
+4_rellit/vaisn/vaimp__u.txt	3693	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		edition adds here glām pāṭhāṃtaram | glām is a variant reading |	recorded
+4_rellit/vaisn/vaimp__u.txt	3833	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | apadhānāya	recorded
+4_rellit/vaisn/vaimp__u.txt	4337	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | drohiṇyai	recorded
+4_rellit/vaisn/vaimp__u.txt	4533	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | mahantāya	recorded
+4_rellit/vaisn/vaimp__u.txt	5199	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		edition | haritāvāya | edition | harāya	recorded
+4_rellit/vaisn/vaimp__u.txt	5241	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | hastamāya	recorded
+4_rellit/vaisn/vaimp__u.txt	5263	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		edition | viṣṇu bhūta yutāya | edition | viṣṇu bhūtāya	recorded
+4_rellit/vaisn/vaimp__u.txt	5729	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | drohiṇyai	recorded
+4_rellit/vaisn/vaimp__u.txt	5771	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | pramattāyai	recorded
+4_rellit/vaisn/vaimp__u.txt	5773	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		edition | ajeyam | edition | ajayāyai	recorded
+4_rellit/vaisn/vaimp__u.txt	5895	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		edition | kardamādyāya | edition | kardamāya	recorded
+4_rellit/vaisn/vaimp__u.txt	6037	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		edition | saro jābhyas | edition | svara jābhyas	recorded
+4_rellit/vaisn/vaimp__u.txt	6179	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | vipāyai	recorded
+4_rellit/vaisn/vaimp__u.txt	6241	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | īśāya	recorded
+4_rellit/vaisn/vaimp__u.txt	6283	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		edition | vitadhāya | edition | vitathāya	recorded
+4_rellit/vaisn/vaimp__u.txt	6359	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | sanduṣāya	recorded
+4_rellit/vaisn/vaimp__u.txt	6717	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | na	recorded
+4_rellit/vaisn/vaimp__u.txt	6719	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | avamānayan tu	recorded
+4_rellit/vaisn/vaimp__u.txt	6985	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | subahaṇyo	recorded
+4_rellit/vaisn/vaimp__u.txt	7083	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | vīrañjaty | eds || virañjaty	recorded
+4_rellit/vaisn/vaimp__u.txt	7085	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | sasatvaṃ	recorded
+4_rellit/vaisn/vaimp__u.txt	7107	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | yajāmaho	recorded
+4_rellit/vaisn/vaimp__u.txt	7129	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | ādadau no	recorded
+4_rellit/vaisn/vaimp__u.txt	7131	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | pṛte	recorded
+4_rellit/vaisn/vaimp__u.txt	7133	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | vyāpūrayan no tharate	recorded
+4_rellit/vaisn/vaimp__u.txt	7167	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		editions | uṣopa | edition | upoṣa	recorded
+4_rellit/vaisn/vaimp__u.txt	7191	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		editions || vṛtyā | edition || vṛttyā	recorded
+4_rellit/vaisn/vaimp__u.txt	7213	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | parāṃbarāyā	recorded
+4_rellit/vaisn/vaimp__u.txt	7215	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		editions | tatrīṇy | edition | tat trīṇy	recorded
+4_rellit/vaisn/vaimp__u.txt	7239	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | sāniyaśchaty	recorded
+4_rellit/vaisn/vaimp__u.txt	7241	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | vṛttyā | eds || vṛtyā	recorded
+4_rellit/vaisn/vaimp__u.txt	7279	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		edition | padhā | edition | pathā	recorded
+4_rellit/vaisn/vaimp__u.txt	7281	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | sañjīvati | eds || sañjīvatī	recorded
+4_rellit/vaisn/vaimp__u.txt	7341	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | manthī	recorded
+4_rellit/vaisn/vaimp__u.txt	7433	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		editions | bhavatodarāt | edition | bhavatodharāt	recorded
+4_rellit/vaisn/vaimp__u.txt	7441	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition omits this verse	recorded
+4_rellit/vaisn/vaimp__u.txt	7445	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition omits this verse	recorded
+4_rellit/vaisn/vaimp__u.txt	7451	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition omits this verse	recorded
+4_rellit/vaisn/vaimp__u.txt	8067	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		accentuation in the edition | bibharti	recorded
+4_rellit/vaisn/vaimp__u.txt	8461	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | taṃ	recorded
+4_rellit/vaisn/vaimp__u.txt	8499	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition bhūtānāṃ	recorded
+4_rellit/vaisn/vaimp__u.txt	8607	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | rūpāya	recorded
+4_rellit/vaisn/vaimp__u.txt	8629	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | supuṇyātmakam	recorded
+4_rellit/vaisn/vaimp__u.txt	8673	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | dmanā	recorded
+4_rellit/vaisn/vaimp__u.txt	8849	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | ṛṣamāṇaṃ	recorded
+4_rellit/vaisn/vaimp__u.txt	8923	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		editions | ṛcīnām	recorded
+4_rellit/vaisn/vaimp__u.txt	8943	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | kādraveyā | eds || kārdraveyā	recorded
+4_rellit/vaisn/vaimp__u.txt	8979	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | yava vaṃśa yavau	recorded
+4_rellit/vaisn/vaimp__u.txt	9023	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		edition | brahma | edition | brahmā	recorded
+4_rellit/vaisn/vaimp__u.txt	9065	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | āṃ	recorded
+4_rellit/vaisn/vaimp__u.txt	9131	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | bhagavaṃ ddhyātvā | eds || bhagavad dhyātvā	recorded
+4_rellit/vaisn/vaimp__u.txt	9149	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | aśu gāḥ	recorded
+4_rellit/vaisn/vaimp__u.txt	9269	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		edition | yatiñcat | edition | yatiñcit	recorded
+4_rellit/vaisn/vaimp__u.txt	9291	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		edition | ahaṃ | edition | āhaṃ	recorded
+4_rellit/vaisn/vaimp__u.txt	9665	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		edition || tharāyai | edition || tharāya	recorded
+4_rellit/vaisn/vaimp__u.txt	10149	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		edition | mānasī | edition | mānasi	recorded
+4_rellit/vaisn/vaimp__u.txt	10253	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		editions | āhaṃ | corrected to ahaṃ |	recorded
+4_rellit/vaisn/vaimp__u.txt	10507	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | saptathānāṃ	recorded
+4_rellit/vaisn/vaimp__u.txt	10509	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | vāhur	recorded
+4_rellit/vaisn/vaimp__u.txt	10947	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | vandhyo	recorded
+4_rellit/vaisn/vaimp__u.txt	11165	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | tvāṣṭrī	recorded
+4_rellit/vaisn/vaimp__u.txt	11225	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | tapo dhanā	recorded
+4_rellit/vaisn/vaimp__u.txt	11869	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		edition | śambhuḥ | edition | śambaḥ	recorded
+4_rellit/vaisn/vaimp__u.txt	12061	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		edition | saṃvidhānā | edition || saṃvidānā	recorded
+4_rellit/vaisn/vaimp__u.txt	12521	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	1	1	1		edition | vithaviṣyate	recorded
+4_rellit/vaisn/vaimp__u.txt	13407	vaimp_edition_apparatus_line	edition_apparatus_line	delete_line	2	1	1		edition | udārāṅgyai | edition | dhārāṅgyai	recorded
+6_sastra/7_ayur/anandk_u.txt	21587	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	pattratālaka	pattratālaka || phys | properties	recorded
+6_sastra/7_ayur/anandk_u.txt	21593	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	piṇḍatālaka	piṇḍatālaka || phys | properties	recorded
+6_sastra/7_ayur/anandk_u.txt	22249	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	śukatuṇḍa	śukatuṇḍa || phys | properties	recorded
+6_sastra/7_ayur/anandk_u.txt	22255	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	haṃsapāda	haṃsapāda || properties	recorded
+6_sastra/7_ayur/anandk_u.txt	22303	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	pāṣāṇagairika	pāṣāṇagairika || phys | properties	recorded
+6_sastra/7_ayur/anandk_u.txt	22591	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	kaṅkuṣṭha	kaṅkuṣṭha || medic | properties	recorded
+6_sastra/7_ayur/anandk_u.txt	22653	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	kāsīsa	kāsīsa || medic | properties	recorded
+6_sastra/7_ayur/anandk_u.txt	22695	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	sindūra	sindūra || medic | properties	recorded
+6_sastra/7_ayur/anandk_u.txt	22755	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	srotoñjana	srotoñjana || medic | properties	recorded
+6_sastra/7_ayur/anandk_u.txt	22797	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	puṣpāñjana	puṣpāñjana || medic | properties	recorded
+6_sastra/7_ayur/anandk_u.txt	22981	anandk_english_metadata_line	english_metadata_line	delete_line	1	1	1		sea salt || medic | properties	recorded
+6_sastra/7_ayur/anandk_u.txt	23031	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	sauvarcala	sauvarcala || medic | properties	recorded
+6_sastra/7_ayur/anandk_u.txt	24143	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	tīkṣṇaloha	tīkṣṇaloha || medic | properties	recorded
+6_sastra/7_ayur/anandk_u.txt	24151	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	muṇḍa	muṇḍa || medic | properties	recorded
+6_sastra/7_ayur/anandk_u.txt	24167	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	khura	khura || phys | properties	recorded
+6_sastra/7_ayur/anandk_u.txt	24171	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	miśraka	miśraka || phys | properties	recorded
+6_sastra/7_ayur/anandk_u.txt	24375	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	rājarīti	rājarīti || properties	recorded
+6_sastra/7_ayur/anandk_u.txt	24381	anandk_english_metadata_line	english_metadata_line	delete_line	1	1	1		brass || medic | properties	recorded
+6_sastra/7_ayur/anandk_u.txt	24929	anandk_english_metadata_line	english_metadata_line	delete_line	1	1	1		pearl || medic | properties	recorded
+6_sastra/7_ayur/anandk_u.txt	24975	anandk_english_metadata_line	english_metadata_line	delete_line	1	1	1		coral || medic | properties	recorded
+6_sastra/7_ayur/anandk_u.txt	25043	anandk_metadata_tail	modern_classification_tail	remove_metadata_tail	1	1	0	puṣparāga	puṣparāga || medic | properties	recorded
+6_sastra/8_jyot/brhajj_u.txt	83	brhajj_repeated_a_junk	non_textual_junk_line	delete_line	1	1	1		aaaaaaaaaaaaaaaaa	recorded
