@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import csv
+import json
 import math
 import sqlite3
 from collections import OrderedDict
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 from sktlm.latent.phonology import PhonologicalForm
+
+
+TRAINING_CHECKPOINT_KEY = "training_checkpoint"
 
 
 class LexiconScorer:
@@ -96,12 +100,15 @@ class LexiconStore:
         self.connection.close()
 
     def set_metadata(self, key: str, value: str) -> None:
+        with self.connection:
+            self._set_metadata(key, value)
+
+    def _set_metadata(self, key: str, value: str) -> None:
         self.connection.execute(
             "INSERT INTO metadata(key, value) VALUES (?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (key, value),
         )
-        self.connection.commit()
 
     def get_metadata(self, key: str) -> str | None:
         row = self.connection.execute(
@@ -111,31 +118,58 @@ class LexiconStore:
         return None if row is None else str(row[0])
 
     def has_lexicon(self) -> bool:
+        return self.has_table("lexicon")
+
+    def has_table(self, name: str) -> bool:
         row = self.connection.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='lexicon'"
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?",
+            (name,),
         ).fetchone()
         return row is not None
 
-    def begin_count_pass(self, *, resume: bool) -> None:
-        if not resume:
-            self.connection.execute("DROP TABLE IF EXISTS counts_next")
-        self.connection.execute(
-            "CREATE TABLE IF NOT EXISTS counts_next ("
-            "form_key TEXT PRIMARY KEY, "
-            "iast TEXT NOT NULL, "
-            "phoneme_ids TEXT NOT NULL, "
-            "expected_count REAL NOT NULL"
-            ")"
-        )
-        self.connection.commit()
+    def load_training_checkpoint(self) -> dict[str, Any] | None:
+        payload = self.get_metadata(TRAINING_CHECKPOINT_KEY)
+        return None if payload is None else json.loads(payload)
 
-    def add_counts(
+    def _set_training_checkpoint(self, checkpoint: dict[str, Any]) -> None:
+        self._set_metadata(
+            TRAINING_CHECKPOINT_KEY,
+            json.dumps(
+                checkpoint,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+        )
+
+    def save_training_checkpoint(self, checkpoint: dict[str, Any]) -> None:
+        with self.connection:
+            self._set_training_checkpoint(checkpoint)
+
+    def begin_count_pass(
         self,
-        counts: Iterable[tuple[PhonologicalForm, float]],
         *,
-        table: str = "counts_next",
+        resume: bool,
+        checkpoint: dict[str, Any],
     ) -> None:
-        rows = [
+        with self.connection:
+            if not resume:
+                self.connection.execute("DROP TABLE IF EXISTS counts_next")
+            self.connection.execute(
+                "CREATE TABLE IF NOT EXISTS counts_next ("
+                "form_key TEXT PRIMARY KEY, "
+                "iast TEXT NOT NULL, "
+                "phoneme_ids TEXT NOT NULL, "
+                "expected_count REAL NOT NULL"
+                ")"
+            )
+            self._set_training_checkpoint(checkpoint)
+
+    @staticmethod
+    def _count_rows(
+        counts: Iterable[tuple[PhonologicalForm, float]],
+    ) -> list[tuple[str, str, str, float]]:
+        return [
             (
                 form.key,
                 form.iast,
@@ -145,6 +179,13 @@ class LexiconStore:
             for form, value in counts
             if value > 0.0
         ]
+
+    def _upsert_counts(
+        self,
+        rows: Iterable[tuple[str, str, str, float]],
+        *,
+        table: str,
+    ) -> None:
         self.connection.executemany(
             f"INSERT INTO {table}(form_key, iast, phoneme_ids, expected_count) "
             "VALUES (?, ?, ?, ?) "
@@ -152,9 +193,45 @@ class LexiconStore:
             "expected_count = expected_count + excluded.expected_count",
             rows,
         )
+
+    def add_counts(
+        self,
+        counts: Iterable[tuple[PhonologicalForm, float]],
+        *,
+        table: str = "counts_next",
+    ) -> None:
+        with self.connection:
+            self._upsert_counts(self._count_rows(counts), table=table)
+
+    def begin_document_counts(self) -> None:
+        if self.connection.in_transaction:
+            raise RuntimeError("Cannot start a document inside an open transaction.")
+        self.connection.execute("BEGIN IMMEDIATE")
+
+    def add_document_counts(
+        self,
+        counts: Iterable[tuple[PhonologicalForm, float]],
+    ) -> None:
+        if not self.connection.in_transaction:
+            raise RuntimeError("Document counts require an open transaction.")
+        self._upsert_counts(self._count_rows(counts), table="counts_next")
+
+    def commit_document(self, checkpoint: dict[str, Any]) -> None:
+        if not self.connection.in_transaction:
+            raise RuntimeError("No document transaction is open.")
+        self._set_training_checkpoint(checkpoint)
         self.connection.commit()
 
-    def finalize_count_pass(self, *, alpha: float) -> tuple[int, float]:
+    def rollback_document(self) -> None:
+        if self.connection.in_transaction:
+            self.connection.rollback()
+
+    def finalize_count_pass(
+        self,
+        *,
+        alpha: float,
+        checkpoint: dict[str, Any],
+    ) -> tuple[int, float]:
         row = self.connection.execute(
             "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) FROM counts_next"
         ).fetchone()
@@ -179,6 +256,7 @@ class LexiconStore:
                 "CREATE UNIQUE INDEX lexicon_form_key ON lexicon(form_key)"
             )
             self.connection.execute("DROP TABLE counts_next")
+            self._set_training_checkpoint(checkpoint)
         return vocabulary_size, total_count
 
     def scorer(

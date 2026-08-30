@@ -137,6 +137,21 @@ class PassMetrics:
             "overflowed_tokens": self.overflowed_tokens,
         }
 
+    def merged(self, other: PassMetrics) -> PassMetrics:
+        return PassMetrics(
+            documents=self.documents + other.documents,
+            lines=self.lines + other.lines,
+            segments=self.segments + other.segments,
+            characters=self.characters + other.characters,
+            log_partition=self.log_partition + other.log_partition,
+            identity_mass_sum=self.identity_mass_sum + other.identity_mass_sum,
+            latent_mass_sum=self.latent_mass_sum + other.latent_mass_sum,
+            expected_lexical_tokens=(
+                self.expected_lexical_tokens + other.expected_lexical_tokens
+            ),
+            overflowed_tokens=self.overflowed_tokens + other.overflowed_tokens,
+        )
+
 
 def _canonical_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -253,9 +268,15 @@ def _flush_counts(
     counts: Counter[PhonologicalForm],
     *,
     table: str = "counts_next",
+    document_transaction: bool = False,
 ) -> None:
     if counts:
-        store.add_counts(counts.items(), table=table)
+        if document_transaction:
+            if table != "counts_next":
+                raise ValueError("Document-atomic writes are only valid for counts_next.")
+            store.add_document_counts(counts.items())
+        else:
+            store.add_counts(counts.items(), table=table)
         counts.clear()
 
 
@@ -308,7 +329,6 @@ def _training_pass(
     resuming = checkpoint.get("active_pass") == pass_index
     start_document = int(checkpoint.get("next_document_index", 0)) if resuming else 0
     metrics = _metrics_from_mapping(checkpoint.get("active_metrics") if resuming else None)
-    store.begin_count_pass(resume=resuming)
     scorer = (
         NeutralFormScorer()
         if pass_index == 1
@@ -326,44 +346,65 @@ def _training_pass(
             "active_metrics": asdict(metrics),
         }
     )
+    store.begin_count_pass(resume=resuming, checkpoint=checkpoint)
     _save_checkpoint(run_dir, checkpoint)
 
     for document_index in range(start_document, len(documents)):
         document = documents[document_index]
         counts: Counter[PhonologicalForm] = Counter()
         seen_lines: set[int] = set()
-        for line_number, _, segment in _iter_document_segments(document, config):
-            seen_lines.add(line_number)
-            graph = build_candidate_graph(segment, grammar, config.candidate_config)
-            inference = infer_segment(
-                graph,
-                scorer,
-                whitespace_merge_penalty=config.whitespace_merge_penalty,
-                top_k=1,
+        document_metrics = PassMetrics()
+        store.begin_document_counts()
+        try:
+            for line_number, _, segment in _iter_document_segments(document, config):
+                seen_lines.add(line_number)
+                graph = build_candidate_graph(segment, grammar, config.candidate_config)
+                inference = infer_segment(
+                    graph,
+                    scorer,
+                    whitespace_merge_penalty=config.whitespace_merge_penalty,
+                    top_k=1,
+                )
+                counts.update(inference.expected_counts)
+                document_metrics.update(
+                    segment,
+                    inference,
+                    overflowed_tokens=graph.overflowed_tokens,
+                )
+                if len(counts) >= config.flush_types:
+                    _flush_counts(
+                        store,
+                        counts,
+                        document_transaction=True,
+                    )
+            _flush_counts(
+                store,
+                counts,
+                document_transaction=True,
             )
-            counts.update(inference.expected_counts)
-            metrics.update(
-                segment,
-                inference,
-                overflowed_tokens=graph.overflowed_tokens,
-            )
-            if len(counts) >= config.flush_types:
-                _flush_counts(store, counts)
-        _flush_counts(store, counts)
-        metrics.documents += 1
-        metrics.lines += len(seen_lines)
-        checkpoint.update(
-            {
+            document_metrics.documents = 1
+            document_metrics.lines = len(seen_lines)
+            next_metrics = metrics.merged(document_metrics)
+            next_checkpoint = {
+                **checkpoint,
                 "active_pass": pass_index,
                 "next_document_index": document_index + 1,
-                "active_metrics": asdict(metrics),
+                "active_metrics": asdict(next_metrics),
             }
-        )
+            store.commit_document(next_checkpoint)
+        except BaseException:
+            store.rollback_document()
+            raise
+        metrics = next_metrics
+        checkpoint.update(next_checkpoint)
         _save_checkpoint(run_dir, checkpoint)
 
-    vocabulary_size, total_count = store.finalize_count_pass(
-        alpha=config.lexical_alpha
-    )
+    row = store.connection.execute(
+        "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) FROM counts_next"
+    ).fetchone()
+    assert row is not None
+    vocabulary_size = int(row[0])
+    total_count = float(row[1])
     summary = metrics.summary(pass_index)
     summary["lexicon_types"] = vocabulary_size
     summary["lexical_count_total"] = total_count
@@ -375,6 +416,10 @@ def _training_pass(
             "next_document_index": 0,
             "active_metrics": None,
         }
+    )
+    store.finalize_count_pass(
+        alpha=config.lexical_alpha,
+        checkpoint=checkpoint,
     )
     _save_checkpoint(run_dir, checkpoint)
     return summary
@@ -821,7 +866,29 @@ def run_training(
         }
         _write_json(run_dir / "config.json", config.payload())
         _write_json(run_dir / "provenance.json", provenance)
-        checkpoint = _load_checkpoint(run_dir)
+        disk_checkpoint = _load_checkpoint(run_dir)
+        database_checkpoint = store.load_training_checkpoint()
+        if config.resume:
+            unsafe_legacy_progress = (
+                database_checkpoint is None
+                and (
+                    store.has_table("counts_next")
+                    or disk_checkpoint.get("active_pass") is not None
+                    or int(disk_checkpoint.get("completed_passes", 0)) > 0
+                )
+            )
+            if unsafe_legacy_progress:
+                raise RuntimeError(
+                    "This run predates transactionally coupled checkpoints and "
+                    "cannot be resumed safely. Preserve it for diagnostics and "
+                    "start a new run ID."
+                )
+            checkpoint = database_checkpoint or disk_checkpoint
+            if database_checkpoint is not None and database_checkpoint != disk_checkpoint:
+                _save_checkpoint(run_dir, database_checkpoint)
+        else:
+            checkpoint = disk_checkpoint
+            store.save_training_checkpoint(checkpoint)
         completed = int(checkpoint.get("completed_passes", 0))
         if completed > config.passes:
             raise ValueError("Checkpoint has more passes than requested.")
