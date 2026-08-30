@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from functools import lru_cache
 from typing import Iterable, Iterator
 
 from sktlm.latent.frontend import SurfaceUnit
@@ -173,6 +174,9 @@ class StructuredSandhiGrammar:
         self._boundary_buckets = {
             key: tuple(value) for key, value in boundary_buckets.items()
         }
+        self._cached_internal_matches = lru_cache(maxsize=100_000)(
+            self._compute_internal_matches
+        )
 
     @classmethod
     def from_default_inventory(cls) -> "StructuredSandhiGrammar":
@@ -182,7 +186,12 @@ class StructuredSandhiGrammar:
         self,
         units: tuple[SurfaceUnit, ...],
     ) -> Iterator[InternalRuleMatch]:
-        keys = _unit_keys(units)
+        yield from self._cached_internal_matches(_unit_keys(units))
+
+    def _compute_internal_matches(
+        self,
+        keys: tuple[tuple[str, str], ...],
+    ) -> tuple[InternalRuleMatch, ...]:
         grouped: dict[
             tuple[int, int, PhonologicalForm, PhonologicalForm],
             list[StructuredSandhiRule],
@@ -200,6 +209,7 @@ class StructuredSandhiGrammar:
                         (start, position, rule.left, rule.right),
                         [],
                     ).append(rule)
+        matches: list[InternalRuleMatch] = []
         for (start, end, left, right), rules in sorted(
             grouped.items(),
             key=lambda item: (item[0][0], item[0][1], item[1][0].rule_id),
@@ -214,7 +224,15 @@ class StructuredSandhiGrammar:
             )
             if self.reconstruct_internal(match) != keys[start:end]:
                 raise RuntimeError("Structured inverse candidate failed exact reconstruction.")
-            yield match
+            matches.append(match)
+        return tuple(matches)
+
+    def cache_statistics(self) -> dict[str, dict[str, int | None]]:
+        return {
+            'internal_matches': dict(
+                self._cached_internal_matches.cache_info()._asdict()
+            )
+        }
 
     def match_visible_boundary(
         self,

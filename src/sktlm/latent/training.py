@@ -1057,6 +1057,7 @@ def run_training(
         checkpoint["inspection_complete"] = True
         _timed_checkpoint(run_dir, checkpoint, telemetry)
         runtime = store.runtime_payload()
+        runtime['grammar_cache'] = grammar.cache_statistics()
         _write_json(run_dir / 'timing_metrics.json', runtime)
         return TrainingResult(
             run_dir=run_dir,
