@@ -1,8 +1,10 @@
 # Third-party notices
 
 - **GRETIL** — The Göttingen Register of Electronic Texts in Indian Languages
-  supplied source texts used by the corpus pipeline. GRETIL and source-edition
-  attribution must be preserved. See [`DATA_LICENSE.md`](DATA_LICENSE.md).
+  supplied source texts used by the corpus pipeline. GRETIL-derived textual
+  material is subject to the applicable upstream licensing and attribution
+  requirements, including CC BY-NC-SA 4.0 where specified by GRETIL. See
+  [`DATA_LICENSE.md`](DATA_LICENSE.md).
 - **SentencePiece** — Copyright Google Inc.; distributed under the Apache
   License 2.0.
 - **PyTorch** — Copyright PyTorch contributors; distributed under the BSD
