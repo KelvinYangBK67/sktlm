@@ -105,6 +105,7 @@ def run_benchmark(
     run_id: str,
     output_root: Path,
     passes: int,
+    workers: int,
     profile: bool,
     repo_root: Path,
 ) -> dict[str, Any]:
@@ -115,6 +116,7 @@ def run_benchmark(
         output_root=output_root,
         run_id=run_id,
         passes=passes,
+        workers=workers,
         equivalence_diagnostics=True,
     )
     profiler = cProfile.Profile() if profile else None
@@ -124,7 +126,9 @@ def run_benchmark(
         result = run_training(config, repo_root=repo_root)
     else:
         result = profiler.runcall(run_training, config, repo_root=repo_root)
-    cpu_seconds = time.process_time() - cpu_start
+    cpu_seconds = time.process_time() - cpu_start + float(
+        result.runtime.get('timings_seconds', {}).get('training_worker_cpu', 0.0)
+    )
     wall_seconds = time.perf_counter() - wall_start
     training_characters = sum(
         int(item["characters"]) for item in result.history
@@ -140,7 +144,7 @@ def run_benchmark(
         "benchmark": benchmark,
         "document_list": document_list.as_posix(),
         "passes": passes,
-        "workers": 1,
+        "workers": workers,
         "wall_seconds": wall_seconds,
         "cpu_seconds": cpu_seconds,
         "training_characters": training_characters,
@@ -184,6 +188,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=Path("artifacts/latent_benchmarks"),
     )
     parser.add_argument("--passes", type=int, default=1)
+    parser.add_argument('--workers', type=int, default=1)
     parser.add_argument("--profile", action="store_true")
     return parser
 
@@ -195,6 +200,7 @@ def main(argv: list[str] | None = None) -> None:
         run_id=args.run_id,
         output_root=args.output_root,
         passes=args.passes,
+        workers=args.workers,
         profile=args.profile,
         repo_root=Path(".").resolve(),
     )

@@ -20,6 +20,9 @@ class RuntimeTelemetry:
     def elapsed(self, label: str, started: float) -> None:
         self.timings[label] += time.perf_counter() - started
 
+    def add_seconds(self, label: str, value: float) -> None:
+        self.timings[label] += value
+
     def increment(self, label: str, value: int = 1) -> None:
         self.counters[label] += value
 

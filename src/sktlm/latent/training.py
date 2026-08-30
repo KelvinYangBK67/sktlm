@@ -6,9 +6,13 @@ import csv
 import hashlib
 import heapq
 import json
+import multiprocessing
+import os
+import sqlite3
 import subprocess
 import time
 from collections import Counter
+from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Iterator
@@ -30,12 +34,16 @@ from sktlm.latent.inference import (
     infer_training_segment,
 )
 from sktlm.latent.phonology import PhonologicalForm
-from sktlm.latent.store import LexiconStore
+from sktlm.latent.store import LexiconScorer, LexiconStore
 from sktlm.latent.telemetry import RuntimeTelemetry
 
 
 EXPECTED_FREEZE_ID = "9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40"
 IMPLEMENTATION = "latent-lexicon-v1"
+
+_WORKER_GRAMMAR: StructuredSandhiGrammar | None = None
+_WORKER_SCORER: NeutralFormScorer | LexiconScorer | None = None
+_WORKER_CONNECTION: sqlite3.Connection | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +53,7 @@ class TrainingConfig:
     output_root: Path = Path("artifacts/latent_lexicon")
     run_id: str | None = None
     passes: int = 3
+    workers: int = 1
     lexical_alpha: float = 0.1
     complexity_weight: float = 0.5
     complexity_tau: float = 1.0
@@ -67,6 +76,8 @@ class TrainingConfig:
     def __post_init__(self) -> None:
         if self.passes < 1:
             raise ValueError("passes must be >= 1")
+        if self.workers < 1:
+            raise ValueError('workers must be >= 1')
         if self.lexical_alpha <= 0.0:
             raise ValueError("lexical_alpha must be > 0")
         if self.complexity_weight < 0.0:
@@ -393,6 +404,336 @@ def _metrics_from_mapping(payload: dict[str, Any] | None) -> PassMetrics:
     )
 
 
+def _training_shard_paths(
+    run_dir: Path,
+    pass_index: int,
+    document_index: int,
+) -> tuple[Path, Path]:
+    root = run_dir / 'shards' / f'pass_{pass_index:04d}'
+    stem = f'document_{document_index:08d}'
+    return root / f'{stem}.counts.tsv', root / f'{stem}.complete.json'
+
+
+def _initialize_training_worker(
+    pass_index: int,
+    database_path: Path,
+    config: TrainingConfig,
+) -> None:
+    global _WORKER_CONNECTION, _WORKER_GRAMMAR, _WORKER_SCORER
+    _WORKER_GRAMMAR = StructuredSandhiGrammar.from_default_inventory()
+    if pass_index == 1:
+        _WORKER_SCORER = NeutralFormScorer()
+        _WORKER_CONNECTION = None
+        return
+    uri = database_path.resolve().as_uri() + '?mode=ro'
+    connection = sqlite3.connect(uri, uri=True)
+    connection.execute('PRAGMA query_only=ON')
+    telemetry = RuntimeTelemetry()
+    _WORKER_CONNECTION = connection
+    _WORKER_SCORER = LexiconScorer(
+        connection,
+        alpha=config.lexical_alpha,
+        complexity_weight=config.complexity_weight,
+        complexity_tau=config.complexity_tau,
+        cache_size=config.lexicon_cache_size,
+        telemetry=telemetry,
+    )
+
+
+def _write_training_shard(
+    document_index: int,
+    document: CorpusDocument,
+    config: TrainingConfig,
+    pass_index: int,
+    run_dir: Path,
+    config_signature: str,
+) -> dict[str, Any]:
+    if _WORKER_GRAMMAR is None or _WORKER_SCORER is None:
+        raise RuntimeError('Training worker was not initialized.')
+    shard_path, marker_path = _training_shard_paths(
+        run_dir,
+        pass_index,
+        document_index,
+    )
+    shard_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = shard_path.with_suffix(shard_path.suffix + '.tmp')
+    counts: Counter[PhonologicalForm] = Counter()
+    metrics = PassMetrics()
+    seen_lines: set[int] = set()
+    row_count = 0
+    candidate_seconds = 0.0
+    inference_seconds = 0.0
+    aggregation_seconds = 0.0
+    frontend_seconds = 0.0
+    wall_started = time.perf_counter()
+    cpu_started = time.process_time()
+    scorer_calls_before = int(getattr(_WORKER_SCORER, 'score_calls', 0))
+    sqlite_selects_before = int(getattr(_WORKER_SCORER, 'sqlite_selects', 0))
+    sqlite_seconds_before = float(getattr(_WORKER_SCORER, 'sqlite_seconds', 0.0))
+
+    def flush(handle: Any) -> None:
+        nonlocal row_count
+        if not counts:
+            return
+        for form, value in sorted(counts.items(), key=lambda item: item[0].key):
+            handle.write(f'{form.key}\t{float(value).hex()}\n')
+            row_count += 1
+        counts.clear()
+
+    with temporary.open('w', encoding='utf-8', newline='') as handle:
+        iterator = _iter_document_segments(document, config)
+        while True:
+            started = time.perf_counter()
+            try:
+                line_number, _, segment = next(iterator)
+            except StopIteration:
+                frontend_seconds += time.perf_counter() - started
+                break
+            frontend_seconds += time.perf_counter() - started
+            seen_lines.add(line_number)
+            started = time.perf_counter()
+            graph = build_candidate_graph(
+                segment,
+                _WORKER_GRAMMAR,
+                config.candidate_config,
+            )
+            candidate_seconds += time.perf_counter() - started
+            candidate_counts = candidate_graph_statistics(graph)
+            started = time.perf_counter()
+            inference = infer_training_segment(
+                graph,
+                _WORKER_SCORER,
+                whitespace_merge_penalty=config.whitespace_merge_penalty,
+            )
+            inference_seconds += time.perf_counter() - started
+            started = time.perf_counter()
+            counts.update(inference.expected_counts)
+            aggregation_seconds += time.perf_counter() - started
+            metrics.update(
+                segment,
+                inference,
+                overflowed_tokens=graph.overflowed_tokens,
+                candidate_factors=candidate_counts['factors'],
+                candidate_nodes=candidate_counts['lattice_nodes'],
+                candidate_edges=candidate_counts['lexical_edges'],
+            )
+            if len(counts) >= config.flush_types:
+                flush(handle)
+        flush(handle)
+        handle.flush()
+        os.fsync(handle.fileno())
+    temporary.replace(shard_path)
+    metrics.documents = 1
+    metrics.lines = len(seen_lines)
+    payload = {
+        'schema_version': 1,
+        'config_signature': config_signature,
+        'pass_index': pass_index,
+        'document_index': document_index,
+        'relative_path': document.relative_path,
+        'count_shard': shard_path.name,
+        'count_shard_sha256': _file_sha256(shard_path),
+        'count_rows': row_count,
+        'metrics': asdict(metrics),
+        'runtime': {
+            'training_candidate_generation': candidate_seconds,
+            'training_inference': inference_seconds,
+            'training_count_aggregation': aggregation_seconds,
+            'training_frontend_io': frontend_seconds,
+            'training_worker_document_total': time.perf_counter() - wall_started,
+            'training_worker_cpu': time.process_time() - cpu_started,
+            'lexical_score_calls': (
+                int(getattr(_WORKER_SCORER, 'score_calls', 0))
+                - scorer_calls_before
+            ),
+            'sqlite_selects': (
+                int(getattr(_WORKER_SCORER, 'sqlite_selects', 0))
+                - sqlite_selects_before
+            ),
+            'sqlite_seconds': (
+                float(getattr(_WORKER_SCORER, 'sqlite_seconds', 0.0))
+                - sqlite_seconds_before
+            ),
+        },
+    }
+    _write_json(marker_path, payload)
+    return payload
+
+
+def _load_training_shard(
+    run_dir: Path,
+    pass_index: int,
+    document_index: int,
+    document: CorpusDocument,
+    config_signature: str,
+) -> dict[str, Any] | None:
+    shard_path, marker_path = _training_shard_paths(
+        run_dir,
+        pass_index,
+        document_index,
+    )
+    if not shard_path.is_file() or not marker_path.is_file():
+        return None
+    payload = json.loads(marker_path.read_text(encoding='utf-8'))
+    expected = (
+        payload.get('config_signature') == config_signature
+        and int(payload.get('pass_index', -1)) == pass_index
+        and int(payload.get('document_index', -1)) == document_index
+        and payload.get('relative_path') == document.relative_path
+    )
+    if not expected:
+        raise RuntimeError(f'Stale or mismatched training shard: {marker_path}')
+    if payload.get('count_shard_sha256') != _file_sha256(shard_path):
+        raise RuntimeError(f'Training shard checksum mismatch: {shard_path}')
+    return payload
+
+
+def _apply_training_shard(
+    *,
+    payload: dict[str, Any],
+    store: LexiconStore,
+    config: TrainingConfig,
+    checkpoint: dict[str, Any],
+    metrics: PassMetrics,
+    run_dir: Path,
+    telemetry: RuntimeTelemetry,
+) -> PassMetrics:
+    document_index = int(payload['document_index'])
+    pass_index = int(payload['pass_index'])
+    shard_path, marker_path = _training_shard_paths(
+        run_dir,
+        pass_index,
+        document_index,
+    )
+    next_metrics = metrics.merged(_metrics_from_mapping(payload['metrics']))
+    next_checkpoint = {
+        **checkpoint,
+        'active_pass': pass_index,
+        'next_document_index': document_index + 1,
+        'active_metrics': asdict(next_metrics),
+    }
+    store.begin_document_counts()
+    try:
+        buffered: list[tuple[PhonologicalForm, float]] = []
+        with shard_path.open(encoding='utf-8') as handle:
+            for line in handle:
+                key, value = line.rstrip('\n').split('\t', 1)
+                buffered.append((PhonologicalForm.from_key(key), float.fromhex(value)))
+                if len(buffered) >= config.flush_types:
+                    store.add_document_counts(buffered)
+                    buffered.clear()
+        if buffered:
+            store.add_document_counts(buffered)
+        store.commit_document(next_checkpoint)
+    except BaseException:
+        store.rollback_document()
+        raise
+    checkpoint.update(next_checkpoint)
+    runtime = payload['runtime']
+    for label in (
+        'training_candidate_generation',
+        'training_inference',
+        'training_count_aggregation',
+        'training_frontend_io',
+        'training_worker_document_total',
+        'training_worker_cpu',
+    ):
+        telemetry.add_seconds(label, float(runtime[label]))
+    telemetry.increment(
+        'training_worker_lexical_score_calls',
+        int(runtime['lexical_score_calls']),
+    )
+    telemetry.increment(
+        'training_worker_sqlite_selects',
+        int(runtime['sqlite_selects']),
+    )
+    telemetry.add_seconds('training_worker_sqlite', float(runtime['sqlite_seconds']))
+    _timed_checkpoint(run_dir, checkpoint, telemetry)
+    shard_path.unlink()
+    marker_path.unlink()
+    return next_metrics
+
+
+def _parallel_training_documents(
+    *,
+    pass_index: int,
+    documents: tuple[CorpusDocument, ...],
+    store: LexiconStore,
+    config: TrainingConfig,
+    run_dir: Path,
+    checkpoint: dict[str, Any],
+    telemetry: RuntimeTelemetry,
+    start_document: int,
+    metrics: PassMetrics,
+) -> PassMetrics:
+    signature = _config_signature(config)
+    parallel_started = telemetry.now()
+    context = multiprocessing.get_context('spawn')
+    with ProcessPoolExecutor(
+        max_workers=config.workers,
+        mp_context=context,
+        initializer=_initialize_training_worker,
+        initargs=(pass_index, store.path, config),
+    ) as executor:
+        for batch_start in range(start_document, len(documents), config.workers):
+            batch = range(
+                batch_start,
+                min(len(documents), batch_start + config.workers),
+            )
+            pending: list[tuple[int, Future[dict[str, Any]] | None]] = []
+            cached: dict[int, dict[str, Any]] = {}
+            for document_index in batch:
+                document = documents[document_index]
+                existing = _load_training_shard(
+                    run_dir,
+                    pass_index,
+                    document_index,
+                    document,
+                    signature,
+                )
+                if existing is not None:
+                    cached[document_index] = existing
+                    pending.append((document_index, None))
+                    continue
+                future = executor.submit(
+                    _write_training_shard,
+                    document_index,
+                    document,
+                    config,
+                    pass_index,
+                    run_dir,
+                    signature,
+                )
+                pending.append((document_index, future))
+            for document_index, future in pending:
+                if future is not None:
+                    future.result()
+                payload = cached.get(document_index) or _load_training_shard(
+                    run_dir,
+                    pass_index,
+                    document_index,
+                    documents[document_index],
+                    signature,
+                )
+                if payload is None:
+                    raise RuntimeError(
+                        f'Worker did not produce document shard {document_index}'
+                    )
+                metrics = _apply_training_shard(
+                    payload=payload,
+                    store=store,
+                    config=config,
+                    checkpoint=checkpoint,
+                    metrics=metrics,
+                    run_dir=run_dir,
+                    telemetry=telemetry,
+                )
+    parallel_seconds = time.perf_counter() - parallel_started
+    telemetry.add_seconds('training_parallel_wall', parallel_seconds)
+    telemetry.add_seconds('training_document_total', parallel_seconds)
+    return metrics
+
+
 def _training_pass(
     *,
     pass_index: int,
@@ -407,16 +748,18 @@ def _training_pass(
     resuming = checkpoint.get("active_pass") == pass_index
     start_document = int(checkpoint.get("next_document_index", 0)) if resuming else 0
     metrics = _metrics_from_mapping(checkpoint.get("active_metrics") if resuming else None)
-    scorer = (
-        NeutralFormScorer()
-        if pass_index == 1
-        else store.scorer(
-            alpha=config.lexical_alpha,
-            complexity_weight=config.complexity_weight,
-            complexity_tau=config.complexity_tau,
-            cache_size=config.lexicon_cache_size,
+    scorer = None
+    if config.workers == 1:
+        scorer = (
+            NeutralFormScorer()
+            if pass_index == 1
+            else store.scorer(
+                alpha=config.lexical_alpha,
+                complexity_weight=config.complexity_weight,
+                complexity_tau=config.complexity_tau,
+                cache_size=config.lexicon_cache_size,
+            )
         )
-    )
     checkpoint.update(
         {
             "active_pass": pass_index,
@@ -426,6 +769,20 @@ def _training_pass(
     )
     store.begin_count_pass(resume=resuming, checkpoint=checkpoint)
     _timed_checkpoint(run_dir, checkpoint, telemetry)
+
+    if config.workers > 1:
+        metrics = _parallel_training_documents(
+            pass_index=pass_index,
+            documents=documents,
+            store=store,
+            config=config,
+            run_dir=run_dir,
+            checkpoint=checkpoint,
+            telemetry=telemetry,
+            start_document=start_document,
+            metrics=metrics,
+        )
+        start_document = len(documents)
 
     for document_index in range(start_document, len(documents)):
         document = documents[document_index]
@@ -447,6 +804,7 @@ def _training_pass(
                 telemetry.elapsed('training_candidate_generation', started)
                 candidate_counts = candidate_graph_statistics(graph)
                 started = telemetry.now()
+                assert scorer is not None
                 inference = infer_training_segment(
                     graph,
                     scorer,

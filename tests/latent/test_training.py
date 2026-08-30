@@ -149,6 +149,97 @@ def _assert_same_scientific_outputs(reference: Path, resumed: Path) -> None:
         assert (resumed / name).read_bytes() == (reference / name).read_bytes()
 
 
+def test_parallel_training_matches_serial_scientific_outputs(tmp_path: Path) -> None:
+    manifest = _write_resume_fixture(tmp_path)
+
+    def run(run_id: str, workers: int) -> Path:
+        return run_training(
+            TrainingConfig(
+                manifest=manifest,
+                output_root=tmp_path / 'artifacts',
+                run_id=run_id,
+                passes=2,
+                workers=workers,
+                analysis_top_k=4,
+                flush_types=1,
+            ),
+            repo_root=Path("."),
+        ).run_dir
+
+    serial = run("serial-workers", 1)
+    parallel = run("parallel-workers", 2)
+
+    _assert_same_scientific_outputs(serial, parallel)
+    assert not tuple((parallel / "shards").rglob("*.counts.tsv"))
+    assert not tuple((parallel / "shards").rglob("*.complete.json"))
+
+
+def test_parallel_training_reuses_valid_shards_after_crash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = _write_resume_fixture(tmp_path)
+    reference = run_training(
+        TrainingConfig(
+            manifest=manifest,
+            output_root=tmp_path / "artifacts",
+            run_id="parallel-reference",
+            passes=1,
+            workers=2,
+            analysis_top_k=4,
+            flush_types=1,
+        ),
+        repo_root=Path("."),
+    ).run_dir
+    original_commit = LexiconStore.commit_document
+    crashed = False
+
+    def crash_before_commit(
+        self: LexiconStore,
+        checkpoint: dict[str, object],
+    ) -> None:
+        nonlocal crashed
+        if not crashed:
+            crashed = True
+            raise RuntimeError("simulated crash before parallel shard commit")
+        original_commit(self, checkpoint)
+
+    monkeypatch.setattr(LexiconStore, "commit_document", crash_before_commit)
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        run_training(
+            TrainingConfig(
+                manifest=manifest,
+                output_root=tmp_path / "artifacts",
+                run_id="parallel-crashed",
+                passes=1,
+                workers=2,
+                analysis_top_k=4,
+                flush_types=1,
+            ),
+            repo_root=Path("."),
+        )
+    crashed_dir = tmp_path / "artifacts" / "parallel-crashed"
+    assert tuple((crashed_dir / "shards").rglob("*.complete.json"))
+    monkeypatch.setattr(LexiconStore, "commit_document", original_commit)
+
+    resumed = run_training(
+        TrainingConfig(
+            manifest=manifest,
+            output_root=tmp_path / "artifacts",
+            run_id="parallel-crashed",
+            passes=1,
+            workers=2,
+            analysis_top_k=4,
+            flush_types=1,
+            resume=True,
+        ),
+        repo_root=Path("."),
+    ).run_dir
+    _assert_same_scientific_outputs(reference, resumed)
+    assert not tuple((resumed / "shards").rglob("*.counts.tsv"))
+    assert not tuple((resumed / "shards").rglob("*.complete.json"))
+
+
 def test_resume_rolls_back_partial_document_counts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
