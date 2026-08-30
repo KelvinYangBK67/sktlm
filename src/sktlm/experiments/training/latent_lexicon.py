@@ -20,6 +20,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("data/manifests/representations.csv"),
     )
+    parser.add_argument("--document-list", type=Path)
     parser.add_argument(
         "--output-root",
         type=Path,
@@ -43,6 +44,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-documents", type=int)
     parser.add_argument("--max-lines-per-document", type=int)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--equivalence-diagnostics", action="store_true")
     parser.add_argument("--resume", action="store_true")
     return parser
 
@@ -51,6 +53,7 @@ def main(argv: list[str] | None = None) -> None:
     args = build_arg_parser().parse_args(argv)
     config = TrainingConfig(
         manifest=args.manifest,
+        document_list=args.document_list,
         output_root=args.output_root,
         run_id=args.run_id,
         passes=args.passes,
@@ -70,6 +73,7 @@ def main(argv: list[str] | None = None) -> None:
         max_documents=args.max_documents,
         max_lines_per_document=args.max_lines_per_document,
         seed=args.seed,
+        equivalence_diagnostics=args.equivalence_diagnostics,
         resume=args.resume,
     )
     result = run_training(config)

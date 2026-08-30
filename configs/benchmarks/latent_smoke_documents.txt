@@ -1,0 +1,16 @@
+# Deterministic latent-lexicon smoke subset.
+# Selection: smallest IAST/surface_word documents in (char_count, relative_path)
+# order until cumulative manifest char_count >= 50,000.
+# Frozen result: 12 documents, 52,203 manifest characters, 116 apostrophes.
+1_veda/4_upa/aitup__u.txt
+1_veda/4_upa/isup___u.txt
+1_veda/4_upa/mandup_u.txt
+3_purana/vd2127_u.txt
+4_rellit/saiva/mrgt4mpu.txt
+4_rellit/saiva/pasupspu.txt
+4_rellit/vaisn/yamcatpu.txt
+6_sastra/3_phil/buddh/nrat_1_u.txt
+6_sastra/3_phil/buddh/nrat_2_u.txt
+6_sastra/3_phil/saiva/paratriu.txt
+6_sastra/3_phil/samkhya/isvskaru.txt
+6_sastra/3_phil/vedanta/yamgaspu.txt

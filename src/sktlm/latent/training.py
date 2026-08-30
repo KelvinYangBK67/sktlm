@@ -12,7 +12,12 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
-from sktlm.latent.candidates import CandidateConfig, build_candidate_graph
+from sktlm.latent.candidates import (
+    CandidateConfig,
+    build_candidate_graph,
+    candidate_graph_fingerprint,
+    candidate_graph_statistics,
+)
 from sktlm.latent.frontend import ObservedSegment, iter_observed_segments
 from sktlm.latent.grammar import StructuredSandhiGrammar
 from sktlm.latent.inference import (
@@ -32,6 +37,7 @@ IMPLEMENTATION = "latent-lexicon-v1"
 @dataclass(frozen=True, slots=True)
 class TrainingConfig:
     manifest: Path = Path("data/manifests/representations.csv")
+    document_list: Path | None = None
     output_root: Path = Path("artifacts/latent_lexicon")
     run_id: str | None = None
     passes: int = 3
@@ -51,6 +57,7 @@ class TrainingConfig:
     max_documents: int | None = None
     max_lines_per_document: int | None = None
     seed: int = 0
+    equivalence_diagnostics: bool = False
     resume: bool = False
 
     def __post_init__(self) -> None:
@@ -74,6 +81,9 @@ class TrainingConfig:
     def payload(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["manifest"] = self.manifest.as_posix()
+        payload["document_list"] = (
+            None if self.document_list is None else self.document_list.as_posix()
+        )
         payload["output_root"] = self.output_root.as_posix()
         payload.pop("resume")
         return payload
@@ -106,6 +116,9 @@ class PassMetrics:
     latent_mass_sum: float = 0.0
     expected_lexical_tokens: float = 0.0
     overflowed_tokens: int = 0
+    candidate_factors: int = 0
+    candidate_nodes: int = 0
+    candidate_edges: int = 0
 
     def update(
         self,
@@ -113,6 +126,9 @@ class PassMetrics:
         inference: SegmentInference,
         *,
         overflowed_tokens: int,
+        candidate_factors: int,
+        candidate_nodes: int,
+        candidate_edges: int,
     ) -> None:
         self.segments += 1
         self.characters += len(segment.written)
@@ -121,6 +137,9 @@ class PassMetrics:
         self.latent_mass_sum += inference.latent_mass
         self.expected_lexical_tokens += inference.expected_lexical_tokens
         self.overflowed_tokens += overflowed_tokens
+        self.candidate_factors += candidate_factors
+        self.candidate_nodes += candidate_nodes
+        self.candidate_edges += candidate_edges
 
     def summary(self, pass_index: int) -> dict[str, Any]:
         denominator = max(1, self.segments)
@@ -135,6 +154,9 @@ class PassMetrics:
             "mean_latent_mass": self.latent_mass_sum / denominator,
             "expected_lexical_tokens": self.expected_lexical_tokens,
             "overflowed_tokens": self.overflowed_tokens,
+            "candidate_factors": self.candidate_factors,
+            "candidate_nodes": self.candidate_nodes,
+            "candidate_edges": self.candidate_edges,
         }
 
     def merged(self, other: PassMetrics) -> PassMetrics:
@@ -150,6 +172,9 @@ class PassMetrics:
                 self.expected_lexical_tokens + other.expected_lexical_tokens
             ),
             overflowed_tokens=self.overflowed_tokens + other.overflowed_tokens,
+            candidate_factors=self.candidate_factors + other.candidate_factors,
+            candidate_nodes=self.candidate_nodes + other.candidate_nodes,
+            candidate_edges=self.candidate_edges + other.candidate_edges,
         )
 
 
@@ -207,6 +232,7 @@ def load_documents(
     *,
     repo_root: Path,
     max_documents: int | None,
+    document_list: Path | None = None,
 ) -> tuple[CorpusDocument, ...]:
     with manifest.open("r", encoding="utf-8", newline="") as handle:
         rows = [
@@ -221,6 +247,21 @@ def load_documents(
     if freeze_ids != {EXPECTED_FREEZE_ID}:
         raise ValueError(f"Unexpected or mixed M0 freeze IDs: {sorted(freeze_ids)}")
     rows.sort(key=lambda row: row["relative_path"])
+    if document_list is not None:
+        requested = [
+            line.strip()
+            for line in document_list.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        if len(requested) != len(set(requested)):
+            raise ValueError(f"Document list contains duplicates: {document_list}")
+        by_path = {row["relative_path"]: row for row in rows}
+        missing = [relative_path for relative_path in requested if relative_path not in by_path]
+        if missing:
+            raise ValueError(
+                f"Document list contains paths absent from the condition: {missing}"
+            )
+        rows = [by_path[relative_path] for relative_path in requested]
     if max_documents is not None:
         rows = rows[:max_documents]
     documents: list[CorpusDocument] = []
@@ -313,6 +354,9 @@ def _metrics_from_mapping(payload: dict[str, Any] | None) -> PassMetrics:
         latent_mass_sum=float(payload.get("latent_mass_sum", 0.0)),
         expected_lexical_tokens=float(payload.get("expected_lexical_tokens", 0.0)),
         overflowed_tokens=int(payload.get("overflowed_tokens", 0)),
+        candidate_factors=int(payload.get("candidate_factors", 0)),
+        candidate_nodes=int(payload.get("candidate_nodes", 0)),
+        candidate_edges=int(payload.get("candidate_edges", 0)),
     )
 
 
@@ -359,6 +403,7 @@ def _training_pass(
             for line_number, _, segment in _iter_document_segments(document, config):
                 seen_lines.add(line_number)
                 graph = build_candidate_graph(segment, grammar, config.candidate_config)
+                candidate_counts = candidate_graph_statistics(graph)
                 inference = infer_segment(
                     graph,
                     scorer,
@@ -370,6 +415,9 @@ def _training_pass(
                     segment,
                     inference,
                     overflowed_tokens=graph.overflowed_tokens,
+                    candidate_factors=candidate_counts["factors"],
+                    candidate_nodes=candidate_counts["lattice_nodes"],
+                    candidate_edges=candidate_counts["lexical_edges"],
                 )
                 if len(counts) >= config.flush_types:
                     _flush_counts(
@@ -512,6 +560,7 @@ def _inspection_pass(
             ):
                 seen_lines.add(line_number)
                 graph = build_candidate_graph(segment, grammar, config.candidate_config)
+                candidate_counts = candidate_graph_statistics(graph)
                 inference = infer_segment(
                     graph,
                     scorer,
@@ -524,6 +573,9 @@ def _inspection_pass(
                     segment,
                     inference,
                     overflowed_tokens=graph.overflowed_tokens,
+                    candidate_factors=candidate_counts["factors"],
+                    candidate_nodes=candidate_counts["lattice_nodes"],
+                    candidate_edges=candidate_counts["lexical_edges"],
                 )
                 segment_id = (
                     f"{document.document_id}:l{line_number:08d}:"
@@ -549,7 +601,11 @@ def _inspection_pass(
                     "identity_mass": inference.identity_mass,
                     "latent_mass": inference.latent_mass,
                     "entropy": inference.entropy,
+                    "log_partition": inference.log_partition,
+                    "candidate_counts": candidate_counts,
                 }
+                if config.equivalence_diagnostics:
+                    row["candidate_fingerprint"] = candidate_graph_fingerprint(graph)
                 analyses_handle.write(
                     json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n"
                 )
@@ -842,6 +898,15 @@ def run_training(
             manifest,
             repo_root=repo_root,
             max_documents=config.max_documents,
+            document_list=(
+                None
+                if config.document_list is None
+                else (
+                    config.document_list
+                    if config.document_list.is_absolute()
+                    else repo_root / config.document_list
+                )
+            ),
         )
         grammar = StructuredSandhiGrammar.from_default_inventory()
         rules_path = repo_root / "data" / "rules" / "external_sandhi.tsv"
@@ -857,6 +922,20 @@ def run_training(
             "script": "iast",
             "condition": "surface_word",
             "document_count": len(documents),
+            "document_list": (
+                None
+                if config.document_list is None
+                else config.document_list.as_posix()
+            ),
+            "document_list_sha256": (
+                None
+                if config.document_list is None
+                else _file_sha256(
+                    config.document_list
+                    if config.document_list.is_absolute()
+                    else repo_root / config.document_list
+                )
+            ),
             "config_signature": signature,
             "seed": config.seed,
             "determinism": (

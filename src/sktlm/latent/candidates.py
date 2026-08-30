@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 
 from sktlm.latent.frontend import ObservedSegment, ObservedToken, SurfaceUnit
@@ -117,6 +118,88 @@ class CandidateConfig:
             raise ValueError("max_internal_matches must be >= 1")
         if self.whitespace_merge_penalty < 0.0:
             raise ValueError("whitespace_merge_penalty must be >= 0")
+
+
+def candidate_graph_statistics(graph: CandidateGraph) -> dict[str, int]:
+    lattices = [
+        factor.lattice for factor in graph.factors if factor.lattice is not None
+    ]
+    return {
+        "boundary_options": sum(len(options) for options in graph.boundary_options),
+        "factors": len(graph.factors),
+        "merged_factors": sum(factor.is_merge for factor in graph.factors),
+        "token_lattices": len(lattices),
+        "lattice_nodes": sum(len(lattice.nodes) for lattice in lattices),
+        "lexical_edges": sum(len(lattice.edges) for lattice in lattices),
+        "overflowed_tokens": graph.overflowed_tokens,
+    }
+
+
+def candidate_graph_fingerprint(graph: CandidateGraph) -> str:
+    """Hash every inference-relevant candidate field in deterministic order."""
+
+    digest = hashlib.sha256()
+
+    def add(*parts: object) -> None:
+        for part in parts:
+            digest.update(str(part).encode("utf-8"))
+            digest.update(b"\0")
+
+    add("segment", graph.segment.written, len(graph.segment.tokens))
+    for options in graph.boundary_options:
+        add("boundary-options", len(options))
+        for option in options:
+            add(
+                option.key,
+                option.left_consumed,
+                option.right_consumed,
+                ".".join(symbol.value for symbol in option.left_underlying),
+                ".".join(symbol.value for symbol in option.right_underlying),
+                ",".join(option.rule_ids),
+                int(option.transformed),
+                int(option.direct),
+            )
+    for factor in graph.factors:
+        add(
+            "factor",
+            factor.factor_id,
+            factor.start_token,
+            factor.end_token,
+            factor.incoming.key,
+            factor.outgoing.key,
+            factor.merged_word.key if factor.merged_word is not None else "",
+            factor.ignored_whitespace,
+        )
+        if factor.lattice is None:
+            continue
+        for node in factor.lattice.nodes:
+            add(
+                "node",
+                node.surface_start,
+                node.surface_end,
+                ".".join(symbol.value for symbol in node.left_underlying),
+                ".".join(symbol.value for symbol in node.right_underlying),
+                ",".join(node.rule_ids),
+                node.source_start,
+                node.source_end,
+                int(node.is_start),
+                int(node.is_end),
+            )
+        for edge in factor.lattice.edges:
+            boundary = edge.boundary
+            add(
+                "edge",
+                edge.start,
+                edge.end,
+                edge.word.key,
+                ",".join(edge.rule_ids),
+                int(edge.identity_edge),
+                boundary.boundary_id if boundary is not None else "",
+                boundary.cue_kind if boundary is not None else "",
+                boundary.source_start if boundary is not None else "",
+                boundary.source_end if boundary is not None else "",
+            )
+    return digest.hexdigest()
 
 
 def _phonemes(units: tuple[SurfaceUnit, ...]) -> tuple[Phoneme, ...]:

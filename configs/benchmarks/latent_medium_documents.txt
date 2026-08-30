@@ -1,0 +1,26 @@
+# Deterministic latent-lexicon performance regression subset.
+# Selection: sort the 240 IAST/surface_word documents by
+# (char_count, relative_path), divide into 20 equal-rank bins, and choose the
+# minimum SHA256(relative_path) in each bin.
+# Frozen result: 20 documents, 4,519,181 manifest characters (7.8474% M0),
+# spanning 877..1,213,181 chars and containing 7,823 apostrophes.
+1_veda/2_bra/satapath/sb_01_u.txt
+1_veda/2_bra/satapath/sb_13_u.txt
+1_veda/4_upa/chup___u.txt
+2_epic/mbh/mbh_02_u.txt
+2_epic/mbh/mbh_04_u.txt
+2_epic/mbh/mbh_13_u.txt
+2_epic/mbh/mbh_15_u.txt
+2_epic/mbh/mbh_16_u.txt
+3_purana/lip_1_pu.txt
+3_purana/lip_2__u.txt
+4_rellit/buddh/vinv09_u.txt
+4_rellit/saiva/mrgt3mpu.txt
+4_rellit/saiva/sivsutru.txt
+4_rellit/vaisn/yamcatpu.txt
+5_poetry/5_subhas/vidsrgpu.txt
+6_sastra/3_phil/buddh/pramanvu.txt
+6_sastra/4_dharma/smrti/manu2p_u.txt
+6_sastra/4_dharma/smrti/pars2_pu.txt
+6_sastra/7_ayur/rasadhpu.txt
+6_sastra/8_jyot/aryabh_u.txt
