@@ -2,7 +2,7 @@
 # Project: sktlm / Sanskrit tokenizer corpus construction
 #
 # Raw root:
-# D:\Repositories\sanskrit_llm\data\raw\gretil\
+# data/raw/gretil/
 #
 # This file supersedes v2 for corpus selection.
 #

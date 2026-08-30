@@ -7,7 +7,11 @@ name = "sktlm"
 version = "0.2.0"
 description = "Controlled Sanskrit corpus, tokenization, and language-model experiments"
 readme = "README.md"
+license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+]
 dependencies = [
     "sentencepiece",
     "PyYAML",

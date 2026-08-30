@@ -13,3 +13,6 @@ __pycache__/
 .venv/
 artifacts/
 *.egg-info/
+/archive/legacy/pilot/checkpoints/
+/archive/legacy/pilot/tokenizer/*.model
+/archive/legacy/pilot/tokenizer/*.vocab
