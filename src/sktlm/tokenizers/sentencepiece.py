@@ -161,7 +161,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train a tiny SentencePiece tokenizer.")
     parser.add_argument("--input-file", type=Path, help="Single normalized text file to train on.")
     parser.add_argument("--data-dir", type=Path, default=Path("data/processed"))
-    parser.add_argument("--output-prefix", type=Path, default=Path("tokenizer/sanskrit_spm"))
+    parser.add_argument(
+        "--output-prefix",
+        type=Path,
+        default=Path("artifacts/tokenizers/sanskrit_spm"),
+    )
     parser.add_argument("--vocab-size", type=int, default=512)
     parser.add_argument("--model-type", choices=("unigram", "bpe"), default="unigram")
     parser.add_argument(

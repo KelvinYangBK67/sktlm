@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import regex
 
-from sktlm.diagnostics.vocab import DEPENDENT_VOWELS, SPACE_MARK, VIRAMA
+from sktlm.tokenizers.review import DEPENDENT_VOWELS, SPACE_MARK, VIRAMA
 from sktlm.tokenizers.base import Encoding
 
 

@@ -19,20 +19,38 @@ dependencies = [
 test = ["pytest>=7"]
 
 [project.scripts]
-sktlm-normalize = "sktlm.data.normalize.devanagari:main"
-sktlm-iast-to-devanagari = "sktlm.data.transliterate.iast_devanagari:main"
-sktlm-build-manifest = "sktlm.data.manifest:main"
-sktlm-build-weighted-corpus = "sktlm.data.weighted_corpus:main"
+sktlm-clean-gretil-known-files = 'sktlm.corpus.gretil.cleaning.source_specific.known_files:main'
+sktlm-clean-gretil-document-structure = 'sktlm.corpus.gretil.cleaning.structure:main'
+sktlm-project-gretil-strict-final = 'sktlm.corpus.gretil.cleaning.finalize:main'
+sktlm-validate-gretil-strict = 'sktlm.corpus.gretil.cleaning.strict:main'
+sktlm-normalize = "sktlm.representations.normalization:main"
+sktlm-iast-to-devanagari = "sktlm.representations.devanagari:main"
+sktlm-build-manifest = "sktlm.corpus.manifests.build:main"
+sktlm-build-weighted-corpus = "sktlm.corpus.weighted:main"
 sktlm-train-tokenizer = "sktlm.tokenizers.sentencepiece:main"
-sktlm-vocab-review = "sktlm.diagnostics.vocab:main"
-sktlm-train-tiny = "sktlm.training.tiny:main"
-sktlm-prepare-gretil = "sktlm.data.prepare_gretil:main"
-sktlm-build-gretil-canonical = "sktlm.data.gretil_canonical:main"
-sktlm-validate-gretil-canonical = "sktlm.data.gretil_canonical:validate_main"
-sktlm-normalize-corpus = "sktlm.data.normalize.corpus:main"
+sktlm-vocab-review = "sktlm.tokenizers.review:main"
+sktlm-train-tiny = "sktlm.experiments.training.tiny:main"
+sktlm-prepare-gretil = "sktlm.corpus.gretil.prepare:main"
+sktlm-build-gretil-canonical = "sktlm.corpus.gretil.build:main"
+sktlm-validate-gretil-canonical = "sktlm.corpus.gretil.build:validate_main"
+sktlm-build-gretil-extraction = "sktlm.corpus.gretil.build:main"
+sktlm-validate-gretil-extraction = "sktlm.corpus.gretil.build:validate_main"
+sktlm-audit-gretil-canonical = "sktlm.corpus.gretil.cleaning.audit:main"
+sktlm-triage-gretil-residual = "sktlm.corpus.gretil.cleaning.triage:main"
+sktlm-clean-gretil-harivamsa = "sktlm.corpus.gretil.cleaning.source_specific.harivamsa:main"
+sktlm-clean-gretil-vakobhau = "sktlm.corpus.gretil.cleaning.source_specific.vakobhau:main"
+sktlm-freeze-gretil-canonical = "sktlm.corpus.gretil.freeze:main"
+sktlm-validate-gretil-freeze = "sktlm.corpus.gretil.freeze:validate_main"
+sktlm-close-gretil-pre-m0 = "sktlm.corpus.gretil.cleaning.pre_m0:main"
+sktlm-close-gretil-pre-m0-semantic = "sktlm.corpus.gretil.cleaning.semantic:main"
+sktlm-close-gretil-pre-m0-tokenizer-final = "sktlm.corpus.gretil.cleaning.tokenizer_final:main"
+sktlm-close-gretil-pre-m0-single-consonants = "sktlm.corpus.gretil.cleaning.single_consonants:main"
+sktlm-normalize-corpus = "sktlm.representations.corpus:main"
+sktlm-generate-representations = "sktlm.representations.generate:main"
+sktlm-validate-representations = "sktlm.representations.generate:validate_main"
 sktlm-inspect-tokenization = "sktlm.tokenizers.inspect:main"
-sktlm-generate = "sktlm.models.generation:main"
-sktlm-experiment = "sktlm.experiment.runner:main"
+sktlm-generate = "sktlm.experiments.models.generation:main"
+sktlm-experiment = "sktlm.experiments.runner:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -40,4 +58,4 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-ra"
+addopts = "-ra --import-mode=importlib"

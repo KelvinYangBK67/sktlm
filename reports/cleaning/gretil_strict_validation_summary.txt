@@ -1,0 +1,17 @@
+Formal GRETIL strict final validation
+======================================
+implementation: gretil-strict-validator-1
+input_root: data\intermediate\gretil\strict_final_candidate_gretil_iast
+files_processed: 246
+invalid_character_files: 0
+invalid_character_occurrences: 0
+apostrophe_occurrences: 97800
+invalid_apostrophe_files: 0
+invalid_apostrophe_occurrences: 0
+status: PASS
+
+policy:
+  exact lowercase NFC IAST code points only
+  ASCII apostrophe only in a positive e/o + elided-a environment
+  danda is ASCII |; the only whitespace is ASCII space and LF
+  combining accents, punctuation, digits, and editorial symbols are forbidden

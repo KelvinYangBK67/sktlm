@@ -1,9 +1,13 @@
 /notes/
 /data/raw/
-/data/interim/
+/data/intermediate/
 /data/processed/
 /data/canonical/
+/data/representations/
 /data/tokenizer_corpora/
+/data/_reports/
+/data/canonical_candidate/
+/reports/cleaning/generated/
 __pycache__/
 *.py[cod]
 .pytest_cache/

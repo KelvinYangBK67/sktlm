@@ -1,0 +1,45 @@
+Formal GRETIL strict final projection
+=====================================
+implementation: gretil-strict-final-projection-1
+input_root: data\intermediate\gretil\document_structure_cleaned_gretil_iast
+output_root: data\intermediate\gretil\strict_final_candidate_gretil_iast
+files_processed: 246
+files_changed: 232
+input_chars: 58782947
+output_chars: 58082518
+char_delta: -700429
+apostrophes_retained: 97800
+invalid_apostrophes_removed: 7207
+invalid_character_occurrences: 0
+invalid_apostrophe_occurrences: 0
+
+rule totals:
+  angle_text_delimiters_removed: 18
+  combining_accent_removed: 3313
+  curly_apparatus_unit_removed: 4389
+  digit_bearing_apparatus_segment_removed: 1656
+  editorial_delimiter_removed: 8913
+  harivamsa_inline_locator_suffix_removed: 1035
+  inline_edition_siglum_removed: 9225
+  intra_lexical_hyphen_removed: 81447
+  non_avagraha_apostrophe_removed: 7207
+  non_iast_editorial_segment_removed: 905
+  numeric_locator_affix_removed: 3029
+  numeric_structural_token_removed: 17284
+  residual_symbol_to_boundary: 2225
+  round_editorial_unit_removed: 17859
+  source_separator_removed: 25108
+  source_word_separator_normalized: 21254
+  square_editorial_unit_removed: 8195
+  square_text_delimiters_removed: 2144
+  structural_hyphen_to_boundary: 27717
+  textual_boundary_normalized: 142254
+  textual_sanskrit_uppercase_lowered: 3684
+
+projection policy:
+  structural/editorial units are deleted before character projection
+  uppercase Sanskrit in surviving text is lowercased; compact sigla are deleted
+  punctuation carrying a textual boundary becomes |
+  intralexical hyphens and source flags are removed without inventing danda
+  digit/non-IAST apparatus is removed as a token or danda-delimited unit
+  only positive e/o avagraha contexts retain ASCII apostrophe

@@ -1,0 +1,24 @@
+Formal GRETIL document-structure cleanup
+==========================================
+implementation: gretil-document-structure-1
+input_root: data\intermediate\gretil\known_file_cleaned_gretil_iast
+output_root: data\intermediate\gretil\document_structure_cleaned_gretil_iast
+files_processed: 246
+files_changed: 78
+lines_removed: 1644
+input_chars: 58805524
+output_chars: 58782947
+char_delta: -22577
+
+rule totals:
+  explicit_editorial_structure_line_removed: 334
+  repeated_running_header_or_abbreviation_removed: 883
+  sankharu_standalone_siglum_removed: 146
+  sankharu_standalone_title_removed: 1
+  standalone_document_title_removed: 50
+  standalone_siglum_removed: 230
+
+policy:
+  matched structure lines are blanked; their LF positions are preserved
+  document titles, standalone sigla, repeated headers, and edition notes are not lowercased
+  non-matching Sanskrit text is byte/text identical at this stage

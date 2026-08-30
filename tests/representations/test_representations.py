@@ -2,16 +2,16 @@
 
 import unicodedata
 
-from sktlm.data.representations.canonical import CanonicalSegment
-from sktlm.data.representations.script import (
+from sktlm.representations.canonical import CanonicalSegment
+from sktlm.representations.script import (
     RepresentationConfig,
     derive_representation,
     transform_script,
     transliterate_devanagari_to_iast,
     whitespace_signature,
 )
-from sktlm.data.representations.spacing import apply_spacing
-from sktlm.data.transliterate.iast_devanagari import transliterate_iast_to_devanagari
+from sktlm.representations.devanagari import transliterate_iast_to_devanagari
+from sktlm.representations.spacing import apply_spacing
 
 
 def make_segment(text: str = "devaś ca rāmaś ca dhāvanti") -> CanonicalSegment:

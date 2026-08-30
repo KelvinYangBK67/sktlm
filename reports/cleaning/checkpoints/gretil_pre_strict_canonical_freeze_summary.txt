@@ -1,0 +1,21 @@
+Formal GRETIL canonical corpus freeze
+======================================
+implementation: gretil-canonical-freeze-1
+input_root: data\intermediate\gretil\apparatus_cleaned_gretil_iast
+output_root: data\canonical\gretil_iast
+base_manifest: data\manifests\canonical_corpus.csv
+manifest: data\manifests\canonical_corpus.csv
+files_frozen: 246
+byte_count: 71412352
+char_count: 58992314
+corpus_sha256: 368731bdd1ce7db98d16341648dc4542a71617befdcebb88b675f7fb380c981c
+strict_clean_files: 18
+flagged_files: 228
+flagged_occurrences: 743026
+
+freeze policy:
+  input is the cumulative Harivamsa + vakobhau positive-match candidate
+  exact file membership, provenance identifiers, and split assignments are preserved
+  canonical bytes are copied without representation conversion
+  residual flags are retained as review evidence; flagged_files=0 is not required
+  representation generation must consume this freeze and remain a separate stage

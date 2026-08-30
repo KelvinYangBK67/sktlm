@@ -1,0 +1,3 @@
+script: iast
+spacing: lexical_boundary
+boundary_semantics: source_whitespace_proxy_not_gold

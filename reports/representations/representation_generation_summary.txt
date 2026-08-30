@@ -1,0 +1,27 @@
+Formal GRETIL representation generation
+=======================================
+implementation: canonical-representations-1
+canonical_root: data\canonical\gretil_iast
+canonical_manifest: data\manifests\canonical_corpus.csv
+freeze_id: 71e48ec78c2eac623d4c4e37bc625f9b91ad8be54bd0ee7da850fd91208440b7
+canonical_files: 246
+representation_files: 1476
+boundary_sidecars: 492
+boundary_offsets: 12130556
+
+condition file counts:
+  iast/continuous: 246
+  iast/surface_word: 246
+  iast/lexical_boundary: 246
+  devanagari/continuous: 246
+  devanagari/surface_word: 246
+  devanagari/lexical_boundary: 246
+
+semantics:
+  surface_word preserves source-provided spacing from the canonical freeze
+  continuous removes ordinary lexical whitespace but preserves LF boundaries
+  lexical_boundary text equals continuous text and adds per-line offsets
+  boundary offsets come only from source-provided whitespace
+  boundary offsets are a proxy, not inferred or gold Sanskrit segmentation
+  script conversion occurs before spacing manipulation
+  canonical corpus files are never modified

@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 import torch
 from torch.nn import functional as F
 
-from sktlm.training.dataset import EncodedSegment
+from sktlm.experiments.training.dataset import EncodedSegment
 
 
 @dataclass(frozen=True, slots=True)

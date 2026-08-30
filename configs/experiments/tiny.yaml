@@ -1,0 +1,21 @@
+# Tiny overfit defaults. These are intentionally conservative and are meant
+# only to verify the local data/model/training loop.
+project_name: sanskrit_llm
+tokenizer_type: sentencepiece
+tokenizer_path: artifacts/tokenizers/ambuda_unigram_8192.model
+data_dir: data/processed/ambuda-text
+output_dir: artifacts/checkpoints
+vocab_size: 8192
+model_size: tiny
+context_length: 64
+batch_size: 8
+learning_rate: 0.001
+n_layer: 2
+n_head: 2
+n_embd: 64
+dropout: 0.0
+train_fraction: 0.9
+max_train_tokens: 4096
+max_steps: 120
+eval_interval: 20
+notes: "Minimal local overfit config for the current 8192 SentencePiece tokenizer."

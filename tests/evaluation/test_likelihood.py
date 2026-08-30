@@ -6,7 +6,7 @@ import torch
 from torch import nn
 
 from sktlm.evaluation.likelihood import normalize_likelihood, score_autoregressive_sequences
-from sktlm.training.dataset import EncodedSegment
+from sktlm.experiments.training.dataset import EncodedSegment
 
 
 def test_bits_per_character_and_byte() -> None:

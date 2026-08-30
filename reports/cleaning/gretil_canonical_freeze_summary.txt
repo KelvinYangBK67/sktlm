@@ -1,0 +1,23 @@
+Formal GRETIL canonical corpus after pre-M0 single-consonant closure
+=================================================================
+implementation: gretil-pre-m0-single-consonant-closure-1
+output_root: data\canonical\gretil_iast
+manifest: data\manifests\canonical_corpus.csv
+files_frozen: 240
+byte_count: 69864279
+char_count: 57588079
+corpus_sha256: 9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40
+strict_clean_files: 240
+invalid_character_files: 0
+invalid_character_occurrences: 0
+invalid_apostrophe_files: 0
+invalid_apostrophe_occurrences: 0
+validated_apostrophe_occurrences: 97478
+
+closure policy:
+  membership is fixed by configs/corpus/gretil_whitelist.txt (240 files)
+  exact KEEP occurrences come from pre_m0_single_consonant_keep.tsv
+  all other standalone consonant tokens are deleted
+  standalone vowels/signs are untouched by the single-letter rule
+  confirmed English/editorial units are removed by positive match
+  no adjacent-vowel, sandhi, typo, or other Sanskrit emendation is made

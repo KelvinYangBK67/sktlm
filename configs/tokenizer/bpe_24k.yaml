@@ -1,3 +1,0 @@
-type: bpe
-vocab_size: 24000
-model_path: tokenizer/weighted_bpe_24000_danda_split.model

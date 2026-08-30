@@ -1,0 +1,522 @@
+file	line_no	category	matched_span	trigger_tokens	context
+1_veda/5_vedang/2_grhya/kaussu_u.txt	4023	editorial_or_european	emended	emended	...ha mādayantām iṣam ūrjaṃ yajamānā yam ichata sūtra division emended |
+3_purana/agp_bi_u.txt	699	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	827	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	935	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	1084	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	1204	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	1289	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	1534	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	1665	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	1756	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	1906	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	2067	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	2140	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	2395	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	2538	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	2674	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	2751	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	2818	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	2916	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	3174	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	3339	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	3456	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	3616	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	3670	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	3805	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	4108	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	4391	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	4442	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	4864	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	4895	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	5147	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	5311	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	5566	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	5633	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	5982	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	6173	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	6274	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	6394	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	6477	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	6740	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	6849	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	7008	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	7196	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	7332	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	7490	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	7720	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	7807	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	7878	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	7960	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	8037	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	8186	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	8397	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	8503	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	8631	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	8751	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	9027	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	9090	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	9255	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	9398	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	9568	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	9883	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	10084	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	10367	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	10458	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	10621	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	10843	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	10970	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	11130	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	11169	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	11269	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	11387	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	11442	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	11496	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	11756	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	11863	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	12329	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	12694	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	12777	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	12909	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	13293	editorial_or_european	chapter	chapter	chapter |
+3_purana/agp_bi_u.txt	13525	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	13602	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	14081	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	14221	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	14528	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	14887	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	15101	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	15227	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	15371	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	15673	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	15706	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	15795	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	15889	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	16296	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	16576	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	16709	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	17162	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	18184	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	18846	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	18943	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	18990	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	19047	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	19164	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	19403	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	19573	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	19813	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	20137	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	20300	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	20412	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	20621	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	20773	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	20825	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	20927	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	21000	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	21051	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	21343	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	21771	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	22017	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	22383	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	22436	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	22618	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	22837	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	23282	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	23426	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	23616	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	23745	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	24054	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	24262	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	24375	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	24444	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	24477	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	24576	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	24683	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	24828	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	25080	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	25127	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	25231	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	25278	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	25388	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	25467	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	25540	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	25637	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	25727	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	25840	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	25928	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	26156	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	26311	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	26466	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	26556	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	26601	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	26682	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	26827	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	26920	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	26957	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	27046	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	27147	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	27326	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	27411	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	27615	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	27948	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	28034	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	28073	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	28254	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	28356	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	28564	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	28647	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	28801	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	28922	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	29130	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	29345	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	29540	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	29790	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	29877	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	29993	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	30254	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	30378	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	30701	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	30749	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	30861	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	31050	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	31097	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	31118	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	31151	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	31186	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	31290	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	31424	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	31520	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	31545	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	31602	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	31695	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	31784	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	31830	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	31893	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	31969	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	32012	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	32055	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	32095	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	32226	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	32324	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	32417	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	32478	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	32577	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	32666	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	32800	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	32928	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	33029	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	33082	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	33212	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	33247	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	33323	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	33625	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	33799	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	34161	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	34339	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	34394	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	34601	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	34835	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	34928	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	35021	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	35203	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	35562	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	35680	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	35761	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	35890	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	36067	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	36297	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	36458	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	36563	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	36869	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	36924	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	37089	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	37160	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	37339	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	37533	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	37661	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	37788	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	37888	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	38217	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	38327	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	38444	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	38704	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	38878	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	39202	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	39547	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	39668	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	39711	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	39863	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	39938	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	40097	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	40140	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	40318	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	40415	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	40486	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	40654	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	40953	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	41087	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	41309	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	41472	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	41709	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	42083	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	42538	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	42938	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	43073	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	43200	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	43359	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	43515	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	43612	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	43722	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	43843	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	43996	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	44183	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	44260	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	44371	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	44508	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	44697	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	44812	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	45064	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	45191	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	45284	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	45491	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	45801	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	46018	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	46178	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	46253	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	46500	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	46568	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	46958	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	47087	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	47250	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	47568	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	47828	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	47875	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	48003	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	48200	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	48445	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	48648	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	48834	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	48943	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	49022	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	49141	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	49395	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	49558	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	49653	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	49790	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	49875	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	50072	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	50155	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	50262	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	50428	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	50555	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	50650	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	50856	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	51039	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	51160	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	51321	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	51439	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	51530	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	51568	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	51743	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	51852	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	51913	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	52142	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	52223	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	52293	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	52447	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	52568	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	52693	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	52824	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	52919	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	52948	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	52981	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	53090	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	53187	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	53246	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	53289	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	53442	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	53479	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	53599	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	53786	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	53911	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	54160	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	54221	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	54332	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	54483	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	54793	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	54946	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	55035	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	55153	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	55350	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	55493	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	55526	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	55592	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	55915	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	55984	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	56033	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	56151	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	56244	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	56383	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	56457	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	56594	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	56639	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	57058	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	57233	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	57414	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	57757	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	57890	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	57949	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	58166	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	58299	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	58422	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	58639	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	58835	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	59020	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	59191	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	59297	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	59472	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	59587	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	59784	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	59895	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	60002	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	60147	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	60491	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	60763	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	60934	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	61272	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	61417	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	61586	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	61643	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	62047	editorial_or_european	chapter	chapter	chapter
+3_purana/agp_bi_u.txt	62284	editorial_or_european	chapter	chapter	chapter
+4_rellit/vaisn/ss2_bhgu.txt	9779	editorial_or_european	sections	sections	separately numbered sections |
+4_rellit/vaisn/ss2_bhgu.txt	9781	editorial_or_european	edition	edition	the yadavpur edition | but this doesnt seem to be necessary |
+4_rellit/vaisn/ss2_bhgu.txt	9809	editorial_or_european	section	section	discussed above in section
+4_rellit/vaisn/ss2_bhgu.txt	9831	editorial_or_european	variant	variant	variant | sanandanādyair munibhir vibhāvyam |
+4_rellit/vaisn/ss2_bhgu.txt	9841	editorial_or_european	edition	edition	critical edition |
+4_rellit/vaisn/ss2_bhgu.txt	9847	editorial_or_european	section	section	section above |
+4_rellit/vaisn/ss2_bhgu.txt	9855	editorial_or_european	sections and	sections	sections and above |
+4_rellit/vaisn/ss2_bhgu.txt	9863	editorial_or_european	section	section	in section tamaḥ
+4_rellit/vaisn/ss2_bhgu.txt	9867	editorial_or_european	section	section	discussed above in section
+4_rellit/vaisn/ss3_paru.txt	6329	editorial_or_european	commentary	commentary	commentary to
+4_rellit/vaisn/ss3_paru.txt	6335	editorial_or_european	section	section	above | section
+4_rellit/vaisn/vaimp__u.txt	275	editorial_or_european	edition	edition	edition | vṛṣabhāyai | eds || vṛṣahāyai
+4_rellit/vaisn/vaimp__u.txt	3283	editorial_or_european	edition	edition	edition | vahetāṃ | edition | hetāṃ va
+4_rellit/vaisn/vaimp__u.txt	3283	editorial_or_european	edition	edition	edition | vahetāṃ | edition | hetāṃ va
+4_rellit/vaisn/vaimp__u.txt	3449	editorial_or_european	edition	edition	edition omits this verse
+4_rellit/vaisn/vaimp__u.txt	3475	editorial_or_european	edition	edition	edition omits this verse
+4_rellit/vaisn/vaimp__u.txt	3477	editorial_or_european	edition	edition	edition omits this verse
+4_rellit/vaisn/vaimp__u.txt	3499	editorial_or_european	edition	edition	edition | bhṛgv ādi saptarṣīn
+4_rellit/vaisn/vaimp__u.txt	3523	editorial_or_european	edition	edition	edition | āvāhayāmi mīndram | edition | āvāhayāmīndram
+4_rellit/vaisn/vaimp__u.txt	3523	editorial_or_european	edition	edition	edition | āvāhayāmi mīndram | edition | āvāhayāmīndram
+4_rellit/vaisn/vaimp__u.txt	3551	editorial_or_european	edition	edition	edition | ābhjāmyava āvyaṃ | edition | ābhajāny apāvyaṃ | ābhajāmy ...
+4_rellit/vaisn/vaimp__u.txt	3551	editorial_or_european	edition	edition	edition | ābhjāmyava āvyaṃ | edition | ābhajāny apāvyaṃ | ābhajāmy apāvaṃ
+4_rellit/vaisn/vaimp__u.txt	3631	editorial_or_european	edition	edition	edition | juhotā
+4_rellit/vaisn/vaimp__u.txt	3693	editorial_or_european	edition	edition	edition adds here glām pāṭhāṃtaram | glām is a variant reading |
+4_rellit/vaisn/vaimp__u.txt	3693	editorial_or_european	variant reading	variant	edition adds here glām pāṭhāṃtaram | glām is a variant reading |
+4_rellit/vaisn/vaimp__u.txt	3833	editorial_or_european	edition	edition	edition | apadhānāya
+4_rellit/vaisn/vaimp__u.txt	4337	editorial_or_european	edition	edition	edition | drohiṇyai
+4_rellit/vaisn/vaimp__u.txt	4533	editorial_or_european	edition	edition	edition | mahantāya
+4_rellit/vaisn/vaimp__u.txt	5199	editorial_or_european	edition	edition	edition | haritāvāya | edition | harāya
+4_rellit/vaisn/vaimp__u.txt	5199	editorial_or_european	edition	edition	edition | haritāvāya | edition | harāya
+4_rellit/vaisn/vaimp__u.txt	5241	editorial_or_european	edition	edition	edition | hastamāya
+4_rellit/vaisn/vaimp__u.txt	5263	editorial_or_european	edition	edition	edition | viṣṇu bhūta yutāya | edition | viṣṇu bhūtāya
+4_rellit/vaisn/vaimp__u.txt	5263	editorial_or_european	edition	edition	edition | viṣṇu bhūta yutāya | edition | viṣṇu bhūtāya
+4_rellit/vaisn/vaimp__u.txt	5729	editorial_or_european	edition	edition	edition | drohiṇyai
+4_rellit/vaisn/vaimp__u.txt	5771	editorial_or_european	edition	edition	edition | pramattāyai
+4_rellit/vaisn/vaimp__u.txt	5773	editorial_or_european	edition	edition	edition | ajeyam | edition | ajayāyai
+4_rellit/vaisn/vaimp__u.txt	5773	editorial_or_european	edition	edition	edition | ajeyam | edition | ajayāyai
+4_rellit/vaisn/vaimp__u.txt	5895	editorial_or_european	edition	edition	edition | kardamādyāya | edition | kardamāya
+4_rellit/vaisn/vaimp__u.txt	5895	editorial_or_european	edition	edition	edition | kardamādyāya | edition | kardamāya
+4_rellit/vaisn/vaimp__u.txt	6037	editorial_or_european	edition	edition	edition | saro jābhyas | edition | svara jābhyas
+4_rellit/vaisn/vaimp__u.txt	6037	editorial_or_european	edition	edition	edition | saro jābhyas | edition | svara jābhyas
+4_rellit/vaisn/vaimp__u.txt	6179	editorial_or_european	edition	edition	edition | vipāyai
+4_rellit/vaisn/vaimp__u.txt	6241	editorial_or_european	edition	edition	edition | īśāya
+4_rellit/vaisn/vaimp__u.txt	6283	editorial_or_european	edition	edition	edition | vitadhāya | edition | vitathāya
+4_rellit/vaisn/vaimp__u.txt	6283	editorial_or_european	edition	edition	edition | vitadhāya | edition | vitathāya
+4_rellit/vaisn/vaimp__u.txt	6359	editorial_or_european	edition	edition	edition | sanduṣāya
+4_rellit/vaisn/vaimp__u.txt	6717	editorial_or_european	edition	edition	edition | na
+4_rellit/vaisn/vaimp__u.txt	6719	editorial_or_european	edition	edition	edition | avamānayan tu
+4_rellit/vaisn/vaimp__u.txt	6985	editorial_or_european	edition	edition	edition | subahaṇyo
+4_rellit/vaisn/vaimp__u.txt	7083	editorial_or_european	edition	edition	edition | vīrañjaty | eds || virañjaty
+4_rellit/vaisn/vaimp__u.txt	7085	editorial_or_european	edition	edition	edition | sasatvaṃ
+4_rellit/vaisn/vaimp__u.txt	7107	editorial_or_european	edition	edition	edition | yajāmaho
+4_rellit/vaisn/vaimp__u.txt	7129	editorial_or_european	edition	edition	edition | ādadau no
+4_rellit/vaisn/vaimp__u.txt	7131	editorial_or_european	edition	edition	edition | pṛte
+4_rellit/vaisn/vaimp__u.txt	7133	editorial_or_european	edition	edition	edition | vyāpūrayan no tharate
+4_rellit/vaisn/vaimp__u.txt	7167	editorial_or_european	editions	editions	editions | uṣopa | edition | upoṣa
+4_rellit/vaisn/vaimp__u.txt	7167	editorial_or_european	edition	edition	editions | uṣopa | edition | upoṣa
+4_rellit/vaisn/vaimp__u.txt	7191	editorial_or_european	editions	editions	editions || vṛtyā | edition || vṛttyā
+4_rellit/vaisn/vaimp__u.txt	7191	editorial_or_european	edition	edition	editions || vṛtyā | edition || vṛttyā
+4_rellit/vaisn/vaimp__u.txt	7213	editorial_or_european	edition	edition	edition | parāṃbarāyā
+4_rellit/vaisn/vaimp__u.txt	7215	editorial_or_european	editions	editions	editions | tatrīṇy | edition | tat trīṇy
+4_rellit/vaisn/vaimp__u.txt	7215	editorial_or_european	edition	edition	editions | tatrīṇy | edition | tat trīṇy
+4_rellit/vaisn/vaimp__u.txt	7239	editorial_or_european	edition	edition	edition | sāniyaśchaty
+4_rellit/vaisn/vaimp__u.txt	7241	editorial_or_european	edition	edition	edition | vṛttyā | eds || vṛtyā
+4_rellit/vaisn/vaimp__u.txt	7279	editorial_or_european	edition	edition	edition | padhā | edition | pathā
+4_rellit/vaisn/vaimp__u.txt	7279	editorial_or_european	edition	edition	edition | padhā | edition | pathā
+4_rellit/vaisn/vaimp__u.txt	7281	editorial_or_european	edition	edition	edition | sañjīvati | eds || sañjīvatī
+4_rellit/vaisn/vaimp__u.txt	7341	editorial_or_european	edition	edition	edition | manthī
+4_rellit/vaisn/vaimp__u.txt	7433	editorial_or_european	editions	editions	editions | bhavatodarāt | edition | bhavatodharāt
+4_rellit/vaisn/vaimp__u.txt	7433	editorial_or_european	edition	edition	editions | bhavatodarāt | edition | bhavatodharāt
+4_rellit/vaisn/vaimp__u.txt	7441	editorial_or_european	edition	edition	edition omits this verse
+4_rellit/vaisn/vaimp__u.txt	7445	editorial_or_european	edition	edition	edition omits this verse
+4_rellit/vaisn/vaimp__u.txt	7451	editorial_or_european	edition	edition	edition omits this verse
+4_rellit/vaisn/vaimp__u.txt	8067	editorial_or_european	edition	edition	accentuation in the edition | bibharti
+4_rellit/vaisn/vaimp__u.txt	8461	editorial_or_european	edition	edition	edition | taṃ
+4_rellit/vaisn/vaimp__u.txt	8499	editorial_or_european	edition	edition	edition bhūtānāṃ
+4_rellit/vaisn/vaimp__u.txt	8607	editorial_or_european	edition	edition	edition | rūpāya
+4_rellit/vaisn/vaimp__u.txt	8629	editorial_or_european	edition	edition	edition | supuṇyātmakam
+4_rellit/vaisn/vaimp__u.txt	8673	editorial_or_european	edition	edition	edition | dmanā
+4_rellit/vaisn/vaimp__u.txt	8849	editorial_or_european	edition	edition	edition | ṛṣamāṇaṃ
+4_rellit/vaisn/vaimp__u.txt	8923	editorial_or_european	editions	editions	editions | ṛcīnām
+4_rellit/vaisn/vaimp__u.txt	8943	editorial_or_european	edition	edition	edition | kādraveyā | eds || kārdraveyā
+4_rellit/vaisn/vaimp__u.txt	8979	editorial_or_european	edition	edition	edition | yava vaṃśa yavau
+4_rellit/vaisn/vaimp__u.txt	9023	editorial_or_european	edition	edition	edition | brahma | edition | brahmā
+4_rellit/vaisn/vaimp__u.txt	9023	editorial_or_european	edition	edition	edition | brahma | edition | brahmā
+4_rellit/vaisn/vaimp__u.txt	9065	editorial_or_european	edition	edition	edition | āṃ
+4_rellit/vaisn/vaimp__u.txt	9131	editorial_or_european	edition	edition	edition | bhagavaṃ ddhyātvā | eds || bhagavad dhyātvā
+4_rellit/vaisn/vaimp__u.txt	9149	editorial_or_european	edition	edition	edition | aśu gāḥ
+4_rellit/vaisn/vaimp__u.txt	9269	editorial_or_european	edition	edition	edition | yatiñcat | edition | yatiñcit
+4_rellit/vaisn/vaimp__u.txt	9269	editorial_or_european	edition	edition	edition | yatiñcat | edition | yatiñcit
+4_rellit/vaisn/vaimp__u.txt	9291	editorial_or_european	edition	edition	edition | ahaṃ | edition | āhaṃ
+4_rellit/vaisn/vaimp__u.txt	9291	editorial_or_european	edition	edition	edition | ahaṃ | edition | āhaṃ
+4_rellit/vaisn/vaimp__u.txt	9665	editorial_or_european	edition	edition	edition || tharāyai | edition || tharāya
+4_rellit/vaisn/vaimp__u.txt	9665	editorial_or_european	edition	edition	edition || tharāyai | edition || tharāya
+4_rellit/vaisn/vaimp__u.txt	10149	editorial_or_european	edition	edition	edition | mānasī | edition | mānasi
+4_rellit/vaisn/vaimp__u.txt	10149	editorial_or_european	edition	edition	edition | mānasī | edition | mānasi
+4_rellit/vaisn/vaimp__u.txt	10253	editorial_or_european	editions	editions	editions | āhaṃ | corrected to ahaṃ |
+4_rellit/vaisn/vaimp__u.txt	10507	editorial_or_european	edition	edition	edition | saptathānāṃ
+4_rellit/vaisn/vaimp__u.txt	10509	editorial_or_european	edition	edition	edition | vāhur
+4_rellit/vaisn/vaimp__u.txt	10947	editorial_or_european	edition	edition	edition | vandhyo
+4_rellit/vaisn/vaimp__u.txt	11165	editorial_or_european	edition	edition	edition | tvāṣṭrī
+4_rellit/vaisn/vaimp__u.txt	11225	editorial_or_european	edition	edition	edition | tapo dhanā
+4_rellit/vaisn/vaimp__u.txt	11869	editorial_or_european	edition	edition	edition | śambhuḥ | edition | śambaḥ
+4_rellit/vaisn/vaimp__u.txt	11869	editorial_or_european	edition	edition	edition | śambhuḥ | edition | śambaḥ
+4_rellit/vaisn/vaimp__u.txt	12061	editorial_or_european	edition	edition	edition | saṃvidhānā | edition || saṃvidānā
+4_rellit/vaisn/vaimp__u.txt	12061	editorial_or_european	edition	edition	edition | saṃvidhānā | edition || saṃvidānā
+4_rellit/vaisn/vaimp__u.txt	12521	editorial_or_european	edition	edition	edition | vithaviṣyate
+4_rellit/vaisn/vaimp__u.txt	13407	editorial_or_european	edition	edition	edition | udārāṅgyai | edition | dhārāṅgyai
+4_rellit/vaisn/vaimp__u.txt	13407	editorial_or_european	edition	edition	edition | udārāṅgyai | edition | dhārāṅgyai
+6_sastra/7_ayur/anandk_u.txt	21587	editorial_or_european	properties	properties	pattratālaka || phys | properties
+6_sastra/7_ayur/anandk_u.txt	21593	editorial_or_european	properties	properties	piṇḍatālaka || phys | properties
+6_sastra/7_ayur/anandk_u.txt	22249	editorial_or_european	properties	properties	śukatuṇḍa || phys | properties
+6_sastra/7_ayur/anandk_u.txt	22255	editorial_or_european	properties	properties	haṃsapāda || properties
+6_sastra/7_ayur/anandk_u.txt	22303	editorial_or_european	properties	properties	pāṣāṇagairika || phys | properties
+6_sastra/7_ayur/anandk_u.txt	22591	editorial_or_european	properties	properties	kaṅkuṣṭha || medic | properties
+6_sastra/7_ayur/anandk_u.txt	22653	editorial_or_european	properties	properties	kāsīsa || medic | properties
+6_sastra/7_ayur/anandk_u.txt	22695	editorial_or_european	properties	properties	sindūra || medic | properties
+6_sastra/7_ayur/anandk_u.txt	22755	editorial_or_european	properties	properties	srotoñjana || medic | properties
+6_sastra/7_ayur/anandk_u.txt	22797	editorial_or_european	properties	properties	puṣpāñjana || medic | properties
+6_sastra/7_ayur/anandk_u.txt	22981	editorial_or_european	properties	properties	sea salt || medic | properties
+6_sastra/7_ayur/anandk_u.txt	23031	editorial_or_european	properties	properties	sauvarcala || medic | properties
+6_sastra/7_ayur/anandk_u.txt	24143	editorial_or_european	properties	properties	tīkṣṇaloha || medic | properties
+6_sastra/7_ayur/anandk_u.txt	24151	editorial_or_european	properties	properties	muṇḍa || medic | properties
+6_sastra/7_ayur/anandk_u.txt	24167	editorial_or_european	properties	properties	khura || phys | properties
+6_sastra/7_ayur/anandk_u.txt	24171	editorial_or_european	properties	properties	miśraka || phys | properties
+6_sastra/7_ayur/anandk_u.txt	24375	editorial_or_european	properties	properties	rājarīti || properties
+6_sastra/7_ayur/anandk_u.txt	24381	editorial_or_european	properties	properties	brass || medic | properties
+6_sastra/7_ayur/anandk_u.txt	24929	editorial_or_european	properties	properties	pearl || medic | properties
+6_sastra/7_ayur/anandk_u.txt	24975	editorial_or_european	properties	properties	coral || medic | properties
+6_sastra/7_ayur/anandk_u.txt	25043	editorial_or_european	properties	properties	puṣparāga || medic | properties
+6_sastra/8_jyot/brhajj_u.txt	83	non_sanskrit_pattern	aaaaaaaaaaaaaaaaa	aaaaaaaaaaaaaaaaa	aaaaaaaaaaaaaaaaa
