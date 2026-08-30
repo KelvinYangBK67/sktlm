@@ -9,6 +9,7 @@ description = "Controlled Sanskrit corpus, tokenization, and language-model expe
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "numpy",
     "sentencepiece",
     "PyYAML",
     "regex",
@@ -51,6 +52,7 @@ sktlm-validate-representations = "sktlm.representations.generate:validate_main"
 sktlm-inspect-tokenization = "sktlm.tokenizers.inspect:main"
 sktlm-generate = "sktlm.experiments.models.generation:main"
 sktlm-experiment = "sktlm.experiments.runner:main"
+sktlm-train-latent-lexicon = "sktlm.experiments.training.latent_lexicon:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

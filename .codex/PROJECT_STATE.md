@@ -1,0 +1,435 @@
+# PROJECT_STATE.md
+
+Last major handoff: 2026-08-30
+Primary implementation branch: `exp/m0-core-methods`
+
+This file records durable project state. It is not a task prompt.
+
+## 1. Frozen M₀ corpus
+
+M₀ is frozen and must not be reopened during core-method implementation.
+
+- Commit: `dbff6836eb35ecb1933653443ca793b1ab890c63`
+- Annotated tag: `m0` — never move this tag.
+- Canonical root: `data/canonical/gretil_iast`
+- Manifest: `data/manifests/canonical_corpus.csv`
+- Freeze ID: `9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40`
+- Documents: 240
+- Characters: 57,588,079
+- Bytes: 69,864,279
+
+Formal M₀ observation conditions are exactly:
+
+- IAST / `surface_word`
+- IAST / `legacy_joined`
+- IAST / `continuous`
+- Devanagari / `surface_word`
+- Devanagari / `legacy_joined`
+- Devanagari / `continuous`
+
+Older names such as `lexical_boundary` or `observed` are not formal M₀ conditions.
+
+The first formal core-method run is planned for:
+
+`IAST + surface_word`
+
+Later conditions must be trained independently rather than initialized from the first condition.
+
+## 2. Branch division
+
+- `exp/m0-core-methods`: latent/sandhi core method work.
+- `exp/m0-baseline-validation`: collaborator baseline production/validation line.
+
+The collaborator line currently covers the 22-condition baseline matrix:
+- BPE: IAST + Devanagari × 3 spacing = 6
+- Unigram: same = 6
+- Unicode code point: same = 6
+- Akṣara-safe BPE: Devanagari continuous = 1
+- Surface-lattice: IAST × 3 spacing = 3
+
+TransLIST is a separate supervised Sanskrit segmentation/desandhi reference, not a 23rd matrix condition.
+
+The core branch should coordinate interfaces/contracts, not take over the collaborator's implementation.
+
+## 3. External-sandhi rule inventory
+
+Tracked machine-readable inventory:
+
+`data/rules/external_sandhi.tsv`
+
+Current size: 1218 external-sandhi rules.
+
+Columns:
+- `rule_id`
+- `left`
+- `right`
+- `surface`
+- `variant`
+- `status`
+
+The file was mechanically generated from an untracked human-readable matrix.
+
+Generation choices already made:
+- `V̆` expanded over `{a, i, u, ṛ, ḷ}`.
+- `|` surface alternatives split into separate rows.
+- variants preserved.
+- status currently `active`.
+- IDs use `EXT_0001...`.
+- `#` in the TSV is currently a readable boundary notation, not the final internal boundary object.
+
+The runtime method may adapt/parse this inventory into a structured script-neutral representation, but should not rewrite the source TSV in the current task.
+
+## 4. Existing sandhi infrastructure
+
+Package:
+
+`src/sktlm/sandhi/`
+
+Existing modules include:
+
+- `rules.py`
+- `apply.py`
+- `boundary.py`
+- `inverse.py`
+- `index.py`
+- `lattice.py`
+- `dp.py`
+- `ngram_dp.py`
+- `ngram_posterior.py`
+
+Important behavior:
+
+### `rules.py`
+Loads and validates the fixed rule inventory.
+
+### `apply.py`
+Exact underlying pair -> all matching external-sandhi rule applications. No ranking.
+
+### `boundary.py`
+Forward realization of full word pairs; preserves rule provenance and variants.
+
+Example:
+`devaḥ + api -> devo'pi`
+
+### `inverse.py`
+Surface -> all grammar-licensed one-boundary inverse candidates. No hard ranking.
+
+### `index.py`
+Trie/index optimization for forward and inverse matching. This reduced exhaustive sandhi tests from tens of seconds to sub-second scale.
+
+### `lattice.py`
+Early proof-of-concept character/span DAG:
+- identity edges per observed code point;
+- sandhi edges over matched surface spans;
+- ambiguity preserved.
+
+This lattice was useful for proving the mechanics, but it is not assumed to be the final lexical-analysis representation.
+
+### `dp.py`
+Generic edge-local DAG log-sum-exp and debug Viterbi.
+
+### `ngram_dp.py`
+Context-aware character n-gram marginalization over the toy lattice.
+
+### `ngram_posterior.py`
+Character n-gram forward/backward, edge posterior, rule posterior, expected sandhi usage.
+
+Existing sandhi tests were reported passing locally by the user.
+
+## 5. Existing toy language-model / EM prototype
+
+Existing/added modules include:
+
+- `src/sktlm/experiments/models/ngram.py`
+- `src/sktlm/experiments/training/sandhi_ngram_smoke.py`
+- `src/sktlm/experiments/training/ngram_em.py`
+- `src/sktlm/experiments/training/surface_ngram_experiment.py`
+
+These prove that the following computation chain works:
+
+fixed external grammar
+-> inverse candidates
+-> lattice
+-> marginalization
+-> posterior
+-> fractional expected counts
+-> iterative update
+
+They are engineering proof-of-concept code, not the final research objective.
+
+The user explicitly does not want the formal method to continue growing by patching the character-level EM approach.
+
+## 6. Toy results and what they mean
+
+A tiny surface-only toy corpus used:
+
+- `devo'pi`
+- `rāmo'pi`
+- `aśvo'pi`
+- `naro'pi`
+
+The surface-only character n-gram EM-style run produced approximately:
+
+- mean expected sandhi edges: `0.000248`
+- target `aḥ + a -> o'` posterior: about `1e-7`
+- convergence after roughly 2–3 iterations.
+
+This is not evidence that surface-only Sanskrit sandhi induction is impossible.
+
+The toy corpus repeatedly supports the surface pattern `o'pi` but provides almost no cross-environment recurrence that would make latent forms such as `-aḥ` and `api` useful across many contexts.
+
+The durable conclusion is only:
+
+- the software machinery works;
+- the toy dataset is not adequate for judging full latent lexical induction;
+- full-corpus recurrence is the intended learning signal.
+
+A `surface_ngram_prior_experiment.py` was proposed/generated later, but the user deliberately did not run/adopt that direction. Do not treat a generic sandhi bonus as the intended method.
+
+## 7. Current methodological redesign
+
+The formal v1 method should be:
+
+**script-neutral latent lexical induction with fixed external-sandhi grammar and corpus-wide lexical reuse.**
+
+The central comparison is not:
+
+`devo'pi` character probability vs `devaḥ#api` character probability.
+
+Instead ask whether analyses such as:
+
+`devo'pi -> devaḥ | api`
+
+allow the same latent lexical units (`devaḥ`, `api`, etc.) to explain many observations across different sandhi and non-sandhi environments.
+
+Current latent target level is lexical word-form identity such as:
+
+- `devaḥ`
+- `api`
+
+Do not yet push to deeper morphology such as:
+
+`deva + s`
+
+Internal sandhi induction and deeper morphophonological identity are later stages.
+
+## 8. Boundary / script interpretation
+
+A lexical boundary is an abstract structural relation/object.
+
+It is not:
+- literal `#`;
+- whitespace;
+- zero-width spacing;
+- apostrophe;
+- avagraha;
+- a Devanagari vowel form.
+
+`#` may remain only for debug/serialization.
+
+The intended layering is:
+
+latent lexical/phonological structure
+-> external-sandhi realization
+-> script rendering
+-> spacing realization
+
+The same latent structure may be rendered with or without visible whitespace.
+
+For Devanagari, an abstract lexical boundary can affect orthographic rendering even when no visible space is emitted, e.g. word-initial vowel behavior.
+
+## 9. Script neutrality
+
+The current toy prototype is strongly IAST-biased because IAST Unicode strings were used directly as model sequences.
+
+Formal core code must instead expose a script-neutral Sanskrit phonological representation.
+
+The first implementation should build and exercise only the IAST frontend, but its output and the learner interface must not depend on IAST-specific code-point structure.
+
+A later Devanagari frontend should map into the same internal representation and use the same grammar/learner.
+
+## 10. Candidate generation direction
+
+The old proof-of-concept lattice intentionally overgenerated any matching substring.
+
+Formal v1 candidate generation should use deterministic linguistic/orthographic constraints before statistical scoring.
+
+Allowed evidence:
+- visible whitespace;
+- avagraha;
+- punctuation;
+- fixed grammar;
+- phonological legality;
+- exact forward reconstruction.
+
+Every inverse candidate should forward-reconstruct the observed surface exactly.
+
+Do not use:
+- Sanskrit dictionaries;
+- gold segmentation;
+- morphological analyzers;
+- pretrained Sanskrit models
+
+to prune candidates in the surface-only induction experiment.
+
+Whitespace is strong evidence, not gold segmentation.
+
+## 11. Formal learner direction
+
+The main signal should be corpus-wide reuse of latent lexical units.
+
+Start with an interpretable unigram latent-lexicon learner, not a Transformer.
+
+Conceptually a candidate analysis:
+
+`w1 | w2 | ... | wk`
+
+receives support from:
+- learned lexical probabilities / expected counts of `w_i`;
+- deterministic fixed-grammar compatibility;
+- an explicit complexity/sparsity pressure penalizing proliferation of rare one-off latent lexical types.
+
+Do not add a generic reward for using sandhi.
+
+Use soft posterior assignment, expected lexical counts, and iterative updates.
+
+Initialization should be reasonably neutral over legal analyses rather than first training an identity-favoring surface character LM.
+
+The exact complexity/MDL formula is not yet theoretically frozen; any v1 implementation choice must be simple, explicit, configurable, and reported as an assumption.
+
+## 12. Scalability requirements
+
+The formal first run targets the full M₀ corpus (~57.6M chars, 240 documents).
+
+Implementation must be:
+- streaming/sharded;
+- bounded-memory;
+- deterministic.
+
+Do not materialize the whole corpus, all lattices, or all full candidate paths in RAM.
+
+Use compact representations / dynamic programming rather than explicit global path enumeration.
+
+Checkpoint/resume is desirable if practical.
+
+## 13. Required first-run artifacts
+
+The IAST + surface_word full run should make the learned structure inspectable.
+
+At minimum output:
+
+- latent lexical inventory with expected counts/probabilities;
+- surface span/form -> candidate latent analyses + posterior;
+- boundary posterior;
+- expected external-sandhi rule usage;
+- identity-vs-latent posterior mass;
+- ambiguity/confidence statistics;
+- active lexicon size;
+- low-count / one-off lexical-type statistics;
+- explicit complexity/description-length-style summary;
+- config/provenance metadata.
+
+Also create a concise human inspection report with:
+- highest-frequency latent forms;
+- high-confidence sandhi analyses;
+- most ambiguous cases;
+- suspicious low-frequency/one-off latent forms;
+- most-used sandhi rules;
+- notable identity-to-latent shifts.
+
+## 14. What the first full run is supposed to tell us
+
+The primary questions are:
+
+1. Does a reusable latent lexicon emerge?
+2. Do latent word forms gain support across multiple surface/sandhi environments?
+3. Does the model avoid both identity collapse and uncontrolled overanalysis?
+4. Is the learned latent inventory more economical/reusable than memorizing surface forms?
+
+Do not reduce the first run to a single loss/accuracy number.
+
+## 15. Environment
+
+User local development environment was moved to a repository `.venv` based on Python 3.11.9.
+
+`numpy` was added to `pyproject.toml` dependencies after PyTorch warned that NumPy was absent.
+
+Relevant tests were reported passing after this change.
+
+## 16. Formal v1 implementation status (2026-08-30)
+
+The first full-corpus-ready `IAST + surface_word` latent lexical learner is now implemented on `exp/m0-core-methods`. The expensive full M₀ run has **not** been launched.
+
+New formal-method code lives under `src/sktlm/latent/`:
+
+- `phonology.py`: script-neutral semantic phoneme IDs and IAST parse/render adapters;
+- `frontend.py`: separates phonological content from observed whitespace, avagraha, and punctuation cues;
+- `grammar.py`: compiles the frozen 1218-rule TSV into structured runtime matches, with `#` represented as a structural boundary rather than a character;
+- `candidates.py`: constructs exact-reconstruction lexical candidate DAGs;
+- `inference.py`: nested exact forward/backward inference with full marginals and bounded top-K decoding only for inspection;
+- `store.py`: SQLite-backed expected counts/probabilities and bounded caches;
+- `training.py`: streaming document/line processing, iterative expected-count updates, checkpoints, resume, and artifact writers.
+
+The CLI is `sktlm-train-latent-lexicon`, implemented by `src/sktlm/experiments/training/latent_lexicon.py`.
+
+Implemented candidate constraints include:
+
+- fixed-grammar exact reconstruction of the observed phonological surface and typed cues;
+- visible whitespace is evidence, not a lexical-boundary gold label;
+- ignoring visible whitespace is legal but receives a configurable observation penalty (default `8.0` per ignored space);
+- joined-surface external-sandhi rules normally stay inside a surface token; a whitespace crossing is allowed only immediately adjacent to avagraha for the current frontend;
+- avagraha-bearing nonidentity analyses must consume the avagraha cue;
+- deterministic candidate deduplication, a configurable internal-match bound, and an identity fallback.
+
+The implemented unigram lexical score is:
+
+`p(w) = (c_w + alpha) / (N + alpha * V)`
+
+with default `alpha = 0.1`. The explicit complexity summary is:
+
+`R(c) = lambda * sum_w log(1 + c_w / tau)`
+
+with defaults `lambda = 0.5`, `tau = 1.0`. Per-use inference subtracts the corresponding exact one-count increment:
+
+`lambda * log(1 + 1 / (tau + c_w))`.
+
+These formulas remain documented implementation assumptions, not theoretically frozen project decisions. There is no generic reward for using sandhi. Pass 1 is neutral over legal analyses; later passes use learned lexical scores.
+
+## 17. Validation and bounded sanity run
+
+Focused latent/sandhi tests passed (`84 passed`). The repository suite excluding the three known SentencePiece compatibility failures passed (`428 passed, 3 deselected`). The three failures are in the untouched SentencePiece wrapper because the installed SentencePiece version no longer exposes `encode_as_immutable_proto`; they are not failures of the latent learner.
+
+The latest bounded sanity artifact is:
+
+`artifacts/latent_lexicon/sanity_v1d/`
+
+It processed one document, six segments / 208 characters, for three passes. Final inspection statistics include:
+
+- 257 active lexical rows;
+- expected lexical tokens: `32.9704`;
+- mean identity mass: `0.2737`;
+- mean latent mass: `0.7263`;
+- mean posterior entropy: `1.8979`;
+- no internal-match overflows.
+
+The required lexicon, analyses, boundary posterior, rule usage, ambiguity, complexity, configuration, provenance, checkpoint, and inspection-report artifacts were emitted. This run is only an engineering/method sanity check and is not evidence for corpus-wide linguistic conclusions.
+
+## 18. Diagnosed `om` / `oṃ` symmetry in the sanity run
+
+The sanity lexicon contains two deliberately distinct phonological keys:
+
+- `om` = `V_O.C_M`, expected count `0.9986335340`;
+- `oṃ` = `V_O.M_ANUSVARA`, expected count `0.9986335340`.
+
+This is a grammar-licensed, presently unidentifiable ambiguity rather than representation or expected-count duplication.
+
+The two inspected surface occurrences are `oṃ namo ...` and `oṃ brahma ...`. The fixed inventory licenses underlying final `m` before those consonants via:
+
+- `EXT_0795`: `m + n -> ṃ#n`;
+- `EXT_0793`: `m + b -> ṃ#b`.
+
+For every otherwise identical displayed analysis, replacing first lexical `oṃ` by `om` plus the applicable rule leaves the lexical score and all downstream factors equal. The paired paths therefore have exactly equal log scores and posteriors. Exact forward/backward inference assigns mass to one lexical edge or the other; it does not add the same edge mass to both. Their combined expected count is `1.9972670681`, approximately the two observed occurrences, with the small remainder assigned to other legal analyses.
+
+`active_lexical_types` currently counts every row in the learned lexicon table; it is not a hard-support selection threshold. Types with expected count at or below the configurable default `1.0` are additionally reported as low-count. Thus both members being “active” does not mean the learner hard-selected both.
+
+Do not collapse `C_M` and `M_ANUSVARA`: they are intentionally different phonological symbols, and doing so would change the representation. On this tiny sample the current surface-only unigram objective has no disambiguating evidence. A full-corpus audit should check whether other environments break the symmetry. If the symmetry persists corpus-wide, resolving it would require an explicit new modeling decision (for example a lexicalized alternation treatment or another justified prior), not a counting bug fix.
