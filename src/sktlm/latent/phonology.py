@@ -8,7 +8,7 @@ Devanagari frontend can therefore emit the same :class:`Phoneme` sequence.
 from __future__ import annotations
 
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Iterable
 
@@ -148,14 +148,20 @@ class PhonologicalForm:
     """One complete latent lexical/phonological form."""
 
     symbols: tuple[Phoneme, ...]
+    _key: str = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not self.symbols:
             raise ValueError("A phonological form must contain at least one symbol.")
+        object.__setattr__(
+            self,
+            "_key",
+            ".".join(symbol.value for symbol in self.symbols),
+        )
 
     @property
     def key(self) -> str:
-        return ".".join(symbol.value for symbol in self.symbols)
+        return self._key
 
     @property
     def iast(self) -> str:
