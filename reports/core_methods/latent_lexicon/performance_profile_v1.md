@@ -104,4 +104,43 @@ The profile confirms:
 
 ## Medium reference
 
-Pending low-overhead phase-timing instrumentation. The medium run must be performed before accepting optimization speedups and will be recorded here without cProfile's multi-fold overhead.
+Command:
+
+    .\.venv\Scripts\python.exe -m sktlm.latent.benchmark --benchmark medium --run-id medium_reference_p1 --passes 1
+
+This completed from clean commit 232eacf. It performs one exact neutral training pass plus exact final inspection over the deterministic 7.8474% document subset.
+
+| metric | value |
+|---|---:|
+| actual characters per phase | 4,231,365 |
+| actual segments per phase | 95,847 |
+| total character visits | 8,462,730 |
+| total segment visits | 191,694 |
+| wall time | 5,297.481 s |
+| CPU time | 4,464.578 s |
+| character visits/s | 1,597.50 |
+| segment visits/s | 36.19 |
+| peak RSS | 123.43 MiB |
+| total artifacts | 3,288,521,198 B |
+| learner SQLite | 1,479,335,936 B |
+| analyses JSONL | 1,046,361,666 B |
+| boundary JSONL | 441,118,636 B |
+| latent lexicon TSV | 321,630,165 B |
+
+Low-overhead phase breakdown:
+
+| phase | seconds | share of wall |
+|---|---:|---:|
+| training document total | 1,099.381 | 20.75% |
+| training candidate generation | 370.215 | 6.99% |
+| training exact inference | 525.008 | 9.91% |
+| inspection document total | 3,977.911 | 75.09% |
+| inspection candidate generation | 358.656 | 6.77% |
+| inspection exact inference | 2,557.635 | 48.28% |
+| inspection serialization | 327.551 | 6.18% |
+| SQLite count-row serialization | 61.318 | 1.16% |
+| SQLite count upsert | 162.685 | 3.07% |
+| SQLite document commit | 48.610 | 0.92% |
+| lexicon finalize | 16.569 | 0.31% |
+
+The finalized neutral lexicon contains 1,888,526 active types, of which 1,866,183 have expected count at most 1. Inspection made 129,313,724 lexical score calls. The LRU served 126,840,086 calls, a 98.0871% hit rate, but 2,473,638 SQLite SELECTs still consumed 145.657 seconds. The profile therefore prioritizes eliminating repeated scoring and path-key construction, then reducing candidate reconstruction and storage amplification; increasing the SQLite cache alone cannot address the dominant call volume.

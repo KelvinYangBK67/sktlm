@@ -5,6 +5,7 @@ All entries use the frozen M₀ IAST/surface_word observation, fixed 1218-rule g
 | version | commit | benchmark | workers | char visits | segment visits | wall s | chars/s | segments/s | peak RAM | DB/temp storage | equivalence |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | P0 reference | 1c5530f + telemetry instrumentation | smoke, 1 pass + inspection, median of 3 | 1 | 94,080 | 2,446 | 55.046 | 1,709.10 | 44.44 | 54.5 MiB measured in 2 fixed-sampler repeats | 44,109,992 B artifacts | 3 repeats vs original: PASS |
+| P1 medium reference | 232eacf | medium, 1 pass + inspection | 1 | 8,462,730 | 191,694 | 5,297.481 | 1,597.50 | 36.19 | 123.43 MiB | 3,288,521,198 B artifacts; 1,479,335,936 B SQLite | reference |
 
 ## P0: transactionally coupled resume
 
@@ -19,6 +20,7 @@ All entries use the frozen M₀ IAST/surface_word observation, fixed 1218-rule g
 - Stability: three repeats were 54.049, 55.046, and 56.323 seconds. The earlier 22.222-second observation did not reproduce and is excluded as a host-state outlier.
 - Scientific effect: none. Equivalence against the pre-telemetry reference reported zero mismatches at relative tolerance 1e-10 and absolute tolerance 1e-12.
 - Bottleneck: final inspection consumes about 44.44 seconds, including about 31.94 seconds exact inference. Training consumes about 8.80 seconds, including about 4.53 seconds inference.
+- Medium confirmation: 5,297.481 seconds wall. Inspection consumes 3,977.911 seconds, including 2,557.635 seconds inference; training consumes 1,099.381 seconds. Inspection makes 129,313,724 lexical score calls, with 2,473,638 SQLite misses costing 145.657 seconds.
 
 ## Pending measurements
 
