@@ -41,11 +41,44 @@ def test_legacy_joined_reproduces_historical_seams() -> None:
     assert apply_spacing("तत् त्वम् असि", "legacy_joined", "devanagari") == "तत्त्वमसि"
 
 
+def test_legacy_joined_does_not_classify_anusvara_or_visarga_as_consonants() -> None:
+    assert apply_spacing("aṃ ka", "legacy_joined", "iast") == "aṃ ka"
+    assert apply_spacing("aḥ a", "legacy_joined", "iast") == "aḥ a"
+
+
+def test_legacy_joined_removes_vowel_avagraha_space() -> None:
+    assert apply_spacing("a 'sti", "legacy_joined", "iast") == "a'sti"
+
+
 def test_continuous_spacing_is_deterministic_and_keeps_lines() -> None:
     text = "devaś ca  rāmaś ca\ndhāvanti iti"
     expected = "devaścarāmaśca\ndhāvantiiti"
     assert apply_spacing(text, "continuous", "iast") == expected
     assert apply_spacing(text, "continuous", "iast") == expected
+
+
+def test_continuous_iast_preserves_exact_danda_spacing_and_lf() -> None:
+    text = "rāmaḥ gacchati | sītā tiṣṭhati\nrāmaḥ gacchati ||\n"
+    expected = "rāmaḥgacchati | sītātiṣṭhati\nrāmaḥgacchati ||\n"
+    assert apply_spacing(text, "continuous", "iast") == expected
+
+
+def test_continuous_devanagari_preserves_exact_danda_spacing_and_lf() -> None:
+    text = "रामः गच्छति । सीता तिष्ठति\nरामः गच्छति ॥\n"
+    expected = "रामःगच्छति। सीतातिष्ठति\nरामःगच्छति॥\n"
+    assert apply_spacing(text, "continuous", "devanagari") == expected
+
+
+def test_devanagari_surface_word_only_normalizes_danda_spacing() -> None:
+    text = "रामः  गच्छति ।  सीता तिष्ठति ॥\n"
+    expected = "रामः  गच्छति। सीता तिष्ठति॥\n"
+    assert apply_spacing(text, "surface_word", "devanagari") == expected
+
+
+def test_devanagari_legacy_joined_then_normalizes_danda_spacing() -> None:
+    text = "तत् त्वम् असि ।  रामः ॥\n"
+    expected = "तत्त्वमसि। रामः॥\n"
+    assert apply_spacing(text, "legacy_joined", "devanagari") == expected
 
 
 def test_round_trip_for_supported_common_orthography() -> None:

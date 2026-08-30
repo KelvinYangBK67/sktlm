@@ -20,7 +20,9 @@
 # V2 -> V3
 # - v2 INCLUDE: 294
 # - removed in conservative pass: 48
-# - v3 INCLUDE: 246
+# - v3 initial INCLUDE: 246
+# - pre-M0 source-level exclusions: 6
+# - M0 authoritative INCLUDE: 240
 # - exact duplicate paths in v3: 0
 #
 # Work-family audit:

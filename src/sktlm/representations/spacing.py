@@ -1,7 +1,8 @@
-"""Explicit, deterministic spacing and boundary-supervision conditions."""
+"""Explicit, deterministic spacing conditions."""
 
 from __future__ import annotations
 
+import re
 import unicodedata
 
 
@@ -61,9 +62,53 @@ def remove_joining_rule_spaces(tokens: list[str]) -> list[str]:
     return joined
 
 
-def continuous_spacing(text: str) -> str:
-    """Remove lexical whitespace while preserving line/document boundaries."""
-    return "".join(char for char in text if not char.isspace() or char in {"\r", "\n"})
+def _without_whitespace(text: str) -> str:
+    return "".join(character for character in text if not character.isspace())
+
+
+def _continuous_line(line: str, script: str) -> str:
+    if script == "iast":
+        danda_pattern = r"(\|\|?)"
+        danda_tokens = {"|", "||"}
+    elif script == "devanagari":
+        danda_pattern = r"(॥|।)"
+        danda_tokens = {"।", "॥"}
+    else:
+        raise ValueError(f"unsupported script for continuous spacing: {script}")
+
+    parts = re.split(danda_pattern, line)
+    cleaned = [
+        part if part in danda_tokens else _without_whitespace(part) for part in parts
+    ]
+    output: list[str] = []
+    for index, part in enumerate(cleaned):
+        if part not in danda_tokens:
+            output.append(part)
+            continue
+
+        if script == "iast" and index > 0 and cleaned[index - 1]:
+            output.append(" ")
+        output.append(part)
+        if index + 1 < len(cleaned) and cleaned[index + 1]:
+            output.append(" ")
+    return "".join(output)
+
+
+def continuous_spacing(text: str, script: str = "iast") -> str:
+    """Remove lexical spaces, preserving LF and script-specific daṇḍa spacing."""
+    return "\n".join(_continuous_line(line, script) for line in text.split("\n"))
+
+
+def devanagari_danda_spacing(text: str) -> str:
+    """Normalize only whitespace immediately adjacent to Devanagari daṇḍas."""
+
+    normalized_lines: list[str] = []
+    for line in text.split("\n"):
+        line = re.sub(r"\s*([।॥])", r"\1", line)
+        line = re.sub(r"([।॥])\s*(?=[^।॥\s])", r"\1 ", line)
+        line = re.sub(r"([।॥])\s*$", r"\1", line)
+        normalized_lines.append(line)
+    return "\n".join(normalized_lines)
 
 
 def _iast_edge_token(text: str, *, from_end: bool) -> str:
@@ -91,8 +136,8 @@ def _legacy_join_iast(text: str) -> str:
         next_index = index + 1
         while next_index < len(text) and text[next_index].isspace() and text[next_index] != "\n":
             next_index += 1
-        previous = _iast_edge_token("".join(output), from_end=True)
-        following = _iast_edge_token(text[next_index:], from_end=False)
+        previous = _iast_edge_token("".join(output[-2:]), from_end=True)
+        following = _iast_edge_token(text[next_index : next_index + 2], from_end=False)
         should_drop = (
             (previous in IAST_VOWELS and following == "'")
             or (previous in IAST_CONSONANTS and following in IAST_CONSONANTS)
@@ -147,8 +192,8 @@ def _legacy_join_devanagari(text: str) -> str:
         next_index = index + 1
         while next_index < len(text) and text[next_index].isspace() and text[next_index] != "\n":
             next_index += 1
-        previous = _devanagari_previous_class("".join(output))
-        following = _devanagari_next_class(text[next_index:])
+        previous = _devanagari_previous_class("".join(output[-2:]))
+        following = _devanagari_next_class(text[next_index : next_index + 1])
         should_drop = (
             (previous == "V" and following == "'")
             or (previous == "C" and following == "C")
@@ -181,7 +226,16 @@ def apply_spacing(text: str, condition: str, script: str) -> str:
         raise ValueError(f"unsupported spacing condition: {condition}")
     text = unicodedata.normalize("NFC", text)
     if condition in {"observed", "surface_word"}:
-        return text
-    if condition in {"continuous", "lexical_boundary"}:
-        return continuous_spacing(text)
-    return legacy_joined_spacing(text, script)
+        spaced = text
+    elif condition in {"continuous", "lexical_boundary"}:
+        spaced = continuous_spacing(text, script)
+    else:
+        spaced = legacy_joined_spacing(text, script)
+
+    if script == "devanagari" and condition in {
+        "surface_word",
+        "legacy_joined",
+        "continuous",
+    }:
+        return devanagari_danda_spacing(spaced)
+    return spaced

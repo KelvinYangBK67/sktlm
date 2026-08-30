@@ -1,27 +1,27 @@
 Formal GRETIL representation generation
 =======================================
-implementation: canonical-representations-1
+implementation: canonical-representations-2
 canonical_root: data\canonical\gretil_iast
 canonical_manifest: data\manifests\canonical_corpus.csv
-freeze_id: 71e48ec78c2eac623d4c4e37bc625f9b91ad8be54bd0ee7da850fd91208440b7
-canonical_files: 246
-representation_files: 1476
-boundary_sidecars: 492
-boundary_offsets: 12130556
+freeze_id: 9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40
+canonical_files: 240
+representation_files: 1440
+boundary_sidecars: 0
+boundary_offsets: 0
 
 condition file counts:
-  iast/continuous: 246
-  iast/surface_word: 246
-  iast/lexical_boundary: 246
-  devanagari/continuous: 246
-  devanagari/surface_word: 246
-  devanagari/lexical_boundary: 246
+  iast/surface_word: 240
+  iast/legacy_joined: 240
+  iast/continuous: 240
+  devanagari/surface_word: 240
+  devanagari/legacy_joined: 240
+  devanagari/continuous: 240
 
 semantics:
-  surface_word preserves source-provided spacing from the canonical freeze
-  continuous removes ordinary lexical whitespace but preserves LF boundaries
-  lexical_boundary text equals continuous text and adds per-line offsets
-  boundary offsets come only from source-provided whitespace
-  boundary offsets are a proxy, not inferred or gold Sanskrit segmentation
+  surface_word preserves lexical spacing from the canonical freeze
+  legacy_joined applies only the historical C-C, C-V, and V-avagraha joins
+  continuous removes lexical spaces but preserves LF and script-specific danda spacing
+  all Devanagari conditions mechanically normalize danda-adjacent spaces
+  no boundary sidecars are generated
   script conversion occurs before spacing manipulation
   canonical corpus files are never modified

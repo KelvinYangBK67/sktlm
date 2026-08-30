@@ -7,20 +7,22 @@ back into `data/canonical/`. Every output row records the same canonical
 The six generated datasets are:
 
 ```text
-iast/{continuous,surface_word,lexical_boundary}
-devanagari/{continuous,surface_word,lexical_boundary}
+iast/{surface_word,legacy_joined,continuous}
+devanagari/{surface_word,legacy_joined,continuous}
 ```
 
-`surface_word` preserves source-provided spacing. `continuous` removes ordinary
-lexical whitespace while preserving physical line and document boundaries.
-`lexical_boundary` uses the same text as `continuous` and adds a JSONL sidecar
-whose offsets are derived only from source-provided whitespace after script
-conversion.
+`surface_word` preserves canonical spacing exactly in IAST and preserves all
+lexical spacing after script conversion in Devanagari. `legacy_joined` applies
+only the historical C-space-C,
+C-space-V, and V-space-avagraha joins; anusvāra and visarga are not consonants
+for these rules. `continuous` removes lexical spaces while preserving LF. It
+keeps one space around IAST `|`/`||` when adjacent line text exists. In all
+three Devanagari conditions, `।`/`॥` has no preceding space and one following
+space when line text follows; line-final daṇḍas have no trailing whitespace.
 
-The boundary offsets are a proxy. They are not gold segmentation, do not infer
-missing lexical boundaries, and do not perform morphology, desandhi, or sandhi
-analysis. This limitation is recorded in the representation manifest and
-generation report.
+Formal generation creates no boundary sidecars and performs no segmentation,
+desandhi, morphology, or other inferred normalization. Script conversion is
+completed once before the three spacing conditions are derived.
 
 Run and validate with:
 
