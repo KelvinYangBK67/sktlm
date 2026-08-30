@@ -39,6 +39,24 @@ class NeutralFormScorer:
         return 0.0
 
 
+@dataclass(slots=True)
+class _MemoizedFormScorer:
+    scorer: FormScorer
+    cache: dict[PhonologicalForm, float]
+
+    def __init__(self, scorer: FormScorer) -> None:
+        self.scorer = scorer
+        self.cache = {}
+
+    def score(self, form: PhonologicalForm) -> float:
+        try:
+            return self.cache[form]
+        except KeyError:
+            score = self.scorer.score(form)
+            self.cache[form] = score
+            return score
+
+
 @dataclass(frozen=True, slots=True)
 class TokenPath:
     score: float
@@ -126,6 +144,10 @@ def evaluate_token_lattice(
 ) -> TokenEvaluation:
     outgoing = lattice.outgoing_edges
     incoming = lattice.incoming_edges
+    edge_scores = {
+        id(edge): scorer.score(edge.word)
+        for edge in lattice.edges
+    }
     node_count = len(lattice.nodes)
     alpha = [-math.inf] * node_count
     alpha[0] = 0.0
@@ -135,7 +157,7 @@ def evaluate_token_lattice(
         for edge in outgoing[node]:
             alpha[edge.end] = logaddexp(
                 alpha[edge.end],
-                alpha[node] + scorer.score(edge.word),
+                alpha[node] + edge_scores[id(edge)],
             )
     log_z = alpha[-1]
     if log_z == -math.inf:
@@ -147,14 +169,14 @@ def evaluate_token_lattice(
         for edge in outgoing[node]:
             beta[node] = logaddexp(
                 beta[node],
-                scorer.score(edge.word) + beta[edge.end],
+                edge_scores[id(edge)] + beta[edge.end],
             )
 
     posteriors: list[tuple[LexicalEdge, float]] = []
     expected_score = 0.0
     identity_log_score = -math.inf
     for edge in lattice.edges:
-        score = scorer.score(edge.word)
+        score = edge_scores[id(edge)]
         probability = math.exp(alpha[edge.start] + score + beta[edge.end] - log_z)
         posteriors.append((edge, probability))
         expected_score += probability * score
@@ -180,7 +202,7 @@ def evaluate_token_lattice(
             for prefix in paths_by_node[node]:
                 candidates.append(
                     TokenPath(
-                        score=prefix.score + scorer.score(edge.word),
+                        score=prefix.score + edge_scores[id(edge)],
                         words=prefix.words + (edge.word,),
                         rule_ids=prefix.rule_ids + edge.rule_ids,
                         boundaries=(
@@ -344,10 +366,15 @@ def infer_training_segment(
 ) -> TrainingSegmentInference:
     '''Exact marginals needed by EM training, without inspection decoding.'''
 
+    memoized_scorer = (
+        scorer
+        if isinstance(scorer, NeutralFormScorer)
+        else _MemoizedFormScorer(scorer)
+    )
     evaluations = tuple(
         _evaluate_factor(
             factor,
-            scorer,
+            memoized_scorer,
             whitespace_merge_penalty=whitespace_merge_penalty,
             top_k=None,
         )
@@ -402,10 +429,15 @@ def infer_segment(
 
     if top_k < 1:
         raise ValueError("top_k must be >= 1")
+    memoized_scorer = (
+        scorer
+        if isinstance(scorer, NeutralFormScorer)
+        else _MemoizedFormScorer(scorer)
+    )
     evaluations = tuple(
         _evaluate_factor(
             factor,
-            scorer,
+            memoized_scorer,
             whitespace_merge_penalty=whitespace_merge_penalty,
             top_k=top_k,
         )
