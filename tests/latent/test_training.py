@@ -149,6 +149,28 @@ def _assert_same_scientific_outputs(reference: Path, resumed: Path) -> None:
         assert (resumed / name).read_bytes() == (reference / name).read_bytes()
 
 
+def test_atomic_replace_retries_transient_permission_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_replace = Path.replace
+    attempts = 0
+
+    def transient_replace(self: Path, target: Path) -> Path:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise PermissionError("simulated transient file lock")
+        return original_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", transient_replace)
+    output = tmp_path / "checkpoint.json"
+    latent_training._write_json(output, {"complete": True})
+
+    assert attempts == 2
+    assert json.loads(output.read_text(encoding="utf-8")) == {"complete": True}
+
+
 def test_parallel_training_matches_serial_scientific_outputs(tmp_path: Path) -> None:
     manifest = _write_resume_fixture(tmp_path)
 
@@ -238,6 +260,78 @@ def test_parallel_training_reuses_valid_shards_after_crash(
     _assert_same_scientific_outputs(reference, resumed)
     assert not tuple((resumed / "shards").rglob("*.counts.tsv"))
     assert not tuple((resumed / "shards").rglob("*.complete.json"))
+
+
+def test_parallel_inspection_reuses_valid_shards_after_crash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = _write_resume_fixture(tmp_path)
+
+    def run(run_id: str, *, resume: bool = False) -> Path:
+        return run_training(
+            TrainingConfig(
+                manifest=manifest,
+                output_root=tmp_path / "artifacts",
+                run_id=run_id,
+                passes=1,
+                workers=2,
+                analysis_top_k=4,
+                flush_types=1,
+                resume=resume,
+            ),
+            repo_root=Path("."),
+        ).run_dir
+
+    reference = run("inspection-reference")
+    original_apply = latent_training._apply_inspection_shard
+    crashed = False
+
+    def crash_before_reduce(**kwargs: object) -> None:
+        nonlocal crashed
+        if not crashed:
+            crashed = True
+            raise RuntimeError("simulated crash before inspection reduction")
+        original_apply(**kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        latent_training,
+        "_apply_inspection_shard",
+        crash_before_reduce,
+    )
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        run("inspection-crashed")
+    crashed_dir = tmp_path / "artifacts" / "inspection-crashed"
+    assert tuple((crashed_dir / "shards" / "inspection").glob("*.complete.json"))
+    monkeypatch.setattr(
+        latent_training,
+        "_apply_inspection_shard",
+        original_apply,
+    )
+
+    resumed = run("inspection-crashed", resume=True)
+    _assert_same_scientific_outputs(reference, resumed)
+    assert not tuple((resumed / "shards" / "inspection").glob("*"))
+
+
+def test_resume_skips_durably_completed_inspection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = _write_resume_fixture(tmp_path)
+    run_dir = _run_resume_fixture(tmp_path, manifest, "completed-inspection")
+
+    def fail_if_repeated(**_: object) -> dict[str, object]:
+        raise AssertionError("completed inspection was repeated")
+
+    monkeypatch.setattr(latent_training, "_inspection_pass", fail_if_repeated)
+    resumed = _run_resume_fixture(
+        tmp_path,
+        manifest,
+        "completed-inspection",
+        resume=True,
+    )
+    assert resumed == run_dir
 
 
 def test_resume_rolls_back_partial_document_counts(

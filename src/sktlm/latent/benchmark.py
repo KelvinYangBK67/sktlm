@@ -126,8 +126,12 @@ def run_benchmark(
         result = run_training(config, repo_root=repo_root)
     else:
         result = profiler.runcall(run_training, config, repo_root=repo_root)
-    cpu_seconds = time.process_time() - cpu_start + float(
-        result.runtime.get('timings_seconds', {}).get('training_worker_cpu', 0.0)
+    runtime_timings = result.runtime.get('timings_seconds', {})
+    cpu_seconds = (
+        time.process_time()
+        - cpu_start
+        + float(runtime_timings.get('training_worker_cpu', 0.0))
+        + float(runtime_timings.get('inspection_worker_cpu', 0.0))
     )
     wall_seconds = time.perf_counter() - wall_start
     training_characters = sum(

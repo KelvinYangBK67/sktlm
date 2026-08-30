@@ -8,6 +8,7 @@ import heapq
 import json
 import multiprocessing
 import os
+import shutil
 import sqlite3
 import subprocess
 import time
@@ -217,6 +218,18 @@ def _run_id(config: TrainingConfig) -> str:
     return config.run_id or f"m0_iast_surface_word_{_config_signature(config)[:12]}"
 
 
+def _replace_file(source: Path, target: Path) -> None:
+    delays = (0.02, 0.04, 0.08, 0.16, 0.32)
+    for attempt, delay in enumerate(delays):
+        try:
+            source.replace(target)
+            return
+        except PermissionError:
+            if attempt + 1 == len(delays):
+                raise
+            time.sleep(delay)
+
+
 def _write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -225,7 +238,7 @@ def _write_json(path: Path, value: Any) -> None:
         encoding="utf-8",
         newline="",
     )
-    temporary.replace(path)
+    _replace_file(temporary, path)
 
 
 def _git_commit(repo_root: Path) -> str:
@@ -522,7 +535,7 @@ def _write_training_shard(
         flush(handle)
         handle.flush()
         os.fsync(handle.fileno())
-    temporary.replace(shard_path)
+    _replace_file(temporary, shard_path)
     metrics.documents = 1
     metrics.lines = len(seen_lines)
     payload = {
@@ -707,14 +720,9 @@ def _parallel_training_documents(
                 pending.append((document_index, future))
             for document_index, future in pending:
                 if future is not None:
-                    future.result()
-                payload = cached.get(document_index) or _load_training_shard(
-                    run_dir,
-                    pass_index,
-                    document_index,
-                    documents[document_index],
-                    signature,
-                )
+                    payload = future.result()
+                else:
+                    payload = cached.get(document_index)
                 if payload is None:
                     raise RuntimeError(
                         f'Worker did not produce document shard {document_index}'
@@ -926,6 +934,610 @@ def _sorted_report(
     return [item[2] for item in sorted(heap, reverse=True)]
 
 
+@dataclass(slots=True)
+class _InspectionAggregate:
+    metrics: PassMetrics = field(default_factory=PassMetrics)
+    rule_usage: Counter[str] = field(default_factory=Counter)
+    top1_sum: float = 0.0
+    entropy_sum: float = 0.0
+    high_confidence: list[tuple[float, int, dict[str, Any]]] = field(
+        default_factory=list
+    )
+    ambiguous: list[tuple[float, int, dict[str, Any]]] = field(default_factory=list)
+    shifts: list[tuple[float, int, dict[str, Any]]] = field(default_factory=list)
+    serial: int = 0
+
+
+_INSPECTION_SHARD_KINDS = (
+    "analyses",
+    "boundaries",
+    "counts",
+    "surfaces",
+    "contexts",
+    "reductions",
+)
+
+
+def _inspection_shard_paths(
+    run_dir: Path,
+    document_index: int,
+) -> dict[str, Path]:
+    root = run_dir / "shards" / "inspection"
+    stem = f"document_{document_index:08d}"
+    return {
+        "analyses": root / f"{stem}.analyses.jsonl",
+        "boundaries": root / f"{stem}.boundaries.jsonl",
+        "counts": root / f"{stem}.counts.tsv",
+        "surfaces": root / f"{stem}.surfaces.tsv",
+        "contexts": root / f"{stem}.contexts.tsv",
+        "reductions": root / f"{stem}.reductions.jsonl",
+        "marker": root / f"{stem}.complete.json",
+    }
+
+
+def _initialize_inspection_worker(
+    database_path: Path,
+    config: TrainingConfig,
+) -> None:
+    _initialize_training_worker(2, database_path, config)
+
+
+def _write_inspection_shard(
+    document_index: int,
+    document: CorpusDocument,
+    config: TrainingConfig,
+    run_dir: Path,
+    config_signature: str,
+) -> dict[str, Any]:
+    if _WORKER_GRAMMAR is None or _WORKER_SCORER is None:
+        raise RuntimeError("Inspection worker was not initialized.")
+    paths = _inspection_shard_paths(run_dir, document_index)
+    paths["marker"].parent.mkdir(parents=True, exist_ok=True)
+    temporary = {
+        kind: paths[kind].with_suffix(paths[kind].suffix + ".tmp")
+        for kind in _INSPECTION_SHARD_KINDS
+    }
+    counts: Counter[PhonologicalForm] = Counter()
+    seen_lines: set[int] = set()
+    count_rows = 0
+    surface_rows = 0
+    context_rows = 0
+    reduction_rows = 0
+    candidate_seconds = 0.0
+    inference_seconds = 0.0
+    aggregation_seconds = 0.0
+    frontend_seconds = 0.0
+    serialization_seconds = 0.0
+    wall_started = time.perf_counter()
+    cpu_started = time.process_time()
+    scorer_calls_before = int(getattr(_WORKER_SCORER, "score_calls", 0))
+    sqlite_selects_before = int(getattr(_WORKER_SCORER, "sqlite_selects", 0))
+    sqlite_seconds_before = float(getattr(_WORKER_SCORER, "sqlite_seconds", 0.0))
+
+    def flush_counts(handle: Any) -> None:
+        nonlocal count_rows
+        if not counts:
+            return
+        for form, value in sorted(counts.items(), key=lambda item: item[0].key):
+            handle.write(f"{form.key}\t{float(value).hex()}\n")
+            count_rows += 1
+        counts.clear()
+
+    handles: dict[str, Any] = {}
+    try:
+        for kind in _INSPECTION_SHARD_KINDS:
+            handles[kind] = temporary[kind].open(
+                "w",
+                encoding="utf-8",
+                newline="",
+            )
+        iterator = _iter_document_segments(document, config)
+        while True:
+            started = time.perf_counter()
+            try:
+                line_number, segment_index, segment = next(iterator)
+            except StopIteration:
+                frontend_seconds += time.perf_counter() - started
+                break
+            frontend_seconds += time.perf_counter() - started
+            seen_lines.add(line_number)
+            started = time.perf_counter()
+            graph = build_candidate_graph(
+                segment,
+                _WORKER_GRAMMAR,
+                config.candidate_config,
+            )
+            candidate_seconds += time.perf_counter() - started
+            candidate_values = candidate_graph_statistics(graph)
+            started = time.perf_counter()
+            inference = infer_segment(
+                graph,
+                _WORKER_SCORER,
+                whitespace_merge_penalty=config.whitespace_merge_penalty,
+                top_k=config.analysis_top_k,
+            )
+            inference_seconds += time.perf_counter() - started
+            started = time.perf_counter()
+            counts.update(inference.expected_counts)
+            aggregation_seconds += time.perf_counter() - started
+
+            serialization_started = time.perf_counter()
+            segment_id = (
+                f"{document.document_id}:l{line_number:08d}:"
+                f"s{segment_index:04d}"
+            )
+            analysis_row = {
+                "schema_version": 1,
+                "segment_id": segment_id,
+                "document": document.relative_path,
+                "line_number": line_number,
+                "source_start": segment.source_start,
+                "source_end": segment.source_end,
+                "surface": segment.written,
+                "top_analyses": [
+                    _analysis_payload(analysis)
+                    for analysis in inference.top_analyses
+                ],
+                "top_analysis_mass": inference.top_analysis_mass,
+                "residual_posterior": max(
+                    0.0,
+                    1.0 - inference.top_analysis_mass,
+                ),
+                "identity_mass": inference.identity_mass,
+                "latent_mass": inference.latent_mass,
+                "entropy": inference.entropy,
+                "log_partition": inference.log_partition,
+                "candidate_counts": candidate_values,
+            }
+            if config.equivalence_diagnostics:
+                analysis_row["candidate_fingerprint"] = candidate_graph_fingerprint(
+                    graph
+                )
+            handles["analyses"].write(
+                json.dumps(analysis_row, ensure_ascii=False, sort_keys=True) + "\n"
+            )
+            boundary_row = {
+                "schema_version": 1,
+                "segment_id": segment_id,
+                "surface": segment.written,
+                "boundaries": [
+                    asdict(item) for item in inference.boundary_posteriors
+                ],
+            }
+            handles["boundaries"].write(
+                json.dumps(boundary_row, ensure_ascii=False, sort_keys=True) + "\n"
+            )
+            serialization_seconds += time.perf_counter() - serialization_started
+
+            top_probability = (
+                inference.top_analyses[0].probability
+                if inference.top_analyses
+                else 0.0
+            )
+            report_payload = {
+                "segment_id": segment_id,
+                "surface": segment.written,
+                "analysis": (
+                    " | ".join(
+                        word.iast for word in inference.top_analyses[0].words
+                    )
+                    if inference.top_analyses
+                    else ""
+                ),
+                "posterior": top_probability,
+                "identity_mass": inference.identity_mass,
+                "latent_mass": inference.latent_mass,
+                "entropy": inference.entropy,
+                "rule_ids": (
+                    list(inference.top_analyses[0].rule_ids)
+                    if inference.top_analyses
+                    else []
+                ),
+            }
+            reduction_row = {
+                "characters": len(segment.written),
+                "log_partition": inference.log_partition,
+                "identity_mass": inference.identity_mass,
+                "latent_mass": inference.latent_mass,
+                "expected_lexical_tokens": inference.expected_lexical_tokens,
+                "overflowed_tokens": graph.overflowed_tokens,
+                "candidate_factors": candidate_values["factors"],
+                "candidate_nodes": candidate_values["lattice_nodes"],
+                "candidate_edges": candidate_values["lexical_edges"],
+                "top_probability": top_probability,
+                "entropy": inference.entropy,
+                "rule_usage": dict(inference.rule_usage),
+                "report": report_payload,
+            }
+            handles["reductions"].write(
+                json.dumps(reduction_row, ensure_ascii=False, sort_keys=True) + "\n"
+            )
+            reduction_rows += 1
+
+            for form, mass in inference.expected_counts.items():
+                if mass >= config.usage_posterior_threshold:
+                    surface = json.dumps(segment.written, ensure_ascii=False)
+                    handles["surfaces"].write(
+                        f"{form.key}\t{surface}\t{float(mass).hex()}\n"
+                    )
+                    surface_rows += 1
+            for analysis in inference.top_analyses:
+                if analysis.probability < config.usage_posterior_threshold:
+                    continue
+                for word_index, word in enumerate(analysis.words):
+                    left = (
+                        analysis.words[word_index - 1].key
+                        if word_index
+                        else "<BOS>"
+                    )
+                    right = (
+                        analysis.words[word_index + 1].key
+                        if word_index + 1 < len(analysis.words)
+                        else "<EOS>"
+                    )
+                    context = json.dumps(f"{left}>{right}", ensure_ascii=False)
+                    handles["contexts"].write(
+                        f"{word.key}\t{context}\t{float(analysis.probability).hex()}\n"
+                    )
+                    context_rows += 1
+            if len(counts) >= config.flush_types:
+                flush_counts(handles["counts"])
+        flush_counts(handles["counts"])
+        for handle in handles.values():
+            handle.flush()
+            os.fsync(handle.fileno())
+    finally:
+        for handle in handles.values():
+            handle.close()
+    for kind in _INSPECTION_SHARD_KINDS:
+        _replace_file(temporary[kind], paths[kind])
+    payload = {
+        "schema_version": 1,
+        "config_signature": config_signature,
+        "document_index": document_index,
+        "relative_path": document.relative_path,
+        "lines": len(seen_lines),
+        "rows": {
+            "counts": count_rows,
+            "surfaces": surface_rows,
+            "contexts": context_rows,
+            "reductions": reduction_rows,
+        },
+        "sha256": {
+            kind: _file_sha256(paths[kind]) for kind in _INSPECTION_SHARD_KINDS
+        },
+        "runtime": {
+            "inspection_candidate_generation": candidate_seconds,
+            "inspection_inference": inference_seconds,
+            "inspection_count_aggregation": aggregation_seconds,
+            "inspection_frontend_io": frontend_seconds,
+            "inspection_serialization": serialization_seconds,
+            "inspection_worker_document_total": time.perf_counter() - wall_started,
+            "inspection_worker_cpu": time.process_time() - cpu_started,
+            "lexical_score_calls": (
+                int(getattr(_WORKER_SCORER, "score_calls", 0))
+                - scorer_calls_before
+            ),
+            "sqlite_selects": (
+                int(getattr(_WORKER_SCORER, "sqlite_selects", 0))
+                - sqlite_selects_before
+            ),
+            "sqlite_seconds": (
+                float(getattr(_WORKER_SCORER, "sqlite_seconds", 0.0))
+                - sqlite_seconds_before
+            ),
+        },
+    }
+    _write_json(paths["marker"], payload)
+    return payload
+
+
+def _load_inspection_shard(
+    run_dir: Path,
+    document_index: int,
+    document: CorpusDocument,
+    config_signature: str,
+) -> dict[str, Any] | None:
+    paths = _inspection_shard_paths(run_dir, document_index)
+    marker_path = paths["marker"]
+    if not marker_path.is_file():
+        return None
+    payload = json.loads(marker_path.read_text(encoding="utf-8"))
+    expected = (
+        payload.get("config_signature") == config_signature
+        and int(payload.get("document_index", -1)) == document_index
+        and payload.get("relative_path") == document.relative_path
+    )
+    if not expected:
+        raise RuntimeError(f"Stale or mismatched inspection shard: {marker_path}")
+    for kind in _INSPECTION_SHARD_KINDS:
+        if not paths[kind].is_file():
+            raise RuntimeError(f"Inspection shard file is missing: {paths[kind]}")
+        if payload["sha256"].get(kind) != _file_sha256(paths[kind]):
+            raise RuntimeError(f"Inspection shard checksum mismatch: {paths[kind]}")
+    return payload
+
+
+def _apply_inspection_shard(
+    *,
+    payload: dict[str, Any],
+    store: LexiconStore,
+    config: TrainingConfig,
+    run_dir: Path,
+    analyses_handle: Any,
+    boundaries_handle: Any,
+    aggregate: _InspectionAggregate,
+    telemetry: RuntimeTelemetry,
+) -> None:
+    document_index = int(payload["document_index"])
+    paths = _inspection_shard_paths(run_dir, document_index)
+    with paths["analyses"].open("rb") as source:
+        shutil.copyfileobj(source, analyses_handle, length=1024 * 1024)
+    with paths["boundaries"].open("rb") as source:
+        shutil.copyfileobj(source, boundaries_handle, length=1024 * 1024)
+
+    buffered_counts: list[tuple[PhonologicalForm, float]] = []
+    with paths["counts"].open(encoding="utf-8") as handle:
+        for line in handle:
+            key, value = line.rstrip("\n").split("\t", 1)
+            buffered_counts.append(
+                (PhonologicalForm.from_key(key), float.fromhex(value))
+            )
+            if len(buffered_counts) >= config.flush_types:
+                store.add_counts(buffered_counts, table="inspection_counts")
+                buffered_counts.clear()
+    if buffered_counts:
+        store.add_counts(buffered_counts, table="inspection_counts")
+
+    for kind in ("surfaces", "contexts"):
+        buffered_usage: list[tuple[str, str, float]] = []
+        with paths[kind].open(encoding="utf-8") as handle:
+            for line in handle:
+                key, encoded_value, mass = line.rstrip("\n").split("\t", 2)
+                buffered_usage.append(
+                    (key, str(json.loads(encoded_value)), float.fromhex(mass))
+                )
+                if len(buffered_usage) >= config.flush_types:
+                    if kind == "surfaces":
+                        store.add_usage(surfaces=buffered_usage)
+                    else:
+                        store.add_usage(contexts=buffered_usage)
+                    buffered_usage.clear()
+        if buffered_usage:
+            if kind == "surfaces":
+                store.add_usage(surfaces=buffered_usage)
+            else:
+                store.add_usage(contexts=buffered_usage)
+
+    with paths["reductions"].open(encoding="utf-8") as handle:
+        for line in handle:
+            row = json.loads(line)
+            metrics = aggregate.metrics
+            metrics.segments += 1
+            metrics.characters += int(row["characters"])
+            metrics.log_partition += float(row["log_partition"])
+            metrics.identity_mass_sum += float(row["identity_mass"])
+            metrics.latent_mass_sum += float(row["latent_mass"])
+            metrics.expected_lexical_tokens += float(
+                row["expected_lexical_tokens"]
+            )
+            metrics.overflowed_tokens += int(row["overflowed_tokens"])
+            metrics.candidate_factors += int(row["candidate_factors"])
+            metrics.candidate_nodes += int(row["candidate_nodes"])
+            metrics.candidate_edges += int(row["candidate_edges"])
+            aggregate.rule_usage.update(row["rule_usage"])
+            top_probability = float(row["top_probability"])
+            entropy = float(row["entropy"])
+            aggregate.top1_sum += top_probability
+            aggregate.entropy_sum += entropy
+            report_payload = row["report"]
+            if (
+                report_payload["rule_ids"]
+                and top_probability >= config.high_confidence_threshold
+            ):
+                _push_report(
+                    aggregate.high_confidence,
+                    top_probability,
+                    aggregate.serial,
+                    report_payload,
+                )
+            _push_report(
+                aggregate.ambiguous,
+                entropy,
+                aggregate.serial,
+                report_payload,
+            )
+            _push_report(
+                aggregate.shifts,
+                float(row["latent_mass"]),
+                aggregate.serial,
+                report_payload,
+            )
+            aggregate.serial += 1
+    aggregate.metrics.documents += 1
+    aggregate.metrics.lines += int(payload["lines"])
+
+    runtime = payload["runtime"]
+    for label in (
+        "inspection_candidate_generation",
+        "inspection_inference",
+        "inspection_count_aggregation",
+        "inspection_frontend_io",
+        "inspection_serialization",
+        "inspection_worker_document_total",
+        "inspection_worker_cpu",
+    ):
+        telemetry.add_seconds(label, float(runtime[label]))
+    telemetry.increment(
+        "inspection_worker_lexical_score_calls",
+        int(runtime["lexical_score_calls"]),
+    )
+    telemetry.increment(
+        "inspection_worker_sqlite_selects",
+        int(runtime["sqlite_selects"]),
+    )
+    telemetry.add_seconds("inspection_worker_sqlite", float(runtime["sqlite_seconds"]))
+
+
+def _finalize_inspection(
+    *,
+    store: LexiconStore,
+    grammar: StructuredSandhiGrammar,
+    config: TrainingConfig,
+    run_dir: Path,
+    analyses_tmp: Path,
+    boundaries_tmp: Path,
+    aggregate: _InspectionAggregate,
+) -> dict[str, Any]:
+    _replace_file(analyses_tmp, run_dir / "analyses.jsonl")
+    _replace_file(boundaries_tmp, run_dir / "boundary_posteriors.jsonl")
+    store.export_lexicon(
+        run_dir / "latent_lexicon.tsv",
+        usage_threshold=config.usage_posterior_threshold,
+    )
+    with (run_dir / "rule_usage.tsv").open(
+        "w",
+        encoding="utf-8",
+        newline="",
+    ) as handle:
+        writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
+        writer.writerow(("rule_id", "expected_usage"))
+        for rule in grammar.rules:
+            writer.writerow(
+                (rule.rule_id, aggregate.rule_usage.get(rule.rule_id, 0.0))
+            )
+
+    complexity = store.complexity_summary(
+        weight=config.complexity_weight,
+        tau=config.complexity_tau,
+        low_count_threshold=config.low_count_threshold,
+    )
+    denominator = max(1, aggregate.metrics.segments)
+    summary: dict[str, Any] = {
+        **aggregate.metrics.summary(config.passes),
+        "mean_top1_posterior": aggregate.top1_sum / denominator,
+        "mean_entropy": aggregate.entropy_sum / denominator,
+        "rule_expected_usage_total": sum(aggregate.rule_usage.values()),
+        "identity_mass_total": aggregate.metrics.identity_mass_sum,
+        "latent_mass_total": aggregate.metrics.latent_mass_sum,
+        "complexity": complexity,
+        "usage_count_semantics": (
+            "Distinct surface/context counts include associations whose "
+            "posterior mass reaches usage_posterior_threshold; contexts use "
+            "the bounded reported top-k analyses."
+        ),
+    }
+    _write_json(run_dir / "summary.json", summary)
+    report = _human_report(
+        store=store,
+        summary=summary,
+        rule_usage=aggregate.rule_usage,
+        high_confidence=_sorted_report(aggregate.high_confidence),
+        ambiguous=_sorted_report(aggregate.ambiguous),
+        shifts=_sorted_report(aggregate.shifts),
+        config=config,
+    )
+    (run_dir / "inspection_report.md").write_text(
+        report,
+        encoding="utf-8",
+        newline="",
+    )
+    return summary
+
+
+def _parallel_inspection_pass(
+    *,
+    documents: tuple[CorpusDocument, ...],
+    grammar: StructuredSandhiGrammar,
+    store: LexiconStore,
+    config: TrainingConfig,
+    run_dir: Path,
+    telemetry: RuntimeTelemetry,
+) -> dict[str, Any]:
+    signature = _config_signature(config)
+    analyses_tmp = run_dir / "analyses.jsonl.tmp"
+    boundaries_tmp = run_dir / "boundary_posteriors.jsonl.tmp"
+    aggregate = _InspectionAggregate()
+    parallel_started = telemetry.now()
+    context = multiprocessing.get_context("spawn")
+    with analyses_tmp.open("wb") as analyses_handle, boundaries_tmp.open(
+        "wb"
+    ) as boundaries_handle, ProcessPoolExecutor(
+        max_workers=config.workers,
+        mp_context=context,
+        initializer=_initialize_inspection_worker,
+        initargs=(store.path, config),
+    ) as executor:
+        for batch_start in range(0, len(documents), config.workers):
+            batch = range(
+                batch_start,
+                min(len(documents), batch_start + config.workers),
+            )
+            pending: list[tuple[int, Future[dict[str, Any]] | None]] = []
+            cached: dict[int, dict[str, Any]] = {}
+            for document_index in batch:
+                document = documents[document_index]
+                existing = _load_inspection_shard(
+                    run_dir,
+                    document_index,
+                    document,
+                    signature,
+                )
+                if existing is not None:
+                    cached[document_index] = existing
+                    pending.append((document_index, None))
+                    continue
+                future = executor.submit(
+                    _write_inspection_shard,
+                    document_index,
+                    document,
+                    config,
+                    run_dir,
+                    signature,
+                )
+                pending.append((document_index, future))
+            for document_index, future in pending:
+                if future is not None:
+                    payload = future.result()
+                else:
+                    payload = cached.get(document_index)
+                if payload is None:
+                    raise RuntimeError(
+                        f"Worker did not produce inspection shard {document_index}"
+                    )
+                _apply_inspection_shard(
+                    payload=payload,
+                    store=store,
+                    config=config,
+                    run_dir=run_dir,
+                    analyses_handle=analyses_handle,
+                    boundaries_handle=boundaries_handle,
+                    aggregate=aggregate,
+                    telemetry=telemetry,
+                )
+    parallel_seconds = time.perf_counter() - parallel_started
+    telemetry.add_seconds("inspection_parallel_wall", parallel_seconds)
+    telemetry.add_seconds("inspection_document_total", parallel_seconds)
+    return _finalize_inspection(
+        store=store,
+        grammar=grammar,
+        config=config,
+        run_dir=run_dir,
+        analyses_tmp=analyses_tmp,
+        boundaries_tmp=boundaries_tmp,
+        aggregate=aggregate,
+    )
+
+
+def _cleanup_inspection_shards(run_dir: Path) -> None:
+    root = run_dir / "shards" / "inspection"
+    if not root.is_dir():
+        return
+    for path in root.iterdir():
+        if path.is_file():
+            path.unlink()
+
+
 def _inspection_pass(
     *,
     documents: tuple[CorpusDocument, ...],
@@ -936,6 +1548,15 @@ def _inspection_pass(
     telemetry: RuntimeTelemetry,
 ) -> dict[str, Any]:
     store.begin_inspection()
+    if config.workers > 1:
+        return _parallel_inspection_pass(
+            documents=documents,
+            grammar=grammar,
+            store=store,
+            config=config,
+            run_dir=run_dir,
+            telemetry=telemetry,
+        )
     scorer = store.scorer(
         alpha=config.lexical_alpha,
         complexity_weight=config.complexity_weight,
@@ -1123,58 +1744,25 @@ def _inspection_pass(
             metrics.lines += len(seen_lines)
             telemetry.elapsed('inspection_document_total', document_started)
 
-    analyses_tmp.replace(run_dir / "analyses.jsonl")
-    boundaries_tmp.replace(run_dir / "boundary_posteriors.jsonl")
-    store.export_lexicon(
-        run_dir / "latent_lexicon.tsv",
-        usage_threshold=config.usage_posterior_threshold,
-    )
-    with (run_dir / "rule_usage.tsv").open(
-        "w",
-        encoding="utf-8",
-        newline="",
-    ) as handle:
-        writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
-        writer.writerow(("rule_id", "expected_usage"))
-        for rule in grammar.rules:
-            writer.writerow((rule.rule_id, rule_usage.get(rule.rule_id, 0.0)))
-
-    complexity = store.complexity_summary(
-        weight=config.complexity_weight,
-        tau=config.complexity_tau,
-        low_count_threshold=config.low_count_threshold,
-    )
-    denominator = max(1, metrics.segments)
-    summary: dict[str, Any] = {
-        **metrics.summary(config.passes),
-        "mean_top1_posterior": top1_sum / denominator,
-        "mean_entropy": entropy_sum / denominator,
-        "rule_expected_usage_total": sum(rule_usage.values()),
-        "identity_mass_total": metrics.identity_mass_sum,
-        "latent_mass_total": metrics.latent_mass_sum,
-        "complexity": complexity,
-        "usage_count_semantics": (
-            "Distinct surface/context counts include associations whose "
-            "posterior mass reaches usage_posterior_threshold; contexts use "
-            "the bounded reported top-k analyses."
-        ),
-    }
-    _write_json(run_dir / "summary.json", summary)
-    report = _human_report(
-        store=store,
-        summary=summary,
+    aggregate = _InspectionAggregate(
+        metrics=metrics,
         rule_usage=rule_usage,
-        high_confidence=_sorted_report(high_confidence),
-        ambiguous=_sorted_report(ambiguous),
-        shifts=_sorted_report(shifts),
+        top1_sum=top1_sum,
+        entropy_sum=entropy_sum,
+        high_confidence=high_confidence,
+        ambiguous=ambiguous,
+        shifts=shifts,
+        serial=serial,
+    )
+    return _finalize_inspection(
+        store=store,
+        grammar=grammar,
         config=config,
+        run_dir=run_dir,
+        analyses_tmp=analyses_tmp,
+        boundaries_tmp=boundaries_tmp,
+        aggregate=aggregate,
     )
-    (run_dir / "inspection_report.md").write_text(
-        report,
-        encoding="utf-8",
-        newline="",
-    )
-    return summary
 
 
 def _human_report(
@@ -1404,6 +1992,20 @@ def run_training(
                 telemetry=telemetry,
             )
         _write_json(run_dir / "iteration_metrics.json", checkpoint["history"])
+        if checkpoint.get("inspection_complete"):
+            summary = json.loads(
+                (run_dir / "summary.json").read_text(encoding="utf-8")
+            )
+            runtime = json.loads(
+                (run_dir / "timing_metrics.json").read_text(encoding="utf-8")
+            )
+            _cleanup_inspection_shards(run_dir)
+            return TrainingResult(
+                run_dir=run_dir,
+                history=tuple(checkpoint["history"]),
+                summary=summary,
+                runtime=runtime,
+            )
         summary = _inspection_pass(
             documents=documents,
             grammar=grammar,
@@ -1412,11 +2014,13 @@ def run_training(
             run_dir=run_dir,
             telemetry=telemetry,
         )
-        checkpoint["inspection_complete"] = True
-        _timed_checkpoint(run_dir, checkpoint, telemetry)
         runtime = store.runtime_payload()
         runtime['grammar_cache'] = grammar.cache_statistics()
         _write_json(run_dir / 'timing_metrics.json', runtime)
+        checkpoint["inspection_complete"] = True
+        store.save_training_checkpoint(checkpoint)
+        _timed_checkpoint(run_dir, checkpoint, telemetry)
+        _cleanup_inspection_shards(run_dir)
         return TrainingResult(
             run_dir=run_dir,
             history=tuple(checkpoint["history"]),
