@@ -11,9 +11,8 @@ The current framework provides:
   hashes, cleaning audit, and unknown-character reporting;
 - canonical physical-line segments with stable `document_id`, `segment_id`, and
   split metadata;
-- independent `iast`/`devanagari` script transforms and `surface_word`,
-  `continuous`, or source-whitespace `lexical_boundary` datasets, while
-  retaining `observed` and `legacy_joined` as compatibility conditions;
+- the formal M0 representation matrix: IAST and Devanagari, each generated as
+  `surface_word`, `legacy_joined`, and `continuous`;
 - a common tokenizer interface for SentencePiece BPE, SentencePiece Unigram,
   Unicode characters, UTF-8 bytes, and extended grapheme clusters;
 - token span, orthographic-boundary, and explicitly heuristic sandhi-fragment
@@ -56,9 +55,8 @@ sktlm-generate-representations
 sktlm-validate-representations
 ```
 
-`lexical_boundary` offsets reproduce source-provided whitespace only. They are
-explicitly a proxy, not inferred or gold Sanskrit segmentation. See
-`docs/methodology/representations.md`.
+The formal generator creates exactly these six text datasets and no boundary
+sidecars. See `docs/methodology/representations.md` for the spacing contracts.
 
 Run a provenance and tokenizer-diagnostics pass without model training:
 
@@ -84,8 +82,14 @@ evaluation are physically separate packages. Generated data progresses through
 reports live under `reports/`. See `docs/workflows/repository_layout.md` and
 `docs/workflows/corpus_cleaning.md`.
 
-Historical pilot scripts, models, checkpoints, tokenizer artifacts, superseded
-cleaning passes, and migration notes are preserved under `archive/legacy/` and
-do not participate in the main pipeline. The archived 24k SentencePiece models
-encode a historical joined-text condition and must not be presented as clean
-observed-spacing Devanagari baselines.
+Historical pilot source code, superseded cleaning passes, and migration notes
+are preserved under `archive/legacy/` and do not participate in the main
+pipeline. Generated pilot checkpoints and tokenizer model/vocabulary artifacts
+are intentionally excluded from the public repository.
+
+## License
+
+Project-authored code, configs, tests, and documentation are licensed under the
+[Apache License 2.0](LICENSE). GRETIL source texts and derived textual datasets
+have separate terms described in [DATA_LICENSE.md](DATA_LICENSE.md). See also
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
