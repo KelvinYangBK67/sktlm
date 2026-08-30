@@ -28,7 +28,7 @@ Command:
 
     .\.venv\Scripts\python.exe -m sktlm.latent.benchmark --benchmark smoke --run-id smoke_reference_p0_wall --passes 1
 
-This benchmark performs one exact neutral training pass plus exact final inspection:
+This benchmark performs one exact neutral training pass plus exact final inspection. The original uninstrumented observation was:
 
 | metric | value |
 |---|---:|
@@ -42,7 +42,37 @@ This benchmark performs one exact neutral training pass plus exact final inspect
 | segment visits/s | 110.07 |
 | artifact bytes | 44,108,686 |
 
-Two independently executed reference runs were scientifically equivalent with zero mismatches at relative tolerance 1e-10 and absolute tolerance 1e-12, including candidate fingerprints, segment log partitions, posteriors, expected counts, boundary/rule output, top analyses, and final probabilities.
+This observation did not reproduce after the host returned to a stable load and is retained only as the first historical measurement. It is an anomalously fast outlier, not the accepted baseline.
+
+Three consecutive telemetry-enabled repeats used the same inputs and scientific configuration. Their accepted wall baseline is the median:
+
+| metric | median | range |
+|---|---:|---:|
+| wall time | 55.046 s | 54.049–56.323 s |
+| CPU time | 49.031 s | 48.563–49.969 s |
+| character visits/s | 1,709.10 | 1,670.37–1,740.65 |
+| segment visits/s | 44.44 | 43.43–45.26 |
+| artifact bytes | 44,109,992 | 44,109,988–44,109,997 |
+| measured peak RSS | 54.5 MiB | 54.5–54.6 MiB for the two repeats after the Windows sampler fix |
+
+Median low-overhead phase timings:
+
+| phase | seconds |
+|---|---:|
+| training document total | 8.799 |
+| training candidate generation | 2.948 |
+| training exact inference | 4.529 |
+| final-inspection document total | 44.440 |
+| inspection candidate generation | 4.214 |
+| inspection exact inference | 31.940 |
+| inspection serialization | 4.364 |
+| SQLite count-row serialization | 0.834 |
+| SQLite count upsert | 0.656 |
+| SQLite document commit | 0.390 |
+
+The inspection scorer made 1,448,559 score calls on every repeat: 1,408,809 cache hits, 39,750 cache misses and SQLite selects. The counter invariants were likewise identical: 99,854 rows serialized/upserted in 24 upsert calls, with 12 document commits.
+
+All telemetry repeats remained scientifically equivalent to the original reference with zero mismatches at relative tolerance 1e-10 and absolute tolerance 1e-12, including candidate fingerprints, segment log partitions, posteriors, expected counts, boundary/rule output, top analyses, and final probabilities.
 
 ## Smoke cProfile
 

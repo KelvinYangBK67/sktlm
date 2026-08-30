@@ -53,6 +53,7 @@ def test_bounded_training_writes_research_artifacts(tmp_path: Path) -> None:
     )
 
     expected = {
+        'timing_metrics.json',
         "config.json",
         "provenance.json",
         "checkpoint.json",
@@ -66,6 +67,7 @@ def test_bounded_training_writes_research_artifacts(tmp_path: Path) -> None:
         "inspection_report.md",
     }
     assert expected <= {path.name for path in result.run_dir.iterdir()}
+    assert result.runtime['timings_seconds']
     summary = json.loads((result.run_dir / "summary.json").read_text(encoding="utf-8"))
     assert summary["segments"] == 2
     assert summary["complexity"]["active_lexical_types"] > 0

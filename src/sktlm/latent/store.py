@@ -6,11 +6,13 @@ import csv
 import json
 import math
 import sqlite3
+import time
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Iterable
 
 from sktlm.latent.phonology import PhonologicalForm
+from sktlm.latent.telemetry import RuntimeTelemetry
 
 
 TRAINING_CHECKPOINT_KEY = "training_checkpoint"
@@ -37,13 +39,20 @@ class LexiconScorer:
         complexity_weight: float,
         complexity_tau: float,
         cache_size: int,
+        telemetry: RuntimeTelemetry,
     ) -> None:
         self.connection = connection
         self.alpha = alpha
         self.complexity_weight = complexity_weight
         self.complexity_tau = complexity_tau
         self.cache_size = cache_size
+        self.telemetry = telemetry
         self._cache: OrderedDict[str, tuple[float, float]] = OrderedDict()
+        self.score_calls = 0
+        self.cache_hits = 0
+        self.cache_misses = 0
+        self.sqlite_selects = 0
+        self.sqlite_seconds = 0.0
         row = connection.execute(
             "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) FROM lexicon"
         ).fetchone()
@@ -55,12 +64,17 @@ class LexiconScorer:
     def _lookup(self, key: str) -> tuple[float, float]:
         cached = self._cache.get(key)
         if cached is not None:
+            self.cache_hits += 1
             self._cache.move_to_end(key)
             return cached
+        self.cache_misses += 1
+        started = time.perf_counter()
         row = self.connection.execute(
             "SELECT expected_count, probability FROM lexicon WHERE form_key = ?",
             (key,),
         ).fetchone()
+        self.sqlite_seconds += time.perf_counter() - started
+        self.sqlite_selects += 1
         if row is None:
             count = 0.0
             probability = (
@@ -76,6 +90,7 @@ class LexiconScorer:
         return value
 
     def score(self, form: PhonologicalForm) -> float:
+        self.score_calls += 1
         count, probability = self._lookup(form.key)
         penalty = self.complexity_weight * math.log1p(
             1.0 / (self.complexity_tau + count)
@@ -84,9 +99,16 @@ class LexiconScorer:
 
 
 class LexiconStore:
-    def __init__(self, path: Path) -> None:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        telemetry: RuntimeTelemetry | None = None,
+    ) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
+        self.telemetry = telemetry or RuntimeTelemetry()
+        self._scorers: list[LexiconScorer] = []
         self.connection = sqlite3.connect(path)
         self.connection.execute("PRAGMA journal_mode=WAL")
         self.connection.execute("PRAGMA synchronous=NORMAL")
@@ -165,11 +187,12 @@ class LexiconStore:
             )
             self._set_training_checkpoint(checkpoint)
 
-    @staticmethod
     def _count_rows(
+        self,
         counts: Iterable[tuple[PhonologicalForm, float]],
     ) -> list[tuple[str, str, str, float]]:
-        return [
+        started = time.perf_counter()
+        rows = [
             (
                 form.key,
                 form.iast,
@@ -179,6 +202,9 @@ class LexiconStore:
             for form, value in counts
             if value > 0.0
         ]
+        self.telemetry.elapsed('sqlite_count_row_serialization', started)
+        self.telemetry.increment('sqlite_count_rows_serialized', len(rows))
+        return rows
 
     def _upsert_counts(
         self,
@@ -186,6 +212,8 @@ class LexiconStore:
         *,
         table: str,
     ) -> None:
+        rows = list(rows)
+        started = time.perf_counter()
         self.connection.executemany(
             f"INSERT INTO {table}(form_key, iast, phoneme_ids, expected_count) "
             "VALUES (?, ?, ?, ?) "
@@ -193,6 +221,9 @@ class LexiconStore:
             "expected_count = expected_count + excluded.expected_count",
             rows,
         )
+        self.telemetry.elapsed('sqlite_count_upsert', started)
+        self.telemetry.increment('sqlite_count_upsert_calls')
+        self.telemetry.increment('sqlite_count_upsert_rows', len(rows))
 
     def add_counts(
         self,
@@ -204,9 +235,12 @@ class LexiconStore:
             self._upsert_counts(self._count_rows(counts), table=table)
 
     def begin_document_counts(self) -> None:
+        started = time.perf_counter()
         if self.connection.in_transaction:
             raise RuntimeError("Cannot start a document inside an open transaction.")
         self.connection.execute("BEGIN IMMEDIATE")
+
+        self.telemetry.elapsed('sqlite_document_begin', started)
 
     def add_document_counts(
         self,
@@ -220,7 +254,10 @@ class LexiconStore:
         if not self.connection.in_transaction:
             raise RuntimeError("No document transaction is open.")
         self._set_training_checkpoint(checkpoint)
+        started = time.perf_counter()
         self.connection.commit()
+        self.telemetry.elapsed('sqlite_document_commit', started)
+        self.telemetry.increment('sqlite_documents_committed')
 
     def rollback_document(self) -> None:
         if self.connection.in_transaction:
@@ -269,13 +306,31 @@ class LexiconStore:
     ) -> LexiconScorer:
         if not self.has_lexicon():
             raise RuntimeError("Cannot score before the neutral count pass.")
-        return LexiconScorer(
+        scorer = LexiconScorer(
             self.connection,
             alpha=alpha,
             complexity_weight=complexity_weight,
             complexity_tau=complexity_tau,
             cache_size=cache_size,
+            telemetry=self.telemetry,
         )
+        self._scorers.append(scorer)
+        return scorer
+
+    def runtime_payload(self) -> dict[str, Any]:
+        payload = self.telemetry.payload()
+        payload['lexical_scorers'] = [
+            {
+                'score_calls': scorer.score_calls,
+                'cache_hits': scorer.cache_hits,
+                'cache_misses': scorer.cache_misses,
+                'sqlite_selects': scorer.sqlite_selects,
+                'sqlite_seconds': scorer.sqlite_seconds,
+                'cache_size': scorer.cache_size,
+            }
+            for scorer in self._scorers
+        ]
+        return payload
 
     def begin_inspection(self) -> None:
         with self.connection:

@@ -7,6 +7,7 @@ import hashlib
 import heapq
 import json
 import subprocess
+import time
 from collections import Counter
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -28,6 +29,7 @@ from sktlm.latent.inference import (
 )
 from sktlm.latent.phonology import PhonologicalForm
 from sktlm.latent.store import LexiconStore
+from sktlm.latent.telemetry import RuntimeTelemetry
 
 
 EXPECTED_FREEZE_ID = "9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40"
@@ -304,6 +306,25 @@ def _iter_document_segments(
                 yield line_number, segment_index, segment
 
 
+def _profiled_document_segments(
+    document: CorpusDocument,
+    config: TrainingConfig,
+    telemetry: RuntimeTelemetry,
+    *,
+    phase: str,
+) -> Iterator[tuple[int, int, ObservedSegment]]:
+    iterator = _iter_document_segments(document, config)
+    while True:
+        started = telemetry.now()
+        try:
+            item = next(iterator)
+        except StopIteration:
+            telemetry.elapsed(f'{phase}_frontend_io', started)
+            return
+        telemetry.elapsed(f'{phase}_frontend_io', started)
+        yield item
+
+
 def _flush_counts(
     store: LexiconStore,
     counts: Counter[PhonologicalForm],
@@ -341,6 +362,16 @@ def _save_checkpoint(run_dir: Path, checkpoint: dict[str, Any]) -> None:
     _write_json(_checkpoint_path(run_dir), checkpoint)
 
 
+def _timed_checkpoint(
+    run_dir: Path,
+    checkpoint: dict[str, Any],
+    telemetry: RuntimeTelemetry,
+) -> None:
+    started = telemetry.now()
+    _save_checkpoint(run_dir, checkpoint)
+    telemetry.elapsed('checkpoint_json', started)
+
+
 def _metrics_from_mapping(payload: dict[str, Any] | None) -> PassMetrics:
     if payload is None:
         return PassMetrics()
@@ -369,6 +400,7 @@ def _training_pass(
     config: TrainingConfig,
     run_dir: Path,
     checkpoint: dict[str, Any],
+    telemetry: RuntimeTelemetry,
 ) -> dict[str, Any]:
     resuming = checkpoint.get("active_pass") == pass_index
     start_document = int(checkpoint.get("next_document_index", 0)) if resuming else 0
@@ -391,26 +423,38 @@ def _training_pass(
         }
     )
     store.begin_count_pass(resume=resuming, checkpoint=checkpoint)
-    _save_checkpoint(run_dir, checkpoint)
+    _timed_checkpoint(run_dir, checkpoint, telemetry)
 
     for document_index in range(start_document, len(documents)):
         document = documents[document_index]
         counts: Counter[PhonologicalForm] = Counter()
         seen_lines: set[int] = set()
         document_metrics = PassMetrics()
+        document_started = telemetry.now()
         store.begin_document_counts()
         try:
-            for line_number, _, segment in _iter_document_segments(document, config):
+            for line_number, _, segment in _profiled_document_segments(
+                document,
+                config,
+                telemetry,
+                phase='training',
+            ):
                 seen_lines.add(line_number)
+                started = telemetry.now()
                 graph = build_candidate_graph(segment, grammar, config.candidate_config)
+                telemetry.elapsed('training_candidate_generation', started)
                 candidate_counts = candidate_graph_statistics(graph)
+                started = telemetry.now()
                 inference = infer_segment(
                     graph,
                     scorer,
                     whitespace_merge_penalty=config.whitespace_merge_penalty,
                     top_k=1,
                 )
+                telemetry.elapsed('training_inference', started)
+                started = telemetry.now()
                 counts.update(inference.expected_counts)
+                telemetry.elapsed('training_count_aggregation', started)
                 document_metrics.update(
                     segment,
                     inference,
@@ -445,7 +489,8 @@ def _training_pass(
             raise
         metrics = next_metrics
         checkpoint.update(next_checkpoint)
-        _save_checkpoint(run_dir, checkpoint)
+        telemetry.elapsed('training_document_total', document_started)
+        _timed_checkpoint(run_dir, checkpoint, telemetry)
 
     row = store.connection.execute(
         "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) FROM counts_next"
@@ -465,11 +510,13 @@ def _training_pass(
             "active_metrics": None,
         }
     )
+    started = telemetry.now()
     store.finalize_count_pass(
         alpha=config.lexical_alpha,
         checkpoint=checkpoint,
     )
-    _save_checkpoint(run_dir, checkpoint)
+    telemetry.elapsed('lexicon_finalize', started)
+    _timed_checkpoint(run_dir, checkpoint, telemetry)
     return summary
 
 
@@ -527,6 +574,7 @@ def _inspection_pass(
     store: LexiconStore,
     config: TrainingConfig,
     run_dir: Path,
+    telemetry: RuntimeTelemetry,
 ) -> dict[str, Any]:
     store.begin_inspection()
     scorer = store.scorer(
@@ -551,24 +599,33 @@ def _inspection_pass(
         boundaries_tmp.open("w", encoding="utf-8", newline="\n")
     ) as boundaries_handle:
         for document in documents:
+            document_started = telemetry.now()
             seen_lines: set[int] = set()
             surface_usage: list[tuple[str, str, float]] = []
             context_usage: list[tuple[str, str, float]] = []
-            for line_number, segment_index, segment in _iter_document_segments(
+            for line_number, segment_index, segment in _profiled_document_segments(
                 document,
                 config,
+                telemetry,
+                phase='inspection',
             ):
                 seen_lines.add(line_number)
+                started = telemetry.now()
                 graph = build_candidate_graph(segment, grammar, config.candidate_config)
+                telemetry.elapsed('inspection_candidate_generation', started)
                 candidate_counts = candidate_graph_statistics(graph)
+                started = telemetry.now()
                 inference = infer_segment(
                     graph,
                     scorer,
                     whitespace_merge_penalty=config.whitespace_merge_penalty,
                     top_k=config.analysis_top_k,
                 )
+                telemetry.elapsed('inspection_inference', started)
+                started = telemetry.now()
                 counts.update(inference.expected_counts)
                 rule_usage.update(inference.rule_usage)
+                telemetry.elapsed('inspection_count_aggregation', started)
                 metrics.update(
                     segment,
                     inference,
@@ -577,6 +634,7 @@ def _inspection_pass(
                     candidate_nodes=candidate_counts["lattice_nodes"],
                     candidate_edges=candidate_counts["lexical_edges"],
                 )
+                serialization_started = telemetry.now()
                 segment_id = (
                     f"{document.document_id}:l{line_number:08d}:"
                     f"s{segment_index:04d}"
@@ -619,6 +677,7 @@ def _inspection_pass(
                     json.dumps(boundary_row, ensure_ascii=False, sort_keys=True) + "\n"
                 )
 
+                telemetry.elapsed('inspection_serialization', serialization_started)
                 top_probability = (
                     inference.top_analyses[0].probability
                     if inference.top_analyses
@@ -703,6 +762,7 @@ def _inspection_pass(
             store.add_usage(surfaces=surface_usage, contexts=context_usage)
             metrics.documents += 1
             metrics.lines += len(seen_lines)
+            telemetry.elapsed('inspection_document_total', document_started)
 
     analyses_tmp.replace(run_dir / "analyses.jsonl")
     boundaries_tmp.replace(run_dir / "boundary_posteriors.jsonl")
@@ -860,6 +920,7 @@ class TrainingResult:
     run_dir: Path
     history: tuple[dict[str, Any], ...]
     summary: dict[str, Any]
+    runtime: dict[str, Any]
 
 
 def run_training(
@@ -887,6 +948,7 @@ def run_training(
     run_dir.mkdir(parents=True, exist_ok=True)
     signature = _config_signature(config)
     store = LexiconStore(run_dir / "learner.sqlite")
+    telemetry = store.telemetry
     try:
         stored_signature = store.get_metadata("config_signature")
         if stored_signature is not None and stored_signature != signature:
@@ -980,6 +1042,7 @@ def run_training(
                 config=config,
                 run_dir=run_dir,
                 checkpoint=checkpoint,
+                telemetry=telemetry,
             )
         _write_json(run_dir / "iteration_metrics.json", checkpoint["history"])
         summary = _inspection_pass(
@@ -988,13 +1051,17 @@ def run_training(
             store=store,
             config=config,
             run_dir=run_dir,
+            telemetry=telemetry,
         )
         checkpoint["inspection_complete"] = True
-        _save_checkpoint(run_dir, checkpoint)
+        _timed_checkpoint(run_dir, checkpoint, telemetry)
+        runtime = store.runtime_payload()
+        _write_json(run_dir / 'timing_metrics.json', runtime)
         return TrainingResult(
             run_dir=run_dir,
             history=tuple(checkpoint["history"]),
             summary=summary,
+            runtime=runtime,
         )
     finally:
         store.close()

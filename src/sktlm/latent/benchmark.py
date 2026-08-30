@@ -53,8 +53,17 @@ def _peak_rss_bytes() -> int | None:
 
             counters = ProcessMemoryCounters()
             counters.cb = ctypes.sizeof(counters)
-            handle = ctypes.windll.kernel32.GetCurrentProcess()
-            if ctypes.windll.psapi.GetProcessMemoryInfo(
+            kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+            psapi = ctypes.WinDLL('psapi', use_last_error=True)
+            kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+            psapi.GetProcessMemoryInfo.argtypes = (
+                wintypes.HANDLE,
+                ctypes.POINTER(ProcessMemoryCounters),
+                wintypes.DWORD,
+            )
+            psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+            handle = kernel32.GetCurrentProcess()
+            if psapi.GetProcessMemoryInfo(
                 handle,
                 ctypes.byref(counters),
                 counters.cb,
@@ -126,6 +135,7 @@ def run_benchmark(
     inspection_segments = int(result.summary["segments"])
     segment_visits = training_segments + inspection_segments
     metrics = {
+        'runtime': result.runtime,
         "schema_version": 1,
         "benchmark": benchmark,
         "document_list": document_list.as_posix(),
