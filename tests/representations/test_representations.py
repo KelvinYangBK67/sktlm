@@ -68,6 +68,19 @@ def test_continuous_devanagari_preserves_exact_danda_spacing_and_lf() -> None:
     expected = "रामःगच्छति। सीतातिष्ठति\nरामःगच्छति॥\n"
     assert apply_spacing(text, "continuous", "devanagari") == expected
 
+def test_continuous_devanagari_recomposes_consonant_vowel_boundaries() -> None:
+    cases = {
+        "तद् अस्ति": "तदस्ति",
+        "तद् इति": "तदिति",
+        "तद् उक्तम्": "तदुक्तम्",
+        "तद् एव": "तदेव",
+        "तद् अभ्यस्राम्यद् अभ्यतपत् समतपत्":
+            "तदभ्यस्राम्यदभ्यतपत्समतपत्",
+    }
+
+    for source, expected in cases.items():
+        assert apply_spacing(source, "continuous", "devanagari") == expected
+
 
 def test_devanagari_surface_word_only_normalizes_danda_spacing() -> None:
     text = "रामः  गच्छति ।  सीता तिष्ठति ॥\n"

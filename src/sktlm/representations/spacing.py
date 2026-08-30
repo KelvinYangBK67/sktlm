@@ -66,6 +66,53 @@ def _without_whitespace(text: str) -> str:
     return "".join(character for character in text if not character.isspace())
 
 
+def _continuous_devanagari_segment(text: str) -> str:
+    """Remove lexical whitespace while recomposing Devanagari C+V boundaries."""
+
+    output: list[str] = []
+    index = 0
+
+    while index < len(text):
+        character = text[index]
+
+        if not character.isspace():
+            output.append(character)
+            index += 1
+            continue
+
+        next_index = index + 1
+        while next_index < len(text) and text[next_index].isspace():
+            next_index += 1
+
+        # If removing the boundary creates:
+        #
+        #     consonant + virama + independent vowel
+        #
+        # recompose it as normal Devanagari orthography:
+        #
+        #     द् + अ -> द
+        #     द् + इ -> दि
+        #     द् + उ -> दु
+        #
+        # This is graphemic recomposition, not sandhi.
+        if (
+            len(output) >= 2
+            and output[-1] == DEVANAGARI_VIRAMA
+            and output[-2] in DEVANAGARI_CONSONANTS
+            and next_index < len(text)
+            and text[next_index] in DEVANAGARI_INDEPENDENT_VOWELS
+        ):
+            output.pop()  # remove virama
+            mark = DEVANAGARI_INDEPENDENT_TO_MARK[text[next_index]]
+            if mark:
+                output.append(mark)
+            next_index += 1  # consume the independent vowel
+
+        index = next_index
+
+    return "".join(output)
+
+
 def _continuous_line(line: str, script: str) -> str:
     if script == "iast":
         danda_pattern = r"(\|\|?)"
@@ -77,9 +124,14 @@ def _continuous_line(line: str, script: str) -> str:
         raise ValueError(f"unsupported script for continuous spacing: {script}")
 
     parts = re.split(danda_pattern, line)
-    cleaned = [
-        part if part in danda_tokens else _without_whitespace(part) for part in parts
-    ]
+    cleaned: list[str] = []
+    for part in parts:
+        if part in danda_tokens:
+            cleaned.append(part)
+        elif script == "devanagari":
+            cleaned.append(_continuous_devanagari_segment(part))
+        else:
+            cleaned.append(_without_whitespace(part))
     output: list[str] = []
     for index, part in enumerate(cleaned):
         if part not in danda_tokens:

@@ -1,6 +1,6 @@
 Formal GRETIL representation generation
 =======================================
-implementation: canonical-representations-2
+implementation: canonical-representations-3
 canonical_root: data\canonical\gretil_iast
 canonical_manifest: data\manifests\canonical_corpus.csv
 freeze_id: 9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40

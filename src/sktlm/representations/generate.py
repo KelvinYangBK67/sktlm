@@ -14,7 +14,7 @@ from sktlm.representations.script import transform_script, whitespace_signature
 from sktlm.representations.spacing import apply_spacing
 
 
-IMPLEMENTATION = "canonical-representations-2"
+IMPLEMENTATION = "canonical-representations-3"
 DEFAULT_CANONICAL_ROOT = Path("data/canonical/gretil_iast")
 DEFAULT_CANONICAL_MANIFEST = Path("data/manifests/canonical_corpus.csv")
 DEFAULT_OUTPUT_ROOT = Path("data/representations/gretil")
