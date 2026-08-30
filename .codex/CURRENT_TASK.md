@@ -2,66 +2,58 @@
 
 ## Current status
 
-The full-corpus-ready v1 `IAST + surface_word` latent lexical learner has been implemented on:
+Branch: `exp/m0-core-methods`
 
-`exp/m0-core-methods`
+The exact latent/sandhi core workflow has completed its cheap single-process and deterministic multiprocessing optimization round. Accepted commits through `3da7ad1` preserve scientific outputs. The final repeated 3-pass smoke median is 13.305 seconds with four workers versus 19.268 seconds serial (1.45x end to end).
 
-A bounded sanity run completed at:
+The completed medium reference remains:
 
-`artifacts/latent_lexicon/sanity_v1d/`
+`artifacts/latent_benchmarks/medium_reference_p1/`
 
-The expensive full M₀ run has **not** been launched. Do not launch it without an explicit user request.
+Do not rerun that reference. No post-optimization medium or full M₀ run has been launched.
 
-Read `AGENTS.md`, `.codex/PROJECT_STATE.md`, and `.codex/DECISIONS.md` before continuing. Inspect the actual branch and worktree, and do not treat any pre-existing local changes as disposable output.
+Current validation: `tests/latent` has `22 passed`; the full suite has `444 passed, 3 failed`. The three failures are the known untouched SentencePiece 0.2.2 `immutable_proto` compatibility failures, not latent-method regressions.
 
-## Next task
+Read `AGENTS.md`, `.codex/PROJECT_STATE.md`, `.codex/DECISIONS.md`, and `reports/core_methods/latent_lexicon/performance_optimization_v1.md` before continuing. Do not discard local work or modify frozen M₀ data/rules.
 
-After explicit user authorization, run the first full M₀ `IAST + surface_word` experiment, monitor checkpoints, validate artifact completeness, and interpret the learned lexicon without reducing the result to one score.
+## Next task: user-run medium scaling validation
 
-Before the full run, rerun the focused latent/sandhi tests. Do not modify the frozen M₀ corpus, manifest, freeze metadata, `m0` tag, or the 1218-rule inventory.
-
-## Full-run command
-
-From the repository root:
+This command is expected to exceed five minutes. Codex must not wait for or continuously poll it. The user should launch it manually from the repository root:
 
 ```powershell
-.\.venv\Scripts\python.exe -m sktlm.experiments.training.latent_lexicon `
-  --manifest data/manifests/representations.csv `
-  --output-root artifacts/latent_lexicon `
-  --run-id m0_iast_surface_word_v1 `
-  --passes 3
+.\.venv\Scripts\python.exe -m sktlm.latent.benchmark `
+  --benchmark medium `
+  --run-id medium_optimized_p8_w4_p3 `
+  --passes 3 `
+  --workers 4
 ```
 
-Resume the same run by adding:
+Expected output directory:
 
-```text
---resume
-```
+`artifacts/latent_benchmarks/medium_optimized_p8_w4_p3/`
 
-## Required post-run audit
+Completion signal: the process exits successfully and `benchmark_metrics.json`, `timing_metrics.json`, `summary.json`, `latent_lexicon.tsv`, `analyses.jsonl`, and `boundary_posteriors.jsonl` exist. To check whether it is still running, inspect the Python process in Task Manager or run `Get-Process python -ErrorAction SilentlyContinue`; do not infer completion from shard files alone.
 
-Confirm that the output contains the learned lexicon, analyses, boundary posteriors, rule usage, ambiguity/confidence statistics, identity-vs-latent mass, complexity summary, configuration/provenance, checkpoints, and inspection report.
+After completion, inspect:
 
-In addition to the four primary research questions in `PROJECT_STATE.md`, explicitly audit:
+- `benchmark_metrics.json` for end-to-end wall/CPU, phase timing, artifact bytes, and worker count;
+- `timing_metrics.json` for training/inspection worker CPU, inference, candidate generation, SQLite, and serialization;
+- `checkpoint.json` for `completed_passes = 3` and `inspection_complete = true`;
+- `summary.json` and the scientific artifacts for completeness;
+- any retained `shards/` files, which indicate interrupted cleanup or a failed run.
 
-1. posterior mass conservation on ambiguous lexical alternants;
-2. whether frequent latent forms gain support across multiple surface and sandhi environments;
-3. whether low-count types reveal identity collapse, overanalysis, or legitimate ambiguity;
-4. whether `om` / `oṃ` remains symmetric outside the bounded sanity sample.
+Compare scientific outputs against the appropriate serial/reference run with `sktlm.latent.equivalence`. Because the old medium reference has only one training pass, it cannot directly establish 3-pass scientific equivalence; if a 3-pass serial medium reference is needed, treat that as a separate user-run long job. Do not silently compare unlike pass counts.
 
-For `om` / `oṃ`, preserve the distinct phonological keys and report context-conditioned evidence. The sanity-run equality is already diagnosed as fixed-grammar ambiguity (`EXT_0795` before `n`, `EXT_0793` before `b`), not duplicate counting. Do not introduce a special case, collapse `m` with anusvāra, or alter the rule inventory without an explicit durable research decision.
+## Memory caveat
 
-## Known validation state
+`benchmark_metrics.json:peak_rss_bytes` currently covers the main process only. For multiprocessing it excludes worker RSS. Record process-tree memory externally during the medium run, or implement a correct aggregate sampler before making a full-run worker-count decision.
 
-- focused latent/sandhi suite: `84 passed`;
-- repository suite excluding known SentencePiece compatibility failures: `428 passed, 3 deselected`;
-- the three known full-suite failures come from the untouched SentencePiece wrapper calling the removed `encode_as_immutable_proto` API.
+## After the medium artifact returns
 
-## End-of-task handoff
+1. Validate artifact completeness and exact pass/worker configuration.
+2. Report training and inspection scaling separately; do not extrapolate only from Pass 1.
+3. Check crash-resume/shard cleanup state.
+4. Update the optimization report and these handoff files with measured medium results.
+5. Only then prepare the full 3-pass + inspection command and time projection. The user must explicitly authorize and manually manage that long run.
 
-After the authorized full run or any substantial follow-up change:
-
-- update `.codex/PROJECT_STATE.md` with durable results;
-- update `.codex/DECISIONS.md` only if the user actually changes a durable research/design decision;
-- revise this file to state the next concrete task;
-- report changed files, checks, artifact path/schemas, and exact continuation commands.
+Do not alter the frozen corpus, manifest, `m0` tag, or fixed 1218-rule inventory. Preserve the diagnosed `om` / `oṃ` ambiguity; it is not duplicate counting.

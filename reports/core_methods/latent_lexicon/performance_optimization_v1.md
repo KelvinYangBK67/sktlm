@@ -22,6 +22,57 @@ All entries use the frozen M₀ IAST/surface_word observation, fixed 1218-rule g
 - Bottleneck: final inspection consumes about 44.44 seconds, including about 31.94 seconds exact inference. Training consumes about 8.80 seconds, including about 4.53 seconds inference.
 - Medium confirmation: 5,297.481 seconds wall. Inspection consumes 3,977.911 seconds, including 2,557.635 seconds inference; training consumes 1,099.381 seconds. Inspection makes 129,313,724 lexical score calls, with 2,473,638 SQLite misses costing 145.657 seconds.
 
-## Pending measurements
+## Accepted single-process optimizations
 
-The medium reference, accepted/rejected optimizations, single-worker optimized result, worker scaling, memory/storage effects, and full-M₀ projection will be appended as they are measured.
+All smoke comparisons below used scientific equivalence diagnostics. Every accepted candidate reported zero mismatches at relative tolerance `1e-10` and absolute tolerance `1e-12`.
+
+| version | commit | isolated change | smoke result |
+|---|---|---|---|
+| P2 | `75da12f` | training-only exact inference, without inspection-only marginals/top-k | training document median 8.799 -> 4.562 s; training inference 4.529 -> 0.775 s |
+| P3 | `14d883c` | cache `PhonologicalForm.key` at construction | wall median 13.134 s; inspection inference 4.020 s; training inference 0.521 s |
+| P4 | `87113e0` | score each distinct lexical form once per segment | lexical score calls 1,448,559 -> 74,131; wall median 12.855 s; inspection inference 3.462 s |
+| P5 | `26e3a99` | cache script-neutral internal-sandhi matches | 18,468 hits / 3,764 misses (83.1%); wall median 12.771 s |
+| P6 | `3840576` | compact SQLite count tables and reconstruct payloads on export | SQLite 21,753,856 -> 13,762,560 B (-36.7%); total artifacts 44.11 -> 36.12 MB (-18.1%); wall 12.352 s |
+
+P3 is the largest single-process improvement. The canonical key was formerly rebuilt by repeated string joins throughout candidate sorting, scoring, and reporting. The cached value is immutable and therefore does not change key identity or ordering.
+
+P4 targets calls rather than only SQLite misses: a segment-local map evaluates each distinct `PhonologicalForm` once, then reuses its scalar score across all edges/paths in that segment. This preserves the scorer and posterior equations exactly.
+
+P6 retains read/write compatibility with legacy expanded count tables during safe resume. New count, lexicon, and inspection tables store the canonical key plus numeric fields in `WITHOUT ROWID` tables; IAST and phoneme columns are reconstructed only during export.
+
+## Rejected smoke candidates
+
+- Cached `TokenPath` sort keys plus `heapq.nsmallest`: scientifically equivalent but no reproducible wall benefit; reverted.
+- Indexed lattice adjacency: scientifically equivalent, but construction cost offset the inference shift; reverted.
+- Removing unused incoming adjacency alone: no reproducible benefit; reverted.
+- Visible-boundary LRU caching: scientifically equivalent but slower and larger in memory; reverted.
+
+These experiments were not committed.
+
+## Deterministic multiprocessing
+
+P7 (`fa27389`) parallelizes training by document. Workers use read-only lexicon connections and write bounded count shards with `float.hex` values, configuration identity, SHA-256 checksums, and completion markers. The master process reduces shards in original document order and commits each document's counts plus checkpoint atomically. Valid shards survive a crash and are reused on resume.
+
+P8 (`3da7ad1`) applies the same design to inspection. Each document produces analysis, boundary, count, surface-usage, context-usage, and ordered reduction shards. The master concatenates and reduces them in original document/segment order, preserving report tie-breaking and floating-point accumulation order. Inspection completion is durable in SQLite before optional shard cleanup; a completed `--resume` does not repeat inference. Atomic file replacement has a short bounded retry for transient Windows sharing violations.
+
+The relevant 3-pass smoke scaling measurements are:
+
+| path | workers | repeats | wall median | training median | inspection median | scientific equivalence |
+|---|---:|---:|---:|---:|---:|---|
+| optimized serial reference | 1 | 3 | 19.268 s | 10.091 s | 8.088 s | reference |
+| training-only multiprocessing | 4 | 3 | 17.023 s | 7.885 s | serial inspection | zero mismatches |
+| training + inspection multiprocessing, final | 4 | 3 | 13.305 s | 6.998 s | 5.292 s | zero mismatches |
+
+The final 4-worker path is 1.45x faster end to end than the optimized serial reference on smoke; training is 1.44x faster and inspection is 1.53x faster. A 2-worker smoke run was slightly slower than serial (19.480 s wall) because the documents are too short to amortize Windows spawn, shard, and cache-splitting overhead. Four workers crossed that threshold. Medium/full scaling must therefore be measured rather than extrapolated from logical CPU count.
+
+The benchmark's current `peak_rss_bytes` is the main process's peak only. It is valid for serial runs but does not include simultaneous worker RSS and must not be used to claim that multiprocessing reduces memory. The implementation itself remains bounded by `workers * per-document working state` plus bounded count buffers and on-disk shards; aggregate process-tree memory still needs an explicit measurement before choosing a full-run worker count.
+
+## Current validation and next measurement
+
+- Focused latent suite after P8: `22 passed`.
+- Full repository suite: `444 passed, 3 failed`; the three failures are the pre-existing SentencePiece 0.2.2 removal of `immutable_proto`, outside this latent-method change.
+- Final reference-vs-4-worker 3-pass smoke comparison: zero mismatches.
+- The medium benchmark has not been rerun after P2-P8.
+- The failed transient-lock smoke artifact `smoke_inspection_workers_4_final_b` was preserved for diagnostics and was not counted; the bounded replacement retry is covered by a focused test.
+
+The next expensive step is one 4-worker, 3-pass medium validation. It should be launched by the user under the repository's long-job rule, then compared to `artifacts/latent_benchmarks/medium_reference_p1/`. No full-M₀ projection should be treated as reliable until that artifact completes.

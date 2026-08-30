@@ -433,3 +433,27 @@ For every otherwise identical displayed analysis, replacing first lexical `oṃ`
 `active_lexical_types` currently counts every row in the learned lexicon table; it is not a hard-support selection threshold. Types with expected count at or below the configurable default `1.0` are additionally reported as low-count. Thus both members being “active” does not mean the learner hard-selected both.
 
 Do not collapse `C_M` and `M_ANUSVARA`: they are intentionally different phonological symbols, and doing so would change the representation. On this tiny sample the current surface-only unigram objective has no disambiguating evidence. A full-corpus audit should check whether other environments break the symmetry. If the symmetry persists corpus-wide, resolving it would require an explicit new modeling decision (for example a lexicalized alternation treatment or another justified prior), not a counting bug fix.
+
+## 19. Latent performance optimization status (2026-08-30)
+
+The medium 1-pass reference completed at `artifacts/latent_benchmarks/medium_reference_p1/` with 5,297.481 seconds wall time. It identified inspection inference, repeated lexical score calls/key construction, candidate generation, serialization, and count storage as the main costs. Do not rerun this reference.
+
+Accepted semantics-preserving commits after the reference are:
+
+- `75da12f`: training-only exact inference;
+- `14d883c`: cached immutable phonological-form keys;
+- `87113e0`: segment-local reuse of lexical scores;
+- `26e3a99`: script-neutral internal-sandhi match cache;
+- `3840576`: compact SQLite count/lexicon storage;
+- `fa27389`: deterministic crash-safe document multiprocessing for training;
+- `3da7ad1`: deterministic crash-reusable document multiprocessing for inspection.
+
+All accepted changes were checked against reference scientific artifacts with zero mismatches. The focused latent suite now reports `22 passed`. The full repository suite reports `444 passed, 3 failed`; the three failures remain the known untouched SentencePiece 0.2.2 `immutable_proto` incompatibility.
+
+On repeated 3-pass smoke runs, the optimized serial median was 19.268 seconds (training 10.091, inspection 8.088). The final 4-worker median was 13.305 seconds (training 6.998, inspection 5.292), a 1.45x end-to-end speedup. Two workers did not amortize process/shard overhead on the short smoke documents; worker count must be benchmarked on medium before the full run.
+
+Parallel workers never write the learner database. They create checksummed per-document shards; the master validates/reuses crash artifacts and applies them in canonical document/segment order. Training document updates remain transactionally coupled to the authoritative SQLite checkpoint. Inspection completion is also durable before successful shard cleanup, and completed resume skips repeated inference. Atomic temp-file replacement retries bounded transient Windows sharing violations.
+
+The benchmark's `peak_rss_bytes` measures only the main process when workers are enabled. Do not interpret it as aggregate multiprocessing memory. Before choosing a full-run worker count, record process-tree memory externally or extend the harness with correct aggregate accounting.
+
+No post-optimization medium or full M₀ run has been launched. The next authorized long job is the 4-worker, 3-pass medium benchmark described in `.codex/CURRENT_TASK.md`; the user must run/wait for it manually.
