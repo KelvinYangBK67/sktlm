@@ -731,3 +731,34 @@ commands are tracked in
 `reports/core_methods/latent_lexicon/full_m0_launch_plan.md` and
 `.codex/CURRENT_TASK.md`. No SSH, launch, test, audit, or scientific-code/data
 change occurred during preparation.
+
+## 30. Active unrestricted replicas and optional vocabulary budget (2026-08-31)
+
+The user reports that `core-01` through `core-04` are now running the four
+unrestricted full-M0 replicas. They are strictly hands-off: no SSH, polling,
+process control, resume, cleanup, cloud Git operation, or run-directory change
+is authorized. `core-05` and `core-06` remain READY/STANDBY and unlaunched.
+This operational state was supplied by the user and was not independently
+queried.
+
+The local core implementation now has a separate optional
+`--vocab-budget K` condition for future capacity-matched BPE/Unigram
+comparisons. `None` omits the new field from the configuration payload, so
+the existing unrestricted configuration signature and inference path remain
+unchanged.
+
+For a constrained run, all 50 script-neutral singleton `Phoneme` identities
+are forced into the vocabulary. Neutral Pass 1 ranks remaining multi-phoneme
+latent `form_key` identities by `expected_count DESC, form_key ASC` and keeps
+at most `K-50`. The resulting vocabulary is stored durably in SQLite and used
+unchanged by later passes, workers, resume, and final inspection. OOV
+multi-phoneme forms have no lexical parameter: their score, expected counts,
+and decoded sequence are projected to constituent base tokens. Surface
+variants and sandhi rules consume no vocabulary slots.
+
+Constrained runs emit `vocabulary_budget.json` and `vocabulary.tsv`, and bind
+the selection semantics plus allowed-key SHA-256 into checkpoint, provenance,
+and summary metadata. A single focused local command covering selection,
+tie-breaking, count projection, score decomposition, unrestricted `None`,
+artifact output, and completed-run resume passed: `8 passed in 0.91s`. No
+smoke, medium, full, cloud, or active-run validation was performed.

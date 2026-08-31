@@ -9,8 +9,24 @@ The scientific checkpoint remains frozen: GRETIL M0 freeze
 240 canonical documents, 1,440 representations, and 1,218 external-sandhi
 rules. Formal v1 remains IAST `surface_word`, exact inference, lexical alpha
 0.1, complexity lambda/tau 0.5/1.0, whitespace penalty 8.0, and three passes.
-Do not change candidate, grammar, scoring, EM, inference, representation, or
-scientific output semantics.
+Do not change the frozen unrestricted candidate, grammar, scoring, EM,
+representation, or scientific output semantics. The optional fixed-vocabulary
+condition described below is separate; `vocab_budget=None` preserves the
+unrestricted configuration signature and inference behavior.
+
+## Highest priority: active unrestricted full-M0 runs are hands-off
+
+The user reports that `core-01` through `core-04` are currently running the
+four prepared unrestricted full-M0 replicas. This state was not queried from
+the hosts and must be treated as authoritative.
+
+Do not SSH to, poll, attach to, stop, restart, resume, clean, overwrite, or
+modify anything on those hosts or in their run/metrics directories. Do not
+change their configs, checkpoints, SQLite databases, shards, logs, or
+artifacts. Do not perform cloud Git operations that could affect them.
+`core-05` and `core-06` remain READY/STANDBY and must not be launched by
+Codex. Cloud synchronization, launch, medium/full validation, and collection
+remain manual user operations.
 
 ## Cloud medium scaling is closed
 
@@ -37,54 +53,36 @@ w12, and w16.
 Do not poll these completed medium runs, run a tie-break, or launch another
 medium scaling benchmark.
 
-## Next scientific execution gate
+## Optional fixed-vocabulary condition
 
-Four full-M0 replicas are PREPARED at 8 workers; none has started:
+The local branch now implements `--vocab-budget K` for future capacity-matched
+BPE/Unigram comparisons. It is not applied to the active unrestricted runs.
 
-| Machine | Replica | Run ID | Metrics ID |
-|---|---|---|---|
-| `core-01` | `rep01` | `cloud_full_m0_iast_surface_word_p10_rep01_w8_p3` | `full_m0_iast_surface_word_p10_rep01_w8_p3` |
-| `core-02` | `rep02` | `cloud_full_m0_iast_surface_word_p10_rep02_w8_p3` | `full_m0_iast_surface_word_p10_rep02_w8_p3` |
-| `core-03` | `rep03` | `cloud_full_m0_iast_surface_word_p10_rep03_w8_p3` | `full_m0_iast_surface_word_p10_rep03_w8_p3` |
-| `core-04` | `rep04` | `cloud_full_m0_iast_surface_word_p10_rep04_w8_p3` | `full_m0_iast_surface_word_p10_rep04_w8_p3` |
+- one distinct latent `form_key` consumes one slot;
+- surface realizations and sandhi rules consume no slots;
+- all 50 `Phoneme` singleton base units are forced into the vocabulary;
+- after neutral Pass 1, multi-phoneme identities are ranked by
+  `expected_count DESC, form_key ASC`, and the first `K-50` are frozen;
+- Pass 2, Pass 3, and inspection reuse the same durable SQLite vocabulary;
+- an OOV multi-phoneme form scores and counts as its constituent singleton
+  base tokens, and decoded sequences use the same projection;
+- `vocabulary_budget.json` and `vocabulary.tsv` are the audit artifacts;
+- checkpoint/provenance store and validate the frozen allowed-key SHA-256.
 
-`core-05` and `core-06` remain unassigned READY/STANDBY.
-
-The benchmark harness has no full mode. On each assigned host, set the exact
-run/metrics IDs from the table and use the existing full-corpus trainer:
-
-```bash
-./.venv/bin/python scripts/cloud/run_with_metrics.py \
-  --output-dir "artifacts/cloud_metrics/${SKTLM_METRICS_ID}" \
-  -- \
-  ./.venv/bin/python -m sktlm.experiments.training.latent_lexicon \
-  --manifest data/manifests/representations.csv \
-  --output-root artifacts/latent_benchmarks \
-  --run-id "${SKTLM_RUN_ID}" \
-  --passes 3 \
-  --workers 8 \
-  --equivalence-diagnostics
-```
-
-Omitting document/max limits selects the complete frozen 240-document IAST
-`surface_word` condition. Lightweight monitoring is:
+The single focused validation command passed 8 tests. No smoke, medium, full,
+cloud, or running-job validation was performed. A minimal user-run check, if
+desired on a disposable tiny/document-limited run, is:
 
 ```bash
-tail -n 1 "artifacts/cloud_metrics/${SKTLM_METRICS_ID}/process_tree_samples.csv"
+./.venv/bin/python -m sktlm.experiments.training.latent_lexicon \
+  --document-list configs/benchmarks/latent_smoke_documents.txt \
+  --output-root artifacts/latent_lexicon \
+  --run-id vocab_budget_manual_smoke_k16384 \
+  --passes 3 --workers 1 --vocab-budget 16384
 ```
 
-After natural completion, first run the exclusive metrics-envelope block in
-`reports/core_methods/latent_lexicon/full_m0_launch_plan.md`, then audit:
-
-```bash
-./.venv/bin/python scripts/cloud/audit_latent_run.py \
-  "artifacts/latent_benchmarks/${SKTLM_RUN_ID}" \
-  --output "artifacts/cloud_metrics/${SKTLM_METRICS_ID}/audit.json"
-```
-
-The full plan, audit compatibility explanation, and mainland Git-bundle
-fallback are in `full_m0_launch_plan.md`. Preparation does not authorize
-launch; wait for an explicit user instruction.
+This command is a handoff only; Codex did not run it. Use a unique run ID and
+do not point it at any active full-M0 directory.
 
 ## Multi-host bridge
 

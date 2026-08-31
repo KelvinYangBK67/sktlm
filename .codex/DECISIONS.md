@@ -84,3 +84,12 @@ This file records decisions that should not be casually re-litigated in each Cod
 55. Cloud medium scaling is closed: 8 workers are the frozen production setting for the next full-M0 stage because w8 was approximately 12.8% faster than the w16 runner-up and therefore satisfied the preregistered >=10% direct-winner rule.
 56. Do not run a cloud medium tie-break or additional medium worker-scaling benchmark. The accepted w4/w8/w12/w16 runs are scientifically equivalent across the six canonical artifacts; worker count affects accepted runtime/resource behavior, not scientific output.
 57. The next execution gate is four prepared full-M0 replicas at 8 workers, mapping `core-01` through `core-04` to `rep01` through `rep04`. `core-05` and `core-06` remain unassigned READY/STANDBY. Preparation and durable IDs do not authorize launch; execution still requires an explicit user instruction.
+58. The user has launched the four unrestricted full-M0 replicas on `core-01` through `core-04`. Codex must not connect to, poll, modify, resume, stop, restart, clean, or otherwise affect those runs or their hosts. `core-05` and `core-06` remain unassigned READY/STANDBY unless the user acts manually.
+
+## Optional fixed-vocabulary comparison condition
+
+59. `--vocab-budget K` is an optional condition; omission (`None`) preserves the unrestricted latent-lexicon-v1 configuration signature and scientific behavior.
+60. Vocabulary capacity counts distinct latent `form_key` identities. Surface realizations and external-sandhi rules consume no vocabulary slots.
+61. Every constrained vocabulary includes all 50 singleton `Phoneme` base units. The remaining `K-50` capacity is selected once after neutral Pass 1 by `expected_count DESC, form_key ASC`, then frozen for all later passes and inspection.
+62. A nonselected multi-phoneme form has no independent lexical parameter. It deterministically projects to its constituent singleton base tokens for scoring, expected counts, and decoded output; pruned Pass-1 counts use the same phoneme-multiplicity projection.
+63. Resume must load and validate the durable frozen vocabulary and allowed-key SHA-256; it must never reselect from later-pass counts.

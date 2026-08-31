@@ -7,12 +7,19 @@ import json
 import math
 import sqlite3
 import time
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from pathlib import Path
 from typing import Any, Iterable
 
 from sktlm.latent.phonology import PhonologicalForm
 from sktlm.latent.telemetry import RuntimeTelemetry
+from sktlm.latent.vocabulary import (
+    BASE_FORMS,
+    BASE_UNIT_COUNT,
+    FrozenVocabulary,
+    VocabularyEntry,
+    allowed_key_sha256,
+)
 
 
 TRAINING_CHECKPOINT_KEY = "training_checkpoint"
@@ -184,6 +191,183 @@ class LexiconStore:
                 ") WITHOUT ROWID"
             )
             self._set_training_checkpoint(checkpoint)
+
+    def load_frozen_vocabulary(self) -> FrozenVocabulary | None:
+        """Load and validate the durable pass-1 vocabulary, if present."""
+
+        if not self.has_table("frozen_vocabulary"):
+            return None
+        header_text = self.get_metadata("frozen_vocabulary_header")
+        if header_text is None:
+            raise RuntimeError("Frozen vocabulary is missing its metadata header.")
+        header = json.loads(header_text)
+        entries = tuple(
+            VocabularyEntry(
+                rank=int(row[0]),
+                kind=str(row[1]),
+                form=PhonologicalForm.from_key(str(row[2])),
+                pass1_expected_count=float(row[3]),
+            )
+            for row in self.connection.execute(
+                "SELECT rank, kind, form_key, pass1_expected_count "
+                "FROM frozen_vocabulary ORDER BY rank"
+            )
+        )
+        return FrozenVocabulary(
+            total_budget=int(header["total_budget"]),
+            entries=entries,
+            allowed_sha256=str(header["allowed_key_sha256"]),
+        )
+
+    def select_and_freeze_vocabulary(self, budget: int) -> FrozenVocabulary:
+        """Select pass-1 identities, project pruned counts, and freeze atomically."""
+
+        existing = self.load_frozen_vocabulary()
+        if existing is not None:
+            if existing.total_budget != budget:
+                raise ValueError(
+                    "Stored frozen vocabulary does not match requested vocab_budget."
+                )
+            return existing
+        if budget < BASE_UNIT_COUNT:
+            raise ValueError(
+                f"vocab_budget must be >= {BASE_UNIT_COUNT}; got {budget}"
+            )
+        if not self.has_table("counts_next"):
+            raise RuntimeError("Pass-1 counts are unavailable for vocabulary selection.")
+
+        learned_capacity = budget - BASE_UNIT_COUNT
+        selected_rows = tuple(
+            (str(row[0]), float(row[1]))
+            for row in self.connection.execute(
+                "SELECT form_key, expected_count FROM counts_next "
+                "WHERE instr(form_key, '.') > 0 "
+                "ORDER BY expected_count DESC, form_key ASC LIMIT ?",
+                (learned_capacity,),
+            )
+        )
+        selected_keys = {key for key, _ in selected_rows}
+        base_counts: Counter[str] = Counter()
+        for row in self.connection.execute(
+            "SELECT form_key, expected_count FROM counts_next ORDER BY form_key"
+        ):
+            key = str(row[0])
+            if key in selected_keys:
+                continue
+            value = float(row[1])
+            form = PhonologicalForm.from_key(key)
+            for symbol in form.symbols:
+                base_counts[symbol.value] += value
+
+        entries: list[VocabularyEntry] = []
+        for rank, form in enumerate(BASE_FORMS, 1):
+            entries.append(
+                VocabularyEntry(
+                    rank=rank,
+                    kind="base",
+                    form=form,
+                    pass1_expected_count=float(base_counts[form.key]),
+                )
+            )
+        for learned_rank, (key, value) in enumerate(selected_rows, 1):
+            entries.append(
+                VocabularyEntry(
+                    rank=BASE_UNIT_COUNT + learned_rank,
+                    kind="lexical",
+                    form=PhonologicalForm.from_key(key),
+                    pass1_expected_count=value,
+                )
+            )
+        digest = allowed_key_sha256(entry.form.key for entry in entries)
+        vocabulary = FrozenVocabulary(
+            total_budget=budget,
+            entries=tuple(entries),
+            allowed_sha256=digest,
+        )
+
+        with self.connection:
+            self.connection.execute("DROP TABLE IF EXISTS counts_frozen")
+            self.connection.execute(
+                "CREATE TABLE counts_frozen ("
+                "form_key TEXT PRIMARY KEY, expected_count REAL NOT NULL"
+                ") WITHOUT ROWID"
+            )
+            self.connection.executemany(
+                "INSERT INTO counts_frozen(form_key, expected_count) VALUES (?, ?)",
+                (
+                    (entry.form.key, entry.pass1_expected_count)
+                    for entry in vocabulary.entries
+                ),
+            )
+            self.connection.execute("DROP TABLE counts_next")
+            self.connection.execute("ALTER TABLE counts_frozen RENAME TO counts_next")
+            self.connection.execute(
+                "CREATE TABLE frozen_vocabulary ("
+                "rank INTEGER PRIMARY KEY, kind TEXT NOT NULL, "
+                "form_key TEXT NOT NULL UNIQUE, "
+                "pass1_expected_count REAL NOT NULL"
+                ")"
+            )
+            self.connection.executemany(
+                "INSERT INTO frozen_vocabulary("
+                "rank, kind, form_key, pass1_expected_count"
+                ") VALUES (?, ?, ?, ?)",
+                (
+                    (
+                        entry.rank,
+                        entry.kind,
+                        entry.form.key,
+                        entry.pass1_expected_count,
+                    )
+                    for entry in vocabulary.entries
+                ),
+            )
+            self._set_metadata(
+                "frozen_vocabulary_header",
+                json.dumps(
+                    vocabulary.checkpoint_payload(),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            )
+        return vocabulary
+
+    def ensure_frozen_count_keys(self, vocabulary: FrozenVocabulary) -> None:
+        """Retain every frozen parameter, including zero-count base units."""
+
+        stored = self.load_frozen_vocabulary()
+        if stored is None or stored.allowed_sha256 != vocabulary.allowed_sha256:
+            raise RuntimeError("Frozen vocabulary is missing or changed.")
+        unexpected = self.connection.execute(
+            "SELECT c.form_key FROM counts_next c "
+            "LEFT JOIN frozen_vocabulary v ON v.form_key = c.form_key "
+            "WHERE v.form_key IS NULL LIMIT 1"
+        ).fetchone()
+        if unexpected is not None:
+            raise RuntimeError(
+                f"OOV form escaped frozen-vocabulary projection: {unexpected[0]}"
+            )
+        with self.connection:
+            if self._has_expanded_form_payload("counts_next"):
+                self.connection.executemany(
+                    "INSERT OR IGNORE INTO counts_next("
+                    "form_key, iast, phoneme_ids, expected_count"
+                    ") VALUES (?, ?, ?, 0.0)",
+                    (
+                        (
+                            entry.form.key,
+                            entry.form.iast,
+                            " ".join(entry.form.phoneme_ids),
+                        )
+                        for entry in vocabulary.entries
+                    ),
+                )
+            else:
+                self.connection.execute(
+                    "INSERT OR IGNORE INTO counts_next(form_key, expected_count) "
+                    "SELECT form_key, 0.0 FROM frozen_vocabulary"
+                )
 
     def _has_expanded_form_payload(self, table: str) -> bool:
         if table not in {'counts_next', 'inspection_counts'}:

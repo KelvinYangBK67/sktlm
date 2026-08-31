@@ -28,6 +28,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--run-id")
     parser.add_argument("--passes", type=int, default=3)
+    parser.add_argument(
+        "--vocab-budget",
+        type=int,
+        help=(
+            "Freeze K distinct latent form_key identities after pass 1; K includes "
+            "all 50 phonological base units."
+        ),
+    )
     parser.add_argument('--workers', type=int, default=1)
     parser.add_argument("--lexical-alpha", type=float, default=0.1)
     parser.add_argument("--complexity-weight", type=float, default=0.5)
@@ -58,6 +66,7 @@ def main(argv: list[str] | None = None) -> None:
         output_root=args.output_root,
         run_id=args.run_id,
         passes=args.passes,
+        vocab_budget=args.vocab_budget,
         workers=args.workers,
         lexical_alpha=args.lexical_alpha,
         complexity_weight=args.complexity_weight,

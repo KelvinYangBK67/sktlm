@@ -15,6 +15,7 @@ from sktlm.latent.candidates import (
     TokenLattice,
 )
 from sktlm.latent.phonology import PhonologicalForm
+from sktlm.latent.vocabulary import FrozenVocabulary, ProjectedFormScorer
 
 
 def logaddexp(left: float, right: float) -> float:
@@ -136,11 +137,29 @@ def _trim_paths(paths: list[TokenPath], limit: int) -> list[TokenPath]:
     return paths[:limit]
 
 
+def _project_form(
+    form: PhonologicalForm,
+    vocabulary: FrozenVocabulary | None,
+) -> tuple[PhonologicalForm, ...]:
+    return (form,) if vocabulary is None else vocabulary.project(form)
+
+
+def _add_expected_count(
+    counts: dict[PhonologicalForm, float],
+    form: PhonologicalForm,
+    mass: float,
+    vocabulary: FrozenVocabulary | None,
+) -> None:
+    for projected in _project_form(form, vocabulary):
+        counts[projected] += mass
+
+
 def evaluate_token_lattice(
     lattice: TokenLattice,
     scorer: FormScorer,
     *,
     top_k: int | None,
+    vocabulary: FrozenVocabulary | None = None,
 ) -> TokenEvaluation:
     outgoing = lattice.outgoing_edges
     incoming = lattice.incoming_edges
@@ -203,7 +222,7 @@ def evaluate_token_lattice(
                 candidates.append(
                     TokenPath(
                         score=prefix.score + edge_scores[id(edge)],
-                        words=prefix.words + (edge.word,),
+                        words=prefix.words + _project_form(edge.word, vocabulary),
                         rule_ids=prefix.rule_ids + edge.rule_ids,
                         boundaries=(
                             prefix.boundaries
@@ -228,16 +247,27 @@ def _evaluate_factor(
     *,
     whitespace_merge_penalty: float,
     top_k: int | None,
+    vocabulary: FrozenVocabulary | None,
 ) -> FactorEvaluation:
     if factor.merged_word is not None:
         score = scorer.score(factor.merged_word) - (
             whitespace_merge_penalty * factor.ignored_whitespace
         )
-        path = TokenPath(score, (factor.merged_word,), (), ())
+        path = TokenPath(
+            score,
+            _project_form(factor.merged_word, vocabulary),
+            (),
+            (),
+        )
         paths = () if top_k is None else (path,)
         return FactorEvaluation(factor, score, score, -math.inf, None, paths)
     assert factor.lattice is not None
-    token = evaluate_token_lattice(factor.lattice, scorer, top_k=top_k)
+    token = evaluate_token_lattice(
+        factor.lattice,
+        scorer,
+        top_k=top_k,
+        vocabulary=vocabulary,
+    )
     return FactorEvaluation(
         factor=factor,
         log_score=token.log_partition,
@@ -363,13 +393,19 @@ def infer_training_segment(
     scorer: FormScorer,
     *,
     whitespace_merge_penalty: float,
+    vocabulary: FrozenVocabulary | None = None,
 ) -> TrainingSegmentInference:
     '''Exact marginals needed by EM training, without inspection decoding.'''
 
-    memoized_scorer = (
+    effective_scorer: FormScorer = (
         scorer
-        if isinstance(scorer, NeutralFormScorer)
-        else _MemoizedFormScorer(scorer)
+        if vocabulary is None
+        else ProjectedFormScorer(scorer, vocabulary)
+    )
+    memoized_scorer = (
+        effective_scorer
+        if isinstance(effective_scorer, NeutralFormScorer)
+        else _MemoizedFormScorer(effective_scorer)
     )
     evaluations = tuple(
         _evaluate_factor(
@@ -377,6 +413,7 @@ def infer_training_segment(
             memoized_scorer,
             whitespace_merge_penalty=whitespace_merge_penalty,
             top_k=None,
+            vocabulary=vocabulary,
         )
         for factor in graph.factors
     )
@@ -395,11 +432,21 @@ def infer_training_segment(
             continue
         factor_mass = math.exp(prefix + evaluation.log_score + suffix - log_z)
         if factor.merged_word is not None:
-            expected_counts[factor.merged_word] += factor_mass
+            _add_expected_count(
+                expected_counts,
+                factor.merged_word,
+                factor_mass,
+                vocabulary,
+            )
             continue
         assert evaluation.token is not None
         for edge, conditional_mass in evaluation.token.edge_posteriors:
-            expected_counts[edge.word] += factor_mass * conditional_mass
+            _add_expected_count(
+                expected_counts,
+                edge.word,
+                factor_mass * conditional_mass,
+                vocabulary,
+            )
 
     identity_forward = _outer_forward(graph, evaluations, identity_only=True)
     identity_log_z = identity_forward[-1].get('END', -math.inf)
@@ -424,15 +471,21 @@ def infer_segment(
     *,
     whitespace_merge_penalty: float,
     top_k: int = 8,
+    vocabulary: FrozenVocabulary | None = None,
 ) -> SegmentInference:
     """Exact marginalization; only the bounded top-k inspection list is decoded."""
 
     if top_k < 1:
         raise ValueError("top_k must be >= 1")
-    memoized_scorer = (
+    effective_scorer: FormScorer = (
         scorer
-        if isinstance(scorer, NeutralFormScorer)
-        else _MemoizedFormScorer(scorer)
+        if vocabulary is None
+        else ProjectedFormScorer(scorer, vocabulary)
+    )
+    memoized_scorer = (
+        effective_scorer
+        if isinstance(effective_scorer, NeutralFormScorer)
+        else _MemoizedFormScorer(effective_scorer)
     )
     evaluations = tuple(
         _evaluate_factor(
@@ -440,6 +493,7 @@ def infer_segment(
             memoized_scorer,
             whitespace_merge_penalty=whitespace_merge_penalty,
             top_k=top_k,
+            vocabulary=vocabulary,
         )
         for factor in graph.factors
     )
@@ -464,12 +518,22 @@ def infer_segment(
         factor_mass = math.exp(prefix + evaluation.log_score + suffix - log_z)
         expected_score += factor_mass * evaluation.expected_score
         if factor.merged_word is not None:
-            expected_counts[factor.merged_word] += factor_mass
+            _add_expected_count(
+                expected_counts,
+                factor.merged_word,
+                factor_mass,
+                vocabulary,
+            )
         else:
             assert evaluation.token is not None
             for edge, conditional_mass in evaluation.token.edge_posteriors:
                 mass = factor_mass * conditional_mass
-                expected_counts[edge.word] += mass
+                _add_expected_count(
+                    expected_counts,
+                    edge.word,
+                    mass,
+                    vocabulary,
+                )
                 if edge.boundary is not None:
                     boundary_mass[edge.boundary.boundary_id] += mass
                     boundary_meta[edge.boundary.boundary_id] = edge.boundary

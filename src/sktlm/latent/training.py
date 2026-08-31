@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import heapq
+import io
 import json
 import multiprocessing
 import os
@@ -38,6 +39,12 @@ from sktlm.latent.inference import (
 from sktlm.latent.phonology import PhonologicalForm
 from sktlm.latent.store import LexiconScorer, LexiconStore
 from sktlm.latent.telemetry import RuntimeTelemetry
+from sktlm.latent.vocabulary import (
+    BASE_UNIT_COUNT,
+    RANKING_RULE,
+    SELECTION_PASS,
+    FrozenVocabulary,
+)
 
 
 EXPECTED_FREEZE_ID = "9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40"
@@ -46,6 +53,7 @@ IMPLEMENTATION = "latent-lexicon-v1"
 _WORKER_GRAMMAR: StructuredSandhiGrammar | None = None
 _WORKER_SCORER: NeutralFormScorer | LexiconScorer | None = None
 _WORKER_CONNECTION: sqlite3.Connection | None = None
+_WORKER_VOCABULARY: FrozenVocabulary | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +63,7 @@ class TrainingConfig:
     output_root: Path = Path("artifacts/latent_lexicon")
     run_id: str | None = None
     passes: int = 3
+    vocab_budget: int | None = None
     workers: int = 1
     lexical_alpha: float = 0.1
     complexity_weight: float = 0.5
@@ -78,6 +87,10 @@ class TrainingConfig:
     def __post_init__(self) -> None:
         if self.passes < 1:
             raise ValueError("passes must be >= 1")
+        if self.vocab_budget is not None and self.vocab_budget < BASE_UNIT_COUNT:
+            raise ValueError(
+                f"vocab_budget must be >= {BASE_UNIT_COUNT}; got {self.vocab_budget}"
+            )
         if self.workers < 1:
             raise ValueError('workers must be >= 1')
         if self.lexical_alpha <= 0.0:
@@ -103,6 +116,8 @@ class TrainingConfig:
         )
         payload["output_root"] = self.output_root.as_posix()
         payload.pop("resume")
+        if self.vocab_budget is None:
+            payload.pop("vocab_budget")
         return payload
 
     @property
@@ -240,6 +255,78 @@ def _write_json(path: Path, value: Any) -> None:
         newline="",
     )
     _replace_file(temporary, path)
+
+
+def _pending_vocabulary_payload(budget: int) -> dict[str, object]:
+    return {
+        "status": "pending_pass_1_selection",
+        "total_budget": budget,
+        "base_unit_count": BASE_UNIT_COUNT,
+        "learned_lexical_capacity": budget - BASE_UNIT_COUNT,
+        "selection_pass": SELECTION_PASS,
+        "ranking_rule": RANKING_RULE,
+        "identity_semantics": "one distinct latent form_key is one vocabulary item",
+        "surface_realizations_consume_slots": False,
+        "oov_projection": "constituent phonological base-unit tokens",
+    }
+
+
+def _vocabulary_tsv(vocabulary: FrozenVocabulary) -> str:
+    handle = io.StringIO(newline="")
+    writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
+    writer.writerow(
+        (
+            "rank",
+            "kind",
+            "form_key",
+            "latent_form",
+            "phoneme_ids",
+            "pass1_expected_count",
+        )
+    )
+    for entry in vocabulary.entries:
+        writer.writerow(
+            (
+                entry.rank,
+                entry.kind,
+                entry.form.key,
+                entry.form.iast,
+                " ".join(entry.form.phoneme_ids),
+                repr(entry.pass1_expected_count),
+            )
+        )
+    return handle.getvalue()
+
+
+def _write_or_verify_text(path: Path, content: str) -> None:
+    if path.is_file():
+        if path.read_text(encoding="utf-8") != content:
+            raise RuntimeError(f"Frozen vocabulary artifact changed: {path}")
+        return
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(content, encoding="utf-8", newline="")
+    _replace_file(temporary, path)
+
+
+def _materialize_vocabulary_artifacts(
+    run_dir: Path,
+    vocabulary: FrozenVocabulary,
+) -> None:
+    budget_path = run_dir / "vocabulary_budget.json"
+    expected_budget = vocabulary.artifact_payload()
+    if budget_path.is_file():
+        if json.loads(budget_path.read_text(encoding="utf-8")) != expected_budget:
+            raise RuntimeError(
+                f"Frozen vocabulary metadata changed: {budget_path}"
+            )
+    else:
+        _write_json(budget_path, expected_budget)
+    _write_or_verify_text(run_dir / "vocabulary.tsv", _vocabulary_tsv(vocabulary))
+
+    provenance_path = run_dir / "provenance.json"
+    provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    provenance["vocabulary_budget"] = vocabulary.checkpoint_payload()
+    _write_json(provenance_path, provenance)
 
 
 def _git_commit(repo_root: Path) -> str:
@@ -432,9 +519,11 @@ def _initialize_training_worker(
     pass_index: int,
     database_path: Path,
     config: TrainingConfig,
+    vocabulary: FrozenVocabulary | None,
 ) -> None:
-    global _WORKER_CONNECTION, _WORKER_GRAMMAR, _WORKER_SCORER
+    global _WORKER_CONNECTION, _WORKER_GRAMMAR, _WORKER_SCORER, _WORKER_VOCABULARY
     _WORKER_GRAMMAR = StructuredSandhiGrammar.from_default_inventory()
+    _WORKER_VOCABULARY = vocabulary
     if pass_index == 1:
         _WORKER_SCORER = NeutralFormScorer()
         _WORKER_CONNECTION = None
@@ -518,6 +607,7 @@ def _write_training_shard(
                 graph,
                 _WORKER_SCORER,
                 whitespace_merge_penalty=config.whitespace_merge_penalty,
+                vocabulary=_WORKER_VOCABULARY,
             )
             inference_seconds += time.perf_counter() - started
             started = time.perf_counter()
@@ -679,6 +769,7 @@ def _parallel_training_documents(
     telemetry: RuntimeTelemetry,
     start_document: int,
     metrics: PassMetrics,
+    vocabulary: FrozenVocabulary | None,
 ) -> PassMetrics:
     signature = _config_signature(config)
     parallel_started = telemetry.now()
@@ -687,7 +778,7 @@ def _parallel_training_documents(
         max_workers=config.workers,
         mp_context=context,
         initializer=_initialize_training_worker,
-        initargs=(pass_index, store.path, config),
+        initargs=(pass_index, store.path, config, vocabulary),
     ) as executor:
         max_pending = config.workers * 2
         pending: dict[int, Future[dict[str, Any]] | dict[str, Any]] = {}
@@ -753,6 +844,9 @@ def _training_pass(
     resuming = checkpoint.get("active_pass") == pass_index
     start_document = int(checkpoint.get("next_document_index", 0)) if resuming else 0
     metrics = _metrics_from_mapping(checkpoint.get("active_metrics") if resuming else None)
+    vocabulary = store.load_frozen_vocabulary()
+    if config.vocab_budget is not None and pass_index > 1 and vocabulary is None:
+        raise RuntimeError("Pass 2+ requires the frozen pass-1 vocabulary.")
     scorer = None
     if config.workers == 1:
         scorer = (
@@ -786,6 +880,7 @@ def _training_pass(
             telemetry=telemetry,
             start_document=start_document,
             metrics=metrics,
+            vocabulary=vocabulary,
         )
         start_document = len(documents)
 
@@ -814,6 +909,7 @@ def _training_pass(
                     graph,
                     scorer,
                     whitespace_merge_penalty=config.whitespace_merge_penalty,
+                    vocabulary=vocabulary,
                 )
                 telemetry.elapsed('training_inference', started)
                 started = telemetry.now()
@@ -855,6 +951,15 @@ def _training_pass(
         checkpoint.update(next_checkpoint)
         telemetry.elapsed('training_document_total', document_started)
         _timed_checkpoint(run_dir, checkpoint, telemetry)
+
+    if config.vocab_budget is not None:
+        if pass_index == 1:
+            vocabulary = store.select_and_freeze_vocabulary(config.vocab_budget)
+        if vocabulary is None:
+            raise RuntimeError("Constrained pass has no frozen vocabulary.")
+        store.ensure_frozen_count_keys(vocabulary)
+        checkpoint["vocabulary_budget"] = vocabulary.checkpoint_payload()
+        _materialize_vocabulary_artifacts(run_dir, vocabulary)
 
     row = store.connection.execute(
         "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) FROM counts_next"
@@ -985,8 +1090,9 @@ def _inspection_shard_paths(
 def _initialize_inspection_worker(
     database_path: Path,
     config: TrainingConfig,
+    vocabulary: FrozenVocabulary | None,
 ) -> None:
-    _initialize_training_worker(2, database_path, config)
+    _initialize_training_worker(2, database_path, config, vocabulary)
 
 
 def _write_inspection_shard(
@@ -1062,6 +1168,7 @@ def _write_inspection_shard(
                 _WORKER_SCORER,
                 whitespace_merge_penalty=config.whitespace_merge_penalty,
                 top_k=config.analysis_top_k,
+                vocabulary=_WORKER_VOCABULARY,
             )
             inference_seconds += time.perf_counter() - started
             started = time.perf_counter()
@@ -1435,6 +1542,9 @@ def _finalize_inspection(
             "the bounded reported top-k analyses."
         ),
     }
+    vocabulary = store.load_frozen_vocabulary()
+    if vocabulary is not None:
+        summary["vocabulary_budget"] = vocabulary.checkpoint_payload()
     _write_json(run_dir / "summary.json", summary)
     report = _human_report(
         store=store,
@@ -1463,6 +1573,9 @@ def _parallel_inspection_pass(
     telemetry: RuntimeTelemetry,
 ) -> dict[str, Any]:
     signature = _config_signature(config)
+    vocabulary = store.load_frozen_vocabulary()
+    if config.vocab_budget is not None and vocabulary is None:
+        raise RuntimeError("Inspection requires the frozen pass-1 vocabulary.")
     analyses_tmp = run_dir / "analyses.jsonl.tmp"
     boundaries_tmp = run_dir / "boundary_posteriors.jsonl.tmp"
     aggregate = _InspectionAggregate()
@@ -1474,7 +1587,7 @@ def _parallel_inspection_pass(
         max_workers=config.workers,
         mp_context=context,
         initializer=_initialize_inspection_worker,
-        initargs=(store.path, config),
+        initargs=(store.path, config, vocabulary),
     ) as executor:
         max_pending = config.workers * 2
         pending: dict[int, Future[dict[str, Any]] | dict[str, Any]] = {}
@@ -1567,6 +1680,9 @@ def _inspection_pass(
         complexity_tau=config.complexity_tau,
         cache_size=config.lexicon_cache_size,
     )
+    vocabulary = store.load_frozen_vocabulary()
+    if config.vocab_budget is not None and vocabulary is None:
+        raise RuntimeError("Inspection requires the frozen pass-1 vocabulary.")
     analyses_tmp = run_dir / "analyses.jsonl.tmp"
     boundaries_tmp = run_dir / "boundary_posteriors.jsonl.tmp"
     rule_usage: Counter[str] = Counter()
@@ -1604,6 +1720,7 @@ def _inspection_pass(
                     scorer,
                     whitespace_merge_penalty=config.whitespace_merge_penalty,
                     top_k=config.analysis_top_k,
+                    vocabulary=vocabulary,
                 )
                 telemetry.elapsed('inspection_inference', started)
                 started = telemetry.now()
@@ -1959,6 +2076,10 @@ def run_training(
                 "tie-break keys; no stochastic update"
             ),
         }
+        if config.vocab_budget is not None:
+            provenance["vocabulary_budget"] = _pending_vocabulary_payload(
+                config.vocab_budget
+            )
         _write_json(run_dir / "config.json", config.payload())
         _write_json(run_dir / "provenance.json", provenance)
         disk_checkpoint = _load_checkpoint(run_dir)
@@ -1984,6 +2105,53 @@ def run_training(
         else:
             checkpoint = disk_checkpoint
             store.save_training_checkpoint(checkpoint)
+        frozen_vocabulary = store.load_frozen_vocabulary()
+        if config.vocab_budget is None:
+            if frozen_vocabulary is not None:
+                raise RuntimeError(
+                    "Unrestricted configuration cannot reuse a constrained learner."
+                )
+        else:
+            recorded_budget = checkpoint.get("vocabulary_budget")
+            if (
+                recorded_budget is not None
+                and int(recorded_budget.get("total_budget", -1))
+                != config.vocab_budget
+            ):
+                raise ValueError(
+                    "Checkpoint vocabulary budget does not match the configuration."
+                )
+            if frozen_vocabulary is None:
+                if (
+                    recorded_budget is not None
+                    and recorded_budget.get("status") == "frozen"
+                ):
+                    raise RuntimeError(
+                        "Checkpoint names a frozen vocabulary, but its durable table is missing."
+                    )
+                checkpoint["vocabulary_budget"] = _pending_vocabulary_payload(
+                    config.vocab_budget
+                )
+            else:
+                if frozen_vocabulary.total_budget != config.vocab_budget:
+                    raise ValueError(
+                        "Stored frozen vocabulary does not match vocab_budget."
+                    )
+                if (
+                    recorded_budget is not None
+                    and recorded_budget.get("allowed_key_sha256") is not None
+                    and recorded_budget.get("allowed_key_sha256")
+                    != frozen_vocabulary.allowed_sha256
+                ):
+                    raise RuntimeError(
+                        "Checkpoint frozen-vocabulary SHA-256 does not match SQLite."
+                    )
+                checkpoint["vocabulary_budget"] = (
+                    frozen_vocabulary.checkpoint_payload()
+                )
+                _materialize_vocabulary_artifacts(run_dir, frozen_vocabulary)
+            store.save_training_checkpoint(checkpoint)
+            _save_checkpoint(run_dir, checkpoint)
         completed = int(checkpoint.get("completed_passes", 0))
         if completed > config.passes:
             raise ValueError("Checkpoint has more passes than requested.")
