@@ -122,22 +122,38 @@ Accepted optimizations were checked at relative tolerance `1e-10` and absolute t
 
 ## Current scaling state
 
-The next local measurement is P10 medium at 8 workers. An earlier attempt was manually interrupted while the master process was waiting on worker futures; its run directory was preserved rather than treated as a benchmark result. The clean 8-worker rerun was still in progress at the time of this checkpoint and therefore **must not yet be used as a durable scaling conclusion**.
+The clean P10 8-worker medium rerun has now completed and is audited in
+`medium_scaling_p10.md`. It is byte-identical to the 4-worker run for all six
+canonical scientific artifacts and passes checkpoint, overflow, shard-cleanup,
+and SQLite integrity checks.
 
-Only after that run completes should its wall/phase timing, integrity checks, aggregate process-tree memory observation, and scientific hash comparison be promoted into a tracked report/update.
+Eight workers are negative scaling on the local 16-logical-CPU Windows host:
+wall time increases from 1,216.915 to 1,526.624 seconds (+25.45%), training
+wall increases 13.33%, inspection wall increases 27.05%, total CPU increases
+23.81%, and character throughput falls 20.29%. Four workers are the local
+production sweet spot. Local 12/16-worker measurements are not justified.
+
+The earlier Ctrl+C run remains diagnostic-only: it has no completed pass or
+benchmark metrics and its partial shards are excluded from performance claims.
+No aggregate process-tree memory was captured for the local rerun, so the
+main-process RSS field remains insufficient for full-run capacity planning.
 
 ## Cloud deployment gate
 
-The project is ready to move from algorithmic optimization into deployment/scaling once the 8-worker local medium measurement is closed out.
+The local 8-worker measurement is closed, so the project is ready to move from
+algorithmic optimization into guarded cloud deployment/scaling.
 
 The cloud deployment gate is:
 
-1. complete and audit local P10 8-worker medium;
-2. bootstrap the single 16-vCPU / 32-GB Ubuntu host with repository, frozen inputs, environment, and data-disk layout;
-3. verify corpus/rule provenance and freeze ID on the cloud host;
-4. run short medium worker-scaling measurements sufficient to select a cloud worker count;
+1. bootstrap the single 16-vCPU / 32-GB Ubuntu host with repository, frozen inputs, environment, and data-disk layout;
+2. verify corpus/rule provenance and freeze ID on the cloud host;
+3. run cloud medium at 4 workers, then 8 workers only after the first audit passes;
+4. consider 12/16 workers only if each preceding step scales and remains memory-safe;
 5. measure aggregate process-tree memory externally, because benchmark `peak_rss_bytes` covers the main process only;
 6. launch the first production full-M₀ IAST + `surface_word` run only after the worker count and storage headroom are credible.
+
+The executable/manual workflow is documented in
+`cloud_deployment_ubuntu22.md` and `scripts/cloud/`.
 
 A ~3-hour full run remains an engineering target rather than a scientific requirement. If the best exact, reproducible configuration is slower, the measured time should be reported rather than recovered through approximate inference.
 

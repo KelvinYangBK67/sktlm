@@ -530,3 +530,61 @@ externally because benchmark `peak_rss_bytes` covers only the main process.
 A post-P10 per-token internal-match reuse experiment was scientifically
 equivalent but showed no reproducible smoke benefit against a current-host
 control. It was fully reverted and not committed.
+
+## 22. Local P10 8-worker scaling closed (2026-08-31)
+
+The clean 8-worker P10 medium rerun completed at
+`artifacts/latent_benchmarks/medium_optimized_p10_w8_p3_rerun1/` from
+provenance commit `25998f0`. It has three completed passes, completed
+inspection, zero overflow, no residual shard/tmp/SQLite sidecar files, and
+`PRAGMA quick_check = ok`. Training and inspection tables contain 1,888,526
+rows with count totals 394,031.7571645344 and 395,770.48199961643.
+
+The six canonical scientific artifacts are byte-for-byte identical to the
+4-worker P10 run by streaming SHA-256. Their names, sizes, and hashes are
+promoted in
+`reports/core_methods/latent_lexicon/medium_scaling_p10.md`.
+
+Eight workers are negative scaling on this host:
+
+- wall 1,216.915 → 1,526.624 s (+25.45%);
+- training document wall +13.33%;
+- inspection document wall +27.05%;
+- benchmark total CPU +23.81%;
+- character throughput -20.29%.
+
+Four workers are the local production sweet spot. Do not spend time on local
+12/16-worker measurements. The local full-M₀ projection remains the 4-worker
+4.60-hour character estimate / 4.06-hour document estimate. This worker
+conclusion is host-specific and must not be applied to the cloud host without
+measurement.
+
+The first 8-worker attempt at
+`medium_optimized_p10_w8_p3_interrupted/` was manually stopped. Its checkpoint
+has zero completed passes and it has no benchmark metrics. Its 24 partial shard
+files (including 8 zero-byte temporary files) are crash diagnostics only and
+are excluded from performance conclusions.
+
+## 23. Cloud deployment preparation (2026-08-31)
+
+The two remote documentation commits `99df410` and `921bfe1` were audited and
+retained. The promotion policy is correct and the Stage 01 checkpoint is useful;
+its provisional 8-worker state was corrected in a follow-up rather than by
+rewriting public history.
+
+No pre-existing cloud/deployment/bootstrap scripts were present. A guarded
+workflow now exists under `scripts/cloud/` and is documented in
+`reports/core_methods/latent_lexicon/cloud_deployment_ubuntu22.md`. It provides:
+
+- read-only hardware/disk discovery;
+- exact-HEAD, fast-forward-only repository bootstrap;
+- refusal to place artifacts on the system/root filesystem;
+- Python 3.11 venv/dependency setup on the data disk;
+- reuse of canonical freeze and representation validators;
+- Linux process-tree RSS/CPU/process-I/O sampling;
+- bounded-memory artifact completion, SQLite, residue, and SHA-256 audit.
+
+The cloud sequence is 4-worker medium, then 8 workers only after the first
+audit. Local scaling is not extrapolated. Cloud 12/16 are conditional on
+measured benefit and memory headroom. Full M₀ remains gated and must not be
+started automatically.

@@ -181,7 +181,7 @@ but three experimental smoke runs and a current-host P10 control did not show a
 reproducible phase or wall improvement. The patch and its focused test were
 reverted.
 
-## Current validation and next measurement
+## Validation before local scaling closure
 
 - Focused latent suite after P8: `22 passed`.
 - Full repository suite: `444 passed, 3 failed`; the three failures are the pre-existing SentencePiece 0.2.2 removal of `immutable_proto`, outside this latent-method change.
@@ -190,8 +190,18 @@ reverted.
 - P10 completed on medium and is byte-identical to P8 for all six scientific artifacts.
 - The failed transient-lock smoke artifact `smoke_inspection_workers_4_final_b` was preserved for diagnostics and was not counted; the bounded replacement retry is covered by a focused test.
 
-The next expensive step is one 8-worker, 3-pass P10 medium scaling run. It must
-be launched and monitored by the user under the repository's long-job rule, with
-aggregate Python process-tree memory recorded externally. Compare its scientific
-artifacts byte-for-byte with the 4-worker P10 run. Do not launch the full M₀
-workflow automatically.
+This checkpoint authorized the later 8-worker run recorded below. The next
+active measurement is now the independent cloud scaling gate, not another local
+benchmark.
+
+## Completed local 8-worker scaling
+
+The clean run `medium_optimized_p10_w8_p3_rerun1` completed in 1,526.624
+seconds and is scientifically byte-identical to the 4-worker P10 reference.
+Checkpoint, SQLite, zero-overflow, and shard-cleanup audits all pass.
+
+Eight workers regress wall by 25.45%, training wall by 13.33%, inspection wall
+by 27.05%, and total CPU by 23.81%; throughput is 20.29% lower. Four workers
+are the local production sweet spot, and local 12/16-worker runs are closed.
+Cloud scaling remains an independent 4→8 gate because the host/OS/storage
+topology differs. Full details and hashes are in `medium_scaling_p10.md`.

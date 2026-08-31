@@ -64,3 +64,11 @@ This file records decisions that should not be casually re-litigated in each Cod
 38. Do not materialize all full-corpus lattices/candidate paths in memory.
 39. Do not automatically launch a long full-M₀ run unless explicitly requested.
 40. First-run analysis must expose learned structure: latent lexicon, candidate posteriors, boundaries, rule usage, identity-vs-latent mass, ambiguity, and complexity—not only a single loss.
+
+## Deployment and scaling gate
+
+41. Four workers are the measured production sweet spot on the current local Windows host; do not run local 12/16-worker benchmarks after the completed 8-worker negative-scaling result.
+42. Local worker scaling must not be extrapolated to a different cloud host. On the Ubuntu cloud host, measure 4 workers first, then 8; consider 12/16 only when each preceding step is scientifically identical, materially faster, and memory-safe.
+43. Cloud artifacts, benchmark scratch, input copies, and resource metrics belong on the confirmed 300 GB data filesystem, not the 80 GB system filesystem. Never format a device until its exact identity and emptiness are manually confirmed.
+44. Full M₀ remains gated on audited cloud medium scaling, aggregate process-tree memory, storage headroom, and an explicitly recorded user-run command. Do not start it automatically.
+45. Raw multi-gigabyte artifacts remain gitignored, but every result that changes a scientific, implementation, performance, scaling, projection, or deployment decision must be promoted into tracked Markdown.

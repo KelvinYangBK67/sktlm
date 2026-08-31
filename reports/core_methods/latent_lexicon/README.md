@@ -17,6 +17,8 @@ The artifact path may be cited by a report, but the report must contain enough m
 - `performance_profile_v1.md` — original profiling and bottleneck analysis.
 - `performance_optimization_v1.md` — P0–P10 optimization history, accepted/rejected changes, medium measurements, integrity/equivalence results, and scaling projections.
 - `interrupted_m0_20260830_diagnostics.md` — diagnosis of the interrupted first full-M₀ attempt and the resume-safety failure class that motivated P0.
+- `medium_scaling_p10.md` — audited P10 4-vs-8 local medium scaling, exact scientific hashes, integrity results, interrupted 8-worker diagnostic, and local worker decision.
+- `cloud_deployment_ubuntu22.md` — guarded Ubuntu/data-disk bootstrap, provenance checks, resource monitoring, and staged cloud scaling/full-run gate.
 - `stage01_checkpoint_20260831.md` — compact Stage 01 checkpoint before cloud deployment/full M₀.
 
 Future full-corpus results should receive their own tracked report rather than being represented only by the generated `inspection_report.md` or other files inside an artifact directory.

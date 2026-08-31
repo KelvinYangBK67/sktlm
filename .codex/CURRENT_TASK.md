@@ -4,81 +4,98 @@
 
 Branch: `exp/m0-core-methods`
 
-The P10 4-worker, 3-pass medium benchmark completed successfully at:
+The formal local P10 medium scaling checkpoint is complete.
 
-`artifacts/latent_benchmarks/medium_optimized_p10_w4_p3/`
+The clean 8-worker run is:
 
-It ran from commit `9be29ea` in 1,216.915 seconds (20m17s), versus 2,141.125 seconds for P8: a 1.759x end-to-end speedup. Training document wall fell 29.2% to 625.509 seconds and inspection document wall fell 55.9% to 523.347 seconds. Inspection inference fell 15.0%, candidate generation 18.4%, and serialization 30.0%.
+`artifacts/latent_benchmarks/medium_optimized_p10_w8_p3_rerun1/`
 
-Artifact integrity and identity checks passed:
+It completed 3 passes plus inspection at provenance commit `25998f0`. The
+checkpoint, metrics consistency, zero-overflow, shard/tmp cleanup, and SQLite
+audits pass. Training and inspection count tables match the 4-worker P10 row
+counts and totals. The six canonical scientific artifacts are byte-for-byte
+identical to `medium_optimized_p10_w4_p3` by streaming SHA-256.
 
-- three training passes and inspection are complete;
-- 20 documents, 95,847 segments, and 4,231,365 characters per pass;
-- zero candidate overflow and zero retained shard files;
-- `PRAGMA quick_check = ok`;
-- 1,888,526 rows in both training and inspection count tables;
-- training count sum 394,031.7571645344 and inspection count sum 395,770.48199961643;
-- P8 and P10 `iteration_metrics.json`, `summary.json`, `analyses.jsonl`, `boundary_posteriors.jsonl`, `latent_lexicon.tsv`, and `rule_usage.tsv` are byte-for-byte SHA-256 identical.
+The earlier
+`artifacts/latent_benchmarks/medium_optimized_p10_w8_p3_interrupted/` was
+manually stopped with Ctrl+C. It has zero completed passes, no benchmark
+metrics, and partial shards. It is crash-diagnostic evidence only and is
+excluded from performance comparisons.
 
-The conservative full-M₀ projection is now about 4.60 hours by character throughput, or 4.06 hours by document count. This is substantially closer but still requires about 1.53x further speedup to reach three hours under the conservative projection.
+Local scaling conclusion:
 
-The experimental per-token internal-match inventory reuse after P10 was scientifically equivalent but did not show a reproducible phase or wall benefit against a contemporaneous current-host control. It was fully reverted and not committed.
+- 4-worker wall: 1,216.915 s;
+- 8-worker wall: 1,526.624 s (+25.45%);
+- training wall: +13.33%;
+- inspection wall: +27.05%;
+- benchmark total CPU: +23.81%;
+- throughput: -20.29%.
 
-The worktree should be clean at commit `9be29ea` before the documentation commit that records this result. Read `AGENTS.md`, `.codex/PROJECT_STATE.md`, `.codex/DECISIONS.md`, and `reports/core_methods/latent_lexicon/performance_optimization_v1.md` before continuing. Do not modify frozen M₀ data or rules.
+Four workers are the local production sweet spot. Do not run local 12/16-worker
+benchmarks. The current local full-M₀ projection remains 4.60 hours by
+characters / 4.06 hours by documents. Do not start full M₀.
 
-## Next task: user-run 8-worker medium scaling
+Durable reports:
 
-The next measurement is the same P10 code and scientific configuration with eight workers. It is expected to exceed five minutes. Codex must not launch it automatically, wait for it, or continuously poll it. The user should launch it manually from the repository root:
+- `reports/core_methods/latent_lexicon/medium_scaling_p10.md`;
+- `reports/core_methods/latent_lexicon/stage01_checkpoint_20260831.md`;
+- `reports/core_methods/latent_lexicon/performance_optimization_v1.md`;
+- `reports/core_methods/latent_lexicon/cloud_deployment_ubuntu22.md`.
 
-```powershell
-.\.venv\Scripts\python.exe -m sktlm.latent.benchmark `
-  --benchmark medium `
-  --run-id medium_optimized_p10_w8_p3 `
-  --passes 3 `
-  --workers 8
+The provisional remote commits `99df410` and `921bfe1` were audited and
+retained by fast-forward. Their promotion policy and checkpoint structure are
+useful; the outdated “8-worker still running” statement was corrected by the
+follow-up checkpoint commit rather than rewriting public history.
+
+Cloud tooling is under `scripts/cloud/`:
+
+- `host_sanity.sh` — read-only host/disk inventory;
+- `bootstrap_repo.sh` — exact-HEAD, data-disk, Python 3.11, dependency bootstrap;
+- `verify_inputs.py` — existing-validator-based M₀/representations/rules audit;
+- `run_with_metrics.py` — Linux process-tree RSS/CPU/I/O sampler;
+- `audit_latent_run.py` — bounded-memory completion/SQLite/hash auditor.
+
+Read `AGENTS.md`, `.codex/PROJECT_STATE.md`, `.codex/DECISIONS.md`, and the
+reports above before continuing. Do not alter frozen M₀, its manifest, the
+`m0` tag, representations, or the 1,218-rule inventory.
+
+## Next task: cloud host read-only sanity
+
+Target: Ubuntu 22.04, 16 vCPU, 32 GB RAM, 80 GB system SSD, 300 GB fast data
+SSD, single node.
+
+The user should run this first command manually on the VM:
+
+```bash
+mkdir -p "$HOME/sktlm-cloud-audit"
+{
+  echo "timestamp_utc: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  hostname
+  uname -a
+  lscpu
+  free -h
+  lsblk -e 7 -o NAME,PATH,SIZE,TYPE,FSTYPE,FSVER,LABEL,UUID,MOUNTPOINTS,MODEL,SERIAL
+  df -hT
+  findmnt -D
+  git --version
+  command -v python3.11 >/dev/null && python3.11 --version || echo "python3.11: MISSING"
+  command -v iostat >/dev/null && iostat -V || echo "iostat: MISSING"
+} 2>&1 | tee "$HOME/sktlm-cloud-audit/host_sanity.txt"
 ```
 
-Expected output directory:
+Expected output:
 
-`artifacts/latent_benchmarks/medium_optimized_p10_w8_p3/`
+`$HOME/sktlm-cloud-audit/host_sanity.txt`
 
-Expected completion signal: the process exits successfully; `checkpoint.json` has `completed_passes = 3` and `inspection_complete = true`; the main scientific and metrics files exist; and no shard files remain.
+Completion signal: the shell command exits and the file includes CPU, memory,
+block-device filesystem/UUID/mountpoint data, filesystem capacity, and tool
+availability. No long process is involved.
 
-Check whether it is still running, and observe process-tree memory, with Task Manager or:
+Return that file/output before any mount, `fstab`, formatting, repository
+bootstrap, or benchmark action. In particular, do not run `mkfs` until the exact
+300 GB device/partition is reviewed and confirmed empty.
 
-```powershell
-Get-Process python -ErrorAction SilentlyContinue |
-  Select-Object Id, CPU, WorkingSet64
-```
-
-The benchmark's `peak_rss_bytes` remains main-process-only. Record the maximum combined Python working set externally before choosing a worker count for full M₀.
-
-After completion, inspect `benchmark_metrics.json`, `timing_metrics.json`, `checkpoint.json`, `summary.json`, and `shards/`. Compare the six deterministic scientific artifacts against the completed 4-worker P10 run by size and SHA-256:
-
-```powershell
-$reference = 'artifacts\latent_benchmarks\medium_optimized_p10_w4_p3'
-$candidate = 'artifacts\latent_benchmarks\medium_optimized_p10_w8_p3'
-$scientific = @(
-  'iteration_metrics.json',
-  'summary.json',
-  'analyses.jsonl',
-  'boundary_posteriors.jsonl',
-  'latent_lexicon.tsv',
-  'rule_usage.tsv'
-)
-foreach ($name in $scientific) {
-  $left = Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $reference $name)
-  $right = Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $candidate $name)
-  [pscustomobject]@{
-    Name = $name
-    Equal = $left.Hash -eq $right.Hash
-    SHA256 = $right.Hash
-  }
-}
-```
-
-The existing `sktlm.latent.equivalence` implementation materializes multi-gigabyte JSONL/TSV files and should not be used for medium/full artifacts until it is made streaming and bounded-memory. Exact hashes are stronger when outputs are expected to be byte-identical.
-
-Use the 8-worker result to decide whether the approximately 3-hour full-M₀ target is credible. Do not launch the full run automatically.
-
-Do not alter the frozen corpus, manifest, `m0` tag, or fixed 1218-rule inventory. Preserve the distinct `C_M` and `M_ANUSVARA` representations.
+After disk review, follow `cloud_deployment_ubuntu22.md` in order: mount the
+data disk, clone/fetch and verify the exact handoff HEAD, bootstrap Python 3.11,
+transfer/verify frozen inputs, run smoke, then manually run cloud medium at 4
+workers. Every medium run remains a user-managed >5-minute command.
