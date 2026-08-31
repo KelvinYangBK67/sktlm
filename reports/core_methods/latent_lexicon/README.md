@@ -24,6 +24,10 @@ The artifact path may be cited by a report, but the report must contain enough m
 - `cloud_scaling_checkpoint_20260831.md` — authoritative closed cloud w4/w8/w12/w16 comparison, exact scientific equivalence, frozen 8-worker selection, and planned full-M0 replica gate.
 - `research_output_inventory_20260831.md` — bounded classification of ignored/local reports, artifacts, notes, promotions, and historical duplicates.
 
+The `evidence/` subdirectory preserves the minimum machine-readable evidence
+for accepted formal benchmark decisions and a manifest of established large
+artifact hashes.
+
 Future full-corpus results should receive their own tracked report rather than being represented only by the generated `inspection_report.md` or other files inside an artifact directory.
 
 ## Promotion checklist for expensive runs

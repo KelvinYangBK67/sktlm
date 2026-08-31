@@ -1,0 +1,18 @@
+{
+  "condition": "surface_word",
+  "config_signature": "deb135556e90b9ff4eaef38953bf20ac945981d1e1d4f761bcf119499e55f54b",
+  "determinism": "sorted manifest order, file order, rule IDs, graph nodes, and tie-break keys; no stochastic update",
+  "document_count": 20,
+  "document_list": "configs/benchmarks/latent_medium_documents.txt",
+  "document_list_sha256": "52ac2647807670f7c29a35715432d4ff724c1b0b6bb3886a84fd7ebc4d421fab",
+  "external_rule_count": 1218,
+  "freeze_id": "9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40",
+  "git_commit": "fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04",
+  "implementation": "latent-lexicon-v1",
+  "manifest": "/root/sktlm/data/manifests/representations.csv",
+  "manifest_sha256": "c04124b2bc4909750ebedc4e7ec939df3c18edecf1598345ab3f662a21fbc520",
+  "rules_path": "/root/sktlm/data/rules/external_sandhi.tsv",
+  "rules_sha256": "55a204169a1ec442e8ac6e9ca90da1e6510b24998cdeba2d76f95f513bab7e90",
+  "script": "iast",
+  "seed": 0
+}

@@ -1,0 +1,26 @@
+{
+  "caveat": "One-second /proc sampling can undercount processes that start and exit between samples; RSS is the simultaneous sum for observed members of the command's process tree.",
+  "command": [
+    "./.venv/bin/python",
+    "-m",
+    "sktlm.latent.benchmark",
+    "--benchmark",
+    "medium",
+    "--run-id",
+    "cloud_medium_p10_w4_p3",
+    "--passes",
+    "3",
+    "--workers",
+    "4"
+  ],
+  "forwarded_signal": null,
+  "logical_cpu_count": 16,
+  "peak_process_count": 6,
+  "peak_process_tree_rss_bytes": 978272256,
+  "return_code": 0,
+  "sample_interval_seconds": 1.0,
+  "sampled_process_tree_cpu_seconds": 2382.97,
+  "sampled_process_tree_read_bytes": 0,
+  "sampled_process_tree_write_bytes": 26978398208,
+  "wall_seconds": 972.5030114389992
+}

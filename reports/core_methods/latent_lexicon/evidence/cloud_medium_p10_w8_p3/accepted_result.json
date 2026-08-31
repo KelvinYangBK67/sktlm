@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "record_type": "accepted_result_digest",
+  "run_id": "cloud_medium_p10_w8_p3",
+  "benchmark": "medium",
+  "passes": 3,
+  "workers": 8,
+  "wall_seconds": 740.9371817360001,
+  "chars_per_second": 22843.313059744156,
+  "cpu_seconds": 2157.7326972640003,
+  "peak_rss_bytes": 75665408,
+  "artifact_bytes": 2571276002,
+  "state": "DONE",
+  "remote_audit_valid": true,
+  "provenance_commit": "fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04",
+  "scientific_artifact_set": "cloud_medium_p10_canonical",
+  "raw_small_evidence_available_locally": false,
+  "hashes_recomputed": false,
+  "sources": [
+    "configs/cloud/experiment_registry.toml",
+    "reports/core_methods/latent_lexicon/cloud_scaling_checkpoint_20260831.md"
+  ]
+}

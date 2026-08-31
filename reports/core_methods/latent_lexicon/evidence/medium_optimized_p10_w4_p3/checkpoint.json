@@ -1,0 +1,60 @@
+{
+  "active_metrics": null,
+  "active_pass": null,
+  "completed_passes": 3,
+  "history": [
+    {
+      "candidate_edges": 23089593,
+      "candidate_factors": 1659294,
+      "candidate_nodes": 6507811,
+      "characters": 4231365,
+      "documents": 20,
+      "expected_lexical_tokens": 1021748.8585606935,
+      "lexical_count_total": 1021748.858560694,
+      "lexicon_types": 1888526,
+      "lines": 92520,
+      "log_partition": 1138486.9945299579,
+      "mean_identity_mass": 0.005603745671757951,
+      "mean_latent_mass": 0.9943962543282421,
+      "overflowed_tokens": 0,
+      "pass": 1,
+      "segments": 95847
+    },
+    {
+      "candidate_edges": 23089593,
+      "candidate_factors": 1659294,
+      "candidate_nodes": 6507811,
+      "characters": 4231365,
+      "documents": 20,
+      "expected_lexical_tokens": 404022.56857036083,
+      "lexical_count_total": 404022.56857035955,
+      "lexicon_types": 1888526,
+      "lines": 92520,
+      "log_partition": -5487712.44515501,
+      "mean_identity_mass": 0.06552879752829664,
+      "mean_latent_mass": 0.9344712024717046,
+      "overflowed_tokens": 0,
+      "pass": 2,
+      "segments": 95847
+    },
+    {
+      "candidate_edges": 23089593,
+      "candidate_factors": 1659294,
+      "candidate_nodes": 6507811,
+      "characters": 4231365,
+      "documents": 20,
+      "expected_lexical_tokens": 394031.75716453424,
+      "lexical_count_total": 394031.7571645344,
+      "lexicon_types": 1888526,
+      "lines": 92520,
+      "log_partition": -4827026.554366539,
+      "mean_identity_mass": 0.07056584806535031,
+      "mean_latent_mass": 0.9294341519346537,
+      "overflowed_tokens": 0,
+      "pass": 3,
+      "segments": 95847
+    }
+  ],
+  "inspection_complete": true,
+  "next_document_index": 0
+}

@@ -71,6 +71,8 @@ benchmarks.
 
 The bounded inventory is
 `reports/core_methods/latent_lexicon/research_output_inventory_20260831.md`.
+The minimum tracked formal-run evidence and established hash manifest are in
+`reports/core_methods/latent_lexicon/evidence/`.
 Raw P10/cloud outputs, generated cleaning audits, old notes, interrupted
 diagnostics, operational receipts, and private bridge configuration remain
 ignored/local. Do not delete or bulk-add them.

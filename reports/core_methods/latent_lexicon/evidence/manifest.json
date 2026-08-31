@@ -1,0 +1,171 @@
+{
+  "schema_version": 1,
+  "purpose": "Minimum tracked machine-readable evidence for accepted formal benchmark decisions.",
+  "hashes_recomputed": false,
+  "scientific_artifact_sets": {
+    "cloud_medium_p10_canonical": {
+      "applies_to": [
+        "cloud_medium_p10_w4_p3",
+        "cloud_medium_p10_w8_p3",
+        "cloud_medium_p10_w12_p3",
+        "cloud_medium_p10_w16_p3"
+      ],
+      "source_report": "reports/core_methods/latent_lexicon/cloud_scaling_checkpoint_20260831.md",
+      "files": [
+        {
+          "filename": "analyses.jsonl",
+          "bytes": 1036066517,
+          "sha256": "44fd8e5dda79db1ca8a79751ba13953c885755eed1e1ba6f6eabaa22e83b9b69"
+        },
+        {
+          "filename": "boundary_posteriors.jsonl",
+          "bytes": 442296701,
+          "sha256": "3b05630c3d86bb5d8a14b752276a72c274230bae1a9d4a1fd48953534c48af3d"
+        },
+        {
+          "filename": "iteration_metrics.json",
+          "bytes": 1504,
+          "sha256": "c53235006acb9fc475e2cc972c168cb6490ae1e2132b99a62d4f933aa2cfc24a"
+        },
+        {
+          "filename": "latent_lexicon.tsv",
+          "bytes": 323005526,
+          "sha256": "3387d0219c6c076446ab8519f2a66b60504253b4e800be3ea931feb20c723d7b"
+        },
+        {
+          "filename": "rule_usage.tsv",
+          "bytes": 27993,
+          "sha256": "2cc99a3c418f536142bbf352dd9e77b8a01dae960c506ef13068c3398d2321a7"
+        },
+        {
+          "filename": "summary.json",
+          "bytes": 1121,
+          "sha256": "85d71e88c98ea1cde6f76057d79688c83807d09a5941b08a62779643b7300605"
+        }
+      ]
+    },
+    "local_medium_p10_canonical": {
+      "applies_to": [
+        "medium_optimized_p10_w4_p3",
+        "medium_optimized_p10_w8_p3_rerun1"
+      ],
+      "source_report": "reports/core_methods/latent_lexicon/medium_scaling_p10.md",
+      "files": [
+        {
+          "filename": "analyses.jsonl",
+          "bytes": 1036072476,
+          "sha256": "27f6b5ace1f7e145c02d8fd9cb88193ef9a79ab045db76494dfd595d81f5caa4"
+        },
+        {
+          "filename": "boundary_posteriors.jsonl",
+          "bytes": 442298527,
+          "sha256": "b620f71b832547790c101d5dd8d8c5f1c801716f3a1dbb85c4a03d464ae7e579"
+        },
+        {
+          "filename": "iteration_metrics.json",
+          "bytes": 1504,
+          "sha256": "c0d7effebb2a1070474a55aa70ad586f31bc79cc5979c9cfeca2a51a4dfd20d3"
+        },
+        {
+          "filename": "latent_lexicon.tsv",
+          "bytes": 323003959,
+          "sha256": "223141327fd83d6f06cf73ea554135a94c2fccf224c7917b9fd2e14d0af1062a"
+        },
+        {
+          "filename": "rule_usage.tsv",
+          "bytes": 27962,
+          "sha256": "bd47ab7c7026c4491b03ad000b090017285d0a4d4574fb65946f9a89373498c6"
+        },
+        {
+          "filename": "summary.json",
+          "bytes": 1119,
+          "sha256": "e64f6f13cf06facc8e2198980ad71c66fbf46ab9ab3826ce1402d6db033195c3"
+        }
+      ]
+    }
+  },
+  "runs": [
+    {
+      "run_id": "cloud_medium_p10_w4_p3",
+      "workers": 4,
+      "provenance_commit": "fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04",
+      "original_local_source_path": "artifacts/cloud_collected/cloud_medium_p10_w4_p3",
+      "original_remote_source_path": "artifacts/latent_benchmarks/cloud_medium_p10_w4_p3",
+      "raw_small_evidence_available_locally": true,
+      "scientific_artifact_set": "cloud_medium_p10_canonical",
+      "tracked_evidence_files": [
+        "cloud_medium_p10_w4_p3/benchmark_metrics.json",
+        "cloud_medium_p10_w4_p3/remote_audit.json",
+        "cloud_medium_p10_w4_p3/process_tree_summary.json",
+        "cloud_medium_p10_w4_p3/config.json",
+        "cloud_medium_p10_w4_p3/provenance.json"
+      ]
+    },
+    {
+      "run_id": "cloud_medium_p10_w8_p3",
+      "workers": 8,
+      "provenance_commit": "fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04",
+      "original_local_source_path": null,
+      "original_remote_source_path": "artifacts/latent_benchmarks/cloud_medium_p10_w8_p3",
+      "raw_small_evidence_available_locally": false,
+      "scientific_artifact_set": "cloud_medium_p10_canonical",
+      "tracked_evidence_files": [
+        "cloud_medium_p10_w8_p3/accepted_result.json"
+      ]
+    },
+    {
+      "run_id": "cloud_medium_p10_w12_p3",
+      "workers": 12,
+      "provenance_commit": "fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04",
+      "original_local_source_path": null,
+      "original_remote_source_path": "artifacts/latent_benchmarks/cloud_medium_p10_w12_p3",
+      "raw_small_evidence_available_locally": false,
+      "scientific_artifact_set": "cloud_medium_p10_canonical",
+      "tracked_evidence_files": [
+        "cloud_medium_p10_w12_p3/accepted_result.json"
+      ]
+    },
+    {
+      "run_id": "cloud_medium_p10_w16_p3",
+      "workers": 16,
+      "provenance_commit": "fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04",
+      "original_local_source_path": null,
+      "original_remote_source_path": "artifacts/latent_benchmarks/cloud_medium_p10_w16_p3",
+      "raw_small_evidence_available_locally": false,
+      "scientific_artifact_set": "cloud_medium_p10_canonical",
+      "tracked_evidence_files": [
+        "cloud_medium_p10_w16_p3/accepted_result.json"
+      ]
+    },
+    {
+      "run_id": "medium_optimized_p10_w4_p3",
+      "workers": 4,
+      "provenance_commit": "9be29eadf1c3ca67f922847b5547ae32dd1b8f49",
+      "original_local_source_path": "artifacts/latent_benchmarks/medium_optimized_p10_w4_p3",
+      "original_remote_source_path": null,
+      "raw_small_evidence_available_locally": true,
+      "scientific_artifact_set": "local_medium_p10_canonical",
+      "tracked_evidence_files": [
+        "medium_optimized_p10_w4_p3/benchmark_metrics.json",
+        "medium_optimized_p10_w4_p3/config.json",
+        "medium_optimized_p10_w4_p3/provenance.json",
+        "medium_optimized_p10_w4_p3/checkpoint.json"
+      ]
+    },
+    {
+      "run_id": "medium_optimized_p10_w8_p3_rerun1",
+      "workers": 8,
+      "provenance_commit": "25998f0d05948c02b04ff1b4971cf398656b8799",
+      "original_local_source_path": "artifacts/latent_benchmarks/medium_optimized_p10_w8_p3_rerun1",
+      "original_remote_source_path": null,
+      "raw_small_evidence_available_locally": true,
+      "scientific_artifact_set": "local_medium_p10_canonical",
+      "tracked_evidence_files": [
+        "medium_optimized_p10_w8_p3_rerun1/benchmark_metrics.json",
+        "medium_optimized_p10_w8_p3_rerun1/config.json",
+        "medium_optimized_p10_w8_p3_rerun1/provenance.json",
+        "medium_optimized_p10_w8_p3_rerun1/checkpoint.json"
+      ]
+    }
+  ]
+}

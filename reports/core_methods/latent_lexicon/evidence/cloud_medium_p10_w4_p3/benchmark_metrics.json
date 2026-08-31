@@ -1,0 +1,78 @@
+{
+  "artifact_bytes": 2571276027,
+  "benchmark": "medium",
+  "character_visits": 16925460,
+  "chars_per_second": 17409.851117105878,
+  "cpu_seconds": 2364.736468385,
+  "document_list": "configs/benchmarks/latent_medium_documents.txt",
+  "inspection_characters": 4231365,
+  "inspection_segments": 95847,
+  "passes": 3,
+  "peak_rss_bytes": 77103104,
+  "runtime": {
+    "counters": {
+      "inspection_worker_lexical_score_calls": 6593658,
+      "inspection_worker_sqlite_selects": 2524574,
+      "sqlite_count_rows_serialized": 12687196,
+      "sqlite_count_upsert_calls": 296,
+      "sqlite_count_upsert_rows": 12687196,
+      "sqlite_documents_committed": 60,
+      "training_worker_lexical_score_calls": 13187316,
+      "training_worker_sqlite_selects": 5046924
+    },
+    "grammar_cache": {
+      "internal_matches": {
+        "currsize": 0,
+        "hits": 0,
+        "maxsize": 100000,
+        "misses": 0
+      }
+    },
+    "lexical_scorers": [],
+    "timings_seconds": {
+      "checkpoint_json": 0.02257343998280703,
+      "inspection_candidate_generation": 271.03575039969655,
+      "inspection_count_aggregation": 6.631568488122866,
+      "inspection_document_total": 407.7751235309988,
+      "inspection_frontend_io": 19.91223195449129,
+      "inspection_inference": 436.3235258783134,
+      "inspection_parallel_wall": 407.7751235309988,
+      "inspection_serialization": 135.28892037674814,
+      "inspection_worker_cpu": 902.7005305519997,
+      "inspection_worker_document_total": 903.9494375390022,
+      "inspection_worker_sqlite": 19.032126133275597,
+      "lexicon_finalize": 16.446184993004863,
+      "sqlite_count_row_serialization": 4.25245508694934,
+      "sqlite_count_upsert": 35.027736294014176,
+      "sqlite_document_begin": 0.004940867991535924,
+      "sqlite_document_commit": 16.587271573025646,
+      "training_candidate_generation": 800.7734447994699,
+      "training_count_aggregation": 18.209340551678906,
+      "training_document_total": 498.53686571199796,
+      "training_frontend_io": 57.5098684340046,
+      "training_inference": 293.93329291032205,
+      "training_parallel_wall": 498.53686571199796,
+      "training_worker_cpu": 1207.6903967590001,
+      "training_worker_document_total": 1208.0909719920091,
+      "training_worker_sqlite": 35.39364530580133
+    }
+  },
+  "schema_version": 1,
+  "segment_visits": 383388,
+  "segments_per_second": 394.3602123714799,
+  "software": {
+    "logical_cpu_count": 16,
+    "numpy": "2.4.6",
+    "platform": "Linux-5.15.0-133-generic-x86_64-with-glibc2.35",
+    "processor": "x86_64",
+    "python": "3.11.15",
+    "sentencepiece": "0.2.1",
+    "sktlm": "0.2.0",
+    "sqlite": "3.37.2",
+    "torch": "2.12.1"
+  },
+  "training_characters": 12694095,
+  "training_segments": 287541,
+  "wall_seconds": 972.1771821109978,
+  "workers": 4
+}

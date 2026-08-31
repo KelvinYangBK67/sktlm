@@ -696,3 +696,19 @@ closure and hashes are in
 `reports/core_methods/latent_lexicon/cloud_scaling_checkpoint_20260831.md`;
 the completed run records and planned identities are in
 `configs/cloud/experiment_registry.toml`.
+
+## 28. Formal benchmark evidence layer (2026-08-31)
+
+`reports/core_methods/latent_lexicon/evidence/` now preserves small,
+non-sensitive machine-readable evidence for the accepted cloud medium P10
+w4/w8/w12/w16 checkpoint and the accepted local P10 w4/w8 comparison. The
+manifest maps run IDs, workers, provenance commits, source locations, copied
+evidence, and the already-established canonical artifact sizes/SHA-256 values.
+No hashes, audits, or benchmarks were rerun.
+
+Raw metrics/audit/config/provenance evidence was locally available and copied
+for cloud w4 and both local runs. Cloud w8/w12/w16 raw small files were not
+present locally; their tracked files are explicitly labeled accepted-result
+digests of facts already recorded in the registry and cloud checkpoint.
+Multi-GB deterministic outputs, SQLite files, WAL/shards, and process samples
+remain ignored/local.
