@@ -158,14 +158,18 @@ def train_sentencepiece_from_texts(
     vocab_size: int,
     model_type: str,
 ) -> Path:
-    """Train deterministically from the already-selected train segments."""
+    """Train deterministically from selected train segments without materializing them."""
     output_prefix.parent.mkdir(parents=True, exist_ok=True)
     input_path = output_prefix.with_name(f"{output_prefix.name}_segments.txt")
-    materialized = list(texts)
-    if not materialized:
-        raise ValueError("SentencePiece training requires at least one train segment")
-    input_path.write_text("\n".join(materialized) + "\n", encoding="utf-8")
     try:
+        text_count = 0
+        with input_path.open("w", encoding="utf-8", newline="\n") as handle:
+            for text in texts:
+                handle.write(text)
+                handle.write("\n")
+                text_count += 1
+        if text_count == 0:
+            raise ValueError("SentencePiece training requires at least one train segment")
         train_sentencepiece([input_path], output_prefix, vocab_size, model_type)
     finally:
         input_path.unlink(missing_ok=True)

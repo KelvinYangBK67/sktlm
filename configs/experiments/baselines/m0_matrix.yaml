@@ -1,0 +1,6 @@
+freeze_id: 9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40
+canonical_manifest: data/manifests/canonical_corpus.csv
+representation_manifest: data/manifests/representations.csv
+artifact_root: artifacts/baselines/m0
+seed: 0
+vocab_size: 24000
