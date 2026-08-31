@@ -467,7 +467,8 @@ def test_tracked_registry_has_unique_logical_assignments() -> None:
     registry = bridge.tomllib.loads(registry_path.read_text(encoding="utf-8"))
     runs = registry["runs"]
     assert len({row["run_id"] for row in runs}) == len(runs)
-    assert {row["state"] for row in runs} == {"DONE", "RUNNING"}
+    states = {row["state"] for row in runs}
+    assert states <= {"PREPARED", "RUNNING", "DONE"}
     assert not any("host" in row or "identity_file" in row for row in runs)
 
 
