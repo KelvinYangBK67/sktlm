@@ -21,6 +21,9 @@ The artifact path may be cited by a report, but the report must contain enough m
 - `cloud_deployment_ubuntu22.md` — guarded Ubuntu/data-disk bootstrap, provenance checks, resource monitoring, and staged cloud scaling/full-run gate.
 - `stage01_checkpoint_20260831.md` — compact Stage 01 checkpoint before cloud deployment/full M₀.
 
+- `cloud_scaling_checkpoint_20260831.md` — authoritative current cloud w4 result, pending w8/w12/w16 state, cost gate, and worker-selection rule.
+- `research_output_inventory_20260831.md` — bounded classification of ignored/local reports, artifacts, notes, promotions, and historical duplicates.
+
 Future full-corpus results should receive their own tracked report rather than being represented only by the generated `inspection_report.md` or other files inside an artifact directory.
 
 ## Promotion checklist for expensive runs

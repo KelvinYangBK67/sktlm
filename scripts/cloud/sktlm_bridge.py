@@ -73,6 +73,8 @@ CONFIG_FIELDS = {
     "branch",
     "repository_url",
 }
+HOST_PROFILE_METADATA_FIELDS = {"machine_id", "role", "notes"}
+REGISTRY_RELATIVE_PATH = Path("configs/cloud/experiment_registry.toml")
 SECRET_KEY_RE = re.compile(
     r"(?:password|passwd|passphrase|private[_-]?key(?:_contents)?|"
     r"(?:access[_-]?)?token|api[_-]?key|secret|credential)",
@@ -122,6 +124,10 @@ class BridgeConfig:
     remote_cloud_root: str = DEFAULT_CLOUD_ROOT
     branch: str = DEFAULT_BRANCH
     repository_url: str = DEFAULT_REPOSITORY_URL
+    host_profile: str | None = None
+    machine_id: str | None = None
+    host_role: str | None = None
+    available_host_profiles: tuple[str, ...] = ()
 
     @property
     def target(self) -> str:
@@ -219,6 +225,10 @@ def validate_config(config: BridgeConfig) -> BridgeConfig:
         remote_cloud_root=cloud_root,
         branch=config.branch,
         repository_url=config.repository_url,
+        host_profile=config.host_profile,
+        machine_id=config.machine_id,
+        host_role=config.host_role,
+        available_host_profiles=config.available_host_profiles,
     )
 
 
@@ -227,14 +237,18 @@ def load_config(
     overrides: Mapping[str, Any] | None = None,
     *,
     explicit: bool = False,
+    host_profile: str | None = None,
 ) -> BridgeConfig:
     values: dict[str, Any] = {}
+    profiles: dict[str, Any] = {}
+    machine_id: str | None = None
+    host_role: str | None = None
     if path is not None and path.is_file():
         if tomllib is None:
             raise BridgeError("TOML configuration requires Python 3.11 or newer")
         raw = tomllib.loads(path.read_text(encoding="utf-8"))
         _reject_secret_keys(raw)
-        unknown_top = set(raw) - {"bridge"}
+        unknown_top = set(raw) - {"bridge", "host_profiles"}
         if unknown_top:
             raise BridgeError(f"unknown top-level configuration keys: {sorted(unknown_top)}")
         table = raw.get("bridge", {})
@@ -244,12 +258,50 @@ def load_config(
         if unknown:
             raise BridgeError(f"unknown bridge configuration keys: {sorted(unknown)}")
         values.update(table)
+        profiles = raw.get("host_profiles", {})
+        if not isinstance(profiles, dict):
+            raise BridgeError("[host_profiles] must be a TOML table")
+        for name, profile in profiles.items():
+            if not RUN_ID_RE.fullmatch(str(name)):
+                raise BridgeError(f"host profile name is invalid: {name!r}")
+            if not isinstance(profile, dict):
+                raise BridgeError(f"host profile {name!r} must be a TOML table")
+            unknown_profile = set(profile) - CONFIG_FIELDS - HOST_PROFILE_METADATA_FIELDS
+            if unknown_profile:
+                raise BridgeError(
+                    f"unknown keys in host profile {name!r}: {sorted(unknown_profile)}"
+                )
     elif explicit:
         raise BridgeError(f"configuration file does not exist: {path}")
+    if host_profile is not None:
+        if host_profile not in profiles:
+            raise BridgeError(
+                f"unknown host profile {host_profile!r}; available: {sorted(profiles)}"
+            )
+        selected = profiles[host_profile]
+        values.update({key: value for key, value in selected.items() if key in CONFIG_FIELDS})
+        machine_id = str(selected.get("machine_id", host_profile))
+        if not RUN_ID_RE.fullmatch(machine_id):
+            raise BridgeError(f"machine_id is invalid in host profile {host_profile!r}")
+        role = selected.get("role")
+        notes = selected.get("notes")
+        if role is not None and not isinstance(role, str):
+            raise BridgeError(f"role must be a string in host profile {host_profile!r}")
+        if notes is not None and not isinstance(notes, str):
+            raise BridgeError(f"notes must be a string in host profile {host_profile!r}")
+        host_role = role
     if overrides:
         values.update({key: value for key, value in overrides.items() if value is not None})
     try:
-        return validate_config(BridgeConfig(**values))
+        return validate_config(
+            BridgeConfig(
+                **values,
+                host_profile=host_profile,
+                machine_id=machine_id,
+                host_role=host_role,
+                available_host_profiles=tuple(sorted(profiles)),
+            )
+        )
     except (TypeError, ValueError) as exc:
         raise BridgeError(f"invalid bridge configuration: {exc}") from exc
 
@@ -450,6 +502,12 @@ def status_snapshot(
 ) -> dict[str, Any]:
     return {
         "schema": "sktlm-cloud-status/v1",
+        "host_selection": {
+            "host_profile": config.host_profile,
+            "machine_id": config.machine_id,
+            "role": config.host_role,
+            "available_profiles": list(config.available_host_profiles),
+        },
         "local": local_status(repo_root, runner),
         "remote": remote_status(config, runner),
     }
@@ -475,6 +533,59 @@ def validate_run_id(run_id: str) -> str:
             "run ID must use only letters, digits, '.', '_', or '-' and may not traverse paths"
         )
     return run_id
+
+
+def collection_registry_assignment(
+    repo_root: Path,
+    config: BridgeConfig,
+    run_id: str,
+    metrics_id: str,
+) -> dict[str, Any] | None:
+    """Require an exact logical host/run match when multi-host profiles exist."""
+    if not config.available_host_profiles:
+        return None
+    if config.host_profile is None:
+        raise BridgeError(
+            "multiple host profiles are configured; collection requires --host-profile"
+        )
+    if tomllib is None:
+        raise BridgeError("experiment registry validation requires Python 3.11 or newer")
+    registry_path = repo_root / REGISTRY_RELATIVE_PATH
+    if not registry_path.is_file():
+        raise BridgeError(f"experiment registry is missing: {registry_path}")
+    raw = tomllib.loads(registry_path.read_text(encoding="utf-8"))
+    runs = raw.get("runs")
+    if not isinstance(runs, list):
+        raise BridgeError("experiment registry must contain [[runs]] entries")
+    matches = [row for row in runs if isinstance(row, dict) and row.get("run_id") == run_id]
+    if len(matches) != 1:
+        raise BridgeError(f"run ID must have exactly one registry assignment: {run_id}")
+    assignment = matches[0]
+    expected_profile = assignment.get("host_profile")
+    expected_machine = assignment.get("machine_id")
+    expected_metrics = assignment.get("metrics_id")
+    if expected_profile != config.host_profile:
+        raise BridgeError(
+            f"run {run_id!r} is assigned to host profile {expected_profile!r}, "
+            f"not {config.host_profile!r}"
+        )
+    if config.machine_id is not None and expected_machine != config.machine_id:
+        raise BridgeError(
+            f"run {run_id!r} is assigned to machine {expected_machine!r}, "
+            f"not {config.machine_id!r}"
+        )
+    if expected_metrics != metrics_id:
+        raise BridgeError(
+            f"run {run_id!r} uses metrics ID {expected_metrics!r}, not {metrics_id!r}"
+        )
+    return {
+        "registry": REGISTRY_RELATIVE_PATH.as_posix(),
+        "machine_id": expected_machine,
+        "host_profile": expected_profile,
+        "run_id": run_id,
+        "metrics_id": metrics_id,
+        "state_at_collection": assignment.get("state"),
+    }
 
 
 def _controlled_failure(result: subprocess.CompletedProcess[str], label: str) -> BridgeError:
@@ -819,6 +930,9 @@ def base_receipt(
         },
         "remote_host": config.target if config.host else None,
         "remote_ssh_port": config.port if config.host else None,
+        "host_profile": config.host_profile,
+        "machine_id": config.machine_id,
+        "host_role": config.host_role,
         "remote_repo_head": None,
         "valid": False,
         "failures": [],
@@ -1247,6 +1361,11 @@ def pull_results_action(
     profile: str,
     output_root: Path | None,
 ) -> Mapping[str, Any]:
+    assignment = collection_registry_assignment(
+        repo_root, config, validate_run_id(run_id), validate_run_id(metrics_id)
+    )
+    if assignment is not None:
+        receipt["registry_assignment"] = assignment
     _collection, details = transfer_results(
         receipt,
         config,
@@ -1346,6 +1465,11 @@ def collect_action(
     metrics_id: str,
     output_root: Path | None,
 ) -> Mapping[str, Any]:
+    assignment = collection_registry_assignment(
+        repo_root, config, validate_run_id(run_id), validate_run_id(metrics_id)
+    )
+    if assignment is not None:
+        receipt["registry_assignment"] = assignment
     require_tool("ssh")
     audit = remote_audit_result(config, runner, run_id)
     receipt["remote_audit"] = audit
@@ -1409,12 +1533,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--branch", help="override Git branch")
     parser.add_argument("--repository-url", help="override public Git repository URL")
 
+    host_selection = argparse.ArgumentParser(add_help=False)
+    host_selection.add_argument(
+        "--host-profile",
+        help="select one [host_profiles.<name>] entry from the TOML config",
+    )
     commands = parser.add_subparsers(dest="command", required=True)
-    status = commands.add_parser("status", help="read-only local/remote status")
+    status = commands.add_parser(
+        "status", parents=[host_selection], help="read-only local/remote status"
+    )
     status.add_argument("--json", action="store_true", help="emit machine-readable JSON")
 
     deploy = commands.add_parser(
-        "deploy-code", help="deploy the exact published local HEAD via GitHub"
+        "deploy-code",
+        parents=[host_selection],
+        help="deploy the exact published local HEAD via GitHub",
     )
     deploy.add_argument(
         "--allow-dirty",
@@ -1428,7 +1561,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     push = commands.add_parser(
-        "push-inputs", help="validate and rsync frozen non-Git inputs to the data disk"
+        "push-inputs",
+        parents=[host_selection],
+        help="validate and rsync frozen non-Git inputs to the data disk",
     )
     push.add_argument(
         "--no-verify",
@@ -1437,12 +1572,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     verify = commands.add_parser(
-        "verify-remote", help="run and interpret the remote authoritative input validator"
+        "verify-remote",
+        parents=[host_selection],
+        help="run and interpret the remote authoritative input validator",
     )
     verify.add_argument("--json", action="store_true", help="emit validator JSON")
 
     pull = commands.add_parser(
-        "pull-results", help="selectively rsync one remote run to a new local directory"
+        "pull-results",
+        parents=[host_selection],
+        help="selectively rsync one remote run to a new local directory",
     )
     pull.add_argument("run_id")
     pull.add_argument("--metrics-id", help="metrics directory ID (default: run ID)")
@@ -1454,7 +1593,9 @@ def build_parser() -> argparse.ArgumentParser:
     pull.add_argument("--output-root", type=Path)
 
     collect = commands.add_parser(
-        "collect", help="remote audit followed by report-profile collection"
+        "collect",
+        parents=[host_selection],
+        help="remote audit followed by report-profile collection",
     )
     collect.add_argument("run_id")
     collect.add_argument("--metrics-id", help="metrics directory ID (default: run ID)")
@@ -1477,6 +1618,12 @@ def _config_overrides(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def _print_human_status(snapshot: Mapping[str, Any]) -> None:
+    selection = snapshot.get("host_selection", {})
+    if selection.get("host_profile"):
+        print(
+            f"host selection: profile={selection.get('host_profile')} "
+            f"machine={selection.get('machine_id')} role={selection.get('role')}"
+        )
     local = snapshot["local"]
     remote = snapshot["remote"]
     if local.get("available"):
@@ -1573,6 +1720,7 @@ def main(
             config_path,
             _config_overrides(args),
             explicit=explicit_config,
+            host_profile=args.host_profile,
         )
 
         if args.command == "status":

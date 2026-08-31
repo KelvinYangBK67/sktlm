@@ -636,6 +636,33 @@ The bridge is locally covered by 32 focused fake-subprocess/temp-directory
 tests, Linux shell parsing of every fixed remote command template, and WSL
 CLI/process-metrics smoke checks. Localhost rsync itself is installed, but no
 local SSH daemon is available, so an optional end-to-end localhost SSH/rsync
-smoke was not possible. The bridge has not contacted the real VM or transferred
-any real data. The VM still lacks Git and Python 3.11, has no repository, and
-has not started a benchmark.
+smoke was not possible. At that pre-deployment checkpoint the bridge had not
+contacted the real VM or transferred data, and the VM had no Git, Python 3.11,
+repository, or benchmark. Section 26 supersedes that operational state.
+
+## 26. Multi-host cloud checkpoint and local-output consolidation (2026-08-31)
+
+Cloud deployment advanced after the original single-host preflight. The
+reference `core-01` medium P10 w4 run is complete and audited at
+972.1771821109978 seconds / 17409.851117105878 chars/s; its report-profile
+collection is local and ignored. Aggregate process-tree peak RSS was
+978,272,256 bytes. `core-02` w8, `core-03` w12, and `core-04` w16 remain
+RUNNING; `core-05` and `core-06` are standby. No pending result is inferred.
+
+The bridge now supports optional TOML `[host_profiles.<id>]` overlays while
+preserving the legacy `[bridge]` form. Every subcommand accepts
+`--host-profile`. Status and receipts record logical profile/machine identity.
+When multiple profiles exist, `collect`/`pull-results` require explicit
+selection and match it against `configs/cloud/experiment_registry.toml` before
+any SSH action, preventing collection from a clone assigned to another run.
+Operational hosts/IPs and identity paths remain in ignored
+`.sktlm-bridge.toml`.
+
+The durable cloud result, cost gate, pending states, selection rule, and w4
+scientific hashes are in
+`reports/core_methods/latent_lexicon/cloud_scaling_checkpoint_20260831.md`.
+A single bounded inventory of local reports/notes/artifact-root metadata is in
+`research_output_inventory_20260831.md`. It promoted the cloud w4 conclusions
+but left raw P10/cloud outputs, generated cleaning audits, old notes,
+interrupted runs, receipts, and private operational config local and intact.
+The single focused bridge suite passed all 37 tests after this change.

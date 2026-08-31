@@ -14,3 +14,32 @@ remote_cloud_root = "/mnt/sktlm-data/sktlm"
 
 branch = "exp/m0-core-methods"
 repository_url = "https://github.com/KelvinYangBK67/sktlm.git"
+
+# Optional multi-host overlays. The [bridge] table above remains the
+# backward-compatible single-host configuration. Copy this file to the ignored
+# `.sktlm-bridge.toml`, replace only local operational values, and select one
+# profile with `--host-profile` after the bridge subcommand.
+
+[host_profiles.core-01]
+machine_id = "core-01"
+host = "core-01.example.org"
+
+[host_profiles.core-02]
+machine_id = "core-02"
+host = "core-02.example.org"
+
+[host_profiles.core-03]
+machine_id = "core-03"
+host = "core-03.example.org"
+
+[host_profiles.core-04]
+machine_id = "core-04"
+host = "core-04.example.org"
+
+[host_profiles.core-05]
+machine_id = "core-05"
+host = "core-05.example.org"
+
+[host_profiles.core-06]
+machine_id = "core-06"
+host = "core-06.example.org"

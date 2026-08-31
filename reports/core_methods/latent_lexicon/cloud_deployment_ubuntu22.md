@@ -1,8 +1,8 @@
 # Ubuntu 22.04 cloud deployment and scaling gate
 
-Target host:
+Deployment template:
 
-- single node, Ubuntu 22.04, CPU only;
+- equivalent Ubuntu 22.04 CPU-only nodes;
 - 16 vCPU, 32 GB RAM;
 - 80 GB system SSD;
 - 300 GB fast data SSD;
@@ -13,9 +13,13 @@ Cloud worker scaling starts again at 4, then 8, and reaches 12/16 only if the
 preceding result is beneficial and memory-safe. No full-M₀ run may start
 automatically.
 
-## Current host checkpoint
+This file preserves the bootstrap/deployment procedure. Current multi-host run
+state and results are authoritative in `cloud_scaling_checkpoint_20260831.md`.
 
-The user has manually established the following state on the target host:
+## Initial reference-host checkpoint (historical)
+
+Before repository bootstrap, the user manually established the following state
+on the reference host:
 
 - Ubuntu 22.04.4 LTS, 16 vCPU, and approximately 32 GB RAM;
 - `/dev/vda` is the 80 GB system disk;
@@ -77,6 +81,33 @@ Every bridge sync/mutating operation writes a redacted machine-readable receipt
 under `artifacts/cloud_transfers/`. Receipts record local/remote HEADs, logical
 paths, return codes, file/byte information, validation results, warnings, and
 failures. They never contain key contents or configured identity-file paths.
+
+### Multi-host profiles and run assignment
+
+The original single `[bridge]` configuration remains supported. For a fleet,
+add operational overlays only to the ignored `.sktlm-bridge.toml`:
+
+```toml
+[host_profiles.core-02]
+machine_id = "core-02"
+host = "<LOCAL-ONLY-HOST-OR-IP>"
+```
+
+Real hosts/IPs and identity-file paths must remain in that ignored file. The
+tracked `configs/cloud/experiment_registry.toml` contains logical machine/run
+assignments but no addresses. Select profiles after the subcommand:
+
+```bash
+python3 scripts/cloud/sktlm_bridge.py status --host-profile core-02 --json
+python3 scripts/cloud/sktlm_bridge.py collect cloud_medium_p10_w8_p3 \
+  --metrics-id medium_p10_w8_p3 --host-profile core-02
+```
+
+When host profiles exist, `collect` and `pull-results` require an explicit
+profile and refuse a run/profile/machine/metrics mismatch from the tracked
+registry before making an SSH call. Receipts record the selected logical
+profile and machine alongside the actual remote target. Machine IDs are stable;
+their current benchmark roles are reassignable.
 
 ## 1. Read-only host and disk discovery (completed)
 

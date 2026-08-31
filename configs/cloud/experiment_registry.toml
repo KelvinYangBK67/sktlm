@@ -1,0 +1,102 @@
+schema_version = 1
+authoritative_as_of = "2026-08-31"
+
+# Logical machine identity is stable. current_role is temporary and may be
+# reassigned without renaming the machine or rewriting earlier run records.
+
+[machines.core-01]
+machine_id = "core-01"
+machine_name = "sktlm-m0-core-01"
+host_profile = "core-01"
+current_role = "reference"
+state = "ready"
+
+[machines.core-02]
+machine_id = "core-02"
+machine_name = "sktlm-m0-core-02"
+host_profile = "core-02"
+current_role = "medium-scaling"
+state = "running"
+
+[machines.core-03]
+machine_id = "core-03"
+machine_name = "sktlm-m0-core-03"
+host_profile = "core-03"
+current_role = "medium-scaling"
+state = "running"
+
+[machines.core-04]
+machine_id = "core-04"
+machine_name = "sktlm-m0-core-04"
+host_profile = "core-04"
+current_role = "medium-scaling"
+state = "running"
+
+[machines.core-05]
+machine_id = "core-05"
+machine_name = "sktlm-m0-core-05"
+host_profile = "core-05"
+current_role = "standby"
+state = "standby"
+
+[machines.core-06]
+machine_id = "core-06"
+machine_name = "sktlm-m0-core-06"
+host_profile = "core-06"
+current_role = "standby"
+state = "standby"
+
+[[runs]]
+machine_id = "core-01"
+machine_name = "sktlm-m0-core-01"
+host_profile = "core-01"
+run_id = "cloud_medium_p10_w4_p3"
+metrics_id = "medium_p10_w4_p3"
+benchmark = "medium_p10"
+passes = 3
+workers = 4
+state = "DONE"
+result_location = "artifacts/cloud_collected/cloud_medium_p10_w4_p3"
+remote_result_location = "artifacts/latent_benchmarks/cloud_medium_p10_w4_p3"
+wall_seconds = 972.1771821109978
+chars_per_second = 17409.851117105878
+notes = "Complete, remotely audited, and collected with the report profile."
+
+[[runs]]
+machine_id = "core-02"
+machine_name = "sktlm-m0-core-02"
+host_profile = "core-02"
+run_id = "cloud_medium_p10_w8_p3"
+metrics_id = "medium_p10_w8_p3"
+benchmark = "medium_p10"
+passes = 3
+workers = 8
+state = "RUNNING"
+result_location = "artifacts/latent_benchmarks/cloud_medium_p10_w8_p3"
+notes = "Do not collect or mark complete until the independently running job is finished."
+
+[[runs]]
+machine_id = "core-03"
+machine_name = "sktlm-m0-core-03"
+host_profile = "core-03"
+run_id = "cloud_medium_p10_w12_p3"
+metrics_id = "medium_p10_w12_p3"
+benchmark = "medium_p10"
+passes = 3
+workers = 12
+state = "RUNNING"
+result_location = "artifacts/latent_benchmarks/cloud_medium_p10_w12_p3"
+notes = "Do not collect or mark complete until the independently running job is finished."
+
+[[runs]]
+machine_id = "core-04"
+machine_name = "sktlm-m0-core-04"
+host_profile = "core-04"
+run_id = "cloud_medium_p10_w16_p3"
+metrics_id = "medium_p10_w16_p3"
+benchmark = "medium_p10"
+passes = 3
+workers = 16
+state = "RUNNING"
+result_location = "artifacts/latent_benchmarks/cloud_medium_p10_w16_p3"
+notes = "Do not collect or mark complete until the independently running job is finished."

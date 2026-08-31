@@ -100,6 +100,52 @@ repository_url = "https://github.com/example/sktlm.git"
     assert config.remote_repo == "/srv/sktlm repo"
 
 
+def test_multi_host_profile_selection_and_overrides(tmp_path: Path) -> None:
+    config_path = tmp_path / "bridge.toml"
+    config_path.write_text(
+        """
+[bridge]
+user = "ubuntu"
+port = 22
+remote_repo = "/home/ubuntu/sktlm"
+
+[host_profiles.core-01]
+machine_id = "core-01"
+host = "one.example.org"
+
+[host_profiles.core-02]
+machine_id = "core-02"
+host = "two.example.org"
+port = 2222
+role = "medium-scaling"
+""".strip(),
+        encoding="utf-8",
+    )
+    config = bridge.load_config(
+        config_path,
+        {"port": 2202},
+        explicit=True,
+        host_profile="core-02",
+    )
+    assert config.host == "two.example.org"
+    assert config.port == 2202
+    assert config.host_profile == "core-02"
+    assert config.machine_id == "core-02"
+    assert config.host_role == "medium-scaling"
+    assert config.available_host_profiles == ("core-01", "core-02")
+
+
+def test_unknown_host_profile_is_rejected(tmp_path: Path) -> None:
+    config_path = tmp_path / "bridge.toml"
+    config_path.write_text(
+        '[bridge]\nhost = "single.example.org"\n\n'
+        '[host_profiles.core-01]\nhost = "one.example.org"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(bridge.BridgeError, match="unknown host profile"):
+        bridge.load_config(config_path, explicit=True, host_profile="core-99")
+
+
 @pytest.mark.parametrize(
     "key", ["password", "token", "api_key", "access_token", "private_key_contents"]
 )
@@ -111,6 +157,17 @@ def test_config_rejects_secret_keys(tmp_path: Path, key: str) -> None:
     )
     with pytest.raises(bridge.BridgeError, match="secret-bearing"):
         bridge.load_config(config_path, explicit=True)
+
+
+def test_host_profile_rejects_secret_bearing_keys(tmp_path: Path) -> None:
+    config_path = tmp_path / "bridge.toml"
+    config_path.write_text(
+        '[bridge]\nhost = "example.org"\n\n'
+        '[host_profiles.core-01]\nhost = "one.example.org"\npassword = "TOPSECRET"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(bridge.BridgeError, match="secret-bearing"):
+        bridge.load_config(config_path, explicit=True, host_profile="core-01")
 
 
 def test_config_rejects_repository_url_credentials() -> None:
@@ -305,7 +362,13 @@ def test_failed_sync_operation_still_writes_redacted_receipt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(bridge, "find_executable", lambda _name: None)
-    config = remote_config(identity_file="/keys/TOPSECRET")
+    config = remote_config(
+        identity_file="/keys/TOPSECRET",
+        host_profile="core-02",
+        machine_id="core-02",
+        host_role="medium-scaling",
+        available_host_profiles=("core-01", "core-02"),
+    )
     runner = FakeRunner(lambda argv: completed(argv))
 
     def fail(_receipt: dict[str, object]) -> dict[str, object]:
@@ -321,6 +384,8 @@ def test_failed_sync_operation_still_writes_redacted_receipt(
     )
     assert error is not None
     assert receipt["valid"] is False
+    assert receipt["host_profile"] == "core-02"
+    assert receipt["machine_id"] == "core-02"
     text = path.read_text(encoding="utf-8")
     assert "TOPSECRET" not in text
     assert "<redacted>" in text
@@ -345,6 +410,65 @@ def test_downloaded_files_are_compared_with_remote_audit(tmp_path: Path) -> None
     summary.write_text('{"valid": false}\n', encoding="utf-8")
     _comparisons, failures = bridge.validate_downloaded_audit_hashes(tmp_path, audit)
     assert failures == ["downloaded artifact differs from remote audit: summary.json"]
+
+
+def test_collection_registry_requires_exact_profile_assignment(tmp_path: Path) -> None:
+    registry = tmp_path / bridge.REGISTRY_RELATIVE_PATH
+    registry.parent.mkdir(parents=True)
+    registry.write_text(
+        """
+[[runs]]
+machine_id = "core-02"
+host_profile = "core-02"
+run_id = "cloud_medium_p10_w8_p3"
+metrics_id = "medium_p10_w8_p3"
+state = "RUNNING"
+""".strip(),
+        encoding="utf-8",
+    )
+    config = remote_config(
+        host_profile="core-02",
+        machine_id="core-02",
+        available_host_profiles=("core-01", "core-02"),
+    )
+    assignment = bridge.collection_registry_assignment(
+        tmp_path,
+        config,
+        "cloud_medium_p10_w8_p3",
+        "medium_p10_w8_p3",
+    )
+    assert assignment is not None
+    assert assignment["machine_id"] == "core-02"
+    wrong = remote_config(
+        host_profile="core-01",
+        machine_id="core-01",
+        available_host_profiles=("core-01", "core-02"),
+    )
+    with pytest.raises(bridge.BridgeError, match="assigned to host profile"):
+        bridge.collection_registry_assignment(
+            tmp_path,
+            wrong,
+            "cloud_medium_p10_w8_p3",
+            "medium_p10_w8_p3",
+        )
+    unselected = remote_config(available_host_profiles=("core-01", "core-02"))
+    with pytest.raises(bridge.BridgeError, match="requires --host-profile"):
+        bridge.collection_registry_assignment(
+            tmp_path,
+            unselected,
+            "cloud_medium_p10_w8_p3",
+            "medium_p10_w8_p3",
+        )
+
+
+def test_tracked_registry_has_unique_logical_assignments() -> None:
+    registry_path = BRIDGE_PATH.parents[2] / bridge.REGISTRY_RELATIVE_PATH
+    assert bridge.tomllib is not None
+    registry = bridge.tomllib.loads(registry_path.read_text(encoding="utf-8"))
+    runs = registry["runs"]
+    assert len({row["run_id"] for row in runs}) == len(runs)
+    assert {row["state"] for row in runs} == {"DONE", "RUNNING"}
+    assert not any("host" in row or "identity_file" in row for row in runs)
 
 
 def test_rsync_itemized_output_is_parsed_into_receipt_records() -> None:
@@ -455,3 +579,14 @@ def test_help_and_unknown_argument_rejection() -> None:
     with pytest.raises(SystemExit) as unknown_exit:
         parser.parse_args(["unknown-command"])
     assert unknown_exit.value.code == 2
+    selected = parser.parse_args(
+        [
+            "collect",
+            "cloud_medium_p10_w8_p3",
+            "--metrics-id",
+            "medium_p10_w8_p3",
+            "--host-profile",
+            "core-02",
+        ]
+    )
+    assert selected.host_profile == "core-02"
