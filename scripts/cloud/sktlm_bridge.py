@@ -22,8 +22,8 @@ from urllib.parse import urlsplit
 
 try:
     import tomllib
-except ModuleNotFoundError:  # pragma: no cover - the bridge targets Python 3.11
-    tomllib = None  # type: ignore[assignment]
+except ModuleNotFoundError:  # Python 3.10
+    import tomli as tomllib  # type: ignore[import-not-found]
 
 
 SCHEMA_VERSION = "sktlm-cloud-transfer-receipt/v1"
