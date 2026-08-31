@@ -9,8 +9,7 @@ Validate and print the complete matrix without training:
 python -m sktlm.experiments.baselines.matrix --check-inputs
 ```
 
-Run a deliberately bounded smoke check for one of the 18 currently supported
-BPE, Unigram, or Unicode code-point cells:
+Run a deliberately bounded smoke check for any of the 22 implemented cells:
 
 ```bash
 python -m sktlm.experiments.baselines.runner \
@@ -26,6 +25,7 @@ cell/seed artifact directory. Omitting both segment limits requests the full
 selected train/test data and must only be done when a formal production run has
 been explicitly authorized.
 
-Akṣara-safe BPE and Surface-lattice cells deliberately fail closed until the
-method contracts in `reports/baselines/m0_method_contracts.md` are approved and
-implemented. The existing grapheme tokenizer is not used as a substitute.
+The approved Akṣara-safe BPE and Surface-lattice semantics, including their
+atomizers, barriers, likelihood, decoding, and reproducibility requirements,
+are fixed in `reports/baselines/m0_method_contracts.md`. Neither method uses the
+generic grapheme tokenizer or latent/core internals as a substitute.

@@ -49,18 +49,20 @@ def test_matrix_validator_rejects_missing_and_duplicate_cells() -> None:
         validate_formal_matrix(cells[:-1])
 
 
-def test_run_specs_address_18_supported_and_four_pending_cells_independently() -> None:
+def test_run_specs_address_all_22_implemented_cells_independently() -> None:
     settings = BaselineMatrixSettings.from_yaml(
         Path("configs/experiments/baselines/m0_matrix.yaml")
     )
     specs = build_run_specs(settings)
-    assert sum(spec.cell.tokenizer_supported for spec in specs) == 18
-    assert sum(not spec.cell.tokenizer_supported for spec in specs) == 4
+    assert sum(spec.cell.tokenizer_supported for spec in specs) == 22
+    assert sum(not spec.cell.tokenizer_supported for spec in specs) == 0
     assert len({spec.artifact_dir for spec in specs}) == 22
 
     plan = build_plan(settings)
     assert plan["formal_cell_count"] == 22
-    assert plan["tokenizer_supported_cell_count"] == 18
-    assert plan["pending_method_contract_cell_count"] == 4
+    assert plan["tokenizer_supported_cell_count"] == 22
+    assert plan["pending_method_contract_cell_count"] == 0
     assert all(cell["corpus_freeze_id"] == settings.freeze_id for cell in plan["cells"])
+    assert all(cell["implementation_status"] == "implemented" for cell in plan["cells"])
+    assert all(cell["tokenizer"] is not None for cell in plan["cells"])
     assert all(len(cell["required_provenance"]) == 11 for cell in plan["cells"])

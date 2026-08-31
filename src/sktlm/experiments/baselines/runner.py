@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import platform
 import subprocess
+import unicodedata
 from collections import Counter
 from importlib import metadata
 from pathlib import Path
@@ -30,8 +32,13 @@ from sktlm.experiments.baselines.matrix import (
     build_run_specs,
 )
 from sktlm.representations.canonical import RepresentedSegment
-from sktlm.tokenizers.base import Encoding
+from sktlm.tokenizers.aksara_bpe import train_aksara_safe_bpe
+from sktlm.tokenizers.base import Encoding, Tokenizer
 from sktlm.tokenizers.factory import build_tokenizer
+from sktlm.tokenizers.surface_lattice import (
+    SurfaceLatticeTokenizer,
+    train_surface_lattice,
+)
 
 
 class _SegmentTrace:
@@ -68,7 +75,10 @@ def _resolve_repo_path(path: Path, repo_root: Path) -> Path:
 
 
 def _software_versions() -> dict[str, str]:
-    versions = {"python": platform.python_version()}
+    versions = {
+        "python": platform.python_version(),
+        "unicodedata": unicodedata.unidata_version,
+    }
     for distribution in ("sktlm", "sentencepiece", "PyYAML", "regex", "torch"):
         try:
             versions[distribution] = metadata.version(distribution)
@@ -94,14 +104,6 @@ def _require_reproducible_git_state(repo_root: Path) -> str:
     if result.stdout.strip():
         raise RuntimeError("formal baseline run requires a clean Git worktree")
     return commit
-
-
-def _observed_texts(
-    segments: Iterator[RepresentedSegment], trace: _SegmentTrace
-) -> Iterator[str]:
-    for segment in segments:
-        trace.observe(segment)
-        yield segment.text
 
 
 def _declared_file_fingerprint(
@@ -141,6 +143,40 @@ def _write_json(path: Path, value: Any) -> None:
     )
 
 
+def _fit_cell_tokenizer(
+    spec: BaselineRunSpec,
+    tokenizer_config: dict[str, Any],
+    catalog: FrozenRepresentationCatalog,
+    model_dir: Path,
+    max_train_segments: int | None,
+) -> Tokenizer:
+    def training_texts() -> Iterator[str]:
+        segments = catalog.iter_segments(
+            spec.cell.script,
+            spec.cell.spacing,
+            splits={"train"},
+            max_segments=max_train_segments,
+        )
+        return (segment.text for segment in segments)
+
+    if spec.cell.method == "aksara_safe_bpe":
+        return train_aksara_safe_bpe(
+            training_texts,
+            model_dir,
+            vocab_size=int(tokenizer_config["vocab_size"]),
+            max_piece_atoms=int(tokenizer_config["max_piece_atoms"]),
+        )
+    if spec.cell.method == "surface_lattice":
+        return train_surface_lattice(
+            training_texts,
+            model_dir,
+            vocab_size=int(tokenizer_config["vocab_size"]),
+            max_piece_atoms=int(tokenizer_config["max_piece_atoms"]),
+            unknown_log_score=float(tokenizer_config["unknown_log_score"]),
+        )
+    return build_tokenizer(tokenizer_config, training_texts(), model_dir=model_dir)
+
+
 def run_supported_cell(
     settings: BaselineMatrixSettings,
     condition_id: str,
@@ -153,7 +189,7 @@ def run_supported_cell(
     expected_documents: int = 240,
     require_clean_git: bool = True,
 ) -> Path:
-    """Fit and evaluate one of the 18 supported cells using frozen files directly."""
+    """Fit and evaluate one of the 22 formal cells using frozen files directly."""
     if eval_split not in {"dev", "test"}:
         raise ValueError("eval_split must be 'dev' or 'test'")
     for name, value in (
@@ -192,25 +228,34 @@ def run_supported_cell(
         raise FileExistsError(f"refusing to overwrite baseline artifact directory: {artifact_dir}")
     artifact_dir.mkdir(parents=True)
 
+    tokenizer = _fit_cell_tokenizer(
+        spec,
+        tokenizer_config,
+        catalog,
+        artifact_dir / "tokenizer",
+        max_train_segments,
+    )
     train_trace = _SegmentTrace()
-    train_segments = catalog.iter_segments(
+    for segment in catalog.iter_segments(
         spec.cell.script,
         spec.cell.spacing,
         splits={"train"},
         max_segments=max_train_segments,
-    )
-    tokenizer = build_tokenizer(
-        tokenizer_config,
-        _observed_texts(train_segments, train_trace),
-        model_dir=artifact_dir / "tokenizer",
-    )
+    ):
+        train_trace.observe(segment)
     if train_trace.segment_count == 0:
         raise ValueError("baseline cell requires non-empty frozen train segments")
 
     eval_trace = _SegmentTrace()
     predictions: list[dict[str, Any]] = []
+    lattice_log_probability = 0.0
+    lattice_arc_count = 0
+    lattice_ambiguous_node_count = 0
 
     def encoded_evaluation() -> Iterator[tuple[str, Encoding]]:
+        nonlocal lattice_log_probability
+        nonlocal lattice_arc_count
+        nonlocal lattice_ambiguous_node_count
         eval_segments = catalog.iter_segments(
             spec.cell.script,
             spec.cell.spacing,
@@ -219,23 +264,48 @@ def run_supported_cell(
         )
         for segment in eval_segments:
             eval_trace.observe(segment)
-            encoding = tokenizer.encode(segment.text)
+            lattice_stats = None
+            if isinstance(tokenizer, SurfaceLatticeTokenizer):
+                encoding, lattice_stats = tokenizer.encode_with_lattice(segment.text)
+                lattice_log_probability += lattice_stats.log_probability
+                lattice_arc_count += lattice_stats.arc_count
+                lattice_ambiguous_node_count += lattice_stats.ambiguous_node_count
+            else:
+                encoding = tokenizer.encode(segment.text)
             if len(predictions) < prediction_examples:
-                predictions.append(
-                    {
-                        "kind": "tokenization_preview",
-                        "segment_id": segment.segment_id,
-                        "text": segment.text,
-                        "ids": list(encoding.ids),
-                        "pieces": list(encoding.pieces),
-                        "spans": [list(span) for span in encoding.spans],
+                prediction = {
+                    "kind": "tokenization_preview",
+                    "segment_id": segment.segment_id,
+                    "text": segment.text,
+                    "ids": list(encoding.ids),
+                    "pieces": list(encoding.pieces),
+                    "spans": [list(span) for span in encoding.spans],
+                }
+                if lattice_stats is not None:
+                    prediction["lattice"] = {
+                        "log_probability": lattice_stats.log_probability,
+                        "arc_count": lattice_stats.arc_count,
+                        "ambiguous_node_count": lattice_stats.ambiguous_node_count,
                     }
-                )
+                predictions.append(prediction)
             yield segment.text, encoding
 
     diagnostics = evaluate_tokenizer(encoded_evaluation(), SandhiFragmentConfig())
     if eval_trace.segment_count == 0:
         raise ValueError(f"baseline cell requires non-empty frozen {eval_split} segments")
+
+    method_metrics: dict[str, Any] = {}
+    bits_per_character: float | None = None
+    bits_per_byte: float | None = None
+    if isinstance(tokenizer, SurfaceLatticeTokenizer):
+        negative_log2 = -lattice_log_probability / math.log(2.0)
+        bits_per_character = negative_log2 / eval_trace.character_count
+        bits_per_byte = negative_log2 / eval_trace.byte_count
+        method_metrics = {
+            "lattice_log_probability": lattice_log_probability,
+            "lattice_arc_count": lattice_arc_count,
+            "lattice_ambiguous_node_count": lattice_ambiguous_node_count,
+        }
 
     canonical_manifest = _resolve_repo_path(settings.canonical_manifest, repo_root)
     representation_manifest = _resolve_repo_path(settings.representation_manifest, repo_root)
@@ -315,10 +385,11 @@ def run_supported_cell(
         "train_segments": train_trace.segment_count,
         "evaluation_split": eval_split,
         "evaluation_segments": eval_trace.segment_count,
-        "bits_per_character": None,
-        "bits_per_byte": None,
+        "bits_per_character": bits_per_character,
+        "bits_per_byte": bits_per_byte,
         "phase": "tokenizer_diagnostics",
         **diagnostics,
+        **method_metrics,
     }
     logs = [
         f"condition_id={condition_id}",
@@ -328,6 +399,8 @@ def run_supported_cell(
         f"train_segments={train_trace.segment_count}",
         f"evaluation_split={eval_split} evaluation_segments={eval_trace.segment_count}",
     ]
+    if isinstance(tokenizer, SurfaceLatticeTokenizer):
+        logs.append(f"lattice_log_probability={lattice_log_probability}")
 
     (artifact_dir / "config.yaml").write_text(
         yaml.safe_dump(execution_config, allow_unicode=True, sort_keys=False),

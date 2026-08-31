@@ -210,16 +210,59 @@ def test_supported_bpe_cell_fits_only_from_frozen_train_segments(tmp_path) -> No
     assert tokenizer_fingerprint["runtime"]["model_sha256"]
 
 
-def test_pending_method_contract_cannot_run_through_a_substitute(tmp_path) -> None:
-    settings = _build_fixture(tmp_path)
-    with pytest.raises(NotImplementedError, match="no substitute is allowed"):
-        run_supported_cell(
-            settings,
+@pytest.mark.parametrize(
+    ("condition_id", "model_name", "expected_tokenizer"),
+    [
+        (
+            "aksara_safe_bpe__devanagari__continuous",
+            "aksara_safe_bpe_32",
+            "aksara_safe_bpe",
+        ),
+        (
+            "surface_lattice__iast__surface_word",
+            "surface_lattice_32",
+            "surface_lattice",
+        ),
+        (
+            "surface_lattice__iast__legacy_joined",
+            "surface_lattice_32",
+            "surface_lattice",
+        ),
+        (
             "surface_lattice__iast__continuous",
-            repo_root=tmp_path,
-            expected_documents=2,
-            require_clean_git=False,
+            "surface_lattice_32",
+            "surface_lattice",
+        ),
+    ],
+)
+def test_approved_remaining_cells_run_independently(
+    tmp_path, condition_id: str, model_name: str, expected_tokenizer: str
+) -> None:
+    settings = _build_fixture(tmp_path)
+    artifact_dir = run_supported_cell(
+        settings,
+        condition_id,
+        repo_root=tmp_path,
+        max_train_segments=2,
+        max_eval_segments=1,
+        prediction_examples=1,
+        expected_documents=2,
+        require_clean_git=False,
+    )
+
+    tokenizer_dir = artifact_dir / "tokenizer"
+    assert (tokenizer_dir / f"{model_name}.model").is_file()
+    assert (tokenizer_dir / f"{model_name}.atoms.json").is_file()
+    metrics = json.loads((artifact_dir / "metrics.json").read_text(encoding="utf-8"))
+    assert metrics["tokenizer"] == expected_tokenizer
+    if expected_tokenizer == "surface_lattice":
+        assert metrics["bits_per_character"] is not None
+        assert metrics["bits_per_byte"] is not None
+        assert metrics["lattice_arc_count"] > 0
+        prediction = json.loads(
+            (artifact_dir / "predictions.jsonl").read_text(encoding="utf-8").strip()
         )
+        assert prediction["lattice"]["arc_count"] > 0
 
 
 def test_supported_cell_requires_reproducible_git_state_by_default(tmp_path) -> None:

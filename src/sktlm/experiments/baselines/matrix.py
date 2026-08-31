@@ -16,7 +16,7 @@ FORMAL_SCRIPTS = ("iast", "devanagari")
 FORMAL_SPACINGS = ("surface_word", "legacy_joined", "continuous")
 STANDARD_METHODS = ("bpe", "unigram", "unicode_codepoint")
 FORMAL_METHODS = (*STANDARD_METHODS, "aksara_safe_bpe", "surface_lattice")
-TOKENIZER_SUPPORTED_METHODS = frozenset(STANDARD_METHODS)
+TOKENIZER_SUPPORTED_METHODS = frozenset(FORMAL_METHODS)
 REQUIRED_PROVENANCE = (
     "method",
     "script",
@@ -67,7 +67,23 @@ class BaselineCell:
             return {"type": self.method, "vocab_size": vocab_size}
         if self.method == "unicode_codepoint":
             return {"type": "character"}
-        return None
+        if self.method == "aksara_safe_bpe":
+            return {
+                "type": "aksara_safe_bpe",
+                "vocab_size": vocab_size,
+                "max_piece_atoms": 16,
+                "atomizer_contract": "devanagari_aksara_bpe_v1",
+            }
+        if self.method == "surface_lattice":
+            return {
+                "type": "surface_lattice",
+                "vocab_size": vocab_size,
+                "max_piece_atoms": 16,
+                "unknown_log_score": -20.0,
+                "atomizer_contract": "iast_surface_lattice_v1",
+                "likelihood": "complete_dag_logsumexp",
+            }
+        raise RuntimeError(f"formal method has no tokenizer config: {self.method}")
 
 
 def formal_matrix() -> tuple[BaselineCell, ...]:
@@ -163,9 +179,7 @@ class BaselineRunSpec:
             "representation_manifest": self.settings.representation_manifest.as_posix(),
             "tokenizer": self.cell.tokenizer_config(vocab_size=self.settings.vocab_size),
             "implementation_status": (
-                "tokenizer_supported"
-                if self.cell.tokenizer_supported
-                else "pending_method_contract"
+                "implemented" if self.cell.tokenizer_supported else "pending_method_contract"
             ),
             "artifact_location": self.artifact_dir.as_posix(),
             "required_provenance": list(REQUIRED_PROVENANCE),

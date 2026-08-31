@@ -149,6 +149,7 @@ def train_sentencepiece(
         hard_vocab_limit=False,
         shuffle_input_sentence=False,
         num_threads=1,
+        max_sentence_length=100_000,
     )
 
 

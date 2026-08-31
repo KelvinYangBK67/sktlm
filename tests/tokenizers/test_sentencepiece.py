@@ -42,5 +42,6 @@ def test_sentencepiece_training_preserves_existing_options(tmp_path, monkeypatch
             "hard_vocab_limit": False,
             "shuffle_input_sentence": False,
             "num_threads": 1,
+            "max_sentence_length": 100_000,
         }
     ]
