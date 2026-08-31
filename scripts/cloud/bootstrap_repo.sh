@@ -81,7 +81,7 @@ fi
 export PIP_CACHE_DIR="$cloud_root/pip-cache"
 mkdir -p "$PIP_CACHE_DIR"
 "$repo_root/.venv/bin/python" -m pip install --upgrade pip
-"$repo_root/.venv/bin/python" -m pip install -e "\${repo_root}[test]"
+"$repo_root/.venv/bin/python" -m pip install -e "${repo_root}[test]"
 "$repo_root/.venv/bin/python" -m pip check
 
 echo "bootstrap_complete"
