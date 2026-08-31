@@ -56,8 +56,10 @@ The baseline branch owns baseline implementation, validation, configurations, ar
 
 - Commit `59d60ce` implements the exact 22-cell matrix schema and completeness validator.
 - The baseline loader consumes the six frozen representation trees directly from `data/manifests/representations.csv`; it does not regenerate observation conditions dynamically.
-- BPE, Unigram, and Unicode code-point cells are runnable for all 18 formal domains. Every cell fits independently from its own frozen train representation and has a unique method/script/spacing/seed artifact directory.
+- All 22 formal cells are runnable. BPE, Unigram, Unicode code point, Akṣara-safe BPE, and Surface-lattice each fit independently from their own frozen train representation and have unique method/script/spacing/seed artifact directories.
 - Baseline tokenizer preparation and evaluation are streaming on the Python side. SentencePiece input preparation no longer materializes the full selected corpus in a Python list.
 - Every supported run records the required method, script, spacing, effective config, seed, clean Git commit, M₀ freeze ID, both manifest hashes, software versions, and artifact location. Existing artifact directories are never overwritten.
-- Akṣara-safe BPE and Surface-lattice are represented in the matrix but fail closed until their proposed method contracts are approved. The grapheme tokenizer, whitespace splitting, and latent/core code are not substitutes.
+- Commit `449adde` implements the approved Akṣara-safe BPE v1 and Surface-lattice v1 contracts. Their exact atomizers, barriers, deterministic surrogate training, decoding, lattice likelihood, and reproducibility requirements are recorded in `.codex/DECISIONS.md` and `reports/baselines/m0_method_contracts.md`.
+- Akṣara-safe BPE uses an explicit Devanagari orthographic atomizer and cannot split an atom or cross a barrier. Surface-lattice constructs a complete learned-piece DAG over recorded-version IAST grapheme clusters, reports a deterministic Viterbi diagnostic path, and marginalizes all complete paths for BPC/BPB.
+- A read-only full train-split inventory audit found 11,373 Akṣara types (11,378 required slots including reserved/internal symbols) and 40 Surface-lattice atom types (45 required slots) in each IAST condition, all below the formal 24k budget.
 - No formal full-corpus baseline production run has been launched.
