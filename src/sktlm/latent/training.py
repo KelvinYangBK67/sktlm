@@ -28,6 +28,7 @@ from sktlm.latent.frontend import ObservedSegment, iter_observed_segments
 from sktlm.latent.grammar import StructuredSandhiGrammar
 from sktlm.latent.inference import (
     AnalysisPosterior,
+    BoundaryPosterior,
     NeutralFormScorer,
     SegmentInference,
     TrainingSegmentInference,
@@ -909,6 +910,16 @@ def _analysis_payload(analysis: AnalysisPosterior) -> dict[str, Any]:
     }
 
 
+def _boundary_posterior_payload(item: BoundaryPosterior) -> dict[str, Any]:
+    return {
+        "boundary_id": item.boundary_id,
+        "cue_kind": item.cue_kind,
+        "source_start": item.source_start,
+        "source_end": item.source_end,
+        "probability": item.probability,
+    }
+
+
 def _push_report(
     heap: list[tuple[float, int, dict[str, Any]]],
     score: float,
@@ -1097,7 +1108,8 @@ def _write_inspection_shard(
                 "segment_id": segment_id,
                 "surface": segment.written,
                 "boundaries": [
-                    asdict(item) for item in inference.boundary_posteriors
+                    _boundary_posterior_payload(item)
+                    for item in inference.boundary_posteriors
                 ],
             }
             handles["boundaries"].write(
@@ -1643,7 +1655,10 @@ def _inspection_pass(
                     "schema_version": 1,
                     "segment_id": segment_id,
                     "surface": segment.written,
-                    "boundaries": [asdict(item) for item in inference.boundary_posteriors],
+                    "boundaries": [
+                        _boundary_posterior_payload(item)
+                        for item in inference.boundary_posteriors
+                    ],
                 }
                 boundaries_handle.write(
                     json.dumps(boundary_row, ensure_ascii=False, sort_keys=True) + "\n"
