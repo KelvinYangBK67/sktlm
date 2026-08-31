@@ -688,14 +688,14 @@ def _parallel_training_documents(
         initializer=_initialize_training_worker,
         initargs=(pass_index, store.path, config),
     ) as executor:
-        for batch_start in range(start_document, len(documents), config.workers):
-            batch = range(
-                batch_start,
-                min(len(documents), batch_start + config.workers),
-            )
-            pending: list[tuple[int, Future[dict[str, Any]] | None]] = []
-            cached: dict[int, dict[str, Any]] = {}
-            for document_index in batch:
+        max_pending = config.workers * 2
+        pending: dict[int, Future[dict[str, Any]] | dict[str, Any]] = {}
+        next_submit = start_document
+
+        def fill_pending() -> None:
+            nonlocal next_submit
+            while next_submit < len(documents) and len(pending) < max_pending:
+                document_index = next_submit
                 document = documents[document_index]
                 existing = _load_training_shard(
                     run_dir,
@@ -705,37 +705,33 @@ def _parallel_training_documents(
                     signature,
                 )
                 if existing is not None:
-                    cached[document_index] = existing
-                    pending.append((document_index, None))
-                    continue
-                future = executor.submit(
-                    _write_training_shard,
-                    document_index,
-                    document,
-                    config,
-                    pass_index,
-                    run_dir,
-                    signature,
-                )
-                pending.append((document_index, future))
-            for document_index, future in pending:
-                if future is not None:
-                    payload = future.result()
+                    pending[document_index] = existing
                 else:
-                    payload = cached.get(document_index)
-                if payload is None:
-                    raise RuntimeError(
-                        f'Worker did not produce document shard {document_index}'
+                    pending[document_index] = executor.submit(
+                        _write_training_shard,
+                        document_index,
+                        document,
+                        config,
+                        pass_index,
+                        run_dir,
+                        signature,
                     )
-                metrics = _apply_training_shard(
-                    payload=payload,
-                    store=store,
-                    config=config,
-                    checkpoint=checkpoint,
-                    metrics=metrics,
-                    run_dir=run_dir,
-                    telemetry=telemetry,
-                )
+                next_submit += 1
+
+        fill_pending()
+        for document_index in range(start_document, len(documents)):
+            item = pending.pop(document_index)
+            payload = item.result() if isinstance(item, Future) else item
+            metrics = _apply_training_shard(
+                payload=payload,
+                store=store,
+                config=config,
+                checkpoint=checkpoint,
+                metrics=metrics,
+                run_dir=run_dir,
+                telemetry=telemetry,
+            )
+            fill_pending()
     parallel_seconds = time.perf_counter() - parallel_started
     telemetry.add_seconds('training_parallel_wall', parallel_seconds)
     telemetry.add_seconds('training_document_total', parallel_seconds)
@@ -1468,14 +1464,14 @@ def _parallel_inspection_pass(
         initializer=_initialize_inspection_worker,
         initargs=(store.path, config),
     ) as executor:
-        for batch_start in range(0, len(documents), config.workers):
-            batch = range(
-                batch_start,
-                min(len(documents), batch_start + config.workers),
-            )
-            pending: list[tuple[int, Future[dict[str, Any]] | None]] = []
-            cached: dict[int, dict[str, Any]] = {}
-            for document_index in batch:
+        max_pending = config.workers * 2
+        pending: dict[int, Future[dict[str, Any]] | dict[str, Any]] = {}
+        next_submit = 0
+
+        def fill_pending() -> None:
+            nonlocal next_submit
+            while next_submit < len(documents) and len(pending) < max_pending:
+                document_index = next_submit
                 document = documents[document_index]
                 existing = _load_inspection_shard(
                     run_dir,
@@ -1484,37 +1480,33 @@ def _parallel_inspection_pass(
                     signature,
                 )
                 if existing is not None:
-                    cached[document_index] = existing
-                    pending.append((document_index, None))
-                    continue
-                future = executor.submit(
-                    _write_inspection_shard,
-                    document_index,
-                    document,
-                    config,
-                    run_dir,
-                    signature,
-                )
-                pending.append((document_index, future))
-            for document_index, future in pending:
-                if future is not None:
-                    payload = future.result()
+                    pending[document_index] = existing
                 else:
-                    payload = cached.get(document_index)
-                if payload is None:
-                    raise RuntimeError(
-                        f"Worker did not produce inspection shard {document_index}"
+                    pending[document_index] = executor.submit(
+                        _write_inspection_shard,
+                        document_index,
+                        document,
+                        config,
+                        run_dir,
+                        signature,
                     )
-                _apply_inspection_shard(
-                    payload=payload,
-                    store=store,
-                    config=config,
-                    run_dir=run_dir,
-                    analyses_handle=analyses_handle,
-                    boundaries_handle=boundaries_handle,
-                    aggregate=aggregate,
-                    telemetry=telemetry,
-                )
+                next_submit += 1
+
+        fill_pending()
+        for document_index in range(len(documents)):
+            item = pending.pop(document_index)
+            payload = item.result() if isinstance(item, Future) else item
+            _apply_inspection_shard(
+                payload=payload,
+                store=store,
+                config=config,
+                run_dir=run_dir,
+                analyses_handle=analyses_handle,
+                boundaries_handle=boundaries_handle,
+                aggregate=aggregate,
+                telemetry=telemetry,
+            )
+            fill_pending()
     parallel_seconds = time.perf_counter() - parallel_started
     telemetry.add_seconds("inspection_parallel_wall", parallel_seconds)
     telemetry.add_seconds("inspection_document_total", parallel_seconds)
