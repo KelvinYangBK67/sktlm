@@ -14,6 +14,12 @@ representation, or scientific output semantics. The optional fixed-vocabulary
 condition described below is separate; `vocab_budget=None` preserves the
 unrestricted configuration signature and inference behavior.
 
+Research-stage nomenclature is frozen in `docs/research_roadmap.md` and
+`.codex/DECISIONS.md`: M₀ is the benchmark substrate, `full-M₀` describes
+full-corpus extent, and the current full-M₀ program produces pre-S1M1
+calibration evidence rather than final S1M1 cells. This conceptual
+classification does not change any active-run operational state.
+
 ## Highest priority: active unrestricted full-M0 runs are hands-off
 
 The user reports that `core-01` through `core-04` are currently running the

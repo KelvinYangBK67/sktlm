@@ -762,3 +762,57 @@ and summary metadata. A single focused local command covering selection,
 tie-breaking, count projection, score decomposition, unrestricted `None`,
 artifact output, and completed-run resume passed: `8 passed in 0.91s`. No
 smoke, medium, full, cloud, or active-run validation was performed.
+
+## 31. Research nomenclature and roadmap (2026-08-31)
+
+The authoritative human-readable roadmap is
+`docs/research_roadmap.md`. It separates three naming layers that earlier
+historical documents sometimes placed close together:
+
+- `M₀` is the frozen common experimental substrate: the corpus, exactly six
+  formal observation representations, and shared provenance/evaluation
+  contracts. It is not a scientific milestone or model name.
+- `full-M₀` describes full frozen-corpus extent for one representation
+  condition. It does not mean that the latent model is “M0”.
+- a Stage is a major research phase; `M1`, `M2`, and optional `M3` are ordered
+  scientific milestones within that Stage, restarting at `M1` for each new
+  Stage. `v1` remains only an implementation/version label.
+
+The project is currently in **pre-S1M1 infrastructure and capacity
+calibration**. `IAST + surface_word` was chosen as the algorithm, exact
+inference, streaming, resume, multiprocessing, performance, deployment, and
+vocabulary-budget anchor. That history does not make it the sole final S1M1
+representation. The current calibration program uses unrestricted replicas
+to test VM equivalence and treats `K=16,384` / `K=32,768` as candidate
+`K1` / `K2` capacity conditions. Their results may justify one adjustment
+before S1M1 freezes; K must not change while the final matrix is running.
+
+If VM identity proves scientifically negligible, the next research gate is
+one unrestricted run for each of the six M₀ representations. Paired IAST and
+Devanagari results for each spacing condition test script neutrality using
+common latent, identity/latent-mass, ambiguity, grammar-use, and
+segmentation/reconstruction diagnostics. Script-specific failures should be
+fixed in the frontend before shared scientific parameters are changed.
+
+After that six-representation gate and any necessary adjustment, one S1M1
+specification freezes. The final S1M1 evidence matrix is:
+
+`6 M₀ representations × {unrestricted, K1, K2} = 18 cells`
+
+All 18 cells use the same frozen specification. Earlier full-M₀ runs remain
+calibration/provenance evidence and are not retroactively promoted into the
+final matrix.
+
+Stage 1 retains the known/fixed external-sandhi grammar: S1M1 targets lexical
+word-form identity and S1M2 advances to reusable surface-realizable
+stem/morpheme identity. Any S1M3 requires a genuinely new scientific claim,
+not engineering optimization. Stage 2 learns a realization grammar and then
+uses it for latent learning. Stage 3 removes the language-specific rule prior
+and advances toward joint latent-identity/realization discovery, with an
+optional cross-lingual stress test only if it provides independent scientific
+value.
+
+Historical names—including `exp/m0-core-methods`, `full_m0_*` run IDs,
+historical report filenames, and `stage01_checkpoint_20260831.md`—remain
+unchanged as provenance. “Stage 01” in those reports names the historical
+core-method work line; it does not retroactively declare final S1M1 evidence.

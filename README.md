@@ -5,6 +5,23 @@ tokenization, and small language-model experiments. The experimental path keeps
 one canonical text identity and fixed train/dev/test membership, then varies
 only explicit script, spacing, tokenizer, or model configuration.
 
+## Research direction
+
+The core research problem is latent identity under context-conditioned surface
+variation: when should several observed forms share one latent identity, and
+when should their variation be explained by a reusable realization grammar
+rather than lexical memorization? Sanskrit sandhi is the primary testbed, not
+the limit of the intended general claim.
+
+`M₀` names the frozen common benchmark substrate—corpus, six formal
+script/spacing representations, and shared provenance/evaluation contracts.
+It is not a model milestone. Accordingly, `full-M₀` means full frozen-corpus
+extent for one representation condition, not that the latent model is “M0”.
+The project is currently in pre-S1M1 infrastructure and capacity calibration,
+working toward the first formal Stage 1 scientific milestone. See the
+[research roadmap](docs/research_roadmap.md) for the Stage/Milestone
+nomenclature and the S1–S3 program.
+
 The current framework provides:
 
 - a whitelist-only formal GRETIL canonical IAST corpus builder with provenance,

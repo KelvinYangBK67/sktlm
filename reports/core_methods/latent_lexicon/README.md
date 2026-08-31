@@ -2,6 +2,22 @@
 
 This directory is the tracked, human-readable research record for the Stage 01 latent-lexicon/core-method line.
 
+## Naming clarification
+
+“Stage 01” in this directory and its historical filenames denotes the
+latent-lexicon/core-method work line as it was recorded at the time; it is
+preserved as provenance and is not retroactively renamed. Under the current
+research nomenclature, `M₀` is the frozen common benchmark substrate, while
+`full-M₀` describes a run's full frozen-corpus extent for one representation
+condition. Neither term names the latent model or declares a completed S1M1.
+
+The current full-M₀ work belongs to pre-S1M1 infrastructure and capacity
+calibration. `IAST + surface_word` has been the algorithm/deployment anchor,
+not the final selection of a sole S1M1 representation. Historical report
+names, `full_m0_*` run IDs, and `stage01_checkpoint_20260831.md` remain
+unchanged. The authoritative Stage/Milestone definitions and S1–S3 plan are in
+[`../../../docs/research_roadmap.md`](../../../docs/research_roadmap.md).
+
 Raw run outputs under `artifacts/` remain intentionally gitignored. They may be large, host-specific, incomplete, or disposable. **Any result that changes a research conclusion, implementation decision, performance projection, or next-step decision must be promoted into a tracked report here and must not exist only inside `artifacts/`.**
 
 ## Source-of-truth hierarchy

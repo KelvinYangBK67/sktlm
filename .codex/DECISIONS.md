@@ -10,7 +10,7 @@ This file records decisions that should not be casually re-litigated in each Cod
    - IAST: `surface_word`, `legacy_joined`, `continuous`
    - Devanagari: `surface_word`, `legacy_joined`, `continuous`
 4. Each condition will ultimately be trained independently. Do not initialize later conditions from the first trained condition.
-5. First formal core-method condition: `IAST + surface_word`.
+5. `IAST + surface_word` is the first formal core-method implementation and calibration anchor; it is not the final selection of a sole S1M1 representation.
 
 ## Grammar scope
 
@@ -93,3 +93,15 @@ This file records decisions that should not be casually re-litigated in each Cod
 61. Every constrained vocabulary includes all 50 singleton `Phoneme` base units. The remaining `K-50` capacity is selected once after neutral Pass 1 by `expected_count DESC, form_key ASC`, then frozen for all later passes and inspection.
 62. A nonselected multi-phoneme form has no independent lexical parameter. It deterministically projects to its constituent singleton base tokens for scoring, expected counts, and decoded output; pruned Pass-1 counts use the same phoneme-multiplicity projection.
 63. Resume must load and validate the durable frozen vocabulary and allowed-key SHA-256; it must never reselect from later-pass counts.
+
+## Research stage and milestone nomenclature
+
+64. `M₀` is the reserved name of the frozen common experimental substrate: corpus, exactly six formal observation representations, and shared provenance/evaluation contracts. It is not an `SxMy` milestone or a latent-model name.
+65. `full-M₀` means full frozen-corpus extent for one M₀ representation condition. It does not mean that the model itself is “M0”. Preserve historical `full_m0_*` IDs, report filenames, `stage01_checkpoint_20260831.md`, and branch `exp/m0-core-methods` as provenance.
+66. A Stage is a major research phase. `M1`, `M2`, and optional `M3` are ordered scientific milestones within that Stage, and milestone numbering restarts at `M1` for each new Stage. `v1` remains an implementation/version label, not a Stage or Milestone synonym.
+67. The current full-corpus latent-lexicon work is pre-S1M1 infrastructure and capacity calibration. Its unrestricted replicas test VM equivalence; `K=16,384` and `K=32,768` are candidate `K1`/`K2` capacity conditions subject to one evidence-based adjustment before S1M1 freezes.
+68. After calibration closes, the entry gate to S1M1 is an unrestricted run for each of the six M₀ representations, including paired IAST/Devanagari comparisons that test script neutrality. Script-specific problems should be fixed in the frontend; do not use divergent script-specific scientific hyperparameters to manufacture agreement.
+69. After the six-representation gate and any necessary adjustment, freeze one S1M1 scientific specification. The final S1M1 evidence matrix is `6 representations × {unrestricted, K1, K2}` = 18 cells, all using that same frozen specification. Calibration runs remain calibration provenance rather than final cells.
+70. Stage 1 assumes a known/fixed external-sandhi realization grammar. S1M1 targets lexical word-form identity; S1M2 advances only to reusable surface-realizable stem/morpheme identity. Deeper abstract morphology, feature bundles, and historical reconstruction require separate future decisions.
+71. An optional M3 in any Stage requires independent scientific semantics and a new scientific claim. Performance optimization, caching, implementation rewrites, worker scaling, and routine tuning do not qualify; absent such a claim, proceed to the next Stage.
+72. Stage 2 learns the realization grammar before using it for full-corpus latent analysis. Stage 3 removes the language-specific rule prior and progresses toward joint latent-identity/realization discovery; detailed future supervision contracts remain unfrozen until explicitly designed.
