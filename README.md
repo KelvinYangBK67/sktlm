@@ -1,5 +1,7 @@
 # sktlm
 
+[![tests](https://github.com/KelvinYangBK67/sktlm/actions/workflows/tests.yml/badge.svg)](https://github.com/KelvinYangBK67/sktlm/actions/workflows/tests.yml)
+
 `sktlm` is a reproducible framework for controlled Sanskrit representation,
 tokenization, and small language-model experiments. The experimental path keeps
 one canonical text identity and fixed train/dev/test membership, then varies
@@ -103,6 +105,21 @@ Historical pilot source code, superseded cleaning passes, and migration notes
 are preserved under `archive/legacy/` and do not participate in the main
 pipeline. Generated pilot checkpoints and tokenizer model/vocabulary artifacts
 are intentionally excluded from the public repository.
+
+## Reproducible experiment environments
+
+Capture the actual installed environment used for an experiment without
+globally exact-pinning the package requirements in `pyproject.toml`:
+
+```bash
+python scripts/repro/capture_environment.py --output-dir path/to/output
+```
+
+The command writes `environment.json` and a deterministically sorted
+`requirements-freeze.txt`, and refuses to overwrite either file. A formal
+paper/release run should preserve these alongside its exact Git commit, frozen
+input fingerprint, experiment config, and run provenance. Current pre-S1M1
+runs are not restarted or retroactively modified to add these files.
 
 ## License
 

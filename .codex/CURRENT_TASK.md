@@ -112,3 +112,16 @@ The minimum tracked formal-run evidence and established hash manifest are in
 Raw P10/cloud outputs, generated cleaning audits, old notes, interrupted
 diagnostics, operational receipts, and private bridge configuration remain
 ignored/local. Do not delete or bulk-add them.
+
+## Engineering provenance checkpoint
+
+GitHub Actions covers Python 3.10–3.12 with the repository-standard `pytest`
+command. `scripts/repro/capture_environment.py --output-dir PATH` is available
+for future formal runs and writes `environment.json` plus deterministic
+`requirements-freeze.txt` without overwriting existing provenance. Do not
+retrofit it into active pre-S1M1 runs.
+
+Do not implement the S1M1 matrix launcher, aggregation, or paper tables yet.
+That work remains deferred until calibration, the six unrestricted
+representation gate, necessary frontend/shared adjustments, K1/K2 freeze, and
+the S1M1 scientific-specification freeze are all complete.

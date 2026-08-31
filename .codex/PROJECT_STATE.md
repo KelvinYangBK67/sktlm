@@ -816,3 +816,26 @@ Historical names—including `exp/m0-core-methods`, `full_m0_*` run IDs,
 historical report filenames, and `stage01_checkpoint_20260831.md`—remain
 unchanged as provenance. “Stage 01” in those reports names the historical
 core-method work line; it does not retroactively declare final S1M1 evidence.
+
+## 32. CI and reproducible-environment capture (2026-08-31)
+
+GitHub Actions now runs the repository-standard `pytest` command on
+`ubuntu-latest` for Python 3.10, 3.11, and 3.12 after installing `.[test]`.
+The workflow intentionally contains no corpus download, benchmark, GPU job,
+experiment matrix, full-M₀ launch, or large-artifact upload.
+
+`scripts/repro/capture_environment.py --output-dir PATH` writes a
+machine-readable `environment.json` and deterministic
+`requirements-freeze.txt`. It records Python, OS/machine, key package,
+optional Torch/CUDA, Git, and installed-distribution provenance without
+emitting editable local paths. Existing output files are never overwritten.
+This keeps `pyproject.toml` install-oriented while allowing a formal
+paper/release run to preserve the exact environment it actually used.
+
+The capture tool is scaffolding only and was not integrated into, or used to
+modify, any active pre-S1M1 job. S1M1 paper-facing orchestration remains
+deferred until current calibration closes, the six unrestricted M₀
+representation gate completes, frontend/shared scientific adjustments are
+complete, K1/K2 freeze, and the S1M1 scientific specification freezes. Only
+then should declarative matrix execution, per-cell provenance, audit,
+aggregation, and paper-facing tables/figures be implemented.

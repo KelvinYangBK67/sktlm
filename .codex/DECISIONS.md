@@ -105,3 +105,7 @@ This file records decisions that should not be casually re-litigated in each Cod
 70. Stage 1 assumes a known/fixed external-sandhi realization grammar. S1M1 targets lexical word-form identity; S1M2 advances only to reusable surface-realizable stem/morpheme identity. Deeper abstract morphology, feature bundles, and historical reconstruction require separate future decisions.
 71. An optional M3 in any Stage requires independent scientific semantics and a new scientific claim. Performance optimization, caching, implementation rewrites, worker scaling, and routine tuning do not qualify; absent such a claim, proceed to the next Stage.
 72. Stage 2 learns the realization grammar before using it for full-corpus latent analysis. Stage 3 removes the language-specific rule prior and progresses toward joint latent-identity/realization discovery; detailed future supervision contracts remain unfrozen until explicitly designed.
+
+## Reproducible environments
+
+73. `pyproject.toml` remains install-oriented rather than globally exact-pinned. Each formal paper/release experiment should capture its actual Python, OS/machine, key-package, Torch/CUDA, Git, and installed-distribution environment as run/release provenance (`environment.json` plus deterministic `requirements-freeze.txt`).

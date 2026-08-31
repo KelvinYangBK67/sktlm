@@ -117,6 +117,13 @@ All 18 cells must use the same frozen S1M1 scientific specification. These 18
 cells—not the preceding calibration runs—form the final Stage 1 / Milestone 1
 evidence package.
 
+Paper-facing S1M1 orchestration is deliberately deferred until calibration
+closes, the six unrestricted-representation gate completes, frontend/shared
+scientific adjustments are complete, K1/K2 freeze, and the S1M1 scientific
+specification freezes. Only then should the project implement:
+
+`declarative matrix -> per-cell provenance -> audit -> aggregation -> tables/figures`
+
 ## Stage 1: known realization grammar
 
 Stage 1 supplies the known/fixed external-sandhi grammar.
