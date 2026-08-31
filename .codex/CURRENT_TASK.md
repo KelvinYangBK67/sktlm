@@ -39,20 +39,52 @@ medium scaling benchmark.
 
 ## Next scientific execution gate
 
-Plan six full-M0 replicas at 8 workers:
+Four full-M0 replicas are PREPARED at 8 workers; none has started:
 
-- `core-01` -> `rep01`
-- `core-02` -> `rep02`
-- `core-03` -> `rep03`
-- `core-04` -> `rep04`
-- `core-05` -> `rep05`
-- `core-06` -> `rep06`
+| Machine | Replica | Run ID | Metrics ID |
+|---|---|---|---|
+| `core-01` | `rep01` | `cloud_full_m0_iast_surface_word_p10_rep01_w8_p3` | `full_m0_iast_surface_word_p10_rep01_w8_p3` |
+| `core-02` | `rep02` | `cloud_full_m0_iast_surface_word_p10_rep02_w8_p3` | `full_m0_iast_surface_word_p10_rep02_w8_p3` |
+| `core-03` | `rep03` | `cloud_full_m0_iast_surface_word_p10_rep03_w8_p3` | `full_m0_iast_surface_word_p10_rep03_w8_p3` |
+| `core-04` | `rep04` | `cloud_full_m0_iast_surface_word_p10_rep04_w8_p3` | `full_m0_iast_surface_word_p10_rep04_w8_p3` |
 
-The objectives are the production scientific result, failure insurance,
-cross-host runtime variance, and deterministic cross-host reproducibility.
-These assignments are PLANNED only. No full-M0 run has started. The next Codex
-session may prepare exact launch/monitor/audit commands and durable run IDs,
-but must not execute them without an explicit user instruction.
+`core-05` and `core-06` remain unassigned READY/STANDBY.
+
+The benchmark harness has no full mode. On each assigned host, set the exact
+run/metrics IDs from the table and use the existing full-corpus trainer:
+
+```bash
+./.venv/bin/python scripts/cloud/run_with_metrics.py \
+  --output-dir "artifacts/cloud_metrics/${SKTLM_METRICS_ID}" \
+  -- \
+  ./.venv/bin/python -m sktlm.experiments.training.latent_lexicon \
+  --manifest data/manifests/representations.csv \
+  --output-root artifacts/latent_benchmarks \
+  --run-id "${SKTLM_RUN_ID}" \
+  --passes 3 \
+  --workers 8 \
+  --equivalence-diagnostics
+```
+
+Omitting document/max limits selects the complete frozen 240-document IAST
+`surface_word` condition. Lightweight monitoring is:
+
+```bash
+tail -n 1 "artifacts/cloud_metrics/${SKTLM_METRICS_ID}/process_tree_samples.csv"
+```
+
+After natural completion, first run the exclusive metrics-envelope block in
+`reports/core_methods/latent_lexicon/full_m0_launch_plan.md`, then audit:
+
+```bash
+./.venv/bin/python scripts/cloud/audit_latent_run.py \
+  "artifacts/latent_benchmarks/${SKTLM_RUN_ID}" \
+  --output "artifacts/cloud_metrics/${SKTLM_METRICS_ID}/audit.json"
+```
+
+The full plan, audit compatibility explanation, and mainland Git-bundle
+fallback are in `full_m0_launch_plan.md`. Preparation does not authorize
+launch; wait for an explicit user instruction.
 
 ## Multi-host bridge
 

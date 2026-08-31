@@ -28,6 +28,10 @@ The `evidence/` subdirectory preserves the minimum machine-readable evidence
 for accepted formal benchmark decisions and a manifest of established large
 artifact hashes.
 
+`full_m0_launch_plan.md` records the prepared four-replica run/metrics IDs,
+the supported full-corpus entry point, lightweight monitoring, and final audit
+workflow. It is a preparation record, not launch authorization.
+
 Future full-corpus results should receive their own tracked report rather than being represented only by the generated `inspection_report.md` or other files inside an artifact directory.
 
 ## Promotion checklist for expensive runs

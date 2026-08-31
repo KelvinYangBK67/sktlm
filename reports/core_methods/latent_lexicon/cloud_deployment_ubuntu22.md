@@ -361,12 +361,16 @@ launches another job, or removes the remote run.
 
 ## 8. Full-M₀ gate
 
-The full command is intentionally not prepared for immediate execution.
-Authorize it only after:
+The full command is now prepared but remains unauthorized and unexecuted.
+Four 8-worker replicas are assigned to `core-01` through `core-04`;
+`core-05` and `core-06` remain READY/STANDBY. Durable run/metrics IDs and
+the exact full-corpus launch, monitor, metrics-envelope, and audit commands are
+in `full_m0_launch_plan.md` and `.codex/CURRENT_TASK.md`.
 
-1. cloud 4/8 medium scientific hashes and integrity pass;
-2. a worker sweet spot is measured on this host;
-3. simultaneous process-tree RSS has safe headroom below 32 GB;
-4. the 300 GB filesystem has credible artifact and crash-shard headroom;
-5. the projected runtime is accepted;
-6. a new run ID and exact command are recorded in `.codex/CURRENT_TASK.md`.
+Direct GitHub access may be unreliable on mainland cloud hosts. The preferred
+fallback is a local Git bundle transferred over SSH and a verified
+fast-forward from that bundle, never a copied working tree.
+
+Preparation does not authorize launch. Before execution, the human operator
+must still confirm the exact published HEAD on each host, input validation,
+data-filesystem headroom, and empty target run/metrics directories.

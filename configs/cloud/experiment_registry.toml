@@ -8,28 +8,28 @@ authoritative_as_of = "2026-08-31"
 machine_id = "core-01"
 machine_name = "sktlm-m0-core-01"
 host_profile = "core-01"
-current_role = "medium-scaling-complete"
+current_role = "full-m0-replica-prepared"
 state = "ready"
 
 [machines.core-02]
 machine_id = "core-02"
 machine_name = "sktlm-m0-core-02"
 host_profile = "core-02"
-current_role = "medium-scaling-complete"
+current_role = "full-m0-replica-prepared"
 state = "ready"
 
 [machines.core-03]
 machine_id = "core-03"
 machine_name = "sktlm-m0-core-03"
 host_profile = "core-03"
-current_role = "medium-scaling-complete"
+current_role = "full-m0-replica-prepared"
 state = "ready"
 
 [machines.core-04]
 machine_id = "core-04"
 machine_name = "sktlm-m0-core-04"
 host_profile = "core-04"
-current_role = "medium-scaling-complete"
+current_role = "full-m0-replica-prepared"
 state = "ready"
 
 [machines.core-05]
@@ -121,41 +121,73 @@ artifact_bytes = 2571276026
 scientific_checkpoint = "fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04"
 notes = "Complete and remotely audited; runner-up but 12.8% slower than 8 workers."
 
-# The next-stage assignments are planned identities, not launched run IDs.
-# core-05 and core-06 remain standby until the user explicitly starts this gate.
+# Prepared full-M0 identities are not launched results. No performance,
+# completion, audit, or scientific values may be added until the jobs finish.
 
-[[planned_full_m0_replicas]]
+[[runs]]
 machine_id = "core-01"
+machine_name = "sktlm-m0-core-01"
+host_profile = "core-01"
 replica_id = "rep01"
+run_id = "cloud_full_m0_iast_surface_word_p10_rep01_w8_p3"
+metrics_id = "full_m0_iast_surface_word_p10_rep01_w8_p3"
+workload = "full_m0_iast_surface_word"
+entrypoint = "sktlm.experiments.training.latent_lexicon"
+passes = 3
 workers = 8
-state = "PLANNED"
+state = "PREPARED"
+result_location = "artifacts/latent_benchmarks/cloud_full_m0_iast_surface_word_p10_rep01_w8_p3"
+metrics_location = "artifacts/cloud_metrics/full_m0_iast_surface_word_p10_rep01_w8_p3"
+scientific_checkpoint = "fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04"
+notes = "Launch prepared only; no full-M0 process has started."
 
-[[planned_full_m0_replicas]]
+[[runs]]
 machine_id = "core-02"
+machine_name = "sktlm-m0-core-02"
+host_profile = "core-02"
 replica_id = "rep02"
+run_id = "cloud_full_m0_iast_surface_word_p10_rep02_w8_p3"
+metrics_id = "full_m0_iast_surface_word_p10_rep02_w8_p3"
+workload = "full_m0_iast_surface_word"
+entrypoint = "sktlm.experiments.training.latent_lexicon"
+passes = 3
 workers = 8
-state = "PLANNED"
+state = "PREPARED"
+result_location = "artifacts/latent_benchmarks/cloud_full_m0_iast_surface_word_p10_rep02_w8_p3"
+metrics_location = "artifacts/cloud_metrics/full_m0_iast_surface_word_p10_rep02_w8_p3"
+scientific_checkpoint = "fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04"
+notes = "Launch prepared only; no full-M0 process has started."
 
-[[planned_full_m0_replicas]]
+[[runs]]
 machine_id = "core-03"
+machine_name = "sktlm-m0-core-03"
+host_profile = "core-03"
 replica_id = "rep03"
+run_id = "cloud_full_m0_iast_surface_word_p10_rep03_w8_p3"
+metrics_id = "full_m0_iast_surface_word_p10_rep03_w8_p3"
+workload = "full_m0_iast_surface_word"
+entrypoint = "sktlm.experiments.training.latent_lexicon"
+passes = 3
 workers = 8
-state = "PLANNED"
+state = "PREPARED"
+result_location = "artifacts/latent_benchmarks/cloud_full_m0_iast_surface_word_p10_rep03_w8_p3"
+metrics_location = "artifacts/cloud_metrics/full_m0_iast_surface_word_p10_rep03_w8_p3"
+scientific_checkpoint = "fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04"
+notes = "Launch prepared only; no full-M0 process has started."
 
-[[planned_full_m0_replicas]]
+[[runs]]
 machine_id = "core-04"
+machine_name = "sktlm-m0-core-04"
+host_profile = "core-04"
 replica_id = "rep04"
+run_id = "cloud_full_m0_iast_surface_word_p10_rep04_w8_p3"
+metrics_id = "full_m0_iast_surface_word_p10_rep04_w8_p3"
+workload = "full_m0_iast_surface_word"
+entrypoint = "sktlm.experiments.training.latent_lexicon"
+passes = 3
 workers = 8
-state = "PLANNED"
-
-[[planned_full_m0_replicas]]
-machine_id = "core-05"
-replica_id = "rep05"
-workers = 8
-state = "PLANNED"
-
-[[planned_full_m0_replicas]]
-machine_id = "core-06"
-replica_id = "rep06"
-workers = 8
-state = "PLANNED"
+state = "PREPARED"
+result_location = "artifacts/latent_benchmarks/cloud_full_m0_iast_surface_word_p10_rep04_w8_p3"
+metrics_location = "artifacts/cloud_metrics/full_m0_iast_surface_word_p10_rep04_w8_p3"
+scientific_checkpoint = "fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04"
+notes = "Launch prepared only; no full-M0 process has started."

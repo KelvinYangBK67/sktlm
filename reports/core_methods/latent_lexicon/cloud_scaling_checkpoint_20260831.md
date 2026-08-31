@@ -87,17 +87,17 @@ host-class result without asserting a hardware-level cause.
 
 ## Next scientific execution gate
 
-Six full-M0 replicas are planned at the frozen 8-worker setting. They are
+Four full-M0 replicas are prepared at the frozen 8-worker setting. They are
 assignments only; no full-M0 run has started.
 
 | Machine | Replica | Workers | State |
 |---|---|---:|---|
-| `core-01` | `rep01` | 8 | PLANNED |
-| `core-02` | `rep02` | 8 | PLANNED |
-| `core-03` | `rep03` | 8 | PLANNED |
-| `core-04` | `rep04` | 8 | PLANNED |
-| `core-05` | `rep05` | 8 | PLANNED |
-| `core-06` | `rep06` | 8 | PLANNED |
+| `core-01` | `rep01` | 8 | PREPARED |
+| `core-02` | `rep02` | 8 | PREPARED |
+| `core-03` | `rep03` | 8 | PREPARED |
+| `core-04` | `rep04` | 8 | PREPARED |
+
+`core-05` and `core-06` remain unassigned READY/STANDBY capacity.
 
 The replica stage is intended to produce the production scientific result,
 provide failure insurance, measure cross-host runtime variance, and verify
@@ -106,4 +106,5 @@ explicitly user-operated gate.
 
 Machine/run records and planned replica identities are in
 `configs/cloud/experiment_registry.toml`. Real addresses and SSH identity
-paths remain only in the ignored `.sktlm-bridge.toml`.
+paths remain only in the ignored `.sktlm-bridge.toml`. Exact launch,
+monitor, and audit commands are prepared in `full_m0_launch_plan.md`.

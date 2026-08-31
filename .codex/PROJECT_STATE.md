@@ -688,11 +688,12 @@ All four runs produced byte- and SHA-256-identical `analyses.jsonl`,
 differences in aggregate benchmark `artifact_bytes` reflect noncanonical
 runtime/metadata files and are not scientific differences.
 
-The next gate is planned, not launched: six 8-worker full-M0 replicas map
-`core-01` through `core-06` to `rep01` through `rep06`. Their purposes
-are a production scientific result, failure insurance, cross-host runtime
-variance, and deterministic cross-host reproducibility. The authoritative
-closure and hashes are in
+The next gate is prepared, not launched: four 8-worker full-M0 replicas map
+`core-01` through `core-04` to `rep01` through `rep04`; `core-05`
+and `core-06` remain unassigned READY/STANDBY. Their purposes are a
+production scientific result, failure insurance, cross-host runtime variance,
+and deterministic cross-host reproducibility. The authoritative closure and
+hashes are in
 `reports/core_methods/latent_lexicon/cloud_scaling_checkpoint_20260831.md`;
 the completed run records and planned identities are in
 `configs/cloud/experiment_registry.toml`.
@@ -712,3 +713,21 @@ present locally; their tracked files are explicitly labeled accepted-result
 digests of facts already recorded in the registry and cloud checkpoint.
 Multi-GB deterministic outputs, SQLite files, WAL/shards, and process samples
 remain ignored/local.
+
+## 29. Full-M0 four-replica launch preparation (2026-08-31)
+
+Four durable run/metrics pairs are prepared for `core-01`/`rep01` through
+`core-04`/`rep04`, all at the frozen cloud setting of 8 workers and three
+passes. The run IDs are
+`cloud_full_m0_iast_surface_word_p10_rep01_w8_p3` through
+`cloud_full_m0_iast_surface_word_p10_rep04_w8_p3`; the corresponding metrics
+IDs omit the leading `cloud_`. Registry state is PREPARED, not RUNNING.
+
+The full workload uses `sktlm.experiments.training.latent_lexicon` without a
+document list or max limits. The benchmark harness was inspected and supports
+only smoke/medium, so no nonexistent `--benchmark full` mode is used. The
+exact launch, one-line monitor, post-run audit-envelope, and final audit
+commands are tracked in
+`reports/core_methods/latent_lexicon/full_m0_launch_plan.md` and
+`.codex/CURRENT_TASK.md`. No SSH, launch, test, audit, or scientific-code/data
+change occurred during preparation.
