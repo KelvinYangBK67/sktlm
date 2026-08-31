@@ -51,3 +51,13 @@ TransLIST is a separate supervised Sanskrit segmentation/desandhi reference. It 
 ## Baseline responsibility
 
 The baseline branch owns baseline implementation, validation, configurations, artifacts, tests, and reports. It must not implement the latent lexical core method or import core-method internals into baseline state documentation.
+
+## Formal baseline implementation
+
+- Commit `59d60ce` implements the exact 22-cell matrix schema and completeness validator.
+- The baseline loader consumes the six frozen representation trees directly from `data/manifests/representations.csv`; it does not regenerate observation conditions dynamically.
+- BPE, Unigram, and Unicode code-point cells are runnable for all 18 formal domains. Every cell fits independently from its own frozen train representation and has a unique method/script/spacing/seed artifact directory.
+- Baseline tokenizer preparation and evaluation are streaming on the Python side. SentencePiece input preparation no longer materializes the full selected corpus in a Python list.
+- Every supported run records the required method, script, spacing, effective config, seed, clean Git commit, M₀ freeze ID, both manifest hashes, software versions, and artifact location. Existing artifact directories are never overwritten.
+- Akṣara-safe BPE and Surface-lattice are represented in the matrix but fail closed until their proposed method contracts are approved. The grapheme tokenizer, whitespace splitting, and latent/core code are not substitutes.
+- No formal full-corpus baseline production run has been launched.

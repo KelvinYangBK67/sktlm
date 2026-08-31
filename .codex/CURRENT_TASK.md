@@ -4,85 +4,53 @@ Current branch: `exp/m0-baseline-validation`
 
 This branch owns baseline production and validation. It does not own the latent lexical core method.
 
-## Workspace initialization completed
+## Completed implementation
 
-- Local frozen canonical data was copied from `/Users/dongpalmeat/Desktop/canonical/gretil_iast` into ignored `data/canonical/gretil_iast` without modifying the source.
-- Local frozen representations were copied from `/Users/dongpalmeat/Desktop/representations` into ignored `data/representations`, excluding `.DS_Store` files.
-- `sktlm-validate-gretil-freeze` validates 240 files with freeze ID `9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40`.
-- `sktlm-validate-representations` validates all 1,440 representation files across the six formal conditions with the same freeze ID.
-- The repo-local `.venv` uses Python 3.11.9 extracted from the checksum-matched official python.org macOS installer. Source `.venv/bin/activate` before using it so its repo-local framework paths are exported.
-- Dependencies were installed once with `python -m pip install -e ".[test]"` from `pyproject.toml`.
-- `pip check` passes; imports of `sktlm`, `sentencepiece`, `yaml`, `regex`, and `torch` pass.
-- Installed key versions: pip 26.2.1, SentencePiece 0.2.2, PyTorch 2.13.0.
-- Pytest collects 325 tests.
+- Workspace setup commit: `926429b`.
+- SentencePiece 0.2.2 offset compatibility commit: `44f4402`.
+- `SHARED INTERFACE CHANGE` commit: `ae6835c` widens `evaluate_tokenizer` from a `list` input to an `Iterable`. The behavior is backward-compatible and enables bounded-memory baseline evaluation.
+- Formal matrix/runner commit: `59d60ce`.
+- The exact 22-cell matrix enumerates 18 runnable BPE/Unigram/Unicode code-point cells plus four fail-closed pending-method cells.
+- Frozen representation access validates 240 canonical manifest members and exactly 1,440 files across the six formal conditions.
+- The runner fits each supported cell independently from frozen train paths, streams evaluation, refuses dirty Git state and artifact overwrite, and emits complete provenance/fingerprints.
+- `reports/baselines/m0_method_contracts.md` records the unresolved Akṣara-safe BPE and Surface-lattice semantics as a proposal, not a frozen decision.
 
-## Readiness audit
+## Verification
 
-Reusable now:
-
-- SentencePiece BPE and Unigram training/wrappers;
-- deterministic Unicode code-point tokenizer;
-- shared tokenizer span contract and evaluation diagnostics;
-- representation transforms and frozen representation validator;
-- generic config-driven runner, dry-run mode, fingerprints, provenance, and artifact layout;
-- deterministic train/evaluation split selection.
-
-The tokenizer layer can support the 18 BPE, Unigram, and Unicode code-point cells after formal matrix configs and orchestration are added.
-
-Missing or incomplete:
-
-- no formal 22-condition matrix enumerator/completeness validator;
-- no Akṣara-safe BPE implementation (the grapheme tokenizer is not Akṣara-safe BPE);
-- no Surface-lattice implementation;
-- existing matrix configs cover only legacy diagnostics and include obsolete `observed` names;
-- the generic runner dynamically transforms canonical segments rather than consuming the frozen representation manifest directly;
-- formal cross-condition provenance/software-version reporting is incomplete.
-
-## Known compatibility status
-
-SentencePiece 0.2.2 deliberately rejects `encode_as_immutable_proto`. Three focused tests fail at `src/sktlm/tokenizers/sentencepiece.py:61` and report that `return_type="proto"` must be used:
-
-- BPE factory encode test;
-- Unigram factory encode test;
-- experiment runner fitted-BPE test.
-
-Do not pin a random older dependency or change tokenizer semantics to hide this. The next implementation task should add a narrow, tested compatibility adapter.
-
-PyTorch imports successfully but warns that NumPy is absent. `pyproject.toml` remains the dependency authority; adding NumPy would be a shared dependency change and was not folded into workspace setup.
-
-## Ownership map
-
-Baseline-owned:
-
-- `src/sktlm/tokenizers/`;
-- baseline-specific experiment runners, configs, tokenizer training, evaluation glue, and tests;
-- `reports/baselines/`;
-- ignored `artifacts/<baseline...>/`.
-
-Shared/interface-sensitive:
-
-- `src/sktlm/representations/`;
-- `src/sktlm/evaluation/`;
-- `src/sktlm/experiments/artifacts.py`;
-- `src/sktlm/experiments/runner.py`;
-- `pyproject.toml`, tracked manifests, `reports/README.md`, `AGENTS.md`, and durable project-state contracts.
-
-Core-owned / do not touch:
-
-- `src/sktlm/latent/`;
-- latent lexical phonology, frontend, grammar runtime, candidates, inference, stores, and training;
-- latent core experiment entry points and core-method reports.
-
-Current cross-branch diff shows no sibling changes to tokenizer, representation, evaluation, artifact, or generic-runner modules. `pyproject.toml` is already a known shared divergence because the core branch added NumPy.
+- `python -m pytest -q`: 337 passed; only the pre-existing missing-NumPy PyTorch warning and two nested-tensor warnings remain.
+- `sktlm-validate-gretil-freeze`: 240 files; exact frozen M₀ ID; zero invalid characters/apostrophes.
+- `sktlm-validate-representations`: 1,440 files; exact frozen M₀ ID.
+- Real frozen-input bounded smoke runs passed for Unicode code point and BPE. A post-commit clean-worktree run recorded commit `59d60ce771063d0c4ddde13c7b74e4345877ff3b`.
+- No formal full-corpus matrix was launched, and generated smoke artifacts exist only under `/tmp`.
 
 ## Exact next task
 
-Audit and begin implementing the formal 22-condition baseline matrix without modifying frozen data:
+Obtain research-owner approval or replacement definitions for the two proposed method contracts in `reports/baselines/m0_method_contracts.md`:
 
-1. Add the narrow SentencePiece 0.2.2 proto compatibility adapter and focused regression tests.
-2. Specify a baseline-specific matrix schema/enumerator with exactly 22 unique cells and reject obsolete formal condition names.
-3. Decide whether the baseline runner should load frozen representation paths directly or verify dynamic transforms against the frozen manifest.
-4. Implement the 18 already-supported cells with independent tokenizer fitting and complete provenance.
-5. Specify and test Akṣara-safe BPE and Surface-lattice semantics before implementing the remaining four cells.
+1. Akṣara atomization, merge barriers, deterministic BPE rules, and span/decoding policy.
+2. Surface-lattice nodes/arcs, surface-only candidate source, objective/decoding, common likelihood interface, and leakage policy.
 
-Do not launch the formal full-corpus production matrix automatically.
+After approval:
+
+1. record the approved semantics in `.codex/DECISIONS.md`;
+2. implement and test Akṣara-safe BPE without treating generic grapheme clusters as an automatic substitute;
+3. implement and test Surface-lattice without importing, copying, or modifying `src/sktlm/latent/`;
+4. rerun the exact 22-cell completeness and provenance tests;
+5. request explicit authorization before launching any formal full-corpus production run.
+
+Useful read-only plan command:
+
+```bash
+source .venv/bin/activate
+python -m sktlm.experiments.baselines.matrix --check-inputs
+```
+
+Example bounded supported-cell smoke command (only when the target artifact directory does not already exist):
+
+```bash
+source .venv/bin/activate
+python -m sktlm.experiments.baselines.runner \
+  --condition unicode_codepoint__devanagari__continuous \
+  --max-train-segments 10 \
+  --max-eval-segments 5
+```
