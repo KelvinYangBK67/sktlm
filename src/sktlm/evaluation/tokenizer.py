@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from sktlm.evaluation.orthography import (
@@ -31,7 +32,7 @@ def _surface_for_token(text: str, encoding: Encoding, index: int) -> str:
 
 
 def evaluate_tokenizer(
-    encoded_texts: list[tuple[str, Encoding]],
+    encoded_texts: Iterable[tuple[str, Encoding]],
     sandhi_config: SandhiFragmentConfig | None = None,
 ) -> dict[str, int | float | list[str]]:
     """Evaluate span-aware orthography and occupancy metrics over encoded text."""
