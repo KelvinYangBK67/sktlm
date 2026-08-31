@@ -12,6 +12,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 artifacts/
+/.sktlm-bridge.toml
 *.egg-info/
 /archive/legacy/pilot/checkpoints/
 /archive/legacy/pilot/tokenizer/*.model

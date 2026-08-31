@@ -31,6 +31,53 @@ Do not repeat partitioning, formatting, or mount setup on this host. The next
 host-level prerequisites are Git and an approved Python 3.11 installation with
 venv support.
 
+## Deterministic local/cloud bridge
+
+The deployment boundary is now explicit:
+
+- Git/GitHub is authoritative for code, configs, reports, scripts, manifests,
+  and the fixed rule inventory;
+- rsync over SSH transfers only non-Git scientific input/result bytes;
+- `scripts/cloud/sktlm_bridge.py` is the deterministic control plane that
+  validates provenance, invokes those system tools, and writes JSON receipts;
+- the human operator remains responsible for packages, disks/mounts,
+  bootstrap waiting, destructive infrastructure decisions, and every
+  benchmark command.
+
+The bridge is not an agent and does not make scientific decisions. It has no
+arbitrary remote-shell command, package installer, benchmark launcher, Git
+push, data deletion, or report-commit operation.
+
+Copy the tracked example to the gitignored local configuration and edit only
+operational values:
+
+```bash
+cp configs/cloud/bridge.example.toml .sktlm-bridge.toml
+```
+
+Never place a password, token, private-key content, or credential-bearing URL
+in that file. CLI overrides are accepted before the subcommand. From WSL/Linux:
+
+```bash
+python3 scripts/cloud/sktlm_bridge.py status --json
+python3 scripts/cloud/sktlm_bridge.py deploy-code
+python3 scripts/cloud/sktlm_bridge.py push-inputs
+python3 scripts/cloud/sktlm_bridge.py verify-remote --json
+# The user manually runs and waits for smoke/medium here.
+python3 scripts/cloud/sktlm_bridge.py collect <RUN_ID>
+python3 scripts/cloud/sktlm_bridge.py pull-results <RUN_ID> --profile scientific
+```
+
+Native Windows can use read-only status and Git/SSH code deployment when the
+system tools are available. All rsync transfer commands deliberately refuse to
+run under native Windows; run them inside WSL/Linux so path and rsync semantics
+are unambiguous. No weaker copy fallback is provided.
+
+Every bridge sync/mutating operation writes a redacted machine-readable receipt
+under `artifacts/cloud_transfers/`. Receipts record local/remote HEADs, logical
+paths, return codes, file/byte information, validation results, warnings, and
+failures. They never contain key contents or configured identity-file paths.
+
 ## 1. Read-only host and disk discovery (completed)
 
 The initial manual discovery is complete. After the repository is cloned,
@@ -97,12 +144,26 @@ python3.11 --version
 python3.11 -c 'import sys; assert sys.version_info[:2] == (3, 11), sys.version'
 ```
 
-The bootstrap exits before changing the repository/data layout when either
-tool is absent.
+The bridge status command reports either tool as `MISSING`; `deploy-code` stops
+precisely when remote Git is absent. The bootstrap exits before changing the
+repository/data layout when Git or Python 3.11 is absent. Neither tool installs
+packages.
 
-Clone onto the system disk or another ordinary workspace; large data, venv
-cache, artifacts, and benchmark scratch are linked to the data disk by the
-bootstrap script.
+After the final bridge commit is pushed, the preferred code path is local
+GitHub-to-VM deployment from WSL/Linux:
+
+```bash
+python3 scripts/cloud/sktlm_bridge.py deploy-code
+```
+
+It requires a clean local tree, requires local HEAD to equal the published
+branch HEAD, refuses a dirty remote repository, performs only clone/fetch and
+fast-forward operations, and verifies the exact deployed SHA. It never copies
+the local source tree or runs `git push` from the VM.
+
+Manual clone remains a transparent fallback. Clone onto the system disk or
+another ordinary workspace; large data, venv cache, artifacts, and benchmark
+scratch are linked to the data disk by the bootstrap script.
 
 ```bash
 git clone --branch exp/m0-core-methods --single-branch \
@@ -133,17 +194,27 @@ must run/wait for bootstrap manually. Its success signal is
 
 ## 4. Transfer and validate frozen inputs
 
-Transfer the frozen trees into:
+After exact code deployment and manual bootstrap, run from WSL/Linux:
+
+```bash
+python3 scripts/cloud/sktlm_bridge.py push-inputs
+```
+
+The command first invokes the local authoritative validator, verifies local and
+remote repository HEAD equality, rechecks that `/mnt/sktlm-data` is the actual
+non-root mount for every remote rsync process, verifies that resolved
+destination paths remain below the data-disk root, and then transfers:
 
 - `/mnt/sktlm-data/sktlm/data/canonical/gretil_iast/`;
 - `/mnt/sktlm-data/sktlm/data/representations/`.
 
-The tracked manifests and rule inventory come from the verified repository
-commit. Do not regenerate or mutate M₀ on the cloud host. Then run:
+It uses resumable rsync partials, preserves bytes, and never supplies
+`--delete`. It does not transfer tracked manifests/rules; those come from the
+exact Git commit. It does not regenerate or mutate M₀. By default it then runs
+the remote authoritative validator. The explicit standalone form is:
 
 ```bash
-./.venv/bin/python scripts/cloud/verify_inputs.py \
-  | tee artifacts/cloud_input_verification.json
+python3 scripts/cloud/sktlm_bridge.py verify-remote --json
 ```
 
 The command reuses the repository's freeze and representation validators and
@@ -237,7 +308,27 @@ For every run retain:
 If `iostat` is available, additionally record device-level latency/utilization
 during the run; process I/O bytes alone do not expose storage queueing.
 
-## 7. Full-M₀ gate
+## 7. Result collection
+
+`pull-results` is selective and defaults to `report`:
+
+- `report`: small benchmark/config/provenance/audit/inspection/resource files;
+- `scientific`: report files plus the canonical scientific exports;
+- `full`: the complete benchmark and metrics directories, explicitly including
+  `learner.sqlite` and any other large run artifacts.
+
+Normal `scientific` collection does not include `learner.sqlite`. A new local
+collection is created under `artifacts/cloud_collected/<RUN_ID>/`; an existing
+destination is refused rather than silently overwritten. Remote files are
+never deleted.
+
+`collect <RUN_ID>` runs the fixed remote audit command, pulls the report
+profile even when that audit is invalid, compares any downloaded files covered
+by remote audit hashes, writes `remote_audit.json`, and records which scientific
+and full-profile artifacts remain remote-only. It never commits, pushes,
+launches another job, or removes the remote run.
+
+## 8. Full-M₀ gate
 
 The full command is intentionally not prepared for immediate execution.
 Authorize it only after:

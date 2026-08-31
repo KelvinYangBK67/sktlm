@@ -1,0 +1,16 @@
+# Copy this file to the repository root as `.sktlm-bridge.toml` and edit the
+# operational values. The local file is gitignored. Never store passwords,
+# private-key contents, access tokens, or other secrets here.
+
+[bridge]
+host = "cloud-host.example.org"
+user = "ubuntu"
+port = 22
+identity_file = "~/.ssh/id_ed25519"
+
+remote_repo = "/home/ubuntu/sktlm"
+remote_data_mount = "/mnt/sktlm-data"
+remote_cloud_root = "/mnt/sktlm-data/sktlm"
+
+branch = "exp/m0-core-methods"
+repository_url = "https://github.com/KelvinYangBK67/sktlm.git"

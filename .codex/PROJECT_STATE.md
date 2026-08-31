@@ -605,3 +605,37 @@ the remote-tracking ref consumed by its merge. The minimal fixes were locally
 validated for missing-tool behavior, CLI parsing, shell syntax, and Linux
 process-wrapper behavior. No latent semantics, frozen input, rule inventory, or
 accepted P10 result changed.
+
+## 25. Deterministic local/cloud research bridge (2026-08-31)
+
+`scripts/cloud/sktlm_bridge.py` now provides six bounded operations: `status`,
+`deploy-code`, `push-inputs`, `verify-remote`, `pull-results`, and `collect`.
+The architecture keeps Git/GitHub authoritative for tracked code/configuration
+and uses resumable rsync over SSH only for non-Git scientific bytes. It invokes
+the existing input validator and run auditor instead of implementing divergent
+scientific validation.
+
+The bridge has no arbitrary remote command, package installation, benchmark
+launch, Git push, remote deletion, or report commit capability. Remote command
+strings come only from fixed templates with quoted configured values; local
+subprocesses use list-form argv with `shell=False`. Every rsync connection
+rechecks that the configured data mount is its own non-root filesystem, never
+uses `--delete`, and refuses native Windows transfer execution in favor of
+WSL/Linux.
+
+Tracked configuration is the credential-free
+`configs/cloud/bridge.example.toml`; the real `.sktlm-bridge.toml` is
+gitignored. Mutating/sync operations write redacted receipts below
+`artifacts/cloud_transfers/`. Result profiles are `report` (default),
+`scientific` (without `learner.sqlite`), and explicit `full`; existing local
+collection directories are never overwritten silently. `collect` preserves an
+invalid remote audit while still retrieving diagnostics and records which
+large artifacts remain remote-only.
+
+The bridge is locally covered by 32 focused fake-subprocess/temp-directory
+tests, Linux shell parsing of every fixed remote command template, and WSL
+CLI/process-metrics smoke checks. Localhost rsync itself is installed, but no
+local SSH daemon is available, so an optional end-to-end localhost SSH/rsync
+smoke was not possible. The bridge has not contacted the real VM or transferred
+any real data. The VM still lacks Git and Python 3.11, has no repository, and
+has not started a benchmark.

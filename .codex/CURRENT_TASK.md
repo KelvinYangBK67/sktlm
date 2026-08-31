@@ -54,6 +54,8 @@ Cloud tooling is under `scripts/cloud/`:
 - `verify_inputs.py` — existing-validator-based M₀/representations/rules audit;
 - `run_with_metrics.py` — Linux process-tree RSS/CPU/I/O sampler;
 - `audit_latent_run.py` — bounded-memory completion/SQLite/hash auditor.
+- `sktlm_bridge.py` — deterministic Git/SSH/rsync deployment and collection
+  control plane with redacted transfer receipts.
 
 Read `AGENTS.md`, `.codex/PROJECT_STATE.md`, `.codex/DECISIONS.md`, and the
 reports above before continuing. Do not alter frozen M₀, its manifest, the
@@ -76,7 +78,7 @@ The user has completed the read-only host audit and deliberate data-disk setup:
 Do not partition, format, or remount the data disk. Do not launch any medium or
 full benchmark.
 
-## Current task: add the deterministic local/cloud bridge
+## Current status: bridge implemented locally
 
 The local preflight audit found and fixed these deployment-only issues for user
 review:
@@ -87,15 +89,20 @@ review:
   supplied data path itself to be the non-root mount point, and explicitly
   refreshes the remote-tracking branch used by its fast-forward merge.
 
-The preflight fixes have been reviewed and validated. The next implementation
-is a deterministic `sktlm_bridge.py` control plane around Git, SSH/rsync,
-authoritative input/audit validation, selective result collection, and
-machine-readable receipts. It must not make scientific decisions, provide an
-arbitrary remote shell, install packages, or launch benchmarks.
+The preflight fixes are committed separately. The deterministic bridge now
+implements `status`, `deploy-code`, `push-inputs`, `verify-remote`,
+`pull-results`, and `collect`. It keeps Git authoritative for tracked content,
+uses rsync/SSH for non-Git bytes, invokes authoritative validators/auditors, and
+writes redacted JSON receipts. It cannot install packages, mutate
+infrastructure, launch benchmarks, expose arbitrary remote shell, push Git, or
+delete remote data.
 
-Do not bootstrap the VM until the bridge/preflight commits are pushed and their
-new full HEAD is recorded. The next independently safe VM prerequisite command
-remains:
+The credential-free example is `configs/cloud/bridge.example.toml`; the local
+`.sktlm-bridge.toml` is gitignored. Transfer commands require WSL/Linux and
+refuse native Windows. No real VM connection or transfer has occurred.
+
+After the final bridge commit is pushed and its full HEAD is recorded, the next
+independently safe VM prerequisite command is:
 
 ```bash
 sudo apt-get update
@@ -108,6 +115,7 @@ Ubuntu 22.04 source selection is intentionally not automated by the repository.
 Verify `python3.11 --version` before clone/bootstrap. The bootstrap dependency
 installation itself may exceed five minutes and remains user-managed.
 
-Then follow `cloud_deployment_ubuntu22.md`: clone the approved HEAD, bootstrap,
-transfer/verify the frozen inputs, run the short smoke gate, and only then run
-cloud medium at 4 workers manually.
+Then copy `configs/cloud/bridge.example.toml` to the gitignored local config,
+run bridge `status`, deploy the approved exact HEAD, manually run bootstrap,
+push/verify inputs from WSL, and run the short smoke gate manually. Cloud medium
+at 4 workers remains a later user-managed long command.
