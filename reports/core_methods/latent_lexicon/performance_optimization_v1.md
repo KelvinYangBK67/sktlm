@@ -139,17 +139,59 @@ doubling the pending-shard bound), file-size-prioritized submission (slower due
 to canonical-reducer blocking), compact reduction TSV, incremental checksums,
 unsorted JSON keys, and compact JSON separators. All were reverted.
 
+## Completed P10 medium validation
+
+The 4-worker, 3-pass P10 benchmark completed at
+`artifacts/latent_benchmarks/medium_optimized_p10_w4_p3/` from commit
+`9be29ea`.
+
+| measurement | P8 medium | P10 medium | P8/P10 |
+|---|---:|---:|---:|
+| wall time | 2,141.125 s | 1,216.915 s | 1.759x |
+| character throughput | 7,904.94 chars/s | 13,908.50 chars/s | 1.759x |
+| training document wall | 884.096 s | 625.509 s | 1.413x |
+| inspection document wall | 1,185.712 s | 523.347 s | 2.266x |
+| inspection inference | 673.600 s | 572.871 s | 1.176x |
+| inspection candidate generation | 391.150 s | 319.259 s | 1.225x |
+| inspection serialization | 237.169 s | 166.122 s | 1.428x |
+| total process CPU | 2,811.500 s | 2,859.047 s | 0.983x |
+
+The near-flat CPU total together with the 43.2% wall reduction confirms that
+P9's rolling scheduler primarily removed worker idle time. Aggregate training
+candidate-generation and inference timers increased on this run, but training
+wall still fell 29.2%; those worker-summed phase timers reflect greater
+concurrency and host contention and must not be added as serial wall time.
+
+P10 has the same three completed pass summaries, final summary, analyses,
+boundary posteriors, lexicon, and rule usage as P8. All six scientific artifact
+pairs have identical sizes and SHA-256 hashes, which is stronger than
+tolerance-based equivalence. SQLite `quick_check` is healthy; both count tables
+have 1,888,526 rows and the expected training/inspection totals. No shard files
+remain.
+
+The conservative full-M₀ projection is now 4.60 hours by characters; the
+document-count projection is 4.06 hours. Reaching three hours still requires
+about 1.53x or 1.35x respectively. Eight-worker medium scaling is therefore the
+next measurement. Aggregate worker memory must be observed externally because
+the benchmark's 78.4 MB peak is main-process-only.
+
+One post-P10 experiment reused a token's internal-match inventory across its
+incoming/outgoing lattice combinations. It produced zero scientific mismatches,
+but three experimental smoke runs and a current-host P10 control did not show a
+reproducible phase or wall improvement. The patch and its focused test were
+reverted.
+
 ## Current validation and next measurement
 
 - Focused latent suite after P8: `22 passed`.
 - Full repository suite: `444 passed, 3 failed`; the three failures are the pre-existing SentencePiece 0.2.2 removal of `immutable_proto`, outside this latent-method change.
 - Final reference-vs-4-worker 3-pass smoke comparison: zero mismatches.
 - The P8 4-worker, 3-pass medium benchmark completed and passed the integrity/scientific audit above.
-- P9 and P10 have not yet been measured on medium.
+- P10 completed on medium and is byte-identical to P8 for all six scientific artifacts.
 - The failed transient-lock smoke artifact `smoke_inspection_workers_4_final_b` was preserved for diagnostics and was not counted; the bounded replacement retry is covered by a focused test.
 
-The next expensive step is one 4-worker, 3-pass P10 medium validation. It should
-be launched by the user under the repository's long-job rule and compared
-directly with the same-pass P8 artifact. Do not launch the full M₀ workflow until
-the new medium result supports the approximately 3-hour target or the user
-explicitly accepts a longer run.
+The next expensive step is one 8-worker, 3-pass P10 medium scaling run. It must
+be launched and monitored by the user under the repository's long-job rule, with
+aggregate Python process-tree memory recorded externally. Compare its scientific
+artifacts byte-for-byte with the 4-worker P10 run. Do not launch the full M₀
+workflow automatically.

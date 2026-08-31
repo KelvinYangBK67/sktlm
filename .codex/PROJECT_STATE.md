@@ -502,3 +502,31 @@ zero mismatches. The focused latent suite reports `22 passed`.
 P9/P10 have not been measured on medium. The next authorized long job is
 `medium_optimized_p10_w4_p3`, specified exactly in `.codex/CURRENT_TASK.md`.
 The user must launch and monitor it manually; do not start a full M₀ run yet.
+
+## 21. Completed P10 medium validation (2026-08-31)
+
+The P10 4-worker, 3-pass medium benchmark completed at
+`artifacts/latent_benchmarks/medium_optimized_p10_w4_p3/` from commit
+`9be29ea`. Wall time was 1,216.915 seconds (20m17s), a 1.759x improvement over
+P8's 2,141.125 seconds. Training document wall improved 1.413x and inspection
+document wall 2.266x. Inspection inference improved 1.176x, candidate generation
+1.225x, and serialization 1.428x.
+
+The artifact has three completed passes, completed inspection, zero overflow,
+and no retained shard files. SQLite `quick_check` is healthy. Training and
+inspection tables each contain 1,888,526 types with count sums
+394,031.7571645344 and 395,770.48199961643. P8 and P10
+`iteration_metrics.json`, `summary.json`, `analyses.jsonl`,
+`boundary_posteriors.jsonl`, `latent_lexicon.tsv`, and `rule_usage.tsv` are
+byte-for-byte identical by SHA-256.
+
+The conservative full-M₀ projection is now 4.60 hours by character throughput
+and 4.06 hours by document count. The approximately 3-hour goal therefore still
+needs 1.53x or 1.35x further scaling. The next authorized long job is an
+8-worker run of the same P10 medium configuration, specified in
+`.codex/CURRENT_TASK.md`. Aggregate Python process-tree memory must be measured
+externally because benchmark `peak_rss_bytes` covers only the main process.
+
+A post-P10 per-token internal-match reuse experiment was scientifically
+equivalent but showed no reproducible smoke benefit against a current-host
+control. It was fully reverted and not committed.

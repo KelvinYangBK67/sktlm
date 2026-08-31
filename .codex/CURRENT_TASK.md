@@ -4,67 +4,81 @@
 
 Branch: `exp/m0-core-methods`
 
-The optimized 4-worker, 3-pass medium benchmark completed successfully at:
+The P10 4-worker, 3-pass medium benchmark completed successfully at:
 
-`artifacts/latent_benchmarks/medium_optimized_p8_w4_p3/`
+`artifacts/latent_benchmarks/medium_optimized_p10_w4_p3/`
 
-It ran from commit `049d439` in 2,141.125 seconds (35m41s), with all three training passes and inspection complete. Artifact integrity checks passed: zero candidate overflow, `PRAGMA quick_check = ok`, expected artifact row counts, no retained shard files, and matching SQLite/export count totals within normal floating-point accumulation tolerance. Pass 1 iteration metrics are exactly identical to the old 1-pass medium reference.
+It ran from commit `9be29ea` in 1,216.915 seconds (20m17s), versus 2,141.125 seconds for P8: a 1.759x end-to-end speedup. Training document wall fell 29.2% to 625.509 seconds and inspection document wall fell 55.9% to 523.347 seconds. Inspection inference fell 15.0%, candidate generation 18.4%, and serialization 30.0%.
 
-The completed artifact projects to about 8.09 hours for full M₀ by character throughput. This is materially faster than the reference but remains about 2.70x short of the approximately 3-hour target. Do not launch the full corpus yet.
+Artifact integrity and identity checks passed:
 
-Two additional semantics-preserving optimizations are committed after P8:
+- three training passes and inspection are complete;
+- 20 documents, 95,847 segments, and 4,231,365 characters per pass;
+- zero candidate overflow and zero retained shard files;
+- `PRAGMA quick_check = ok`;
+- 1,888,526 rows in both training and inspection count tables;
+- training count sum 394,031.7571645344 and inspection count sum 395,770.48199961643;
+- P8 and P10 `iteration_metrics.json`, `summary.json`, `analyses.jsonl`, `boundary_posteriors.jsonl`, `latent_lexicon.tsv`, and `rule_usage.tsv` are byte-for-byte SHA-256 identical.
 
-- `e731d6c`: bounded rolling worker submission, keeping up to `2 * workers` tasks in flight while preserving canonical reduction order and crash-safe shards;
-- `dc68089`: direct scalar serialization of boundary posteriors, avoiding recursive dataclass conversion.
+The conservative full-M₀ projection is now about 4.60 hours by character throughput, or 4.06 hours by document count. This is substantially closer but still requires about 1.53x further speedup to reach three hours under the conservative projection.
 
-P9 reduced repeated 4-worker smoke wall median from 13.305 to 10.322 seconds, with zero scientific mismatches. P10 reduced the targeted inspection-serialization median from 1.841 to 1.683 seconds (8.6%), also with zero mismatches. The focused latent suite reports `22 passed`. Neither P9 nor P10 has yet been measured on medium.
+The experimental per-token internal-match inventory reuse after P10 was scientifically equivalent but did not show a reproducible phase or wall benefit against a contemporaneous current-host control. It was fully reverted and not committed.
 
-The medium corpus breaks the sanity-run `om` / `oṃ` symmetry: inspection expected counts are 50.809742 and 27.907685 respectively, while final training counts are 47.612692 and 29.976378. Literal `om iti` / `om ity...` contexts and literal `oṃ ...` contexts provide different evidence. The two phonological keys remain intentional, and there is no indication of representation or expected-count duplication.
+The worktree should be clean at commit `9be29ea` before the documentation commit that records this result. Read `AGENTS.md`, `.codex/PROJECT_STATE.md`, `.codex/DECISIONS.md`, and `reports/core_methods/latent_lexicon/performance_optimization_v1.md` before continuing. Do not modify frozen M₀ data or rules.
 
-Read `AGENTS.md`, `.codex/PROJECT_STATE.md`, `.codex/DECISIONS.md`, and `reports/core_methods/latent_lexicon/performance_optimization_v1.md` before continuing. Do not discard local work or modify frozen M₀ data/rules.
+## Next task: user-run 8-worker medium scaling
 
-## Next task: user-run P10 medium validation
-
-This command is expected to exceed five minutes. Codex must not launch it automatically, wait for it, or continuously poll it. The user should launch it manually from the repository root:
+The next measurement is the same P10 code and scientific configuration with eight workers. It is expected to exceed five minutes. Codex must not launch it automatically, wait for it, or continuously poll it. The user should launch it manually from the repository root:
 
 ```powershell
 .\.venv\Scripts\python.exe -m sktlm.latent.benchmark `
   --benchmark medium `
-  --run-id medium_optimized_p10_w4_p3 `
+  --run-id medium_optimized_p10_w8_p3 `
   --passes 3 `
-  --workers 4
+  --workers 8
 ```
 
 Expected output directory:
 
-`artifacts/latent_benchmarks/medium_optimized_p10_w4_p3/`
+`artifacts/latent_benchmarks/medium_optimized_p10_w8_p3/`
 
-Expected completion signal: the process exits successfully; `checkpoint.json` has `completed_passes = 3` and `inspection_complete = true`; `benchmark_metrics.json`, `timing_metrics.json`, `summary.json`, `latent_lexicon.tsv`, `analyses.jsonl`, and `boundary_posteriors.jsonl` exist; and no shard files remain.
+Expected completion signal: the process exits successfully; `checkpoint.json` has `completed_passes = 3` and `inspection_complete = true`; the main scientific and metrics files exist; and no shard files remain.
 
-To check whether it is still running, use Task Manager or:
-
-```powershell
-Get-Process python -ErrorAction SilentlyContinue
-```
-
-Do not infer completion from the presence of partial artifacts or directories.
-
-After completion, compare P10 directly against the completed same-pass P8 artifact:
+Check whether it is still running, and observe process-tree memory, with Task Manager or:
 
 ```powershell
-.\.venv\Scripts\python.exe -m sktlm.latent.equivalence `
-  artifacts/latent_benchmarks/medium_optimized_p8_w4_p3 `
-  artifacts/latent_benchmarks/medium_optimized_p10_w4_p3
+Get-Process python -ErrorAction SilentlyContinue |
+  Select-Object Id, CPU, WorkingSet64
 ```
 
-Inspect:
+The benchmark's `peak_rss_bytes` remains main-process-only. Record the maximum combined Python working set externally before choosing a worker count for full M₀.
 
-- `benchmark_metrics.json` for wall/CPU time, throughput, artifact bytes, and worker count;
-- `timing_metrics.json` for training/inspection phase timings, especially document wall and inspection serialization;
-- `checkpoint.json` and `shards/` for completion and crash-cleanup state;
-- `summary.json` plus equivalence output for scientific identity;
-- process-tree memory measured externally, because `peak_rss_bytes` covers only the main process when multiprocessing is enabled.
+After completion, inspect `benchmark_metrics.json`, `timing_metrics.json`, `checkpoint.json`, `summary.json`, and `shards/`. Compare the six deterministic scientific artifacts against the completed 4-worker P10 run by size and SHA-256:
 
-Use the new medium result to revise the full-M₀ projection. Do not start a full run until the approximately 3-hour target is credible or the user explicitly accepts a longer run.
+```powershell
+$reference = 'artifacts\latent_benchmarks\medium_optimized_p10_w4_p3'
+$candidate = 'artifacts\latent_benchmarks\medium_optimized_p10_w8_p3'
+$scientific = @(
+  'iteration_metrics.json',
+  'summary.json',
+  'analyses.jsonl',
+  'boundary_posteriors.jsonl',
+  'latent_lexicon.tsv',
+  'rule_usage.tsv'
+)
+foreach ($name in $scientific) {
+  $left = Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $reference $name)
+  $right = Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $candidate $name)
+  [pscustomobject]@{
+    Name = $name
+    Equal = $left.Hash -eq $right.Hash
+    SHA256 = $right.Hash
+  }
+}
+```
+
+The existing `sktlm.latent.equivalence` implementation materializes multi-gigabyte JSONL/TSV files and should not be used for medium/full artifacts until it is made streaming and bounded-memory. Exact hashes are stronger when outputs are expected to be byte-identical.
+
+Use the 8-worker result to decide whether the approximately 3-hour full-M₀ target is credible. Do not launch the full run automatically.
 
 Do not alter the frozen corpus, manifest, `m0` tag, or fixed 1218-rule inventory. Preserve the distinct `C_M` and `M_ANUSVARA` representations.
