@@ -13,16 +13,39 @@ Cloud worker scaling starts again at 4, then 8, and reaches 12/16 only if the
 preceding result is beneficial and memory-safe. No full-M₀ run may start
 automatically.
 
-## 1. Read-only host and disk discovery
+## Current host checkpoint
 
-Before cloning, run the exact command given in `.codex/CURRENT_TASK.md` and
-return its output. It records `lscpu`, `free -h`, `lsblk`, `df -hT`, and
-`findmnt` without changing the machine.
+The user has manually established the following state on the target host:
+
+- Ubuntu 22.04.4 LTS, 16 vCPU, and approximately 32 GB RAM;
+- `/dev/vda` is the 80 GB system disk;
+- `/dev/vdb1` is the deliberately created ext4 data partition, labelled
+  `sktlm-data`, mounted at `/mnt/sktlm-data`;
+- `/etc/fstab` verification passed, and the data filesystem reports about
+  295 GB total / 280 GB available;
+- `iostat`/`sysstat` is installed;
+- Git and Python 3.11 are not yet installed;
+- no repository clone/bootstrap has been performed.
+
+Do not repeat partitioning, formatting, or mount setup on this host. The next
+host-level prerequisites are Git and an approved Python 3.11 installation with
+venv support.
+
+## 1. Read-only host and disk discovery (completed)
+
+The initial manual discovery is complete. After the repository is cloned,
+`scripts/cloud/host_sanity.sh` can reproduce the read-only inventory. It records
+`lscpu`, `free -h`, `lsblk`, `df -hT`, and `findmnt` without changing the
+machine. Missing Git, Python 3.11, or iostat is reported as `MISSING` rather
+than aborting the inventory.
 
 Do not infer the 300 GB device name from a provider convention. Confirm size,
 model/serial, filesystem type, UUID, and current mountpoints from the output.
 
-## 2. Data-disk decision
+## 2. Data-disk decision (completed on the current host)
+
+The commands below are retained as the reusable deployment procedure. They
+must not be repeated on the current host merely because they appear here.
 
 If the confirmed data filesystem already exists, mount by UUID:
 
@@ -64,6 +87,19 @@ sudo install -d -o "$USER" -g "$USER" /mnt/sktlm-data/sktlm
 
 ## 3. Repository bootstrap
 
+On the current fresh host, install Git from the approved Ubuntu package source
+and install Python 3.11 plus its venv support from an approved source. Verify
+both before cloning:
+
+```bash
+git --version
+python3.11 --version
+python3.11 -c 'import sys; assert sys.version_info[:2] == (3, 11), sys.version'
+```
+
+The bootstrap exits before changing the repository/data layout when either
+tool is absent.
+
 Clone onto the system disk or another ordinary workspace; large data, venv
 cache, artifacts, and benchmark scratch are linked to the data disk by the
 bootstrap script.
@@ -80,7 +116,7 @@ bash scripts/cloud/bootstrap_repo.sh '<EXPECTED_HEAD>' /mnt/sktlm-data
 
 - refuses a dirty tree or non-fast-forward update;
 - verifies exact HEAD;
-- refuses a data path on the root/system filesystem;
+- requires the supplied data path to be the actual non-root mount point;
 - requires at least 100 GiB free;
 - links `artifacts/`, `data/canonical/`, `data/representations/`, and the
   Python 3.11 venv to the data disk;
@@ -90,6 +126,10 @@ bash scripts/cloud/bootstrap_repo.sh '<EXPECTED_HEAD>' /mnt/sktlm-data
 Install Python 3.11 and its venv support through the host's approved package
 source before running the script. The bootstrap deliberately fails rather than
 adding an unreviewed package repository.
+
+Dependency installation (especially PyTorch) may exceed five minutes. The user
+must run/wait for bootstrap manually. Its success signal is
+`bootstrap_complete`, followed by the exact HEAD and resolved data mount.
 
 ## 4. Transfer and validate frozen inputs
 

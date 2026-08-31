@@ -16,7 +16,11 @@ df -hT
 echo "mount_topology:"
 findmnt -D
 echo "tool_versions:"
-git --version
+if command -v git >/dev/null 2>&1; then
+  git --version
+else
+  echo "git: MISSING"
+fi
 if command -v python3.11 >/dev/null 2>&1; then
   python3.11 --version
 else

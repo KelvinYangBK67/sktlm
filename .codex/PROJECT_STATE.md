@@ -588,3 +588,20 @@ The cloud sequence is 4-worker medium, then 8 workers only after the first
 audit. Local scaling is not extrapolated. Cloud 12/16 are conditional on
 measured benefit and memory headroom. Full M₀ remains gated and must not be
 started automatically.
+
+## 24. Cloud host preflight state (2026-08-31)
+
+The target Ubuntu 22.04.4 host has 16 vCPU and approximately 32 GB RAM. The
+user deliberately created `/dev/vdb1` as ext4 with label `sktlm-data`, mounted
+it at `/mnt/sktlm-data`, and verified `/etc/fstab`; the filesystem has roughly
+280 GB available. This disk setup is complete and must not be repeated.
+
+The fresh host has iostat/sysstat but does not yet have Git or Python 3.11, and
+no repository bootstrap has started. The bounded local deployment audit found
+three non-scientific preflight issues: host sanity aborted when Git was absent,
+the frozen-input validator ignored CLI arguments, and bootstrap could change
+the linked layout before detecting missing Python and did not explicitly update
+the remote-tracking ref consumed by its merge. The minimal fixes were locally
+validated for missing-tool behavior, CLI parsing, shell syntax, and Linux
+process-wrapper behavior. No latent semantics, frozen input, rule inventory, or
+accepted P10 result changed.

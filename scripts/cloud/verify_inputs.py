@@ -3,15 +3,10 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 from pathlib import Path
-
-from sktlm.corpus.gretil.freeze import validate_freeze
-from sktlm.latent.training import EXPECTED_FREEZE_ID
-from sktlm.representations.generate import validate_representations
-from sktlm.sandhi.rules import load_external_sandhi_rules
-
 
 EXPECTED_DOCUMENTS = 240
 EXPECTED_CHARACTERS = 57_588_079
@@ -29,6 +24,14 @@ def file_sha256(path: Path) -> str:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.parse_args()
+
+    from sktlm.corpus.gretil.freeze import validate_freeze
+    from sktlm.latent.training import EXPECTED_FREEZE_ID
+    from sktlm.representations.generate import validate_representations
+    from sktlm.sandhi.rules import load_external_sandhi_rules
+
     canonical_root = Path("data/canonical/gretil_iast")
     canonical_manifest = Path("data/manifests/canonical_corpus.csv")
     representation_root = Path("data/representations")
