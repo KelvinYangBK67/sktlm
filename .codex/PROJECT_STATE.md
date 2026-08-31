@@ -456,4 +456,49 @@ Parallel workers never write the learner database. They create checksummed per-d
 
 The benchmark's `peak_rss_bytes` measures only the main process when workers are enabled. Do not interpret it as aggregate multiprocessing memory. Before choosing a full-run worker count, record process-tree memory externally or extend the harness with correct aggregate accounting.
 
-No post-optimization medium or full M₀ run has been launched. The next authorized long job is the 4-worker, 3-pass medium benchmark described in `.codex/CURRENT_TASK.md`; the user must run/wait for it manually.
+No post-optimization medium or full M₀ run had been launched at the end of this
+optimization round. The subsequent completed medium result is recorded below.
+
+## 20. Completed optimized medium and P9-P10 (2026-08-31)
+
+The P8 4-worker, 3-pass medium benchmark completed successfully at
+`artifacts/latent_benchmarks/medium_optimized_p8_w4_p3/`, from commit `049d439`.
+It took 2,141.125 seconds (35m41s), versus 5,297.481 seconds for the old
+single-worker 1-pass reference. Normalized character throughput improved 4.948x;
+average training-pass document time improved 3.731x; inspection document time
+improved 3.355x; and inspection inference improved 3.797x. The direct wall ratio
+is 2.474x even though P8 performs three training passes rather than one.
+
+The artifact has three completed passes and completed inspection, zero candidate
+overflow, no retained shard files, the expected artifact line counts, and a
+healthy SQLite `quick_check`. Pass 1 iteration metrics are exactly identical to
+the old medium reference. The final lexicon has 1,888,526 active types, of which
+1,866,960 (98.858%) are low-count; this is a modeling/inventory concern rather
+than evidence of duplicate aggregation.
+
+Medium evidence breaks the sanity-run `om` / `oṃ` symmetry. Pass-3 training
+counts are 47.612692 for `V_O.C_M` (`om`) and 29.976378 for
+`V_O.M_ANUSVARA` (`oṃ`); inspection expected counts are 50.809742 and
+27.907685. Literal `om iti` / `om ity...` and literal `oṃ ...` contexts
+distinguish the keys. Preserve both representations: the sanity equality was
+expected local ambiguity, not representation/counting duplication.
+
+At P8 throughput, a full M₀ 3-pass-plus-inspection run projects to approximately
+8.09 hours by characters (about 7.14 hours by document count), still roughly
+2.70x short of the 3-hour target. The benchmark's 78.5 MB peak RSS is
+main-process-only and must not be cited as aggregate multiprocessing memory.
+
+Two later optimizations are committed:
+
+- `e731d6c` (P9): a bounded `2 * workers` rolling submission window that keeps
+  workers supplied while preserving canonical reduction and crash-safe shards;
+- `dc68089` (P10): direct scalar boundary-posterior serialization.
+
+P9's repeated 4-worker smoke wall median is 10.322 seconds, down from P8's
+13.305 seconds, with zero scientific mismatches. P10 reduces the targeted
+inspection-serialization median from 1.841 to 1.683 seconds (8.6%), again with
+zero mismatches. The focused latent suite reports `22 passed`.
+
+P9/P10 have not been measured on medium. The next authorized long job is
+`medium_optimized_p10_w4_p3`, specified exactly in `.codex/CURRENT_TASK.md`.
+The user must launch and monitor it manually; do not start a full M₀ run yet.

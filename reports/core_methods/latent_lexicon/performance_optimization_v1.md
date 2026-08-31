@@ -67,12 +67,89 @@ The final 4-worker path is 1.45x faster end to end than the optimized serial ref
 
 The benchmark's current `peak_rss_bytes` is the main process's peak only. It is valid for serial runs but does not include simultaneous worker RSS and must not be used to claim that multiprocessing reduces memory. The implementation itself remains bounded by `workers * per-document working state` plus bounded count buffers and on-disk shards; aggregate process-tree memory still needs an explicit measurement before choosing a full-run worker count.
 
+## Completed P8 medium validation
+
+The 4-worker, 3-pass P8 benchmark completed successfully at
+`artifacts/latent_benchmarks/medium_optimized_p8_w4_p3/` from commit
+`049d439`.
+
+| measurement | P1 medium reference | P8 medium | change |
+|---|---:|---:|---:|
+| training passes | 1 | 3 | — |
+| wall time | 5,297.481 s | 2,141.125 s | 2.474x faster despite two additional passes |
+| normalized character throughput | 1,597.50 chars/s | 7,904.94 chars/s | 4.948x |
+| training document wall | 1,099.381 s | 884.096 s total; 294.699 s/pass | 3.731x per pass |
+| inspection document wall | 3,977.911 s | 1,185.712 s | 3.355x |
+| inspection inference | 2,557.635 s | 673.600 s | 3.797x |
+| inspection lexical-score calls | 129,313,724 | 6,593,658 | 19.612x fewer |
+| artifact bytes | 3,288,521,198 | 2,571,478,847 | 21.8% smaller |
+| SQLite bytes | 1,479,335,936 | 770,027,520 | 47.95% smaller |
+
+Integrity checks found three completed passes, completed inspection, zero
+candidate overflow, no retained shard files, the expected artifact line counts,
+and `PRAGMA quick_check = ok`. The exported lexicon has 1,888,526 rows. Its
+training-count sum is 394,031.7572; the inspection-count sum is 395,770.4820.
+Pass 1 iteration metrics are byte-for-byte/numerically identical to the old
+1-pass reference, which is the valid cross-pass scientific comparison.
+
+The conservative character-throughput projection for full M₀ is about 8.09
+hours, still 2.70x slower than the approximately 3-hour goal. The document-count
+projection is about 7.14 hours. Neither projection includes aggregate worker RSS:
+the recorded 78.5 MB peak covers only the main process.
+
+The medium scientific audit reports mean identity mass 0.070468, mean latent
+mass 0.929532, mean posterior entropy 1.044665, and mean top-1 posterior
+0.594393. Of 1,888,526 active rows, 1,866,960 (98.858%) are low-count. This is
+not a counting error—active means a positive stored row, not hard support—but
+lexicon proliferation remains a substantive modeling issue for the first full
+run.
+
+The sanity-run `om` / `oṃ` symmetry does not persist on medium:
+
+| form | key | pass-3 training count | inspection expected count |
+|---|---|---:|---:|
+| `om` | `V_O.C_M` | 47.612692 | 50.809742 |
+| `oṃ` | `V_O.M_ANUSVARA` | 29.976378 | 27.907685 |
+
+Literal `om iti` / `om ity...` environments support `C_M`, while literal
+`oṃ ...` environments and grammar-licensed analyses distribute evidence
+differently. The forms are distinct intentional phonological types; the near
+equality in the tiny sanity sample was expected local unidentifiability, not
+representation or expected-count duplication.
+
+## P9-P10 post-medium smoke optimizations
+
+P9 (`e731d6c`) replaces fixed worker batches with a bounded rolling FIFO window
+of at most `2 * workers` submitted documents. Workers can prepare later
+documents while the master still reduces results in canonical index order.
+Crash-reusable shard semantics and the memory bound are unchanged. The repeated
+4-worker, 3-pass smoke median fell from 13.305 to 10.322 seconds; training fell
+from 6.998 to 5.360 seconds and inspection from 5.292 to 3.992 seconds. Scientific
+equivalence reported zero mismatches.
+
+P10 (`dc68089`) serializes the five scalar `BoundaryPosterior` fields directly
+instead of recursively converting each dataclass. Exact output bytes are
+preserved by the existing sorted-key JSON writer. The targeted inspection
+serialization median fell from 1.841 to 1.683 seconds (8.6%). Overall smoke wall
+time was host-noisy, so acceptance is based on the isolated phase improvement
+and zero scientific mismatches.
+
+Rejected post-P9 variants were a `4 * workers` queue (only 0.8% faster while
+doubling the pending-shard bound), file-size-prioritized submission (slower due
+to canonical-reducer blocking), compact reduction TSV, incremental checksums,
+unsorted JSON keys, and compact JSON separators. All were reverted.
+
 ## Current validation and next measurement
 
 - Focused latent suite after P8: `22 passed`.
 - Full repository suite: `444 passed, 3 failed`; the three failures are the pre-existing SentencePiece 0.2.2 removal of `immutable_proto`, outside this latent-method change.
 - Final reference-vs-4-worker 3-pass smoke comparison: zero mismatches.
-- The medium benchmark has not been rerun after P2-P8.
+- The P8 4-worker, 3-pass medium benchmark completed and passed the integrity/scientific audit above.
+- P9 and P10 have not yet been measured on medium.
 - The failed transient-lock smoke artifact `smoke_inspection_workers_4_final_b` was preserved for diagnostics and was not counted; the bounded replacement retry is covered by a focused test.
 
-The next expensive step is one 4-worker, 3-pass medium validation. It should be launched by the user under the repository's long-job rule, then compared to `artifacts/latent_benchmarks/medium_reference_p1/`. No full-M₀ projection should be treated as reliable until that artifact completes.
+The next expensive step is one 4-worker, 3-pass P10 medium validation. It should
+be launched by the user under the repository's long-job rule and compared
+directly with the same-pass P8 artifact. Do not launch the full M₀ workflow until
+the new medium result supports the approximately 3-hour target or the user
+explicitly accepts a longer run.
