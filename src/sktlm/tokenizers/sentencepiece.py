@@ -58,6 +58,22 @@ class SentencePieceTokenizer(Tokenizer):
         return self.processor.vocab_size()
 
     def encode(self, text: str) -> Encoding:
+        try:
+            mapping = self.processor.encode(text, return_type="offset_mapping")
+        except (TypeError, ValueError) as exc:
+            message = str(exc)
+            if "return_type" not in message and "offset_mapping" not in message:
+                raise
+        else:
+            return Encoding(
+                ids=tuple(int(token_id) for token_id in mapping["ids"]),
+                pieces=tuple(str(piece) for piece in mapping["pieces"]),
+                spans=tuple((int(begin), int(end)) for begin, end in mapping["offsets"]),
+            )
+
+        # SentencePiece before the offset-mapping API exposed the same character
+        # offsets through an immutable proto. Keep that path for older supported
+        # installations without calling the API removed in SentencePiece 0.2.2.
         proto = self.processor.encode_as_immutable_proto(text)
         ids: list[int] = []
         pieces: list[str] = []

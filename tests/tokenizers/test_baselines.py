@@ -51,5 +51,6 @@ def test_sentencepiece_factory_can_fit_fixed_training_texts(tmp_path, tokenizer_
 
     encoding = tokenizer.encode(texts[0])
     validate_surface_spans(texts[0], encoding)
+    assert all(0 <= begin <= end <= len(texts[0]) for begin, end in encoding.spans)
     assert tokenizer.decode(encoding.ids) == texts[0]
     assert (tmp_path / f"{tokenizer_type}_32.model").is_file()
