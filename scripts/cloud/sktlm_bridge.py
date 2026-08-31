@@ -400,7 +400,7 @@ else
   printf 'data_target=MISSING\\n'
   printf 'data_fstype=MISSING\\n'
 fi
-if disk_free=$(df -PB1 --output=avail "$mount" 2>/dev/null); then
+if disk_free=$(df -B1 --output=avail "$mount" 2>/dev/null); then
   printf 'data_free_bytes=%s\\n' "$(printf '%s\\n' "$disk_free" | tail -n 1 | tr -d ' ')"
 else
   printf 'data_free_bytes=MISSING\\n'
@@ -588,7 +588,7 @@ case "$cloud_real" in "$mount_real"/*) ;; *) printf 'cloud root resolves outside
 printf 'data_source=%s\\n' "$source"
 printf 'data_target=%s\\n' "$target"
 printf 'data_fstype=%s\\n' "$fstype"
-printf 'data_free_bytes=%s\\n' "$(df -PB1 --output=avail "$mount" | tail -n 1 | tr -d ' ')"
+printf 'data_free_bytes=%s\\n' "$(df -B1 --output=avail "$mount" | tail -n 1 | tr -d ' ')"
 """.strip()
 
 

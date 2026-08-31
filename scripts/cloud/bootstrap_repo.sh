@@ -43,7 +43,7 @@ if [[ $(readlink -f "$data_target") != "$data_mount" ]]; then
   exit 1
 fi
 
-available_bytes=$(df -PB1 --output=avail "$data_mount" | tail -n 1 | tr -d ' ')
+available_bytes=$(df -B1 --output=avail "$data_mount" | tail -n 1 | tr -d ' ')
 minimum_bytes=$((100 * 1024 * 1024 * 1024))
 if (( available_bytes < minimum_bytes )); then
   echo "data mount has less than 100 GiB free: $available_bytes bytes" >&2
