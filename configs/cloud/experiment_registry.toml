@@ -8,29 +8,29 @@ authoritative_as_of = "2026-08-31"
 machine_id = "core-01"
 machine_name = "sktlm-m0-core-01"
 host_profile = "core-01"
-current_role = "reference"
+current_role = "medium-scaling-complete"
 state = "ready"
 
 [machines.core-02]
 machine_id = "core-02"
 machine_name = "sktlm-m0-core-02"
 host_profile = "core-02"
-current_role = "medium-scaling"
-state = "running"
+current_role = "medium-scaling-complete"
+state = "ready"
 
 [machines.core-03]
 machine_id = "core-03"
 machine_name = "sktlm-m0-core-03"
 host_profile = "core-03"
-current_role = "medium-scaling"
-state = "running"
+current_role = "medium-scaling-complete"
+state = "ready"
 
 [machines.core-04]
 machine_id = "core-04"
 machine_name = "sktlm-m0-core-04"
 host_profile = "core-04"
-current_role = "medium-scaling"
-state = "running"
+current_role = "medium-scaling-complete"
+state = "ready"
 
 [machines.core-05]
 machine_id = "core-05"
@@ -60,6 +60,8 @@ result_location = "artifacts/cloud_collected/cloud_medium_p10_w4_p3"
 remote_result_location = "artifacts/latent_benchmarks/cloud_medium_p10_w4_p3"
 wall_seconds = 972.1771821109978
 chars_per_second = 17409.851117105878
+artifact_bytes = 2571276027
+scientific_checkpoint = "fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04"
 notes = "Complete, remotely audited, and collected with the report profile."
 
 [[runs]]
@@ -71,9 +73,15 @@ metrics_id = "medium_p10_w8_p3"
 benchmark = "medium_p10"
 passes = 3
 workers = 8
-state = "RUNNING"
+state = "DONE"
 result_location = "artifacts/latent_benchmarks/cloud_medium_p10_w8_p3"
-notes = "Do not collect or mark complete until the independently running job is finished."
+wall_seconds = 740.9371817360001
+chars_per_second = 22843.313059744156
+cpu_seconds = 2157.7326972640003
+peak_rss_bytes = 75665408
+artifact_bytes = 2571276002
+scientific_checkpoint = "fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04"
+notes = "Complete and remotely audited; selected cloud production worker count."
 
 [[runs]]
 machine_id = "core-03"
@@ -84,9 +92,15 @@ metrics_id = "medium_p10_w12_p3"
 benchmark = "medium_p10"
 passes = 3
 workers = 12
-state = "RUNNING"
+state = "DONE"
 result_location = "artifacts/latent_benchmarks/cloud_medium_p10_w12_p3"
-notes = "Do not collect or mark complete until the independently running job is finished."
+wall_seconds = 853.409434638
+chars_per_second = 19832.754728308642
+cpu_seconds = 2752.580497107
+peak_rss_bytes = 77148160
+artifact_bytes = 2571276019
+scientific_checkpoint = "fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04"
+notes = "Complete and remotely audited; slower than the selected 8-worker run."
 
 [[runs]]
 machine_id = "core-04"
@@ -97,6 +111,51 @@ metrics_id = "medium_p10_w16_p3"
 benchmark = "medium_p10"
 passes = 3
 workers = 16
-state = "RUNNING"
+state = "DONE"
 result_location = "artifacts/latent_benchmarks/cloud_medium_p10_w16_p3"
-notes = "Do not collect or mark complete until the independently running job is finished."
+wall_seconds = 849.243166304
+chars_per_second = 19930.051452355478
+cpu_seconds = 2901.433185465
+peak_rss_bytes = 77217792
+artifact_bytes = 2571276026
+scientific_checkpoint = "fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04"
+notes = "Complete and remotely audited; runner-up but 12.8% slower than 8 workers."
+
+# The next-stage assignments are planned identities, not launched run IDs.
+# core-05 and core-06 remain standby until the user explicitly starts this gate.
+
+[[planned_full_m0_replicas]]
+machine_id = "core-01"
+replica_id = "rep01"
+workers = 8
+state = "PLANNED"
+
+[[planned_full_m0_replicas]]
+machine_id = "core-02"
+replica_id = "rep02"
+workers = 8
+state = "PLANNED"
+
+[[planned_full_m0_replicas]]
+machine_id = "core-03"
+replica_id = "rep03"
+workers = 8
+state = "PLANNED"
+
+[[planned_full_m0_replicas]]
+machine_id = "core-04"
+replica_id = "rep04"
+workers = 8
+state = "PLANNED"
+
+[[planned_full_m0_replicas]]
+machine_id = "core-05"
+replica_id = "rep05"
+workers = 8
+state = "PLANNED"
+
+[[planned_full_m0_replicas]]
+machine_id = "core-06"
+replica_id = "rep06"
+workers = 8
+state = "PLANNED"

@@ -666,3 +666,33 @@ A single bounded inventory of local reports/notes/artifact-root metadata is in
 but left raw P10/cloud outputs, generated cleaning audits, old notes,
 interrupted runs, receipts, and private operational config local and intact.
 The single focused bridge suite passed all 37 tests after this change.
+
+## 27. Cloud medium scaling closed; 8-worker production setting (2026-08-31)
+
+The Ubuntu 22.04 cloud medium gate is complete under scientific checkpoint
+`fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04`. All four runs are DONE and
+their remote audits report valid. Wall times rank w8 (740.9371817360001 s),
+w16 (849.243166304 s), w12 (853.409434638 s), then w4
+(972.1771821109978 s). The w8 result is approximately 12.8% faster than the
+w16 runner-up, satisfying the preregistered >=10% direct-winner rule.
+
+Eight workers are therefore frozen as the cloud production setting for the
+next full-M0 stage. No tie-break or additional medium scaling run is needed.
+Scaling improved substantially from 4 to 8 workers, became negative at 12/16,
+and plateaued between 12 and 16; w8 also used fewer CPU seconds than w12 or
+w16. This is a measured host-class result and does not assert a hardware cause.
+
+All four runs produced byte- and SHA-256-identical `analyses.jsonl`,
+`boundary_posteriors.jsonl`, `iteration_metrics.json`,
+`latent_lexicon.tsv`, `rule_usage.tsv`, and `summary.json`. The small
+differences in aggregate benchmark `artifact_bytes` reflect noncanonical
+runtime/metadata files and are not scientific differences.
+
+The next gate is planned, not launched: six 8-worker full-M0 replicas map
+`core-01` through `core-06` to `rep01` through `rep06`. Their purposes
+are a production scientific result, failure insurance, cross-host runtime
+variance, and deterministic cross-host reproducibility. The authoritative
+closure and hashes are in
+`reports/core_methods/latent_lexicon/cloud_scaling_checkpoint_20260831.md`;
+the completed run records and planned identities are in
+`configs/cloud/experiment_registry.toml`.

@@ -4,7 +4,7 @@
 
 Branch: `exp/m0-core-methods`
 
-The scientific checkpoint remains frozen: GRETIL M₀ freeze
+The scientific checkpoint remains frozen: GRETIL M0 freeze
 `9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40`,
 240 canonical documents, 1,440 representations, and 1,218 external-sandhi
 rules. Formal v1 remains IAST `surface_word`, exact inference, lexical alpha
@@ -12,54 +12,65 @@ rules. Formal v1 remains IAST `surface_word`, exact inference, lexical alpha
 Do not change candidate, grammar, scoring, EM, inference, representation, or
 scientific output semantics.
 
-## Cloud scaling checkpoint
+## Cloud medium scaling is closed
 
-The authoritative status is
-`reports/core_methods/latent_lexicon/cloud_scaling_checkpoint_20260831.md` and
-the script-readable assignment is `configs/cloud/experiment_registry.toml`.
+The authoritative closure is
+`reports/core_methods/latent_lexicon/cloud_scaling_checkpoint_20260831.md`;
+the script-readable records are in
+`configs/cloud/experiment_registry.toml`.
 
-- `core-01`: cloud medium P10 w4 DONE and remotely audited;
-  `cloud_medium_p10_w4_p3`, wall 972.1771821109978 s, throughput
-  17409.851117105878 chars/s.
-- `core-02`: cloud medium P10 w8 RUNNING.
-- `core-03`: cloud medium P10 w12 RUNNING.
-- `core-04`: cloud medium P10 w16 RUNNING.
-- `core-05`, `core-06`: standby.
+All four Ubuntu 22.04 medium runs are DONE and remotely audited as valid under
+scientific checkpoint
+`fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04`. Their wall-time ranking is:
 
-Do not poll these machines, collect pending runs merely to inspect them, rerun
-w4, start a tie-break, or start full M₀. When the human provides completed
-outputs, update the registry/report from those artifacts and apply the recorded
-worker-selection rule.
+1. w8: 740.9371817360001 s
+2. w16: 849.243166304 s
+3. w12: 853.409434638 s
+4. w4: 972.1771821109978 s
+
+The w8 run is approximately 12.8% faster than the w16 runner-up, so the
+preregistered >=10% rule selects 8 workers directly. Eight workers are now the
+frozen cloud production setting for the next full-M0 stage. All six canonical
+scientific artifacts are byte-for-byte and SHA-256 identical across w4, w8,
+w12, and w16.
+
+Do not poll these completed medium runs, run a tie-break, or launch another
+medium scaling benchmark.
+
+## Next scientific execution gate
+
+Plan six full-M0 replicas at 8 workers:
+
+- `core-01` -> `rep01`
+- `core-02` -> `rep02`
+- `core-03` -> `rep03`
+- `core-04` -> `rep04`
+- `core-05` -> `rep05`
+- `core-06` -> `rep06`
+
+The objectives are the production scientific result, failure insurance,
+cross-host runtime variance, and deterministic cross-host reproducibility.
+These assignments are PLANNED only. No full-M0 run has started. The next Codex
+session may prepare exact launch/monitor/audit commands and durable run IDs,
+but must not execute them without an explicit user instruction.
 
 ## Multi-host bridge
 
-`scripts/cloud/sktlm_bridge.py` preserves the old single `[bridge]` config and
-adds optional ignored `[host_profiles.<id>]` overlays selected after a command
-with `--host-profile`. Receipts/status record logical profile and machine ID.
-For multi-profile collection, the bridge checks the selected profile, machine,
-run ID, and metrics ID against the tracked registry before SSH.
+`scripts/cloud/sktlm_bridge.py` preserves the legacy single `[bridge]`
+configuration and supports optional ignored `[host_profiles.<id>]` overlays
+selected with `--host-profile`. Receipts/status record logical profile and
+machine ID. Multi-profile result operations check the selected profile,
+machine, run ID, and metrics ID against the tracked registry before SSH.
 
 Real IPs/hosts and identity paths remain only in ignored
-`.sktlm-bridge.toml`. The current local config still contains only the legacy
-single `[bridge]` table; the human must add `core-01` through `core-04` profiles
-before profiled collection. Do not commit that file.
-
-Future collection forms, only after the corresponding run is confirmed done:
-
-```bash
-python3 scripts/cloud/sktlm_bridge.py collect cloud_medium_p10_w8_p3 \
-  --metrics-id medium_p10_w8_p3 --host-profile core-02
-python3 scripts/cloud/sktlm_bridge.py collect cloud_medium_p10_w12_p3 \
-  --metrics-id medium_p10_w12_p3 --host-profile core-03
-python3 scripts/cloud/sktlm_bridge.py collect cloud_medium_p10_w16_p3 \
-  --metrics-id medium_p10_w16_p3 --host-profile core-04
-```
+`.sktlm-bridge.toml`. Never commit that file. The bridge is a deterministic
+code/input/result transport and audit control plane; it does not launch
+benchmarks.
 
 ## Local-only research state
 
 The bounded inventory is
 `reports/core_methods/latent_lexicon/research_output_inventory_20260831.md`.
-Cloud w4 performance, aggregate RSS, audit status, and scientific hashes were
-promoted into the tracked cloud checkpoint. Local P10 artifacts, generated
-cleaning audits, old notes, interrupted diagnostics, and operational receipts
-remain ignored/local. Do not delete or bulk-add them.
+Raw P10/cloud outputs, generated cleaning audits, old notes, interrupted
+diagnostics, operational receipts, and private bridge configuration remain
+ignored/local. Do not delete or bulk-add them.
