@@ -42,6 +42,9 @@ The artifact path may be cited by a report, but the report must contain enough m
 - `pre_s1m1_calibration_checkpoint_20260901.md` — closes unrestricted replica and K16/K32 capacity calibration and records the unrestricted six-representation decision.
 - six_representation_gate_launch_plan_20260901.md — exact human-operated deployment/launch record plus post-completion audit commands for the five RUNNING representation cells.
 - six_representation_gate_launch_checkpoint_20260901.md — scientific SHA, six-cell status, assignments/PIDs, frozen-input hashes, bundle deployment, and immediate launch verification.
+- `post_gate_analysis_protocol.md` — frozen fail-closed six-cell aggregation, paired comparison, mass-support, TV/JSD, and qualitative-inspection contract; it contains no result.
+- `continuous_performance_source_analysis.md` — static source-only bottleneck analysis and post-freeze profiling/optimization plan; it changes no runtime semantics.
+- [`../../../reviews/protocol/independent_llm_review_protocol.md`](../../../reviews/protocol/independent_llm_review_protocol.md) — five fresh-session reviewers, identical frozen packet, raw preservation, synthesis, and adjudication protocol.
 
 The `evidence/` subdirectory preserves the minimum machine-readable evidence
 for accepted formal benchmark decisions and a manifest of established large

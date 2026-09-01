@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/KelvinYangBK67/sktlm/raw_review_metadata.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "model": {"type": "string"},
+    "model_version": {"type": "string"},
+    "packet_sha256": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "provider": {"type": "string"},
+    "raw_response_sha256": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "raw_review_path": {"minLength": 1, "type": "string"},
+    "reviewer_id": {
+      "enum": ["reviewer_01", "reviewer_02", "reviewer_03", "reviewer_04", "reviewer_05"]
+    },
+    "reviewer_method_sha256": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "reviewer_prompt_sha256": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "schema_version": {"const": "sktlm-raw-review-metadata/v1"},
+    "timestamp": {"type": "string"}
+  },
+  "required": [
+    "schema_version", "reviewer_id", "packet_sha256",
+    "reviewer_prompt_sha256", "reviewer_method_sha256",
+    "raw_review_path", "raw_response_sha256"
+  ],
+  "title": "sktlm immutable raw review metadata",
+  "type": "object"
+}

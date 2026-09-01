@@ -75,6 +75,11 @@ representations. Five new cells are currently running at the exact frozen
 representation-gate checkpoint; no result is inferred until natural
 completion and final audit.
 
+The post-gate metric set, pair directions, fail-closed local aggregation contract,
+qualitative sample-selection rules, and independent five-reviewer provenance
+workflow are now specified in tracked preparation materials. This preparation
+does not aggregate partial results, freeze S1M1, or invoke a reviewer.
+
 ## Entry path to S1M1
 
 After pre-S1M1 calibration closes—and assuming VM differences are negligible—
@@ -105,10 +110,10 @@ frontend/shared adjustment should the S1M1 scientific specification freeze.
 The accepted unrestricted cells—not a fixed-K expansion—will define the
 primary representation evidence. K16/K32 remain appendix stress evidence.
 
-Baseline/tokenizer comparison, common evaluation, paper-facing S1M1
-orchestration, aggregation, and tables/figures are deliberately deferred until
-the unrestricted gate completes and the S1M1 specification freezes. Only then
-should the project implement:
+Baseline/tokenizer comparison, common evaluation, and execution/population of
+paper-facing S1M1 aggregation and tables/figures are deliberately deferred
+until the unrestricted gate completes and the S1M1 specification freezes. Only
+then should the project execute and populate the prepared path:
 
     declarative matrix -> per-cell provenance -> audit -> aggregation -> tables/figures
 

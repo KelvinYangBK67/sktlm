@@ -1,0 +1,81 @@
+{
+  "approved_scientific_commits": [
+    "375178ba50bd1a1644d65525907692b31413b33d",
+    "fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04"
+  ],
+  "cells": [
+    {
+      "audit_path": "../../artifacts/post_gate/collected/cloud_full_m0_iast_surface_word_p10_rep01_w8_p3/remote_audit.json",
+      "condition": "surface_word",
+      "metrics_dir": "../../artifacts/post_gate/collected/cloud_full_m0_iast_surface_word_p10_rep01_w8_p3/metrics",
+      "metrics_id": "full_m0_iast_surface_word_p10_rep01_w8_p3",
+      "run_dir": "../../artifacts/post_gate/collected/cloud_full_m0_iast_surface_word_p10_rep01_w8_p3/benchmark",
+      "run_id": "cloud_full_m0_iast_surface_word_p10_rep01_w8_p3",
+      "scientific_commit": "fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04",
+      "script": "iast"
+    },
+    {
+      "audit_path": "../../artifacts/post_gate/collected/cloud_full_m0_iast_legacy_joined_p10_w8_p3/remote_audit.json",
+      "condition": "legacy_joined",
+      "metrics_dir": "../../artifacts/post_gate/collected/cloud_full_m0_iast_legacy_joined_p10_w8_p3/metrics",
+      "metrics_id": "full_m0_iast_legacy_joined_p10_w8_p3",
+      "run_dir": "../../artifacts/post_gate/collected/cloud_full_m0_iast_legacy_joined_p10_w8_p3/benchmark",
+      "run_id": "cloud_full_m0_iast_legacy_joined_p10_w8_p3",
+      "scientific_commit": "375178ba50bd1a1644d65525907692b31413b33d",
+      "script": "iast"
+    },
+    {
+      "audit_path": "../../artifacts/post_gate/collected/cloud_full_m0_iast_continuous_p10_w8_p3/remote_audit.json",
+      "condition": "continuous",
+      "metrics_dir": "../../artifacts/post_gate/collected/cloud_full_m0_iast_continuous_p10_w8_p3/metrics",
+      "metrics_id": "full_m0_iast_continuous_p10_w8_p3",
+      "run_dir": "../../artifacts/post_gate/collected/cloud_full_m0_iast_continuous_p10_w8_p3/benchmark",
+      "run_id": "cloud_full_m0_iast_continuous_p10_w8_p3",
+      "scientific_commit": "375178ba50bd1a1644d65525907692b31413b33d",
+      "script": "iast"
+    },
+    {
+      "audit_path": "../../artifacts/post_gate/collected/cloud_full_m0_devanagari_surface_word_p10_w8_p3/remote_audit.json",
+      "condition": "surface_word",
+      "metrics_dir": "../../artifacts/post_gate/collected/cloud_full_m0_devanagari_surface_word_p10_w8_p3/metrics",
+      "metrics_id": "full_m0_devanagari_surface_word_p10_w8_p3",
+      "run_dir": "../../artifacts/post_gate/collected/cloud_full_m0_devanagari_surface_word_p10_w8_p3/benchmark",
+      "run_id": "cloud_full_m0_devanagari_surface_word_p10_w8_p3",
+      "scientific_commit": "375178ba50bd1a1644d65525907692b31413b33d",
+      "script": "devanagari"
+    },
+    {
+      "audit_path": "../../artifacts/post_gate/collected/cloud_full_m0_devanagari_legacy_joined_p10_w8_p3/remote_audit.json",
+      "condition": "legacy_joined",
+      "metrics_dir": "../../artifacts/post_gate/collected/cloud_full_m0_devanagari_legacy_joined_p10_w8_p3/metrics",
+      "metrics_id": "full_m0_devanagari_legacy_joined_p10_w8_p3",
+      "run_dir": "../../artifacts/post_gate/collected/cloud_full_m0_devanagari_legacy_joined_p10_w8_p3/benchmark",
+      "run_id": "cloud_full_m0_devanagari_legacy_joined_p10_w8_p3",
+      "scientific_commit": "375178ba50bd1a1644d65525907692b31413b33d",
+      "script": "devanagari"
+    },
+    {
+      "audit_path": "../../artifacts/post_gate/collected/cloud_full_m0_devanagari_continuous_p10_w8_p3/remote_audit.json",
+      "condition": "continuous",
+      "metrics_dir": "../../artifacts/post_gate/collected/cloud_full_m0_devanagari_continuous_p10_w8_p3/metrics",
+      "metrics_id": "full_m0_devanagari_continuous_p10_w8_p3",
+      "run_dir": "../../artifacts/post_gate/collected/cloud_full_m0_devanagari_continuous_p10_w8_p3/benchmark",
+      "run_id": "cloud_full_m0_devanagari_continuous_p10_w8_p3",
+      "scientific_commit": "375178ba50bd1a1644d65525907692b31413b33d",
+      "script": "devanagari"
+    }
+  ],
+  "cross_commit_compatibility": {
+    "basis": "Accepted unrestricted IAST surface_word replicas provide the unchanged anchor cell; the representation-gate checkpoint preserves IAST defaults and unrestricted semantics while adding the other formal frontends.",
+    "evidence": [
+      ".codex/PROJECT_STATE.md",
+      "reports/core_methods/latent_lexicon/pre_s1m1_calibration_checkpoint_20260901.md",
+      "reports/core_methods/latent_lexicon/six_representation_gate_launch_checkpoint_20260901.md"
+    ],
+    "status": "approved"
+  },
+  "gate_id": "s1m1-unrestricted-six-representation-gate",
+  "schema_version": "sktlm-six-representation-gate-input/v1",
+  "scientific_contract_id": "m0-unrestricted-latent-lexicon-v1-six-representation",
+  "template_status": "paths require human-populated audited local collections after natural completion"
+}

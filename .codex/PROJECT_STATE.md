@@ -888,3 +888,56 @@ passed 516 tests with two existing warnings in 44.45s.
 Baseline/tokenizer comparison, common evaluation, S1M1 specification freeze,
 aggregation, and paper-facing work remain deferred until the unrestricted
 six-representation gate completes.
+
+## 34. Post-gate analysis and independent-review preparation (2026-09-01)
+
+While the unrestricted six-representation gate remained RUNNING and strictly
+human-operated, a local-only post-completion evidence path was added without
+changing latent scientific/runtime code or any active configuration.
+
+`src/sktlm/analysis/six_representation_gate.py` and
+`scripts/analysis/aggregate_six_representation.py` accept an explicit local
+JSON manifest for exactly the six unrestricted formal cells. They fail closed
+on missing/duplicate identities, fixed-K or scoped inputs, undeclared
+multi-commit provenance, cross-cell config/M0 provenance mismatch, nonzero
+process return, invalid final audit, missing canonical outputs, or local
+bytes/SHA mismatch against audit. The lexicon scan is bounded-memory and checks
+`expected_count DESC, form_key ASC`; outputs cover the frozen mass-support
+thresholds, scalar comparisons, rule TV/JSD in nats, candidate/overflow
+statistics, and separate process-tree engineering metrics. Successful outputs
+are deterministic JSON, tidy TSV, and claim-free Markdown in a new
+non-overwritten directory. The analysis order, deterministic qualitative
+sample-selection rules, and interpretation limits are frozen in
+`post_gate_analysis_protocol.md`.
+
+The researcher-authored `notes/reviewer/reviewer_prompt.txt` and
+`notes/reviewer/method.txt` were initially ignored/untracked and were promoted
+byte-for-byte after a secret/private-infrastructure review. Their SHA-256 values
+are respectively
+`d5efc209de1f3a6dbf76726ecbd638d08acc91c98bf9c5ec2058fa00af27d0a1`
+and
+`f7bcf017be5c4c912a2e2e3b0a4b49398da27df1c6921fc9469a686f05f42015`.
+The independent-review protocol requires five fresh sessions with one
+content-identical frozen packet/prompt, immutable per-reviewer raw responses,
+5/5 completion before synthesis, and separate author adjudication. The local
+packet helper records repository/scientific Git identity and deterministic
+file/prompt/method/packet hashes, and verifies eventual raw-review metadata. It
+contains no LLM/API/browser/network behavior; no review has run.
+
+`continuous_performance_source_analysis.md` maps frontend segmentation,
+grammar matching/cache, candidate graph construction, exact DP/top-k,
+lexical scoring, multiprocessing, SQLite, telemetry, serialization, and
+inspection from source only. It separates future semantics-preserving
+implementation candidates from candidate/scoring/representation changes that
+would require a new scientific condition. No optimization was implemented and
+no active/partial VM metric was used.
+
+The focused synthetic suite for the new aggregation and review-packet contracts
+passed once (`14 passed in 3.61s`). Final local contract review added portable
+Windows/POSIX path-escape rejection for packet destinations and raw-review
+paths, plus machine-readable refusal when an aggregation output directory
+already exists; its single new regression test passed (`1 passed in 0.19s`)
+without rerunning the completed suite. The five new representation jobs remain
+RUNNING at scientific checkpoint
+`375178ba50bd1a1644d65525907692b31413b33d`; no completion or scientific
+comparison is recorded.

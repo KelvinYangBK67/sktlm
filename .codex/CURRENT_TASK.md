@@ -2,103 +2,107 @@
 
 ## Current status
 
-Branch: exp/m0-core-methods.
+Branch: `exp/m0-core-methods`.
 
-Pre-S1M1 VM and fixed-vocabulary calibration is CLOSED. The frozen M0 corpus,
-six representations, freeze metadata, m0 tag, 1,218-rule inventory, and the
-scientific configuration of every running job remain unchanged.
-
-The scientific checkpoint for the active representation gate is:
+The unrestricted six-representation pre-S1M1 gate remains active. The five new
+cells are still recorded only as RUNNING at scientific checkpoint:
 
     375178ba50bd1a1644d65525907692b31413b33d
 
-The four accepted IAST surface_word replicas supply one unrestricted cell.
-Five other cells were manually bundle-deployed, input-verified, launched, and
-immediately checked by the human operator:
+IAST + `surface_word` is supplied by the four accepted unrestricted replicas.
+Core-01 through core-05 remain human-operated; core-06 remains standby. No
+completion, final audit, collected result, representation comparison, or S1M1
+freeze is inferred in this repository state.
 
-- core-01: IAST legacy_joined
-- core-02: IAST continuous
-- core-03: Devanagari surface_word
-- core-04: Devanagari legacy_joined
-- core-05: Devanagari continuous
+## Absolute operational boundary
 
-All five are RUNNING. Core-06 remains standby and was not deployed or
-launched. Exact run/metrics IDs, launch PIDs, frozen-input counts/hashes, and
-immediate verification are in:
+Do not contact a VM. Do not run SSH/SCP/rsync, bridge remote operations,
+status/polling, collection, remote audit, process inspection/control, restart,
+resume, cleanup, deployment, or remote Git. Do not read or expose private
+bridge configuration. Running jobs must finish naturally.
 
-- reports/core_methods/latent_lexicon/six_representation_gate_launch_checkpoint_20260901.md
-- configs/cloud/experiment_registry.toml
+The next remote actions are human-only after natural completion:
 
-RUNNING is not completion. No final wall time, RSS, return code, audit, or
-scientific result has been recorded.
+1. require every `process_tree_summary.json` to report `return_code == 0`;
+2. run one final audit per completed run and require `valid == true`;
+3. collect the complete required local scientific/report artifacts;
+4. only then run local aggregation.
 
-## Highest-priority operational boundary
+## Local post-gate tooling prepared
 
-Do not contact any VM. Do not run SSH, bridge remote operations, status
-polling, collection, remote audit, process control, restart, resume, cleanup,
-or deployment. Do not interpret early process samples. The five jobs must run
-naturally to completion.
+`scripts/analysis/aggregate_six_representation.py` now implements the
+local-only, fail-closed six-cell aggregation contract. Its manifest names exact
+local run/metrics/audit paths and exact scientific commits. It refuses missing
+or duplicate cells, fixed-K/scoped inputs, undeclared mixed commits, mixed
+scientific configuration/provenance, nonzero return code, invalid audit,
+missing canonical artifacts, or audit/hash mismatch.
 
-The next VM action is human-only and occurs after natural completion:
+Successful aggregation emits deterministic JSON, tidy TSV, and descriptive
+Markdown for:
 
-1. require process_tree_summary.json return_code=0;
-2. run one final audit and require valid=true;
-3. only then collect, compare the six cells, and mark completed rows DONE.
+- latent structure, ambiguity, complexity, and low-count diagnostics;
+- 90/95/99/99.9/99.99% lexical mass support;
+- candidate graph and overflow diagnostics;
+- external-rule usage and normalized distributions;
+- three spacing-matched script pairs and six within-script spacing pairs;
+- scalar differences/ratios with explicit zero denominators;
+- TV and Jensen-Shannon divergence in nats;
+- process-tree runtime/resource diagnostics kept separate from science.
 
-## Fixed deployment invariant
+The fixed analysis order, quantitative metrics, deterministic qualitative
+selection, and interpretation discipline are in
+`reports/core_methods/latent_lexicon/post_gate_analysis_protocol.md`. Do not
+run the full local aggregation until the human returns with all six audited
+collections; hashing/scanning the complete payload may exceed five minutes.
 
-Git commit/history is authoritative code identity; GitHub is the publication
-and collaboration endpoint. Production deployment to mainland core-01 through
-core-06 is:
+## Independent review preparation
 
-    clean published local checkout
-    -> git bundle
-    -> SCP/SSH
-    -> remote bundle verification
-    -> fetch from bundle
-    -> exact fetched-SHA check
-    -> fast-forward-only merge
-    -> exact remote HEAD check
+The researcher-authored files `notes/reviewer/reviewer_prompt.txt` and
+`notes/reviewer/method.txt` were originally ignored/untracked. They contained
+no secrets or private infrastructure and are now preserved byte-for-byte as
+tracked review sources.
 
-Remote GitHub fetch/pull and copied working trees are forbidden production
-paths. The bridge deploy-code command is legacy GitHub-backed behavior for
-non-core environments with reliable connectivity, not the core production
-path.
+`scripts/review/review_packet.py` builds and verifies a deterministic,
+content-addressed packet from explicit tracked files and validates eventual
+raw-review metadata against the packet/prompt/method hashes. Portable relative
+path validation rejects POSIX traversal, Windows backslash traversal, and drive
+or alternate-stream syntax before any packet or raw-review file is resolved.
+The protocol fixes
+five independent fresh sessions, the identical frozen packet/prompt, no
+cross-review leakage, immutable raw responses, synthesis only after 5/5, and
+separate author adjudication. No reviewer LLM has been invoked and no fake raw
+review exists.
 
-## Research roadmap
+Formal review remains gated on six completed/audited/collected cells,
+post-gate analysis, and a frozen S1M1 method/result packet. The current
+researcher prompt names snapshot `add634e...`; before a later formal panel, the
+human researcher must verify that the frozen prompt target and packet target
+are the intended identical snapshot. No prompt change is allowed after
+`reviewer_01` begins.
 
-The active gate is unrestricted learning across all six M0 representations.
-K16/K32 remain capacity-stress appendix evidence. Do not add K, search for a
-vocabulary sweet spot, or run the obsolete fixed-K 18-cell matrix.
+## Continuous performance preparation
 
-S1M2 is reusable untyped compositional sharing:
+`reports/core_methods/latent_lexicon/continuous_performance_source_analysis.md`
+records a static source-only bottleneck map, semantics-preserving candidate
+optimizations, scientific changes that cannot be disguised as speedups, and a
+future post-freeze profiling-counter plan. No scientific/runtime
+implementation, candidate bound, or active configuration changed. Do not tune
+from partial cloud metrics.
 
-    x -> u -> p1 ... pk
-    concat(p1 ... pk) = u
+## Validation and next trigger
 
-The frozen external-sandhi grammar licenses/reconstructs u. Learned pieces
-must concatenate exactly to u; S1M2 adds no rewrite and predeclares no stem,
-suffix, root, ending, lemma, POS, paradigm, or grammatical-feature roles.
-Systematic-gap allomorph induction is a future hypothesis, not a frozen S1M2
-requirement and not implemented now.
+Focused synthetic aggregation/review tests passed once:
 
-Baseline/tokenizer comparison, common evaluation, S1M1 specification freeze,
-aggregation, and paper-facing outputs remain deferred until the unrestricted
-gate completes and final audits are available.
+    14 passed in 3.61s
 
-## CI closure
+Python syntax compilation passed before the focused suite. During final local
+contract review, one new portable-path regression test passed (`1 passed in
+0.19s`); the already-completed 14-test suite was not rerun. No full pytest,
+corpus validation, artifact scan, benchmark, cloud command, or reviewer
+invocation was run.
 
-The clean-checkout CI failure was a test/environment contract mismatch. The
-tracked manifest test now checks exactly six script/condition cells, exactly
-240 rows per cell, and 240 unique logical document paths per cell without
-requiring gitignored representation payload files. Production load_documents
-file-existence checks are unchanged.
-
-Validation completed once:
-
-- focused frontend + bridge suite: 57 passed in 0.71s;
-- full pytest: 516 passed, 2 existing Transformer warnings, in 44.45s;
-- final git diff --check: passed.
-
-Resume only from human-reported completed representation artifacts. Do not
-rerun or infer remote state.
+Resume only when the human reports natural completion and supplies audited
+local collections. Then validate the manifest, run the one local aggregation,
+perform the frozen quantitative/qualitative analysis, make the S1M1 freeze
+decision, freeze the review packet, and hand the identical packet to five fresh
+reviewer sessions.
