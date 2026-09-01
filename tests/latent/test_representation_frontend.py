@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
 import pytest
@@ -13,7 +14,7 @@ from sktlm.latent.frontend import (
     parse_surface,
 )
 from sktlm.latent.phonology import parse_iast_form
-from sktlm.latent.training import TrainingConfig, load_documents
+from sktlm.latent.training import TrainingConfig
 from sktlm.representations.devanagari import transliterate_iast_to_devanagari
 from sktlm.representations.spacing import apply_spacing
 
@@ -86,19 +87,26 @@ def test_spacing_conditions_preserve_cross_script_phonology(condition: str) -> N
     ).phonemes
 
 
-def test_all_formal_manifest_cells_select_exactly_240_documents() -> None:
+def test_tracked_manifest_has_exactly_240_documents_per_formal_cell() -> None:
     manifest = Path("data/manifests/representations.csv")
+    with manifest.open("r", encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+
+    expected_cells = {
+        (script, condition)
+        for script in ("iast", "devanagari")
+        for condition in ("surface_word", "legacy_joined", "continuous")
+    }
+    assert {(row["script"], row["condition"]) for row in rows} == expected_cells
     for script in ("iast", "devanagari"):
         for condition in ("surface_word", "legacy_joined", "continuous"):
-            documents = load_documents(
-                manifest,
-                repo_root=Path("."),
-                max_documents=None,
-                script=script,
-                condition=condition,
-            )
-            assert len(documents) == 240
-            assert len({document.relative_path for document in documents}) == 240
+            cell = [
+                row
+                for row in rows
+                if row["script"] == script and row["condition"] == condition
+            ]
+            assert len(cell) == 240
+            assert len({row["relative_path"] for row in cell}) == 240
 
 
 def test_selectors_reject_unsupported_values_and_cli_defaults_remain_iast_surface() -> None:

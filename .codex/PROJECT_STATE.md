@@ -610,8 +610,7 @@ accepted P10 result changed.
 
 `scripts/cloud/sktlm_bridge.py` now provides six bounded operations: `status`,
 `deploy-code`, `push-inputs`, `verify-remote`, `pull-results`, and `collect`.
-The architecture keeps Git/GitHub authoritative for tracked code/configuration
-and uses resumable rsync over SSH only for non-Git scientific bytes. It invokes
+The architecture keeps Git commit/history authoritative for tracked code/configuration. GitHub is the publication/collaboration endpoint; production code transport to mainland core-01 through core-06 is a verified local Git bundle over SCP/SSH with exact-SHA and fast-forward-only checks. Resumable rsync over SSH is reserved for non-Git scientific bytes. It invokes
 the existing input validator and run auditor instead of implementing divergent
 scientific validation.
 
@@ -763,59 +762,46 @@ tie-breaking, count projection, score decomposition, unrestricted `None`,
 artifact output, and completed-run resume passed: `8 passed in 0.91s`. No
 smoke, medium, full, cloud, or active-run validation was performed.
 
-## 31. Research nomenclature and roadmap (2026-08-31)
+## 31. Research nomenclature and current roadmap (updated 2026-09-01)
 
-The authoritative human-readable roadmap is
-`docs/research_roadmap.md`. It separates three naming layers that earlier
-historical documents sometimes placed close together:
+M₀ is the frozen common experimental substrate: corpus, exactly six formal
+observation representations, and shared provenance/evaluation contracts.
+Full-M₀ describes full frozen-corpus extent for one representation condition;
+it is not a model name. Historical branch, run, and report names remain
+unchanged as provenance.
 
-- `M₀` is the frozen common experimental substrate: the corpus, exactly six
-  formal observation representations, and shared provenance/evaluation
-  contracts. It is not a scientific milestone or model name.
-- `full-M₀` describes full frozen-corpus extent for one representation
-  condition. It does not mean that the latent model is “M0”.
-- a Stage is a major research phase; `M1`, `M2`, and optional `M3` are ordered
-  scientific milestones within that Stage, restarting at `M1` for each new
-  Stage. `v1` remains only an implementation/version label.
+Pre-S1M1 VM and capacity calibration is CLOSED. The unrestricted word-form
+support is approximately 19.07M identities; 90%/95%/99%/99.9%/99.99% mass
+requires approximately 1.027M/1.493M/2.084M/2.875M/3.893M identities. K16 and
+K32 primarily create atomization/phoneme fallback under strong compression
+pressure and remain appendix sensitivity evidence. No new K, sweet-spot
+search, or 18-cell fixed-K matrix is planned.
 
-The project is currently in **pre-S1M1 infrastructure and capacity
-calibration**. `IAST + surface_word` was chosen as the algorithm, exact
-inference, streaming, resume, multiprocessing, performance, deployment, and
-vocabulary-budget anchor. That history does not make it the sole final S1M1
-representation. The current calibration program uses unrestricted replicas
-to test VM equivalence and treats `K=16,384` / `K=32,768` as candidate
-`K1` / `K2` capacity conditions. Their results may justify one adjustment
-before S1M1 freezes; K must not change while the final matrix is running.
+The active gate is unrestricted learning across all six M₀ representations.
+IAST surface_word is supplied by accepted replicas; five new cells are
+RUNNING at the frozen representation-gate checkpoint. Baseline/tokenizer
+comparison, common evaluation, S1M1 specification freeze, aggregation, and
+paper-facing outputs remain deferred until these runs complete and audit.
 
-If VM identity proves scientifically negligible, the next research gate is
-one unrestricted run for each of the six M₀ representations. Paired IAST and
-Devanagari results for each spacing condition test script neutrality using
-common latent, identity/latent-mass, ambiguity, grammar-use, and
-segmentation/reconstruction diagnostics. Script-specific failures should be
-fixed in the frontend before shared scientific parameters are changed.
+S1M1 targets flat lexical word-form identity and diagnoses the limits of that
+hypothesis class under the fixed external-sandhi grammar. S1M2 moves to
+reusable untyped compositional pieces:
 
-After that six-representation gate and any necessary adjustment, one S1M1
-specification freezes. The final S1M1 evidence matrix is:
+    x -> u -> p1 ... pk
+    concat(p1 ... pk) = u
 
-`6 M₀ representations × {unrestricted, K1, K2} = 18 cells`
+The frozen grammar licenses/reconstructs u from observed x. The learner may
+segment u into reusable pieces but may not introduce a rewrite: concatenation
+must be exact. It predeclares no stem, suffix, root, ending, lemma, POS,
+paradigm, or grammatical-feature roles. Stage 1 adds no gold morphology,
+analyzer, TransLIST/gold segmentation, Sanskrit-specific morphological prior,
+or learned internal morphophonological rules.
 
-All 18 cells use the same frozen specification. Earlier full-M₀ runs remain
-calibration/provenance evidence and are not retroactively promoted into the
-final matrix.
-
-Stage 1 retains the known/fixed external-sandhi grammar: S1M1 targets lexical
-word-form identity and S1M2 advances to reusable surface-realizable
-stem/morpheme identity. Any S1M3 requires a genuinely new scientific claim,
-not engineering optimization. Stage 2 learns a realization grammar and then
-uses it for latent learning. Stage 3 removes the language-specific rule prior
-and advances toward joint latent-identity/realization discovery, with an
-optional cross-lingual stress test only if it provides independent scientific
-value.
-
-Historical names—including `exp/m0-core-methods`, `full_m0_*` run IDs,
-historical report filenames, and `stage01_checkpoint_20260831.md`—remain
-unchanged as provenance. “Stage 01” in those reports names the historical
-core-method work line; it does not retroactively declare final S1M1 evidence.
+S1M3 opens only for independent scientific semantics; otherwise proceed to
+Stage 2. Systematic-gap allomorph induction is a future later-stage hypothesis,
+not a frozen S1M2 requirement. It may eventually test latent families using
+posterior-predictive missing forms, distributional/compositional replacement,
+and explicit complexity costs without prescribing a gold underlying form.
 
 ## 32. CI and reproducible-environment capture (2026-08-31)
 
@@ -834,13 +820,12 @@ paper/release run to preserve the exact environment it actually used.
 
 The capture tool is scaffolding only and was not integrated into, or used to
 modify, any active pre-S1M1 job. S1M1 paper-facing orchestration remains
-deferred until current calibration closes, the six unrestricted M₀
-representation gate completes, frontend/shared scientific adjustments are
-complete, K1/K2 freeze, and the S1M1 scientific specification freezes. Only
-then should declarative matrix execution, per-cell provenance, audit,
-aggregation, and paper-facing tables/figures be implemented.
+deferred until the unrestricted six-representation gate completes, any
+frontend/shared scientific adjustments finish, and the S1M1 scientific
+specification freezes. Only then should declarative execution, per-cell
+provenance, audit, aggregation, and paper-facing tables/figures be implemented.
 
-## 33. Calibration closed and unrestricted representation gate prepared (2026-09-01)
+## 33. Calibration closed and unrestricted representation gate running (2026-09-01)
 
 This section supersedes the operational/future-plan statements in Sections 30
 and 31 without rewriting their historical record.
@@ -866,7 +851,9 @@ repository-generated M0 Devanagari representation. Direct full-run audit and
 collection safety were extended for the representation gate. The focused
 frontend/training/audit/bridge suite passed 80 tests in 8.33 seconds.
 
-The five remaining unrestricted cells are registered PREPARED only:
+The five remaining unrestricted cells were manually bundle-deployed and
+launched at scientific checkpoint
+375178ba50bd1a1644d65525907692b31413b33d and are RUNNING:
 
 - core-01: IAST legacy_joined;
 - core-02: IAST continuous;
@@ -874,12 +861,30 @@ The five remaining unrestricted cells are registered PREPARED only:
 - core-04: Devanagari legacy_joined;
 - core-05: Devanagari continuous.
 
-Core-06 is excluded. Codex did not contact, deploy, verify, launch, monitor,
-collect from, or audit any VM in this continuation. The human operator will
-deploy the final published HEAD and run the exact dated plan in
-reports/core_methods/latent_lexicon/six_representation_gate_launch_plan_20260901.md.
-The historical full_m0_launch_plan.md remains untouched.
+Core-06 remains standby and was not deployed or launched. Before launch, all
+five selected hosts had the exact checkpoint, clean branch, no prior active
+job, absent target paths, and identical valid frozen-input verification.
+Bundle deployment and immediate live-PID/process-sample checks succeeded.
+Exact assignments, PIDs, counts, and hashes are recorded in
+reports/core_methods/latent_lexicon/six_representation_gate_launch_checkpoint_20260901.md.
 
+RUNNING is not completion. No final wall time, RSS, return code, audit, or
+scientific result is recorded. Codex must not contact, poll, collect from,
+audit, stop, restart, resume, or otherwise modify these hosts or jobs. After
+natural completion, the human operator must require process_tree_summary.json
+return_code=0 and final audit valid=true before collection, comparison, or
+marking a row DONE.
+
+For core-01 through core-06, production deployment is a verified local Git
+bundle over SCP/SSH with exact-SHA and fast-forward-only checks. Remote GitHub
+fetch/pull and copied working trees are forbidden production paths. The
+historical full_m0_launch_plan.md remains untouched.
+
+The clean-checkout manifest test now validates six-cell cardinality and logical
+document uniqueness without requiring gitignored representation payload.
+Production load_documents file-existence checks remain unchanged. The focused
+frontend/bridge suite passed 57 tests in 0.71s; the single full pytest run
+passed 516 tests with two existing warnings in 44.45s.
 Baseline/tokenizer comparison, common evaluation, S1M1 specification freeze,
 aggregation, and paper-facing work remain deferred until the unrestricted
 six-representation gate completes.

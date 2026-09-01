@@ -8,36 +8,36 @@ authoritative_as_of = "2026-09-01"
 machine_id = "core-01"
 machine_name = "sktlm-m0-core-01"
 host_profile = "core-01"
-current_role = "six-representation-iast-legacy-joined-prepared"
-state = "ready"
+current_role = "six-representation-iast-legacy-joined-running"
+state = "running"
 
 [machines.core-02]
 machine_id = "core-02"
 machine_name = "sktlm-m0-core-02"
 host_profile = "core-02"
-current_role = "six-representation-iast-continuous-prepared"
-state = "ready"
+current_role = "six-representation-iast-continuous-running"
+state = "running"
 
 [machines.core-03]
 machine_id = "core-03"
 machine_name = "sktlm-m0-core-03"
 host_profile = "core-03"
-current_role = "six-representation-devanagari-surface-word-prepared"
-state = "ready"
+current_role = "six-representation-devanagari-surface-word-running"
+state = "running"
 
 [machines.core-04]
 machine_id = "core-04"
 machine_name = "sktlm-m0-core-04"
 host_profile = "core-04"
-current_role = "six-representation-devanagari-legacy-joined-prepared"
-state = "ready"
+current_role = "six-representation-devanagari-legacy-joined-running"
+state = "running"
 
 [machines.core-05]
 machine_id = "core-05"
 machine_name = "sktlm-m0-core-05"
 host_profile = "core-05"
-current_role = "six-representation-devanagari-continuous-prepared"
-state = "ready"
+current_role = "six-representation-devanagari-continuous-running"
+state = "running"
 
 [machines.core-06]
 machine_id = "core-06"
@@ -200,9 +200,9 @@ wall_seconds = 13165.096
 peak_process_tree_rss_bytes = 3708420096
 notes = "Complete with return code 0; six canonical scientific artifacts are identical across rep01-rep04."
 
-# Five remaining unrestricted M0 representation cells. These are durable
-# prelaunch assignments only. The human operator must deploy the exact
-# published HEAD reported as REPRESENTATION_GATE_SHA in the delivery handoff.
+# Five remaining unrestricted M0 representation cells were manually deployed
+# from the exact representation-gate commit and launched on 2026-09-01.
+# RUNNING records contain no inferred completion, audit, or performance data.
 
 [[runs]]
 machine_id = "core-01"
@@ -216,10 +216,11 @@ condition = "legacy_joined"
 entrypoint = "sktlm.experiments.training.latent_lexicon"
 passes = 3
 workers = 8
-state = "PREPARED"
+state = "RUNNING"
 result_location = "artifacts/latent_benchmarks/cloud_full_m0_iast_legacy_joined_p10_w8_p3"
 metrics_location = "artifacts/cloud_metrics/full_m0_iast_legacy_joined_p10_w8_p3"
-notes = "Authorized six-representation gate assignment; not yet launched."
+scientific_checkpoint = "375178ba50bd1a1644d65525907692b31413b33d"
+notes = "Manually bundle-deployed and launched; immediate PID/process-sample verification passed. Completion and final audit remain pending."
 
 [[runs]]
 machine_id = "core-02"
@@ -233,10 +234,11 @@ condition = "continuous"
 entrypoint = "sktlm.experiments.training.latent_lexicon"
 passes = 3
 workers = 8
-state = "PREPARED"
+state = "RUNNING"
 result_location = "artifacts/latent_benchmarks/cloud_full_m0_iast_continuous_p10_w8_p3"
 metrics_location = "artifacts/cloud_metrics/full_m0_iast_continuous_p10_w8_p3"
-notes = "Authorized six-representation gate assignment; not yet launched."
+scientific_checkpoint = "375178ba50bd1a1644d65525907692b31413b33d"
+notes = "Manually bundle-deployed and launched; immediate PID/process-sample verification passed. Completion and final audit remain pending."
 
 [[runs]]
 machine_id = "core-03"
@@ -250,10 +252,11 @@ condition = "surface_word"
 entrypoint = "sktlm.experiments.training.latent_lexicon"
 passes = 3
 workers = 8
-state = "PREPARED"
+state = "RUNNING"
 result_location = "artifacts/latent_benchmarks/cloud_full_m0_devanagari_surface_word_p10_w8_p3"
 metrics_location = "artifacts/cloud_metrics/full_m0_devanagari_surface_word_p10_w8_p3"
-notes = "Authorized six-representation gate assignment; not yet launched."
+scientific_checkpoint = "375178ba50bd1a1644d65525907692b31413b33d"
+notes = "Manually bundle-deployed and launched; immediate PID/process-sample verification passed. Completion and final audit remain pending."
 
 [[runs]]
 machine_id = "core-04"
@@ -267,10 +270,11 @@ condition = "legacy_joined"
 entrypoint = "sktlm.experiments.training.latent_lexicon"
 passes = 3
 workers = 8
-state = "PREPARED"
+state = "RUNNING"
 result_location = "artifacts/latent_benchmarks/cloud_full_m0_devanagari_legacy_joined_p10_w8_p3"
 metrics_location = "artifacts/cloud_metrics/full_m0_devanagari_legacy_joined_p10_w8_p3"
-notes = "Authorized six-representation gate assignment; not yet launched."
+scientific_checkpoint = "375178ba50bd1a1644d65525907692b31413b33d"
+notes = "Manually bundle-deployed and launched; immediate PID/process-sample verification passed. Completion and final audit remain pending."
 
 [[runs]]
 machine_id = "core-05"
@@ -284,7 +288,8 @@ condition = "continuous"
 entrypoint = "sktlm.experiments.training.latent_lexicon"
 passes = 3
 workers = 8
-state = "PREPARED"
+state = "RUNNING"
 result_location = "artifacts/latent_benchmarks/cloud_full_m0_devanagari_continuous_p10_w8_p3"
 metrics_location = "artifacts/cloud_metrics/full_m0_devanagari_continuous_p10_w8_p3"
-notes = "Authorized six-representation gate assignment; not yet launched."
+scientific_checkpoint = "375178ba50bd1a1644d65525907692b31413b33d"
+notes = "Manually bundle-deployed and launched; immediate PID/process-sample verification passed. Completion and final audit remain pending."

@@ -1,6 +1,6 @@
 # Six-representation gate launch plan (2026-09-01)
 
-Status: **PREPARED FOR MANUAL EXECUTION; NOTHING LAUNCHED BY CODEX**.
+Status: **MANUALLY LAUNCHED; FIVE NEW CELLS RUNNING**.
 
 IAST + surface_word is already supplied by the accepted unrestricted
 replicas. This plan assigns the five remaining unrestricted M0 cells at the
@@ -9,38 +9,49 @@ document or line limits. Core-06 is excluded.
 
 | Host | Script | Condition | Run ID | Metrics ID | State |
 |---|---|---|---|---|---|
-| core-01 | iast | legacy_joined | cloud_full_m0_iast_legacy_joined_p10_w8_p3 | full_m0_iast_legacy_joined_p10_w8_p3 | PREPARED |
-| core-02 | iast | continuous | cloud_full_m0_iast_continuous_p10_w8_p3 | full_m0_iast_continuous_p10_w8_p3 | PREPARED |
-| core-03 | devanagari | surface_word | cloud_full_m0_devanagari_surface_word_p10_w8_p3 | full_m0_devanagari_surface_word_p10_w8_p3 | PREPARED |
-| core-04 | devanagari | legacy_joined | cloud_full_m0_devanagari_legacy_joined_p10_w8_p3 | full_m0_devanagari_legacy_joined_p10_w8_p3 | PREPARED |
-| core-05 | devanagari | continuous | cloud_full_m0_devanagari_continuous_p10_w8_p3 | full_m0_devanagari_continuous_p10_w8_p3 | PREPARED |
+| core-01 | iast | legacy_joined | cloud_full_m0_iast_legacy_joined_p10_w8_p3 | full_m0_iast_legacy_joined_p10_w8_p3 | RUNNING |
+| core-02 | iast | continuous | cloud_full_m0_iast_continuous_p10_w8_p3 | full_m0_iast_continuous_p10_w8_p3 | RUNNING |
+| core-03 | devanagari | surface_word | cloud_full_m0_devanagari_surface_word_p10_w8_p3 | full_m0_devanagari_surface_word_p10_w8_p3 | RUNNING |
+| core-04 | devanagari | legacy_joined | cloud_full_m0_devanagari_legacy_joined_p10_w8_p3 | full_m0_devanagari_legacy_joined_p10_w8_p3 | RUNNING |
+| core-05 | devanagari | continuous | cloud_full_m0_devanagari_continuous_p10_w8_p3 | full_m0_devanagari_continuous_p10_w8_p3 | RUNNING |
 
-The human operator must use the exact published branch HEAD reported in the
-delivery handoff as REPRESENTATION_GATE_SHA. The trainer provenance captures
-that actual commit. Preparation does not imply RUNNING, LAUNCHED, or DONE.
+The human operator deployed and launched the exact scientific checkpoint
+375178ba50bd1a1644d65525907692b31413b33d. RUNNING does not imply completion,
+successful return code, final audit, or a scientific result.
 
-## Local code deployment and input verification
+## Recorded production deployment and input verification
 
-From a clean published local checkout, run the following once per selected
-profile, substituting core-01 through core-05. Do not use core-06:
+Core-01 through core-05 were deployed through the fixed mainland production
+transport:
 
-    python3 scripts/cloud/sktlm_bridge.py deploy-code --host-profile core-01
+    clean published local Git checkout
+    -> git bundle
+    -> SCP/SSH
+    -> remote git bundle verify
+    -> git fetch from the bundle
+    -> exact fetched-SHA check
+    -> git merge --ff-only
+    -> exact remote HEAD check
 
-Mainland cloud hosts may have unreliable direct GitHub access. The preferred
-fallback is a local git bundle transferred over SSH and an exact-HEAD
-fast-forward on the host; never copy a working tree or weaken the
-fast-forward/exact-HEAD requirement.
+Direct remote GitHub fetch/pull is not the production deployment path for
+core-01 through core-06. Git history remains authoritative and GitHub remains
+the publication/collaboration endpoint, but transport to these hosts is a
+local Git bundle over SSH. Copying a working tree, overwriting a remote repo,
+or weakening clean-tree, exact-SHA, or fast-forward requirements is forbidden.
 
-After deployment, run the authoritative input check once per profile:
+The human operator then ran the authoritative input check once per selected
+profile:
 
     python3 scripts/cloud/sktlm_bridge.py verify-remote --host-profile core-01 --json
 
-Only proceed on a profile when deploy-code and verify-remote both succeed and
-the remote HEAD equals REPRESENTATION_GATE_SHA.
+All five checks returned valid=true with identical frozen counts and hashes,
+and each remote HEAD equalled the scientific checkpoint. Core-06 was not
+deployed.
 
-## Exact detached launch commands
+## Exact detached launch commands (executed manually)
 
-Run exactly one block in the repository root on the named host. Each block
+These blocks are retained as the launch record. Do not run them again while
+the five jobs are active. Each block
 refuses any pre-existing run or metrics path, creates only its unique metrics
 directory, launches detached, and records the wrapper PID. The deliberate
 absence of vocab-budget, document-list, max-documents, and max-lines options
@@ -175,4 +186,6 @@ audit exits 0 and writes JSON with valid=true. Do not collect, compare, or
 mark a registry row DONE until the corresponding job has completed naturally
 and this audit succeeds.
 
-No command in this document was executed while preparing this plan.
+The commands were executed manually by the human operator, not by Codex.
+Launch state and PIDs are recorded in
+six_representation_gate_launch_checkpoint_20260901.md.

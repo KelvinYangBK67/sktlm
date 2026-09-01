@@ -4,73 +4,101 @@
 
 Branch: exp/m0-core-methods.
 
-Pre-S1M1 calibration is CLOSED. The frozen M0 corpus, six representations,
-freeze metadata, m0 tag, 1,218-rule inventory, and unrestricted
-latent-lexicon-v1 semantics remain unchanged.
+Pre-S1M1 VM and fixed-vocabulary calibration is CLOSED. The frozen M0 corpus,
+six representations, freeze metadata, m0 tag, 1,218-rule inventory, and the
+scientific configuration of every running job remain unchanged.
 
-The four unrestricted IAST surface_word full-M0 replicas completed
-successfully at 8 workers and three passes. Their six canonical scientific
-artifacts are byte-identical. Fixed-K sensitivity is also closed: K16 and K32
-are appendix stress conditions in the same strong projection-pressure regime,
-not an active grid or natural-size search. Do not add K values or execute the
-previously contemplated 18-cell matrix.
+The scientific checkpoint for the active representation gate is:
 
-The representation frontend is ready for all six formal cells. The
-script-neutral phonological core preserves existing IAST defaults and now
-accepts the repository-generated M0 Devanagari representation. The focused
-frontend/training/audit/bridge validation passed 80 tests in 8.33 seconds.
+    375178ba50bd1a1644d65525907692b31413b33d
 
-Authoritative closure:
-
-- reports/core_methods/latent_lexicon/pre_s1m1_calibration_checkpoint_20260901.md
-- reports/core_methods/latent_lexicon/six_representation_gate_launch_plan_20260901.md
-- configs/cloud/experiment_registry.toml
-
-The historical reports/core_methods/latent_lexicon/full_m0_launch_plan.md is
-untouched and superseded for current work.
-
-## Five PREPARED representation cells
+The four accepted IAST surface_word replicas supply one unrestricted cell.
+Five other cells were manually bundle-deployed, input-verified, launched, and
+immediately checked by the human operator:
 
 - core-01: IAST legacy_joined
-  - run cloud_full_m0_iast_legacy_joined_p10_w8_p3
-  - metrics full_m0_iast_legacy_joined_p10_w8_p3
 - core-02: IAST continuous
-  - run cloud_full_m0_iast_continuous_p10_w8_p3
-  - metrics full_m0_iast_continuous_p10_w8_p3
 - core-03: Devanagari surface_word
-  - run cloud_full_m0_devanagari_surface_word_p10_w8_p3
-  - metrics full_m0_devanagari_surface_word_p10_w8_p3
 - core-04: Devanagari legacy_joined
-  - run cloud_full_m0_devanagari_legacy_joined_p10_w8_p3
-  - metrics full_m0_devanagari_legacy_joined_p10_w8_p3
 - core-05: Devanagari continuous
-  - run cloud_full_m0_devanagari_continuous_p10_w8_p3
-  - metrics full_m0_devanagari_continuous_p10_w8_p3
 
-All five registry rows are PREPARED, not RUNNING, LAUNCHED, or DONE. Core-06
-is excluded and must remain unused.
+All five are RUNNING. Core-06 remains standby and was not deployed or
+launched. Exact run/metrics IDs, launch PIDs, frozen-input counts/hashes, and
+immediate verification are in:
 
-## Human-only next action
+- reports/core_methods/latent_lexicon/six_representation_gate_launch_checkpoint_20260901.md
+- configs/cloud/experiment_registry.toml
 
-Codex has no permission to contact a VM. Do not run bridge status,
-deploy-code, push-inputs, verify-remote, SSH, nohup, monitor, collection,
-pull-results, or remote audit commands.
+RUNNING is not completion. No final wall time, RSS, return code, audit, or
+scientific result has been recorded.
 
-The human operator will:
+## Highest-priority operational boundary
 
-1. deploy the exact published local HEAD reported in the delivery handoff as
-   REPRESENTATION_GATE_SHA to core-01 through core-05;
-2. run verify-remote on each selected host;
-3. execute the five exact detached commands in the dated launch plan;
-4. perform its immediate PID/process-sample check on each host;
-5. wait for natural completion and then run the documented final audit.
+Do not contact any VM. Do not run SSH, bridge remote operations, status
+polling, collection, remote audit, process control, restart, resume, cleanup,
+or deployment. Do not interpret early process samples. The five jobs must run
+naturally to completion.
 
-Direct GitHub access may be unreliable on mainland cloud hosts. The preferred
-fallback is local git bundle plus SSH transfer and an exact-HEAD fast-forward.
+The next VM action is human-only and occurs after natural completion:
 
-## Deferred work
+1. require process_tree_summary.json return_code=0;
+2. run one final audit and require valid=true;
+3. only then collect, compare the six cells, and mark completed rows DONE.
 
-Do not yet implement or run baseline/tokenizer comparison, common evaluation,
-S1M1 specification freeze, aggregation, or paper-facing tables/figures. Resume
-from manually completed unrestricted representation artifacts after the human
-operator returns; do not rerun or infer remote state.
+## Fixed deployment invariant
+
+Git commit/history is authoritative code identity; GitHub is the publication
+and collaboration endpoint. Production deployment to mainland core-01 through
+core-06 is:
+
+    clean published local checkout
+    -> git bundle
+    -> SCP/SSH
+    -> remote bundle verification
+    -> fetch from bundle
+    -> exact fetched-SHA check
+    -> fast-forward-only merge
+    -> exact remote HEAD check
+
+Remote GitHub fetch/pull and copied working trees are forbidden production
+paths. The bridge deploy-code command is legacy GitHub-backed behavior for
+non-core environments with reliable connectivity, not the core production
+path.
+
+## Research roadmap
+
+The active gate is unrestricted learning across all six M0 representations.
+K16/K32 remain capacity-stress appendix evidence. Do not add K, search for a
+vocabulary sweet spot, or run the obsolete fixed-K 18-cell matrix.
+
+S1M2 is reusable untyped compositional sharing:
+
+    x -> u -> p1 ... pk
+    concat(p1 ... pk) = u
+
+The frozen external-sandhi grammar licenses/reconstructs u. Learned pieces
+must concatenate exactly to u; S1M2 adds no rewrite and predeclares no stem,
+suffix, root, ending, lemma, POS, paradigm, or grammatical-feature roles.
+Systematic-gap allomorph induction is a future hypothesis, not a frozen S1M2
+requirement and not implemented now.
+
+Baseline/tokenizer comparison, common evaluation, S1M1 specification freeze,
+aggregation, and paper-facing outputs remain deferred until the unrestricted
+gate completes and final audits are available.
+
+## CI closure
+
+The clean-checkout CI failure was a test/environment contract mismatch. The
+tracked manifest test now checks exactly six script/condition cells, exactly
+240 rows per cell, and 240 unique logical document paths per cell without
+requiring gitignored representation payload files. Production load_documents
+file-existence checks are unchanged.
+
+Validation completed once:
+
+- focused frontend + bridge suite: 57 passed in 0.71s;
+- full pytest: 516 passed, 2 existing Transformer warnings, in 44.45s;
+- final git diff --check: passed.
+
+Resume only from human-reported completed representation artifacts. Do not
+rerun or infer remote state.

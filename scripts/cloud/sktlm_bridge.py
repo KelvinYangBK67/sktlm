@@ -1653,7 +1653,10 @@ def build_parser() -> argparse.ArgumentParser:
     deploy = commands.add_parser(
         "deploy-code",
         parents=[host_selection],
-        help="deploy the exact published local HEAD via GitHub",
+        help=(
+            "legacy GitHub-backed exact-HEAD deploy; not the production "
+            "transport for mainland core hosts"
+        ),
     )
     deploy.add_argument(
         "--allow-dirty",

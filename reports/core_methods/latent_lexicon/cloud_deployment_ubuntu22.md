@@ -39,8 +39,13 @@ venv support.
 
 The deployment boundary is now explicit:
 
-- Git/GitHub is authoritative for code, configs, reports, scripts, manifests,
-  and the fixed rule inventory;
+- Git commit/history is the authoritative identity for code, configs, reports,
+  scripts, manifests, and the fixed rule inventory;
+- GitHub is the publication and collaboration endpoint, not the required
+  production transport into mainland core hosts;
+- production code transport to core-01 through core-06 is a local Git bundle
+  over SCP/SSH with remote bundle verification, exact-SHA checks, and a
+  fast-forward-only update;
 - rsync over SSH transfers only non-Git scientific input/result bytes;
 - `scripts/cloud/sktlm_bridge.py` is the deterministic control plane that
   validates provenance, invokes those system tools, and writes JSON receipts;
@@ -64,7 +69,6 @@ in that file. CLI overrides are accepted before the subcommand. From WSL/Linux:
 
 ```bash
 python3 scripts/cloud/sktlm_bridge.py status --json
-python3 scripts/cloud/sktlm_bridge.py deploy-code
 python3 scripts/cloud/sktlm_bridge.py push-inputs
 python3 scripts/cloud/sktlm_bridge.py verify-remote --json
 # The user manually runs and waits for smoke/medium here.
@@ -72,10 +76,13 @@ python3 scripts/cloud/sktlm_bridge.py collect <RUN_ID>
 python3 scripts/cloud/sktlm_bridge.py pull-results <RUN_ID> --profile scientific
 ```
 
-Native Windows can use read-only status and Git/SSH code deployment when the
-system tools are available. All rsync transfer commands deliberately refuse to
-run under native Windows; run them inside WSL/Linux so path and rsync semantics
-are unambiguous. No weaker copy fallback is provided.
+The bridge `deploy-code` subcommand is retained as a legacy GitHub-backed
+workflow for environments with reliable direct GitHub connectivity. It is not
+the production deployment path for core-01 through core-06. Native Windows can
+use read-only status when the system tools are available. All rsync transfer
+commands deliberately refuse to run under native Windows; run them inside
+WSL/Linux so path and rsync semantics are unambiguous. No weaker copy fallback
+is provided.
 
 Every bridge sync/mutating operation writes a redacted machine-readable receipt
 under `artifacts/cloud_transfers/`. Receipts record local/remote HEADs, logical
@@ -180,29 +187,41 @@ precisely when remote Git is absent. The bootstrap exits before changing the
 repository/data layout when Git or Python 3.11 is absent. Neither tool installs
 packages.
 
-After the final bridge commit is pushed, the preferred code path is local
-GitHub-to-VM deployment from WSL/Linux:
+For core-01 through core-06, direct remote GitHub access is not reliable and
+must not be the production deployment path. The fixed human-operated sequence
+is:
 
-```bash
-python3 scripts/cloud/sktlm_bridge.py deploy-code
+```text
+clean published local Git checkout
+-> git bundle create
+-> SCP/SSH transfer of that bundle
+-> remote git bundle verify
+-> git fetch from the bundle
+-> exact fetched-SHA check
+-> git merge --ff-only
+-> exact remote HEAD check
 ```
 
-It requires a clean local tree, requires local HEAD to equal the published
-branch HEAD, refuses a dirty remote repository, performs only clone/fetch and
-fast-forward operations, and verifies the exact deployed SHA. It never copies
-the local source tree or runs `git push` from the VM.
-
-Manual clone remains a transparent fallback. Clone onto the system disk or
-another ordinary workspace; large data, venv cache, artifacts, and benchmark
-scratch are linked to the data disk by the bootstrap script.
+The local checkout must be clean, on the intended branch, and at the published
+commit. An existing remote checkout must also be clean. For an initial
+bootstrap, clone the verified bundle onto the system disk or another ordinary
+workspace; for an existing checkout, fetch the intended branch from the bundle
+into a dedicated remote-tracking ref, verify that ref equals the expected
+40-character SHA, then fast-forward the checked-out branch to that exact SHA.
+Run `bootstrap_repo.sh` only after the exact remote HEAD is established:
 
 ```bash
-git clone --branch exp/m0-core-methods --single-branch \
-  https://github.com/KelvinYangBK67/sktlm.git
-cd sktlm
+cd /path/to/sktlm
 git status --short --branch
+test "$(git rev-parse HEAD)" = '<EXPECTED_HEAD>'
 bash scripts/cloud/bootstrap_repo.sh '<EXPECTED_HEAD>' /mnt/sktlm-data
 ```
+
+Never use remote `git fetch`/`git pull` from GitHub as the production path
+for these hosts. Never copy a local working tree with SCP/rsync, overwrite the
+remote repository, or relax the clean-tree, exact-SHA, bundle-verification, or
+fast-forward-only checks. The legacy bridge `deploy-code` operation remains
+available only for non-core environments with reliable GitHub connectivity.
 
 `bootstrap_repo.sh`:
 
@@ -359,18 +378,20 @@ by remote audit hashes, writes `remote_audit.json`, and records which scientific
 and full-profile artifacts remain remote-only. It never commits, pushes,
 launches another job, or removes the remote run.
 
-## 8. Full-M₀ gate
+## 8. Full-M₀ representation gate
 
-The full command is now prepared but remains unauthorized and unexecuted.
-Four 8-worker replicas are assigned to `core-01` through `core-04`;
-`core-05` and `core-06` remain READY/STANDBY. Durable run/metrics IDs and
-the exact full-corpus launch, monitor, metrics-envelope, and audit commands are
-in `full_m0_launch_plan.md` and `.codex/CURRENT_TASK.md`.
+The four IAST surface_word replicas are complete and accepted. Five additional
+8-worker unrestricted cells were manually bundle-deployed at scientific
+checkpoint 375178ba50bd1a1644d65525907692b31413b33d, verified, and launched
+on core-01 through core-05. They are RUNNING, not complete. Core-06 remains
+standby and was neither deployed nor launched.
 
-Direct GitHub access may be unreliable on mainland cloud hosts. The preferred
-fallback is a local Git bundle transferred over SSH and a verified
-fast-forward from that bundle, never a copied working tree.
+The exact assignments, launch PIDs, common frozen-input verification values,
+and immediate PID/process-sample checks are recorded in
+`six_representation_gate_launch_checkpoint_20260901.md`. No early process
+sample is a final metric or scientific result.
 
-Preparation does not authorize launch. Before execution, the human operator
-must still confirm the exact published HEAD on each host, input validation,
-data-filesystem headroom, and empty target run/metrics directories.
+Do not poll, collect, audit, stop, restart, resume, or otherwise modify a
+running job. After natural completion, the human operator must require
+process_tree_summary.json return_code=0, run one final audit with valid=true,
+and only then collect, compare, or mark a registry row DONE.

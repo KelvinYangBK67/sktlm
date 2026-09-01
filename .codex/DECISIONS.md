@@ -72,7 +72,7 @@ This file records decisions that should not be casually re-litigated in each Cod
 43. Cloud artifacts, benchmark scratch, input copies, and resource metrics belong on the confirmed 300 GB data filesystem, not the 80 GB system filesystem. Never format a device until its exact identity and emptiness are manually confirmed.
 44. Full M₀ remains gated on audited cloud medium scaling, aggregate process-tree memory, storage headroom, and an explicitly recorded user-run command. Do not start it automatically.
 45. Raw multi-gigabyte artifacts remain gitignored, but every result that changes a scientific, implementation, performance, scaling, projection, or deployment decision must be promoted into tracked Markdown.
-46. Git/GitHub is the only authoritative code/config/report/script/manifest/rule transport to the cloud. Never deploy code by copying a local working tree to the VM.
+46. Git commit/history is authoritative code identity; GitHub is the publication/collaboration endpoint. Production deployment to core-01 through core-06 uses a clean published local checkout, verified Git bundle over SCP/SSH, exact fetched-SHA checks, and a fast-forward-only remote update. Never deploy a copied working tree or use remote GitHub fetch/pull as the core production path.
 47. Non-Git scientific bytes move only through resumable rsync over SSH. Transfers never imply deletion, regeneration, transcoding, or replacement of Git-tracked manifests/rules.
 48. `sktlm_bridge.py` is a deterministic control plane, not an autonomous agent: it may run only its fixed status/deploy/transfer/verification/collection workflows and must not expose arbitrary remote shell, package installation, benchmark launch, Git push, or destructive infrastructure actions.
 49. Every bridge sync/mutating operation must write a redacted gitignored JSON receipt. Native Windows rsync workflows are unsupported; use WSL/Linux rather than silently falling back to another copy mechanism.
@@ -84,7 +84,7 @@ This file records decisions that should not be casually re-litigated in each Cod
 55. Cloud medium scaling is closed: 8 workers are the frozen production setting for the next full-M0 stage because w8 was approximately 12.8% faster than the w16 runner-up and therefore satisfied the preregistered >=10% direct-winner rule.
 56. Do not run a cloud medium tie-break or additional medium worker-scaling benchmark. The accepted w4/w8/w12/w16 runs are scientifically equivalent across the six canonical artifacts; worker count affects accepted runtime/resource behavior, not scientific output.
 57. The four unrestricted IAST surface_word full-M0 replicas at 8 workers completed successfully and are byte-identical across all six canonical scientific artifacts.
-58. The five remaining unrestricted representation cells are PREPARED on core-01 through core-05; core-06 is excluded. Preparation is not launch authorization, and cloud deployment, verification, launch, monitoring, collection, and audit remain manual user operations.
+58. The five remaining unrestricted representation cells were manually bundle-deployed and launched at scientific checkpoint 375178ba50bd1a1644d65525907692b31413b33d on core-01 through core-05 and are RUNNING; core-06 remains standby. No completion, audit, performance, or scientific result may be inferred before natural completion and final audit.
 
 ## Optional fixed-vocabulary comparison condition
 
@@ -101,12 +101,20 @@ This file records decisions that should not be casually re-litigated in each Cod
 66. A Stage is a major research phase. `M1`, `M2`, and optional `M3` are ordered scientific milestones within that Stage, and milestone numbering restarts at `M1` for each new Stage. `v1` remains an implementation/version label, not a Stage or Milestone synonym.
 67. Capacity calibration is closed. K=16,384 and K=32,768 are appendix sensitivity conditions in the same strong projection-pressure regime, not candidate endpoints of a natural vocabulary sweet spot.
 68. Do not add K values, reopen a capacity grid, or execute the previously contemplated 18-cell matrix. Fixed-K evidence remains calibration provenance rather than an active representation-gate condition.
-69. The active pre-S1M1 gate is unrestricted training for all six M₀ representations. IAST surface_word is supplied by the accepted replicas; the five remaining cells are the prepared assignments in the dated 2026-09-01 plan.
+69. The active pre-S1M1 gate is unrestricted training for all six M₀ representations. Accepted IAST surface_word replicas supply one cell; the other five are the RUNNING assignments in the dated 2026-09-01 launch checkpoint.
 70. Baseline/tokenizer comparison, common evaluation, S1M1 specification freeze, aggregation, and paper-facing output work remain deferred until the unrestricted six-representation gate completes.
-70. Stage 1 assumes a known/fixed external-sandhi realization grammar. S1M1 targets lexical word-form identity; S1M2 advances only to reusable surface-realizable stem/morpheme identity. Deeper abstract morphology, feature bundles, and historical reconstruction require separate future decisions.
-71. An optional M3 in any Stage requires independent scientific semantics and a new scientific claim. Performance optimization, caching, implementation rewrites, worker scaling, and routine tuning do not qualify; absent such a claim, proceed to the next Stage.
-72. Stage 2 learns the realization grammar before using it for full-corpus latent analysis. Stage 3 removes the language-specific rule prior and progresses toward joint latent-identity/realization discovery; detailed future supervision contracts remain unfrozen until explicitly designed.
+71. Stage 1 assumes only the known/fixed external-sandhi grammar. S1M1 diagnoses flat lexical word-form identity; S1M2 induces reusable untyped pieces p1...pk whose exact concatenation equals the grammar-licensed lexical form u. S1M2 permits segmentation/composition but no new rewrite and predeclares no stem, suffix, root, lemma, POS, paradigm, or grammatical-feature roles.
+72. An optional M3 in any Stage requires independent scientific semantics and a new scientific claim. Performance optimization, caching, implementation rewrites, worker scaling, and routine tuning do not qualify; absent such a claim, proceed to the next Stage.
+73. Stage 2 learns the realization grammar before using it for full-corpus latent analysis. Stage 3 removes the language-specific rule prior and progresses toward joint latent-identity/realization discovery; detailed future supervision contracts remain unfrozen until explicitly designed.
+
+## Future research hypothesis (not frozen)
+
+Systematic-gap allomorph induction is a later-stage roadmap hypothesis, not an
+S1M2 requirement or current implementation decision. It may eventually use
+posterior-predictive missing forms, distributional/compositional replacement,
+and explicit complexity costs to test latent allomorph families without
+predeclaring Sanskrit grammatical roles or a unique underlying form.
 
 ## Reproducible environments
 
-73. `pyproject.toml` remains install-oriented rather than globally exact-pinned. Each formal paper/release experiment should capture its actual Python, OS/machine, key-package, Torch/CUDA, Git, and installed-distribution environment as run/release provenance (`environment.json` plus deterministic `requirements-freeze.txt`).
+74. pyproject.toml remains install-oriented rather than globally exact-pinned. Each formal paper/release experiment should capture its actual Python, OS/machine, key-package, Torch/CUDA, Git, and installed-distribution environment as run/release provenance (environment.json plus deterministic requirements-freeze.txt).

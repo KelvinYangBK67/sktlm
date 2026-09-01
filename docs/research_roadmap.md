@@ -51,37 +51,29 @@ increasing model-family number across stages.
 Names such as `v1` remain implementation/version labels. They do not carry
 Stage or Milestone semantics.
 
-## Current position: pre-S1M1 calibration
+## Current position: unrestricted representation gate
 
-The current full-corpus latent-lexicon work is pre-S1M1 infrastructure and
-capacity calibration, not the final S1M1 evidence package.
+Pre-S1M1 VM and vocabulary-capacity calibration is closed. IAST +
+`surface_word` remains the implementation/deployment anchor, but it is not
+the sole representation. Four unrestricted replicas established cross-VM
+scientific equivalence; their result supplies that one cell of the current
+six-representation gate.
 
-`IAST + surface_word` has served as the implementation and deployment anchor
-for the formal latent algorithm, exact inference, full-corpus streaming,
-checkpoint/resume safety, deterministic multiprocessing, performance and
-cloud scaling, and fixed-vocabulary-budget implementation. This history does
-not select `IAST + surface_word` as the only final S1M1 representation.
+The unrestricted lexical support is approximately 19.07 million word-form
+identities. Expected-count mass reaches 90%, 95%, 99%, 99.9%, and 99.99% only
+at approximately 1.027M, 1.493M, 2.084M, 2.875M, and 3.893M identities. This
+million-scale long tail is evidence about the limitations of a flat
+whole-form/near-whole-form hypothesis class under the fixed sandhi grammar.
 
-The current calibration program answers two questions:
+K=16,384 and K=32,768 mainly induce atomization and phoneme fallback under
+high compression pressure. That pressure is not morphology. These runs remain
+capacity-stress and appendix sensitivity evidence only: do not add new K
+values, search for a vocabulary sweet spot, or run a fixed-K 18-cell matrix.
 
-### A. VM equivalence
-
-Unrestricted replicas test whether VM identity produces scientifically
-meaningful differences. If the scientific outputs are equivalent, later VMs
-can be assigned to different representation conditions without replicating
-every condition across many machines.
-
-### B. Vocabulary-capacity calibration
-
-Fixed budgets `K=16,384` and `K=32,768` are the current candidate `K1` and
-`K2` conditions. Unrestricted effective lexical support, posterior-mass
-concentration, segmentation/identity behavior, and constrained results should
-jointly determine whether those values need one evidence-based adjustment
-before S1M1 freezes. After the S1M1 specification is frozen, the final matrix
-must not change K while it is being run.
-
-Calibration runs remain valuable provenance and calibration evidence, but are
-not retroactively relabeled as final S1M1 cells.
+The active gate is the unrestricted learner across all six M₀
+representations. Five new cells are currently running at the exact frozen
+representation-gate checkpoint; no result is inferred until natural
+completion and final audit.
 
 ## Entry path to S1M1
 
@@ -109,20 +101,16 @@ shared scientific problem. Do not manufacture agreement with divergent
 IAST-specific and Devanagari-specific scientific hyperparameters.
 
 Only after this six-representation unrestricted gate and any necessary
-adjustment should the S1M1 specification freeze. The final matrix is then:
+frontend/shared adjustment should the S1M1 scientific specification freeze.
+The accepted unrestricted cells—not a fixed-K expansion—will define the
+primary representation evidence. K16/K32 remain appendix stress evidence.
 
-`6 M₀ representations × {unrestricted, K1, K2} = 18 scientific cells`
+Baseline/tokenizer comparison, common evaluation, paper-facing S1M1
+orchestration, aggregation, and tables/figures are deliberately deferred until
+the unrestricted gate completes and the S1M1 specification freezes. Only then
+should the project implement:
 
-All 18 cells must use the same frozen S1M1 scientific specification. These 18
-cells—not the preceding calibration runs—form the final Stage 1 / Milestone 1
-evidence package.
-
-Paper-facing S1M1 orchestration is deliberately deferred until calibration
-closes, the six unrestricted-representation gate completes, frontend/shared
-scientific adjustments are complete, K1/K2 freeze, and the S1M1 scientific
-specification freezes. Only then should the project implement:
-
-`declarative matrix -> per-cell provenance -> audit -> aggregation -> tables/figures`
+    declarative matrix -> per-cell provenance -> audit -> aggregation -> tables/figures
 
 ## Stage 1: known realization grammar
 
@@ -137,26 +125,43 @@ latent lexical identity are separated. The central question is:
 > realizations of one lexical identity without lexicalizing every surface
 > accident?
 
-### S1M2 — reusable stem/morpheme identity
+### S1M2 — reusable untyped compositional pieces
 
-The external-sandhi grammar remains known/fixed, while the latent target moves
-to a reusable surface-realizable stem or morpheme level, for example:
+S1M2 moves from flat whole-form identity to reusable compositional sharing:
 
-- `gaccha | ti`;
-- `gaccha | nti`;
-- `deva | s`.
+    x -> u -> p1 ... pk
+    concat(p1 ... pk) = u
 
-The planned scope stops there. It does not automatically extend to
-`gam | a | ti`, abstract feature bundles such as `<NOM.SG>`, or historical/PIE
-reconstruction; any such extension requires a later explicit decision.
+Here x is the observed surface, u is a lexical form licensed/reconstructed by
+the frozen external-sandhi grammar, and p1...pk are reusable pieces induced by
+the learner. Segmentation and composition are free, but rewrite is not: the
+pieces must concatenate exactly to u.
+
+Every learned piece belongs to one untyped V_piece inventory. The model does
+not predeclare stem, suffix, root, ending, lemma, POS, paradigm, or grammatical
+feature roles. Legal analyses include:
+
+    gaccha|ti
+    gacch|a|ti
+
+Either is acceptable when its concatenation exactly equals u. The milestone
+does not require decomposition to a traditional or historical root analysis.
+For example, gam|a|ti is unavailable when the frozen grammar does not license
+a gam -> gacch realization.
+
+Stage 1's only external linguistic supervision is the frozen external-sandhi
+table. It introduces no gold morpheme boundaries, stem/suffix labels, paradigm
+tables, POS, lemma, morphological analyzer, TransLIST/gold segmentation,
+Sanskrit-specific suffix inventory or morphological prior, or newly learned
+internal morphophonological rewrite rules.
 
 ### S1M3 — optional scientific extension
 
-Open S1M3 only if S1M2 leaves a direction with independent scientific
-semantics and a new scientific claim. Performance optimization, caching,
-implementation rewrites, worker scaling, and routine hyperparameter tuning do
-not constitute a milestone. If no such extension exists, Stage 1 closes at
-S1M2 and the project proceeds directly to Stage 2.
+Open S1M3 only if S1M2 results support additional scientific semantics and a
+new claim. It may investigate generic latent hierarchy or generic latent roles,
+but must not predeclare Sanskrit stem/suffix/root categories. Performance work
+and routine tuning do not qualify. If S1M2 is sufficient, close Stage 1 and
+proceed directly to Stage 2.
 
 ## Stage 2: learned realization grammar
 
@@ -211,6 +216,28 @@ might connect variation such as `entity` / `entiti-` without hallucinating a
 Sanskrit-style external-sandhi system at corpus scale. The question is not
 whether English “has sandhi”, but whether the learner infers the appropriate
 amount and type of realization grammar for each language.
+
+## Future hypothesis: systematic-gap allomorph induction
+
+This is a later-stage research hypothesis, not a frozen S1M2 requirement and
+not implemented now. Once a learner has a productive compositional baseline,
+posterior-predictive expected-but-missing forms may provide negative evidence.
+For example, a learned gacch- plus productive -ta pattern may strongly expect
+an unattested *gacchta while gata repeatedly occupies the corresponding
+distributional/compositional niche.
+
+A future model could compare an accidental-gap hypothesis against a shared
+latent-family/allomorphic-realization hypothesis using generic evidence:
+systematic gaps, MDL/Occam compression, complementary distribution,
+distributional/contextual similarity, shared compositional neighborhoods,
+consistent niche replacement, and an explicit complexity cost for exception
+or allomorph rules.
+
+The target may be a latent family such as {gacch-, gam-, ga-, gan-} without
+declaring gam the unique underlying form. The gam/gacch relation is a later
+allomorph-family stress test, not a gold answer S1M2 must recover. Any learned
+rewrite or allomorphic realization belongs to a later explicitly frozen stage,
+outside current S1M2's exact-concatenation contract.
 
 ## Historical naming and provenance
 
