@@ -4,16 +4,17 @@
 
 Branch: `exp/m0-core-methods`.
 
-The unrestricted six-representation pre-S1M1 gate remains active. The five new
-cells are still recorded only as RUNNING at scientific checkpoint:
+The unrestricted non-continuous 2×2 checkpoint is complete locally for IAST
+and Devanagari × `surface_word` and `legacy_joined`. Its quantitative and
+bounded qualitative evidence is recorded in
+`reports/core_methods/latent_lexicon/noncontinuous_representation_checkpoint_20260901.md`.
+The result is that spacing effects are much larger than script effects and
+that `legacy_joined` amplifies an over-long lexicalization failure mode already
+visible under `surface_word`.
 
-    375178ba50bd1a1644d65525907692b31413b33d
-
-IAST + `surface_word` is supplied by the four accepted unrestricted replicas.
-Core-01 through core-05 remain human-operated; core-06 remains standby. No
-completion, final audit, collected result, representation comparison, or S1M1
-freeze is inferred in this repository state.
-
+The continuous cells are not closed by that evidence. Do not claim a closed
+six-cell gate or final M1 conclusion, and do not alter the experiment registry
+from this local analysis task. Continuous hosts remain human-operated.
 ## Absolute operational boundary
 
 Do not contact a VM. Do not run SSH/SCP/rsync, bridge remote operations,
@@ -44,11 +45,14 @@ is:
       --profile scientific --output-root artifacts/post_gate/collected
 
 The scientific profile includes the existing report/metrics files plus the
-canonical scientific exports and still excludes `learner.sqlite`. Audit
-preservation, downloaded-hash validation, transfer receipts, registry checks,
-resume identity, and refusal to overwrite remain unchanged. Focused local
-synthetic bridge tests passed once (`8 passed in 0.92s`), and Python syntax
-compilation passed. No bridge command or remote operation was executed.
+canonical scientific exports and still excludes `learner.sqlite`. Its local
+inventory now hashes each downloaded scientific file once and supplies those
+bytes/SHA identities directly to remote-audit validation; missing audit items,
+missing files/inventory rows, and bytes/SHA mismatches still fail closed.
+Report-only collection remains backward compatible. Audit preservation,
+transfer receipts, registry checks, resume identity, and refusal to overwrite
+remain unchanged. Focused synthetic tests and Python syntax compilation pass.
+No bridge command or remote operation was executed.
 
 ## Local post-gate tooling prepared
 
@@ -113,18 +117,16 @@ from partial cloud metrics.
 
 ## Validation and next trigger
 
-Focused synthetic aggregation/review tests passed once:
+The focused bridge and qualitative-selector test files passed together (`51
+passed in 1.07s`), and Python syntax compilation passed. The final
+bounded local selector stopped after 64 distinct qualified candidates at 132
+matched records, reading about 1.67 MB and 1.34 MB from the two Devanagari
+analysis files; it produced all four requested additional illustrations. No
+full pytest, full-artifact scan, artifact hash recomputation, benchmark, cloud
+command, continuous-cell operation, or registry change was performed.
 
-    14 passed in 3.61s
-
-Python syntax compilation passed before the focused suite. During final local
-contract review, one new portable-path regression test passed (`1 passed in
-0.19s`); the already-completed 14-test suite was not rerun. No full pytest,
-corpus validation, artifact scan, benchmark, cloud command, or reviewer
-invocation was run.
-
-Resume only when the human reports natural completion and supplies audited
-local collections. Then validate the manifest, run the one local aggregation,
-perform the frozen quantitative/qualitative analysis, make the S1M1 freeze
-decision, freeze the review packet, and hand the identical packet to five fresh
-reviewer sessions.
+Next, wait for human-supplied completed/audited continuous collections. Then
+run the one frozen local aggregation across all six cells, make the S1M1
+representation decision, freeze the review packet, and hand the identical
+packet to five fresh reviewer sessions. Do not treat the non-continuous 2×2
+checkpoint as a six-cell or final-M1 result.

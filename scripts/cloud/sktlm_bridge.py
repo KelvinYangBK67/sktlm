@@ -62,6 +62,7 @@ SCIENTIFIC_FILES = (
     "latent_lexicon.tsv",
     "rule_usage.tsv",
 )
+AUDITED_SCIENTIFIC_FILES = ("summary.json", *SCIENTIFIC_FILES)
 COLLECTION_STATE_FILE = ".sktlm-collection.json"
 CONFIG_FIELDS = {
     "host",
@@ -1530,27 +1531,64 @@ def remote_audit_result(
 def validate_downloaded_audit_hashes(
     collection: Path,
     audit: Mapping[str, Any],
+    inventory: Sequence[Mapping[str, Any]] | None = None,
+    required_names: Sequence[str] = AUDITED_SCIENTIFIC_FILES,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     comparisons: list[dict[str, Any]] = []
     failures: list[str] = []
     scientific = audit.get("scientific_artifacts")
     if not isinstance(scientific, dict):
-        return comparisons, failures
-    for name, expected in scientific.items():
-        if not isinstance(expected, dict):
+        return comparisons, ["remote audit scientific_artifacts is missing"]
+
+    for name in required_names:
+        if name not in scientific:
+            failures.append(f"remote audit lacks scientific artifact: {name}")
+
+    if inventory is None:
+        inventory = _inventory_collected_files(collection, "scientific")
+    inventory_by_path: dict[str, Mapping[str, Any]] = {}
+    for row in inventory:
+        relative = row.get("path")
+        if not isinstance(relative, str) or not relative:
+            failures.append("local inventory contains an invalid path")
             continue
+        if relative in inventory_by_path:
+            failures.append(f"local inventory contains duplicate path: {relative}")
+            continue
+        inventory_by_path[relative] = row
+
+    for name in sorted(required_names):
+        if name not in scientific:
+            continue
+        expected = scientific[name]
+        relative = f"benchmark/{name}"
         local_path = collection / "benchmark" / str(name)
-        if not local_path.is_file():
+        if not isinstance(expected, dict):
+            failures.append(f"remote audit scientific identity is invalid: {name}")
             continue
-        actual_bytes = local_path.stat().st_size
-        actual_sha256 = file_sha256(local_path)
+        if not local_path.is_file():
+            failures.append(f"downloaded scientific artifact is missing: {name}")
+            continue
+        local = inventory_by_path.get(relative)
+        if local is None:
+            failures.append(f"local inventory lacks downloaded artifact: {relative}")
+            continue
+        actual_bytes = local.get("bytes")
+        actual_sha256 = local.get("sha256")
+        if (
+            isinstance(actual_bytes, bool)
+            or not isinstance(actual_bytes, int)
+            or not isinstance(actual_sha256, str)
+        ):
+            failures.append(f"local inventory identity is invalid: {relative}")
+            continue
         equal = (
             actual_bytes == expected.get("bytes")
             and actual_sha256 == expected.get("sha256")
         )
         comparisons.append(
             {
-                "path": f"benchmark/{name}",
+                "path": relative,
                 "bytes": actual_bytes,
                 "sha256": actual_sha256,
                 "remote_audit_equal": equal,
@@ -1600,7 +1638,17 @@ def collect_action(
         "sha256": file_sha256(audit_path),
     }
     files = [*details["files"], audit_file]
-    comparisons, hash_failures = validate_downloaded_audit_hashes(collection, audit)
+    required_audit_names = (
+        AUDITED_SCIENTIFIC_FILES
+        if profile in {"scientific", "full"}
+        else ("summary.json",)
+    )
+    comparisons, hash_failures = validate_downloaded_audit_hashes(
+        collection,
+        audit,
+        details["files"],
+        required_audit_names,
+    )
     selected_run_files, _selected_metrics_files = profile_files(profile)
     remote_only = (
         []

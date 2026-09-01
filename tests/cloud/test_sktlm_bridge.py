@@ -459,25 +459,116 @@ def test_failed_sync_operation_still_writes_redacted_receipt(
     assert "<redacted>" in text
 
 
-def test_downloaded_files_are_compared_with_remote_audit(tmp_path: Path) -> None:
-    benchmark = tmp_path / "benchmark"
+def audited_scientific_fixture(
+    root: Path,
+) -> tuple[dict[str, object], list[dict[str, object]]]:
+    benchmark = root / "benchmark"
     benchmark.mkdir()
-    summary = benchmark / "summary.json"
-    summary.write_text('{"valid": true}\n', encoding="utf-8")
-    audit = {
-        "scientific_artifacts": {
-            "summary.json": {
-                "bytes": summary.stat().st_size,
-                "sha256": bridge.file_sha256(summary),
-            }
+    artifacts: dict[str, object] = {}
+    for name in bridge.AUDITED_SCIENTIFIC_FILES:
+        path = benchmark / name
+        path.write_text(f"fixture:{name}\n", encoding="utf-8")
+        artifacts[name] = {
+            "bytes": path.stat().st_size,
+            "sha256": bridge.file_sha256(path),
         }
-    }
-    comparisons, failures = bridge.validate_downloaded_audit_hashes(tmp_path, audit)
+    audit: dict[str, object] = {"scientific_artifacts": artifacts}
+    return audit, bridge._inventory_collected_files(root, "scientific")
+
+
+def test_matching_precomputed_inventory_passes_without_rehash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    audit, inventory = audited_scientific_fixture(tmp_path)
+
+    def unexpected_hash(_path: Path) -> str:
+        raise AssertionError("validation must reuse the precomputed inventory")
+
+    monkeypatch.setattr(bridge, "file_sha256", unexpected_hash)
+    comparisons, failures = bridge.validate_downloaded_audit_hashes(
+        tmp_path, audit, inventory
+    )
+
     assert failures == []
-    assert comparisons[0]["remote_audit_equal"] is True
-    summary.write_text('{"valid": false}\n', encoding="utf-8")
-    _comparisons, failures = bridge.validate_downloaded_audit_hashes(tmp_path, audit)
-    assert failures == ["downloaded artifact differs from remote audit: summary.json"]
+    assert len(comparisons) == len(bridge.AUDITED_SCIENTIFIC_FILES)
+    assert all(row["remote_audit_equal"] for row in comparisons)
+
+
+def test_precomputed_inventory_wrong_sha_fails_closed(tmp_path: Path) -> None:
+    audit, inventory = audited_scientific_fixture(tmp_path)
+    inventory[0]["sha256"] = "0" * 64
+
+    _comparisons, failures = bridge.validate_downloaded_audit_hashes(
+        tmp_path, audit, inventory
+    )
+
+    assert any("differs from remote audit" in failure for failure in failures)
+
+
+def test_precomputed_inventory_wrong_size_fails_closed(tmp_path: Path) -> None:
+    audit, inventory = audited_scientific_fixture(tmp_path)
+    inventory[0]["bytes"] = int(inventory[0]["bytes"]) + 1
+
+    _comparisons, failures = bridge.validate_downloaded_audit_hashes(
+        tmp_path, audit, inventory
+    )
+
+    assert any("differs from remote audit" in failure for failure in failures)
+
+
+def test_missing_local_inventory_entry_fails_closed(tmp_path: Path) -> None:
+    audit, inventory = audited_scientific_fixture(tmp_path)
+    missing = f"benchmark/{bridge.AUDITED_SCIENTIFIC_FILES[-1]}"
+    inventory = [row for row in inventory if row["path"] != missing]
+
+    _comparisons, failures = bridge.validate_downloaded_audit_hashes(
+        tmp_path, audit, inventory
+    )
+
+    assert failures == [f"local inventory lacks downloaded artifact: {missing}"]
+
+
+def test_missing_downloaded_file_fails_closed(tmp_path: Path) -> None:
+    audit, inventory = audited_scientific_fixture(tmp_path)
+    missing = bridge.AUDITED_SCIENTIFIC_FILES[-1]
+    (tmp_path / "benchmark" / missing).unlink()
+
+    _comparisons, failures = bridge.validate_downloaded_audit_hashes(
+        tmp_path, audit, inventory
+    )
+
+    assert failures == [f"downloaded scientific artifact is missing: {missing}"]
+
+def test_missing_remote_audit_item_fails_closed(tmp_path: Path) -> None:
+    audit, inventory = audited_scientific_fixture(tmp_path)
+    scientific = audit["scientific_artifacts"]
+    assert isinstance(scientific, dict)
+    missing = bridge.AUDITED_SCIENTIFIC_FILES[-1]
+    del scientific[missing]
+
+    _comparisons, failures = bridge.validate_downloaded_audit_hashes(
+        tmp_path, audit, inventory
+    )
+
+    assert failures == [f"remote audit lacks scientific artifact: {missing}"]
+
+
+def test_report_validation_only_requires_downloaded_summary(tmp_path: Path) -> None:
+    audit, inventory = audited_scientific_fixture(tmp_path)
+    report_inventory = [
+        row for row in inventory if row["path"] == "benchmark/summary.json"
+    ]
+
+    comparisons, failures = bridge.validate_downloaded_audit_hashes(
+        tmp_path,
+        audit,
+        report_inventory,
+        required_names=("summary.json",),
+    )
+
+    assert failures == []
+    assert [row["path"] for row in comparisons] == ["benchmark/summary.json"]
 
 
 def test_scientific_collect_is_single_audited_receipted_collection(
@@ -504,6 +595,13 @@ def test_scientific_collect_is_single_audited_receipted_collection(
         },
     }
     events: list[str] = []
+    hash_calls: dict[str, int] = {}
+    original_file_sha256 = bridge.file_sha256
+
+    def counting_file_sha256(path: Path) -> str:
+        key = str(path.resolve())
+        hash_calls[key] = hash_calls.get(key, 0) + 1
+        return original_file_sha256(path)
 
     def fake_assignment(
         _repo_root: Path,
@@ -567,6 +665,7 @@ def test_scientific_collect_is_single_audited_receipted_collection(
         receipt.update(details)
         return destination, details
 
+    monkeypatch.setattr(bridge, "file_sha256", counting_file_sha256)
     monkeypatch.setattr(bridge, "find_executable", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(bridge, "collection_registry_assignment", fake_assignment)
     monkeypatch.setattr(bridge, "remote_audit_result", fake_audit)
@@ -621,6 +720,9 @@ def test_scientific_collect_is_single_audited_receipted_collection(
         for name in bridge.REPORT_METRICS_FILES
     )
     assert not (collection / "benchmark/learner.sqlite").exists()
+    for name in scientific_names:
+        path = collection / "benchmark" / name
+        assert hash_calls[str(path.resolve())] == 1
     with pytest.raises(bridge.BridgeError, match="refusing overwrite"):
         bridge._local_collection_root(tmp_path, output_root, run_id)
 

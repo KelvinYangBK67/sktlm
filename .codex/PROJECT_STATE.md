@@ -961,3 +961,35 @@ identity, and refusal to overwrite remain intact. Eight focused local synthetic
 bridge tests passed in 0.92 seconds, and Python syntax compilation passed. No
 VM, SSH, SCP, rsync, remote audit, collection, benchmark, scientific runtime,
 or registry operation was performed.
+
+## 36. Non-continuous 2×2 checkpoint closed locally (2026-09-01)
+
+The completed unrestricted IAST/Devanagari × `surface_word`/`legacy_joined`
+four-cell evidence is now promoted to
+`reports/core_methods/latent_lexicon/noncontinuous_representation_checkpoint_20260901.md`.
+Within `surface_word`, script conversion is exactly scientifically equivalent
+except for raw character count. Within `legacy_joined`, the script effect is
+negligible but not exactly zero. In contrast, joining has a large and nearly
+script-invariant effect: active/low-count lexical types rise about 36%, expected
+lexical-token count falls about 21%, entropy falls about 19.5%, identity mass
+rises about 25%, and rule usage falls about 28.8%.
+
+A bounded deterministic Devanagari merge selector supplied four additional
+real examples plus the pre-specified anchor without scanning the full analysis
+artifacts. The qualitative evidence shows that `legacy_joined` amplifies an
+over-long lexicalization tendency already present in `surface_word`. This is
+recorded as a low-supervision learner/objective failure mode motivating later
+abstraction/reuse objectives, not Sanskrit-specific hard constraints or a
+claim of linguistic understanding.
+
+Scientific collection now reuses the bytes/SHA inventory already computed
+after transfer, so each canonical local payload is hashed once rather than
+read a second time for remote-audit comparison. Scientific/full collection
+still fails closed on missing audit identities, missing local files or
+inventory rows, and bytes/SHA mismatch; report-only collection remains
+backward compatible. Focused synthetic tests passed, with no remote operation,
+scientific-runtime change, corpus/manifest change, or registry change.
+
+The continuous cells remain outside this checkpoint. The six-cell gate and
+final M1 conclusion remain open until human-supplied completed/audited
+continuous collections are available.
