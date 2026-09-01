@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 import sqlite3
@@ -19,8 +20,7 @@ SCIENTIFIC_FILES = (
     "latent_lexicon.tsv",
     "rule_usage.tsv",
 )
-REQUIRED_FILES = (
-    "benchmark_metrics.json",
+BASE_REQUIRED_FILES = (
     "timing_metrics.json",
     "checkpoint.json",
     "config.json",
@@ -28,6 +28,10 @@ REQUIRED_FILES = (
     "learner.sqlite",
     *SCIENTIFIC_FILES,
 )
+BENCHMARK_METRICS_FILE = "benchmark_metrics.json"
+VOCABULARY_FILES = ("vocabulary_budget.json", "vocabulary.tsv")
+FORMAL_SCRIPTS = frozenset({"iast", "devanagari"})
+FORMAL_CONDITIONS = frozenset({"surface_word", "legacy_joined", "continuous"})
 EXPECTED_FREEZE_ID = (
     "9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40"
 )
@@ -81,9 +85,84 @@ def audit_database(path: Path) -> dict[str, Any]:
     }
 
 
-def audit_run(run_dir: Path, reference: Path | None) -> dict[str, Any]:
+def _direct_full_configuration(config: dict[str, Any]) -> bool:
+    return all(
+        config.get(name) is None
+        for name in ("document_list", "max_documents", "max_lines_per_document")
+    )
+
+
+def _audit_vocabulary(
+    run_dir: Path,
+    config: dict[str, Any],
+    checkpoint: dict[str, Any],
+    provenance: dict[str, Any],
+    summary: dict[str, Any],
+    failures: list[str],
+) -> dict[str, Any] | None:
+    budget = config.get("vocab_budget")
+    if budget is None:
+        return None
+    missing = [name for name in VOCABULARY_FILES if not (run_dir / name).is_file()]
+    if missing:
+        failures.append(f"missing fixed-vocabulary files: {missing}")
+        return None
+
+    metadata = load_json(run_dir / "vocabulary_budget.json")
+    if metadata.get("total_budget") != budget:
+        failures.append("vocabulary budget does not match config")
+    if metadata.get("base_unit_count") != 50:
+        failures.append("vocabulary base-unit count is not 50")
+    if metadata.get("status") != "frozen":
+        failures.append("vocabulary is not frozen")
+    if metadata.get("surface_realizations_consume_slots") is not False:
+        failures.append("surface realizations incorrectly consume vocabulary slots")
+
+    with (run_dir / "vocabulary.tsv").open("r", encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle, delimiter="\t"))
+    keys = [row.get("form_key", "") for row in rows]
+    ranks = [row.get("rank", "") for row in rows]
+    if not keys or any(not key for key in keys):
+        failures.append("vocabulary.tsv contains an empty or missing form_key")
+    if len(keys) != len(set(keys)):
+        failures.append("vocabulary.tsv contains duplicate form_key identities")
+    if ranks != [str(index) for index in range(1, len(rows) + 1)]:
+        failures.append("vocabulary.tsv ranks are not contiguous from 1")
+    if sum(row.get("kind") == "base" for row in rows) != 50:
+        failures.append("vocabulary.tsv does not contain exactly 50 base units")
+    if metadata.get("actual_vocabulary_size") != len(rows):
+        failures.append("vocabulary.tsv size does not match vocabulary metadata")
+    if len(rows) > int(budget):
+        failures.append("vocabulary.tsv exceeds the configured budget")
+    allowed_sha = hashlib.sha256(
+        "".join(f"{key}\n" for key in sorted(keys)).encode("utf-8")
+    ).hexdigest()
+    if metadata.get("allowed_key_sha256") != allowed_sha:
+        failures.append("vocabulary allowed-key SHA-256 does not match vocabulary.tsv")
+    for label, payload in (
+        ("checkpoint", checkpoint.get("vocabulary_budget")),
+        ("provenance", provenance.get("vocabulary_budget")),
+        ("summary", summary.get("vocabulary_budget")),
+    ):
+        if not isinstance(payload, dict):
+            failures.append(f"{label} is missing frozen-vocabulary metadata")
+        elif payload.get("allowed_key_sha256") != allowed_sha:
+            failures.append(f"{label} frozen-vocabulary SHA-256 differs")
+    return {
+        "total_budget": budget,
+        "actual_vocabulary_size": len(rows),
+        "base_unit_count": sum(row.get("kind") == "base" for row in rows),
+        "allowed_key_sha256": allowed_sha,
+    }
+
+
+def audit_run(
+    run_dir: Path,
+    reference: Path | None,
+    metrics_dir: Path | None = None,
+) -> dict[str, Any]:
     failures: list[str] = []
-    missing = [name for name in REQUIRED_FILES if not (run_dir / name).is_file()]
+    missing = [name for name in BASE_REQUIRED_FILES if not (run_dir / name).is_file()]
     if missing:
         return {
             "run_dir": str(run_dir),
@@ -93,7 +172,20 @@ def audit_run(run_dir: Path, reference: Path | None) -> dict[str, Any]:
 
     checkpoint = load_json(run_dir / "checkpoint.json")
     config = load_json(run_dir / "config.json")
-    benchmark = load_json(run_dir / "benchmark_metrics.json")
+    benchmark_path = run_dir / BENCHMARK_METRICS_FILE
+    benchmark = load_json(benchmark_path) if benchmark_path.is_file() else None
+    if benchmark is not None:
+        run_kind = "benchmark_harness"
+    elif _direct_full_configuration(config):
+        run_kind = "direct_full_m0"
+    else:
+        return {
+            "run_dir": str(run_dir),
+            "valid": False,
+            "failures": [
+                "benchmark_metrics.json is required for a scoped/non-full run"
+            ],
+        }
     timing = load_json(run_dir / "timing_metrics.json")
     summary = load_json(run_dir / "summary.json")
     provenance = load_json(run_dir / "provenance.json")
@@ -102,16 +194,23 @@ def audit_run(run_dir: Path, reference: Path | None) -> dict[str, Any]:
         failures.append("checkpoint completed_passes does not match config")
     if checkpoint.get("inspection_complete") is not True:
         failures.append("inspection is not complete")
-    if benchmark.get("passes") != config.get("passes"):
-        failures.append("benchmark passes does not match config")
-    if benchmark.get("workers") != config.get("workers"):
-        failures.append("benchmark workers does not match config")
-    if benchmark.get("runtime") != timing:
-        failures.append("timing_metrics does not equal benchmark runtime")
-    if provenance.get("condition") != "surface_word":
-        failures.append("provenance condition is not surface_word")
-    if provenance.get("script") != "iast":
-        failures.append("provenance script is not iast")
+    if benchmark is not None:
+        if benchmark.get("passes") != config.get("passes"):
+            failures.append("benchmark passes does not match config")
+        if benchmark.get("workers") != config.get("workers"):
+            failures.append("benchmark workers does not match config")
+        if benchmark.get("runtime") != timing:
+            failures.append("timing_metrics does not equal benchmark runtime")
+    script = config.get("script", provenance.get("script"))
+    condition = config.get("condition", provenance.get("condition"))
+    if script not in FORMAL_SCRIPTS:
+        failures.append(f"unsupported formal script: {script!r}")
+    if condition not in FORMAL_CONDITIONS:
+        failures.append(f"unsupported formal condition: {condition!r}")
+    if provenance.get("script") != script:
+        failures.append("provenance script does not match config")
+    if provenance.get("condition") != condition:
+        failures.append("provenance condition does not match config")
     if provenance.get("freeze_id") != EXPECTED_FREEZE_ID:
         failures.append("provenance freeze ID is not frozen M0")
     if provenance.get("external_rule_count") != EXPECTED_RULES:
@@ -125,10 +224,24 @@ def audit_run(run_dir: Path, reference: Path | None) -> dict[str, Any]:
         failures.append("summary reports candidate overflow")
     if any(item.get("overflowed_tokens") != 0 for item in checkpoint.get("history", ())):
         failures.append("a training pass reports candidate overflow")
-    if summary.get("segments") != benchmark.get("inspection_segments"):
-        failures.append("summary and benchmark segment counts differ")
-    if summary.get("characters") != benchmark.get("inspection_characters"):
-        failures.append("summary and benchmark character counts differ")
+    if benchmark is not None:
+        if summary.get("segments") != benchmark.get("inspection_segments"):
+            failures.append("summary and benchmark segment counts differ")
+        if summary.get("characters") != benchmark.get("inspection_characters"):
+            failures.append("summary and benchmark character counts differ")
+    iteration_metrics = load_json(run_dir / "iteration_metrics.json")
+    if iteration_metrics != checkpoint.get("history"):
+        failures.append("iteration_metrics does not match checkpoint history")
+
+    process_metrics: dict[str, Any] | None = None
+    if metrics_dir is not None:
+        process_summary_path = metrics_dir / "process_tree_summary.json"
+        if not process_summary_path.is_file():
+            failures.append(f"metrics summary is missing: {process_summary_path}")
+        else:
+            process_metrics = load_json(process_summary_path)
+            if process_metrics.get("return_code") != 0:
+                failures.append("process-tree metrics reports nonzero return code")
 
     residue = sorted(
         str(path.relative_to(run_dir))
@@ -148,6 +261,10 @@ def audit_run(run_dir: Path, reference: Path | None) -> dict[str, Any]:
         failures.append(f"SQLite quick_check: {database['quick_check']}")
     if database["lexicon_rows"] != database["inspection_rows"]:
         failures.append("training and inspection lexical row counts differ")
+
+    vocabulary = _audit_vocabulary(
+        run_dir, config, checkpoint, provenance, summary, failures
+    )
 
     scientific: dict[str, Any] = {}
     for name in SCIENTIFIC_FILES:
@@ -176,6 +293,7 @@ def audit_run(run_dir: Path, reference: Path | None) -> dict[str, Any]:
 
     return {
         "run_dir": str(run_dir),
+        "run_kind": run_kind,
         "reference": None if reference is None else str(reference),
         "valid": not failures,
         "failures": failures,
@@ -186,9 +304,13 @@ def audit_run(run_dir: Path, reference: Path | None) -> dict[str, Any]:
             "segments": summary.get("segments"),
             "characters": summary.get("characters"),
             "overflowed_tokens": summary.get("overflowed_tokens"),
-            "workers": benchmark.get("workers"),
+            "workers": config.get("workers"),
+            "script": script,
+            "condition": condition,
         },
         "provenance": provenance,
+        "process_metrics": process_metrics,
+        "vocabulary": vocabulary,
         "database": database,
         "residue": residue,
         "scientific_artifacts": scientific,
@@ -199,9 +321,10 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--reference", type=Path)
+    parser.add_argument("--metrics-dir", type=Path)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    result = audit_run(args.run_dir, args.reference)
+    result = audit_run(args.run_dir, args.reference, args.metrics_dir)
     payload = json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)

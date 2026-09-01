@@ -49,6 +49,8 @@ from sktlm.latent.vocabulary import (
 
 EXPECTED_FREEZE_ID = "9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40"
 IMPLEMENTATION = "latent-lexicon-v1"
+FORMAL_SCRIPTS = frozenset({"iast", "devanagari"})
+FORMAL_CONDITIONS = frozenset({"surface_word", "legacy_joined", "continuous"})
 
 _WORKER_GRAMMAR: StructuredSandhiGrammar | None = None
 _WORKER_SCORER: NeutralFormScorer | LexiconScorer | None = None
@@ -62,6 +64,8 @@ class TrainingConfig:
     document_list: Path | None = None
     output_root: Path = Path("artifacts/latent_lexicon")
     run_id: str | None = None
+    script: str = "iast"
+    condition: str = "surface_word"
     passes: int = 3
     vocab_budget: int | None = None
     workers: int = 1
@@ -85,6 +89,10 @@ class TrainingConfig:
     resume: bool = False
 
     def __post_init__(self) -> None:
+        if self.script not in FORMAL_SCRIPTS:
+            raise ValueError(f"unsupported formal script: {self.script}")
+        if self.condition not in FORMAL_CONDITIONS:
+            raise ValueError(f"unsupported formal condition: {self.condition}")
         if self.passes < 1:
             raise ValueError("passes must be >= 1")
         if self.vocab_budget is not None and self.vocab_budget < BASE_UNIT_COUNT:
@@ -231,7 +239,10 @@ def _config_signature(config: TrainingConfig) -> str:
 
 
 def _run_id(config: TrainingConfig) -> str:
-    return config.run_id or f"m0_iast_surface_word_{_config_signature(config)[:12]}"
+    return (
+        config.run_id
+        or f"m0_{config.script}_{config.condition}_{_config_signature(config)[:12]}"
+    )
 
 
 def _replace_file(source: Path, target: Path) -> None:
@@ -349,16 +360,22 @@ def load_documents(
     repo_root: Path,
     max_documents: int | None,
     document_list: Path | None = None,
+    script: str = "iast",
+    condition: str = "surface_word",
 ) -> tuple[CorpusDocument, ...]:
+    if script not in FORMAL_SCRIPTS:
+        raise ValueError(f"unsupported formal script: {script}")
+    if condition not in FORMAL_CONDITIONS:
+        raise ValueError(f"unsupported formal condition: {condition}")
     with manifest.open("r", encoding="utf-8", newline="") as handle:
         rows = [
             row
             for row in csv.DictReader(handle)
-            if row.get("script") == "iast"
-            and row.get("condition") == "surface_word"
+            if row.get("script") == script
+            and row.get("condition") == condition
         ]
     if not rows:
-        raise ValueError("Manifest has no IAST + surface_word rows.")
+        raise ValueError(f"Manifest has no {script} + {condition} rows.")
     freeze_ids = {row["freeze_id"] for row in rows}
     if freeze_ids != {EXPECTED_FREEZE_ID}:
         raise ValueError(f"Unexpected or mixed M0 freeze IDs: {sorted(freeze_ids)}")
@@ -415,6 +432,7 @@ def _iter_document_segments(
                 iter_observed_segments(
                     line.rstrip("\r\n"),
                     max_tokens=config.max_segment_tokens,
+                    script=config.script,
                 )
             ):
                 yield line_number, segment_index, segment
@@ -2031,6 +2049,8 @@ def run_training(
             manifest,
             repo_root=repo_root,
             max_documents=config.max_documents,
+            script=config.script,
+            condition=config.condition,
             document_list=(
                 None
                 if config.document_list is None
@@ -2052,8 +2072,8 @@ def run_training(
             "rules_path": rules_path.as_posix(),
             "rules_sha256": _file_sha256(rules_path),
             "external_rule_count": len(grammar.rules),
-            "script": "iast",
-            "condition": "surface_word",
+            "script": config.script,
+            "condition": config.condition,
             "document_count": len(documents),
             "document_list": (
                 None

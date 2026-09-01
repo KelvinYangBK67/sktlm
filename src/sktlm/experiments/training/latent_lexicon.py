@@ -1,4 +1,4 @@
-"""CLI for full-corpus IAST surface-word latent lexical induction."""
+"""CLI for full-corpus latent lexical induction over formal M0 cells."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ from sktlm.latent.training import TrainingConfig, run_training
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Train the streaming v1 latent Sanskrit unigram lexicon for the "
-            "frozen M0 IAST + surface_word condition."
+            "Train the streaming v1 latent Sanskrit unigram lexicon for one "
+            "frozen M0 script/spacing condition."
         )
     )
     parser.add_argument(
@@ -27,6 +27,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=Path("artifacts/latent_lexicon"),
     )
     parser.add_argument("--run-id")
+    parser.add_argument(
+        "--script",
+        choices=("iast", "devanagari"),
+        default="iast",
+    )
+    parser.add_argument(
+        "--condition",
+        choices=("surface_word", "legacy_joined", "continuous"),
+        default="surface_word",
+    )
     parser.add_argument("--passes", type=int, default=3)
     parser.add_argument(
         "--vocab-budget",
@@ -65,6 +75,8 @@ def main(argv: list[str] | None = None) -> None:
         document_list=args.document_list,
         output_root=args.output_root,
         run_id=args.run_id,
+        script=args.script,
+        condition=args.condition,
         passes=args.passes,
         vocab_budget=args.vocab_budget,
         workers=args.workers,

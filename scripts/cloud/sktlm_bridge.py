@@ -62,6 +62,7 @@ SCIENTIFIC_FILES = (
     "latent_lexicon.tsv",
     "rule_usage.tsv",
 )
+COLLECTION_STATE_FILE = ".sktlm-collection.json"
 CONFIG_FIELDS = {
     "host",
     "user",
@@ -726,7 +727,19 @@ def _remote_endpoint(config: BridgeConfig) -> str:
 
 
 def _rsync_ssh_transport(config: BridgeConfig) -> str:
-    argv = ["ssh", "-o", "BatchMode=yes", "-p", str(config.port)]
+    argv = [
+        "ssh",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ServerAliveInterval=15",
+        "-o",
+        "ServerAliveCountMax=20",
+        "-o",
+        "TCPKeepAlive=yes",
+        "-p",
+        str(config.port),
+    ]
     if config.identity_file:
         argv.extend(["-i", config.identity_file])
     return shlex.join(argv)
@@ -774,6 +787,8 @@ def build_rsync_argv(
     destination: Path | str,
     direction: str,
     includes: Sequence[str] | None = None,
+    compress: bool = False,
+    append_verify: bool = False,
 ) -> list[str]:
     if direction not in {"push", "pull"}:
         raise BridgeError(f"unsupported rsync direction: {direction}")
@@ -791,6 +806,10 @@ def build_rsync_argv(
         "-e",
         _rsync_ssh_transport(config),
     ]
+    if compress:
+        base.append("-z")
+    if append_verify:
+        base.append("--append-verify")
     if includes is not None:
         base.append("--prune-empty-dirs")
         base.extend(f"--include=/{name}" for name in includes)
@@ -1244,6 +1263,8 @@ def _local_collection_root(
     repo_root: Path,
     output_root: Path | None,
     run_id: str,
+    *,
+    resume_identity: Mapping[str, Any] | None = None,
 ) -> Path:
     base = output_root or (repo_root / "artifacts/cloud_collected")
     if not base.is_absolute():
@@ -1252,8 +1273,55 @@ def _local_collection_root(
     if destination == repo_root:
         raise BridgeError("collection destination may not be the repository root")
     if destination.exists():
-        raise BridgeError(f"local collected result already exists; refusing overwrite: {destination}")
+        if resume_identity is None:
+            raise BridgeError(f"local collected result already exists; refusing overwrite: {destination}")
+        state_path = destination / COLLECTION_STATE_FILE
+        if not state_path.is_file():
+            raise BridgeError(
+                "local collection exists without a resumable identity marker; "
+                f"refusing overwrite: {destination}"
+            )
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise BridgeError(f"invalid local collection state: {state_path}") from exc
+        if state.get("status") != "incomplete":
+            raise BridgeError(f"local collected result already exists; refusing overwrite: {destination}")
+        if state.get("identity") != dict(resume_identity):
+            raise BridgeError("partial collection identity does not match this result pull")
+        return destination
+    if resume_identity is not None:
+        destination.mkdir(parents=True)
+        _write_collection_state(
+            destination,
+            {
+                "schema_version": 1,
+                "status": "incomplete",
+                "started_at": utc_now(),
+                "finished_at": None,
+                "identity": dict(resume_identity),
+            },
+        )
     return destination
+
+
+def _write_collection_state(destination: Path, state: Mapping[str, Any]) -> None:
+    path = destination / COLLECTION_STATE_FILE
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="",
+    )
+    os.replace(temporary, path)
+
+
+def _complete_collection(destination: Path) -> None:
+    path = destination / COLLECTION_STATE_FILE
+    state = json.loads(path.read_text(encoding="utf-8"))
+    state["status"] = "complete"
+    state["finished_at"] = utc_now()
+    _write_collection_state(destination, state)
 
 
 def _inventory_collected_files(root: Path, profile: str) -> list[dict[str, Any]]:
@@ -1261,6 +1329,8 @@ def _inventory_collected_files(root: Path, profile: str) -> list[dict[str, Any]]
     hash_names = set(REPORT_RUN_FILES) | set(REPORT_METRICS_FILES) | set(SCIENTIFIC_FILES)
     for path in sorted(item for item in root.rglob("*") if item.is_file()):
         relative = path.relative_to(root).as_posix()
+        if relative == COLLECTION_STATE_FILE:
+            continue
         row: dict[str, Any] = {"path": relative, "bytes": path.stat().st_size}
         if profile != "full" or path.name in hash_names or path.stat().st_size <= 10 * 1024 * 1024:
             row["sha256"] = file_sha256(path)
@@ -1298,29 +1368,46 @@ def transfer_results(
     if availability.get("run_exists") != "true":
         raise BridgeError(f"remote benchmark run is missing: {run_id}")
 
-    collection = _local_collection_root(repo_root, output_root, run_id)
+    collection_identity = {
+        "run_id": run_id,
+        "metrics_id": metrics_id,
+        "transfer_profile": profile,
+        "host_profile": config.host_profile,
+        "machine_id": config.machine_id,
+    }
+    collection = _local_collection_root(
+        repo_root,
+        output_root,
+        run_id,
+        resume_identity=collection_identity,
+    )
     benchmark_destination = collection / "benchmark"
     metrics_destination = collection / "metrics"
-    benchmark_destination.mkdir(parents=True)
+    benchmark_destination.mkdir(parents=True, exist_ok=True)
     run_path, metrics_path = _result_paths(config, run_id, metrics_id)
+    large_result_profile = profile in {"scientific", "full"}
     run_command = build_rsync_argv(
         config,
         source=run_path,
         destination=benchmark_destination,
         direction="pull",
         includes=run_files,
+        compress=large_result_profile,
+        append_verify=large_result_profile,
     )
     _run_rsync(run_command, runner, receipt, f"benchmark:{profile}")
 
     metrics_available = availability.get("metrics_exists") == "true"
     if metrics_available:
-        metrics_destination.mkdir(parents=True)
+        metrics_destination.mkdir(parents=True, exist_ok=True)
         metrics_command = build_rsync_argv(
             config,
             source=metrics_path,
             destination=metrics_destination,
             direction="pull",
             includes=metrics_files,
+            compress=large_result_profile,
+            append_verify=large_result_profile,
         )
         _run_rsync(metrics_command, runner, receipt, f"metrics:{profile}")
     else:
@@ -1346,6 +1433,7 @@ def transfer_results(
         "byte_count": sum(int(row["bytes"]) for row in files),
         "remote_repo_head": remote_head,
     }
+    _complete_collection(collection)
     receipt.update(details)
     return collection, details
 
@@ -1379,16 +1467,26 @@ def pull_results_action(
     return {**details, "valid": True}
 
 
-def build_remote_audit_script(config: BridgeConfig, run_id: str) -> str:
+def build_remote_audit_script(
+    config: BridgeConfig,
+    run_id: str,
+    metrics_id: str | None = None,
+) -> str:
     require_remote_config(config)
-    run_path, _metrics = _result_paths(config, run_id, run_id)
+    run_path, metrics_path = _result_paths(config, run_id, metrics_id or run_id)
+    metrics_assignment = ""
+    metrics_argument = ""
+    if metrics_id is not None:
+        metrics_assignment = f"metrics={shlex.quote(metrics_path)}"
+        metrics_argument = ' --metrics-dir "$metrics"'
     return f"""
 repo={shlex.quote(config.remote_repo or '')}
 run={shlex.quote(run_path)}
+{metrics_assignment}
 if [ ! -d "$repo/.git" ]; then printf 'remote repository: MISSING\\n' >&2; exit 4; fi
 if [ ! -x "$repo/.venv/bin/python" ]; then printf 'remote Python venv: MISSING\\n' >&2; exit 5; fi
 cd "$repo"
-exec ./.venv/bin/python scripts/cloud/audit_latent_run.py "$run"
+exec ./.venv/bin/python scripts/cloud/audit_latent_run.py "$run"{metrics_argument}
 """.strip()
 
 
@@ -1396,8 +1494,16 @@ def remote_audit_result(
     config: BridgeConfig,
     runner: SystemRunner,
     run_id: str,
+    metrics_id: str | None = None,
 ) -> dict[str, Any]:
-    result = run_ssh(config, build_remote_audit_script(config, validate_run_id(run_id)), runner)
+    validated_metrics = None if metrics_id is None else validate_run_id(metrics_id)
+    result = run_ssh(
+        config,
+        build_remote_audit_script(
+            config, validate_run_id(run_id), validated_metrics
+        ),
+        runner,
+    )
     if not result.stdout.strip():
         return {
             "valid": False,
@@ -1471,7 +1577,7 @@ def collect_action(
     if assignment is not None:
         receipt["registry_assignment"] = assignment
     require_tool("ssh")
-    audit = remote_audit_result(config, runner, run_id)
+    audit = remote_audit_result(config, runner, run_id, metrics_id)
     receipt["remote_audit"] = audit
     collection, details = transfer_results(
         receipt,

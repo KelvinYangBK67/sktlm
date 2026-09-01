@@ -268,6 +268,10 @@ def test_rsync_command_has_no_delete_and_redacts_identity() -> None:
     assert not any(argument == "--delete" or argument.startswith("--delete-") for argument in argv)
     assert "--partial" in argv
     assert "--protect-args" in argv
+    transport = argv[argv.index("-e") + 1]
+    assert "ServerAliveInterval=15" in transport
+    assert "ServerAliveCountMax=20" in transport
+    assert "TCPKeepAlive=yes" in transport
     rsync_path = argv[argv.index("--rsync-path") + 1]
     assert "findmnt" in rsync_path
     assert "cloud_real" in rsync_path
@@ -278,6 +282,69 @@ def test_rsync_command_has_no_delete_and_redacts_identity() -> None:
     assert argv[-1].endswith(":/mnt/sktlm-data/sktlm/data/canonical/gretil_iast/")
     public = bridge.public_argv(argv)
     assert "/keys/research identity" not in json.dumps(public)
+
+
+def test_large_result_rsync_is_compressed_and_append_verified() -> None:
+    argv = bridge.build_rsync_argv(
+        remote_config(),
+        source="/mnt/sktlm-data/sktlm/artifacts/latent_benchmarks/run-one",
+        destination=Path("/tmp/result"),
+        direction="pull",
+        compress=True,
+        append_verify=True,
+    )
+    assert "-z" in argv
+    assert "--append-verify" in argv
+    assert not any(argument == "--delete" or argument.startswith("--delete-") for argument in argv)
+
+
+def test_partial_collection_resumes_only_with_exact_identity(tmp_path: Path) -> None:
+    identity = {
+        "run_id": "run-one",
+        "metrics_id": "metrics-one",
+        "transfer_profile": "scientific",
+        "host_profile": "core-01",
+        "machine_id": "core-01",
+    }
+    destination = bridge._local_collection_root(
+        tmp_path,
+        None,
+        "run-one",
+        resume_identity=identity,
+    )
+    (destination / "partial").write_bytes(b"partial")
+    assert bridge._local_collection_root(
+        tmp_path,
+        None,
+        "run-one",
+        resume_identity=identity,
+    ) == destination
+    with pytest.raises(bridge.BridgeError, match="identity does not match"):
+        bridge._local_collection_root(
+            tmp_path,
+            None,
+            "run-one",
+            resume_identity={**identity, "machine_id": "core-02"},
+        )
+    bridge._complete_collection(destination)
+    with pytest.raises(bridge.BridgeError, match="refusing overwrite"):
+        bridge._local_collection_root(
+            tmp_path,
+            None,
+            "run-one",
+            resume_identity=identity,
+        )
+
+
+def test_remote_audit_script_can_bind_metrics_directory() -> None:
+    script = bridge.build_remote_audit_script(
+        remote_config(),
+        "run-one",
+        "metrics-one",
+    )
+    assert "process_tree_summary" not in script
+    assert "--metrics-dir" in script
+    assert "metrics-one" in script
 
 
 def test_input_directory_preparation_checks_resolved_paths() -> None:

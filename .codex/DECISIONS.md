@@ -34,8 +34,8 @@ This file records decisions that should not be casually re-litigated in each Cod
 
 18. Raw IAST Unicode strings are not the final linguistic representation.
 19. Formal core code must use a script-neutral Sanskrit phonological representation.
-20. The current task implements/exercises only the IAST frontend, while keeping the core interface ready for a later Devanagari frontend.
-21. Do not implement the complete Devanagari frontend in the current task.
+20. The core interface remains script-neutral, and formal IAST plus generated-M0 Devanagari frontends map into the same phonological representation.
+21. Script-specific observation problems must be fixed in the frontend without introducing divergent scientific hyperparameters.
 
 ## Candidate generation
 
@@ -83,8 +83,8 @@ This file records decisions that should not be casually re-litigated in each Cod
 54. `reports/core_methods/latent_lexicon/cloud_scaling_checkpoint_20260831.md` is authoritative for the current cloud scaling state; deployment instructions and earlier stage checkpoints are preserved as procedural/historical provenance.
 55. Cloud medium scaling is closed: 8 workers are the frozen production setting for the next full-M0 stage because w8 was approximately 12.8% faster than the w16 runner-up and therefore satisfied the preregistered >=10% direct-winner rule.
 56. Do not run a cloud medium tie-break or additional medium worker-scaling benchmark. The accepted w4/w8/w12/w16 runs are scientifically equivalent across the six canonical artifacts; worker count affects accepted runtime/resource behavior, not scientific output.
-57. The next execution gate is four prepared full-M0 replicas at 8 workers, mapping `core-01` through `core-04` to `rep01` through `rep04`. `core-05` and `core-06` remain unassigned READY/STANDBY. Preparation and durable IDs do not authorize launch; execution still requires an explicit user instruction.
-58. The user has launched the four unrestricted full-M0 replicas on `core-01` through `core-04`. Codex must not connect to, poll, modify, resume, stop, restart, clean, or otherwise affect those runs or their hosts. `core-05` and `core-06` remain unassigned READY/STANDBY unless the user acts manually.
+57. The four unrestricted IAST surface_word full-M0 replicas at 8 workers completed successfully and are byte-identical across all six canonical scientific artifacts.
+58. The five remaining unrestricted representation cells are PREPARED on core-01 through core-05; core-06 is excluded. Preparation is not launch authorization, and cloud deployment, verification, launch, monitoring, collection, and audit remain manual user operations.
 
 ## Optional fixed-vocabulary comparison condition
 
@@ -99,9 +99,10 @@ This file records decisions that should not be casually re-litigated in each Cod
 64. `M₀` is the reserved name of the frozen common experimental substrate: corpus, exactly six formal observation representations, and shared provenance/evaluation contracts. It is not an `SxMy` milestone or a latent-model name.
 65. `full-M₀` means full frozen-corpus extent for one M₀ representation condition. It does not mean that the model itself is “M0”. Preserve historical `full_m0_*` IDs, report filenames, `stage01_checkpoint_20260831.md`, and branch `exp/m0-core-methods` as provenance.
 66. A Stage is a major research phase. `M1`, `M2`, and optional `M3` are ordered scientific milestones within that Stage, and milestone numbering restarts at `M1` for each new Stage. `v1` remains an implementation/version label, not a Stage or Milestone synonym.
-67. The current full-corpus latent-lexicon work is pre-S1M1 infrastructure and capacity calibration. Its unrestricted replicas test VM equivalence; `K=16,384` and `K=32,768` are candidate `K1`/`K2` capacity conditions subject to one evidence-based adjustment before S1M1 freezes.
-68. After calibration closes, the entry gate to S1M1 is an unrestricted run for each of the six M₀ representations, including paired IAST/Devanagari comparisons that test script neutrality. Script-specific problems should be fixed in the frontend; do not use divergent script-specific scientific hyperparameters to manufacture agreement.
-69. After the six-representation gate and any necessary adjustment, freeze one S1M1 scientific specification. The final S1M1 evidence matrix is `6 representations × {unrestricted, K1, K2}` = 18 cells, all using that same frozen specification. Calibration runs remain calibration provenance rather than final cells.
+67. Capacity calibration is closed. K=16,384 and K=32,768 are appendix sensitivity conditions in the same strong projection-pressure regime, not candidate endpoints of a natural vocabulary sweet spot.
+68. Do not add K values, reopen a capacity grid, or execute the previously contemplated 18-cell matrix. Fixed-K evidence remains calibration provenance rather than an active representation-gate condition.
+69. The active pre-S1M1 gate is unrestricted training for all six M₀ representations. IAST surface_word is supplied by the accepted replicas; the five remaining cells are the prepared assignments in the dated 2026-09-01 plan.
+70. Baseline/tokenizer comparison, common evaluation, S1M1 specification freeze, aggregation, and paper-facing output work remain deferred until the unrestricted six-representation gate completes.
 70. Stage 1 assumes a known/fixed external-sandhi realization grammar. S1M1 targets lexical word-form identity; S1M2 advances only to reusable surface-realizable stem/morpheme identity. Deeper abstract morphology, feature bundles, and historical reconstruction require separate future decisions.
 71. An optional M3 in any Stage requires independent scientific semantics and a new scientific claim. Performance optimization, caching, implementation rewrites, worker scaling, and routine tuning do not qualify; absent such a claim, proceed to the next Stage.
 72. Stage 2 learns the realization grammar before using it for full-corpus latent analysis. Stage 3 removes the language-specific rule prior and progresses toward joint latent-identity/realization discovery; detailed future supervision contracts remain unfrozen until explicitly designed.

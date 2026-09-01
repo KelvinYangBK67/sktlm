@@ -2,126 +2,75 @@
 
 ## Current status
 
-Branch: `exp/m0-core-methods`
+Branch: exp/m0-core-methods.
 
-The scientific checkpoint remains frozen: GRETIL M0 freeze
-`9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40`,
-240 canonical documents, 1,440 representations, and 1,218 external-sandhi
-rules. Formal v1 remains IAST `surface_word`, exact inference, lexical alpha
-0.1, complexity lambda/tau 0.5/1.0, whitespace penalty 8.0, and three passes.
-Do not change the frozen unrestricted candidate, grammar, scoring, EM,
-representation, or scientific output semantics. The optional fixed-vocabulary
-condition described below is separate; `vocab_budget=None` preserves the
-unrestricted configuration signature and inference behavior.
+Pre-S1M1 calibration is CLOSED. The frozen M0 corpus, six representations,
+freeze metadata, m0 tag, 1,218-rule inventory, and unrestricted
+latent-lexicon-v1 semantics remain unchanged.
 
-Research-stage nomenclature is frozen in `docs/research_roadmap.md` and
-`.codex/DECISIONS.md`: M₀ is the benchmark substrate, `full-M₀` describes
-full-corpus extent, and the current full-M₀ program produces pre-S1M1
-calibration evidence rather than final S1M1 cells. This conceptual
-classification does not change any active-run operational state.
+The four unrestricted IAST surface_word full-M0 replicas completed
+successfully at 8 workers and three passes. Their six canonical scientific
+artifacts are byte-identical. Fixed-K sensitivity is also closed: K16 and K32
+are appendix stress conditions in the same strong projection-pressure regime,
+not an active grid or natural-size search. Do not add K values or execute the
+previously contemplated 18-cell matrix.
 
-## Highest priority: active unrestricted full-M0 runs are hands-off
+The representation frontend is ready for all six formal cells. The
+script-neutral phonological core preserves existing IAST defaults and now
+accepts the repository-generated M0 Devanagari representation. The focused
+frontend/training/audit/bridge validation passed 80 tests in 8.33 seconds.
 
-The user reports that `core-01` through `core-04` are currently running the
-four prepared unrestricted full-M0 replicas. This state was not queried from
-the hosts and must be treated as authoritative.
+Authoritative closure:
 
-Do not SSH to, poll, attach to, stop, restart, resume, clean, overwrite, or
-modify anything on those hosts or in their run/metrics directories. Do not
-change their configs, checkpoints, SQLite databases, shards, logs, or
-artifacts. Do not perform cloud Git operations that could affect them.
-`core-05` and `core-06` remain READY/STANDBY and must not be launched by
-Codex. Cloud synchronization, launch, medium/full validation, and collection
-remain manual user operations.
+- reports/core_methods/latent_lexicon/pre_s1m1_calibration_checkpoint_20260901.md
+- reports/core_methods/latent_lexicon/six_representation_gate_launch_plan_20260901.md
+- configs/cloud/experiment_registry.toml
 
-## Cloud medium scaling is closed
+The historical reports/core_methods/latent_lexicon/full_m0_launch_plan.md is
+untouched and superseded for current work.
 
-The authoritative closure is
-`reports/core_methods/latent_lexicon/cloud_scaling_checkpoint_20260831.md`;
-the script-readable records are in
-`configs/cloud/experiment_registry.toml`.
+## Five PREPARED representation cells
 
-All four Ubuntu 22.04 medium runs are DONE and remotely audited as valid under
-scientific checkpoint
-`fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04`. Their wall-time ranking is:
+- core-01: IAST legacy_joined
+  - run cloud_full_m0_iast_legacy_joined_p10_w8_p3
+  - metrics full_m0_iast_legacy_joined_p10_w8_p3
+- core-02: IAST continuous
+  - run cloud_full_m0_iast_continuous_p10_w8_p3
+  - metrics full_m0_iast_continuous_p10_w8_p3
+- core-03: Devanagari surface_word
+  - run cloud_full_m0_devanagari_surface_word_p10_w8_p3
+  - metrics full_m0_devanagari_surface_word_p10_w8_p3
+- core-04: Devanagari legacy_joined
+  - run cloud_full_m0_devanagari_legacy_joined_p10_w8_p3
+  - metrics full_m0_devanagari_legacy_joined_p10_w8_p3
+- core-05: Devanagari continuous
+  - run cloud_full_m0_devanagari_continuous_p10_w8_p3
+  - metrics full_m0_devanagari_continuous_p10_w8_p3
 
-1. w8: 740.9371817360001 s
-2. w16: 849.243166304 s
-3. w12: 853.409434638 s
-4. w4: 972.1771821109978 s
+All five registry rows are PREPARED, not RUNNING, LAUNCHED, or DONE. Core-06
+is excluded and must remain unused.
 
-The w8 run is approximately 12.8% faster than the w16 runner-up, so the
-preregistered >=10% rule selects 8 workers directly. Eight workers are now the
-frozen cloud production setting for the next full-M0 stage. All six canonical
-scientific artifacts are byte-for-byte and SHA-256 identical across w4, w8,
-w12, and w16.
+## Human-only next action
 
-Do not poll these completed medium runs, run a tie-break, or launch another
-medium scaling benchmark.
+Codex has no permission to contact a VM. Do not run bridge status,
+deploy-code, push-inputs, verify-remote, SSH, nohup, monitor, collection,
+pull-results, or remote audit commands.
 
-## Optional fixed-vocabulary condition
+The human operator will:
 
-The local branch now implements `--vocab-budget K` for future capacity-matched
-BPE/Unigram comparisons. It is not applied to the active unrestricted runs.
+1. deploy the exact published local HEAD reported in the delivery handoff as
+   REPRESENTATION_GATE_SHA to core-01 through core-05;
+2. run verify-remote on each selected host;
+3. execute the five exact detached commands in the dated launch plan;
+4. perform its immediate PID/process-sample check on each host;
+5. wait for natural completion and then run the documented final audit.
 
-- one distinct latent `form_key` consumes one slot;
-- surface realizations and sandhi rules consume no slots;
-- all 50 `Phoneme` singleton base units are forced into the vocabulary;
-- after neutral Pass 1, multi-phoneme identities are ranked by
-  `expected_count DESC, form_key ASC`, and the first `K-50` are frozen;
-- Pass 2, Pass 3, and inspection reuse the same durable SQLite vocabulary;
-- an OOV multi-phoneme form scores and counts as its constituent singleton
-  base tokens, and decoded sequences use the same projection;
-- `vocabulary_budget.json` and `vocabulary.tsv` are the audit artifacts;
-- checkpoint/provenance store and validate the frozen allowed-key SHA-256.
+Direct GitHub access may be unreliable on mainland cloud hosts. The preferred
+fallback is local git bundle plus SSH transfer and an exact-HEAD fast-forward.
 
-The single focused validation command passed 8 tests. No smoke, medium, full,
-cloud, or running-job validation was performed. A minimal user-run check, if
-desired on a disposable tiny/document-limited run, is:
+## Deferred work
 
-```bash
-./.venv/bin/python -m sktlm.experiments.training.latent_lexicon \
-  --document-list configs/benchmarks/latent_smoke_documents.txt \
-  --output-root artifacts/latent_lexicon \
-  --run-id vocab_budget_manual_smoke_k16384 \
-  --passes 3 --workers 1 --vocab-budget 16384
-```
-
-This command is a handoff only; Codex did not run it. Use a unique run ID and
-do not point it at any active full-M0 directory.
-
-## Multi-host bridge
-
-`scripts/cloud/sktlm_bridge.py` preserves the legacy single `[bridge]`
-configuration and supports optional ignored `[host_profiles.<id>]` overlays
-selected with `--host-profile`. Receipts/status record logical profile and
-machine ID. Multi-profile result operations check the selected profile,
-machine, run ID, and metrics ID against the tracked registry before SSH.
-
-Real IPs/hosts and identity paths remain only in ignored
-`.sktlm-bridge.toml`. Never commit that file. The bridge is a deterministic
-code/input/result transport and audit control plane; it does not launch
-benchmarks.
-
-## Local-only research state
-
-The bounded inventory is
-`reports/core_methods/latent_lexicon/research_output_inventory_20260831.md`.
-The minimum tracked formal-run evidence and established hash manifest are in
-`reports/core_methods/latent_lexicon/evidence/`.
-Raw P10/cloud outputs, generated cleaning audits, old notes, interrupted
-diagnostics, operational receipts, and private bridge configuration remain
-ignored/local. Do not delete or bulk-add them.
-
-## Engineering provenance checkpoint
-
-GitHub Actions covers Python 3.10–3.12 with the repository-standard `pytest`
-command. `scripts/repro/capture_environment.py --output-dir PATH` is available
-for future formal runs and writes `environment.json` plus deterministic
-`requirements-freeze.txt` without overwriting existing provenance. Do not
-retrofit it into active pre-S1M1 runs.
-
-Do not implement the S1M1 matrix launcher, aggregation, or paper tables yet.
-That work remains deferred until calibration, the six unrestricted
-representation gate, necessary frontend/shared adjustments, K1/K2 freeze, and
-the S1M1 scientific-specification freeze are all complete.
+Do not yet implement or run baseline/tokenizer comparison, common evaluation,
+S1M1 specification freeze, aggregation, or paper-facing tables/figures. Resume
+from manually completed unrestricted representation artifacts after the human
+operator returns; do not rerun or infer remote state.

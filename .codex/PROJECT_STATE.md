@@ -839,3 +839,47 @@ representation gate completes, frontend/shared scientific adjustments are
 complete, K1/K2 freeze, and the S1M1 scientific specification freezes. Only
 then should declarative matrix execution, per-cell provenance, audit,
 aggregation, and paper-facing tables/figures be implemented.
+
+## 33. Calibration closed and unrestricted representation gate prepared (2026-09-01)
+
+This section supersedes the operational/future-plan statements in Sections 30
+and 31 without rewriting their historical record.
+
+The four unrestricted IAST surface_word full-M0 replicas completed naturally
+at 8 workers and three passes. Their six canonical scientific artifacts are
+byte-identical. Wall times were 13,058.676, 12,615.774, 13,103.272, and
+13,165.096 seconds for rep01 through rep04; peak process-tree RSS was
+3,711,254,528, 3,729,432,576, 3,728,773,120, and 3,708,420,096 bytes.
+
+Unrestricted capacity analysis found 19,068,580 active word-form identities
+and approximately 1.03M/1.49M/2.08M identities for 90%/95%/99% expected-count
+coverage. Fixed K=16,384 and K=32,768 runs shared the unrestricted neutral
+Pass 1 exactly, then both entered a strong projection-pressure regime far from
+unrestricted behavior and close to one another. Capacity calibration is
+therefore CLOSED. K16/K32 remain appendix sensitivity evidence; no more K
+values, K grid, sweet-spot search, or 18-cell matrix is planned.
+
+The formal training selector now supports all six frozen M0 script/condition
+cells. IAST defaults and unrestricted behavior remain unchanged. The
+script-neutral phonological interface includes a minimal parser for the
+repository-generated M0 Devanagari representation. Direct full-run audit and
+collection safety were extended for the representation gate. The focused
+frontend/training/audit/bridge suite passed 80 tests in 8.33 seconds.
+
+The five remaining unrestricted cells are registered PREPARED only:
+
+- core-01: IAST legacy_joined;
+- core-02: IAST continuous;
+- core-03: Devanagari surface_word;
+- core-04: Devanagari legacy_joined;
+- core-05: Devanagari continuous.
+
+Core-06 is excluded. Codex did not contact, deploy, verify, launch, monitor,
+collect from, or audit any VM in this continuation. The human operator will
+deploy the final published HEAD and run the exact dated plan in
+reports/core_methods/latent_lexicon/six_representation_gate_launch_plan_20260901.md.
+The historical full_m0_launch_plan.md remains untouched.
+
+Baseline/tokenizer comparison, common evaluation, S1M1 specification freeze,
+aggregation, and paper-facing work remain deferred until the unrestricted
+six-representation gate completes.

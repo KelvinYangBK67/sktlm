@@ -1,5 +1,5 @@
 schema_version = 1
-authoritative_as_of = "2026-08-31"
+authoritative_as_of = "2026-09-01"
 
 # Logical machine identity is stable. current_role is temporary and may be
 # reassigned without renaming the machine or rewriting earlier run records.
@@ -8,36 +8,36 @@ authoritative_as_of = "2026-08-31"
 machine_id = "core-01"
 machine_name = "sktlm-m0-core-01"
 host_profile = "core-01"
-current_role = "full-m0-replica-prepared"
+current_role = "six-representation-iast-legacy-joined-prepared"
 state = "ready"
 
 [machines.core-02]
 machine_id = "core-02"
 machine_name = "sktlm-m0-core-02"
 host_profile = "core-02"
-current_role = "full-m0-replica-prepared"
+current_role = "six-representation-iast-continuous-prepared"
 state = "ready"
 
 [machines.core-03]
 machine_id = "core-03"
 machine_name = "sktlm-m0-core-03"
 host_profile = "core-03"
-current_role = "full-m0-replica-prepared"
+current_role = "six-representation-devanagari-surface-word-prepared"
 state = "ready"
 
 [machines.core-04]
 machine_id = "core-04"
 machine_name = "sktlm-m0-core-04"
 host_profile = "core-04"
-current_role = "full-m0-replica-prepared"
+current_role = "six-representation-devanagari-legacy-joined-prepared"
 state = "ready"
 
 [machines.core-05]
 machine_id = "core-05"
 machine_name = "sktlm-m0-core-05"
 host_profile = "core-05"
-current_role = "standby"
-state = "standby"
+current_role = "six-representation-devanagari-continuous-prepared"
+state = "ready"
 
 [machines.core-06]
 machine_id = "core-06"
@@ -135,11 +135,13 @@ workload = "full_m0_iast_surface_word"
 entrypoint = "sktlm.experiments.training.latent_lexicon"
 passes = 3
 workers = 8
-state = "PREPARED"
+state = "DONE"
 result_location = "artifacts/latent_benchmarks/cloud_full_m0_iast_surface_word_p10_rep01_w8_p3"
 metrics_location = "artifacts/cloud_metrics/full_m0_iast_surface_word_p10_rep01_w8_p3"
 scientific_checkpoint = "fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04"
-notes = "Launch prepared only; no full-M0 process has started."
+wall_seconds = 13058.676
+peak_process_tree_rss_bytes = 3711254528
+notes = "Complete with return code 0; six canonical scientific artifacts are identical across rep01-rep04."
 
 [[runs]]
 machine_id = "core-02"
@@ -152,11 +154,13 @@ workload = "full_m0_iast_surface_word"
 entrypoint = "sktlm.experiments.training.latent_lexicon"
 passes = 3
 workers = 8
-state = "PREPARED"
+state = "DONE"
 result_location = "artifacts/latent_benchmarks/cloud_full_m0_iast_surface_word_p10_rep02_w8_p3"
 metrics_location = "artifacts/cloud_metrics/full_m0_iast_surface_word_p10_rep02_w8_p3"
 scientific_checkpoint = "fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04"
-notes = "Launch prepared only; no full-M0 process has started."
+wall_seconds = 12615.774
+peak_process_tree_rss_bytes = 3729432576
+notes = "Complete with return code 0; six canonical scientific artifacts are identical across rep01-rep04."
 
 [[runs]]
 machine_id = "core-03"
@@ -169,11 +173,13 @@ workload = "full_m0_iast_surface_word"
 entrypoint = "sktlm.experiments.training.latent_lexicon"
 passes = 3
 workers = 8
-state = "PREPARED"
+state = "DONE"
 result_location = "artifacts/latent_benchmarks/cloud_full_m0_iast_surface_word_p10_rep03_w8_p3"
 metrics_location = "artifacts/cloud_metrics/full_m0_iast_surface_word_p10_rep03_w8_p3"
 scientific_checkpoint = "fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04"
-notes = "Launch prepared only; no full-M0 process has started."
+wall_seconds = 13103.272
+peak_process_tree_rss_bytes = 3728773120
+notes = "Complete with return code 0; six canonical scientific artifacts are identical across rep01-rep04."
 
 [[runs]]
 machine_id = "core-04"
@@ -186,8 +192,99 @@ workload = "full_m0_iast_surface_word"
 entrypoint = "sktlm.experiments.training.latent_lexicon"
 passes = 3
 workers = 8
-state = "PREPARED"
+state = "DONE"
 result_location = "artifacts/latent_benchmarks/cloud_full_m0_iast_surface_word_p10_rep04_w8_p3"
 metrics_location = "artifacts/cloud_metrics/full_m0_iast_surface_word_p10_rep04_w8_p3"
 scientific_checkpoint = "fbd0a499701d6a13dcbf8374d5b5ce3a357a7b04"
-notes = "Launch prepared only; no full-M0 process has started."
+wall_seconds = 13165.096
+peak_process_tree_rss_bytes = 3708420096
+notes = "Complete with return code 0; six canonical scientific artifacts are identical across rep01-rep04."
+
+# Five remaining unrestricted M0 representation cells. These are durable
+# prelaunch assignments only. The human operator must deploy the exact
+# published HEAD reported as REPRESENTATION_GATE_SHA in the delivery handoff.
+
+[[runs]]
+machine_id = "core-01"
+machine_name = "sktlm-m0-core-01"
+host_profile = "core-01"
+run_id = "cloud_full_m0_iast_legacy_joined_p10_w8_p3"
+metrics_id = "full_m0_iast_legacy_joined_p10_w8_p3"
+workload = "full_m0_iast_legacy_joined"
+script = "iast"
+condition = "legacy_joined"
+entrypoint = "sktlm.experiments.training.latent_lexicon"
+passes = 3
+workers = 8
+state = "PREPARED"
+result_location = "artifacts/latent_benchmarks/cloud_full_m0_iast_legacy_joined_p10_w8_p3"
+metrics_location = "artifacts/cloud_metrics/full_m0_iast_legacy_joined_p10_w8_p3"
+notes = "Authorized six-representation gate assignment; not yet launched."
+
+[[runs]]
+machine_id = "core-02"
+machine_name = "sktlm-m0-core-02"
+host_profile = "core-02"
+run_id = "cloud_full_m0_iast_continuous_p10_w8_p3"
+metrics_id = "full_m0_iast_continuous_p10_w8_p3"
+workload = "full_m0_iast_continuous"
+script = "iast"
+condition = "continuous"
+entrypoint = "sktlm.experiments.training.latent_lexicon"
+passes = 3
+workers = 8
+state = "PREPARED"
+result_location = "artifacts/latent_benchmarks/cloud_full_m0_iast_continuous_p10_w8_p3"
+metrics_location = "artifacts/cloud_metrics/full_m0_iast_continuous_p10_w8_p3"
+notes = "Authorized six-representation gate assignment; not yet launched."
+
+[[runs]]
+machine_id = "core-03"
+machine_name = "sktlm-m0-core-03"
+host_profile = "core-03"
+run_id = "cloud_full_m0_devanagari_surface_word_p10_w8_p3"
+metrics_id = "full_m0_devanagari_surface_word_p10_w8_p3"
+workload = "full_m0_devanagari_surface_word"
+script = "devanagari"
+condition = "surface_word"
+entrypoint = "sktlm.experiments.training.latent_lexicon"
+passes = 3
+workers = 8
+state = "PREPARED"
+result_location = "artifacts/latent_benchmarks/cloud_full_m0_devanagari_surface_word_p10_w8_p3"
+metrics_location = "artifacts/cloud_metrics/full_m0_devanagari_surface_word_p10_w8_p3"
+notes = "Authorized six-representation gate assignment; not yet launched."
+
+[[runs]]
+machine_id = "core-04"
+machine_name = "sktlm-m0-core-04"
+host_profile = "core-04"
+run_id = "cloud_full_m0_devanagari_legacy_joined_p10_w8_p3"
+metrics_id = "full_m0_devanagari_legacy_joined_p10_w8_p3"
+workload = "full_m0_devanagari_legacy_joined"
+script = "devanagari"
+condition = "legacy_joined"
+entrypoint = "sktlm.experiments.training.latent_lexicon"
+passes = 3
+workers = 8
+state = "PREPARED"
+result_location = "artifacts/latent_benchmarks/cloud_full_m0_devanagari_legacy_joined_p10_w8_p3"
+metrics_location = "artifacts/cloud_metrics/full_m0_devanagari_legacy_joined_p10_w8_p3"
+notes = "Authorized six-representation gate assignment; not yet launched."
+
+[[runs]]
+machine_id = "core-05"
+machine_name = "sktlm-m0-core-05"
+host_profile = "core-05"
+run_id = "cloud_full_m0_devanagari_continuous_p10_w8_p3"
+metrics_id = "full_m0_devanagari_continuous_p10_w8_p3"
+workload = "full_m0_devanagari_continuous"
+script = "devanagari"
+condition = "continuous"
+entrypoint = "sktlm.experiments.training.latent_lexicon"
+passes = 3
+workers = 8
+state = "PREPARED"
+result_location = "artifacts/latent_benchmarks/cloud_full_m0_devanagari_continuous_p10_w8_p3"
+metrics_location = "artifacts/cloud_metrics/full_m0_devanagari_continuous_p10_w8_p3"
+notes = "Authorized six-representation gate assignment; not yet launched."

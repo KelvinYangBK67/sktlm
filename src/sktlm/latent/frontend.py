@@ -1,12 +1,45 @@
-"""IAST observation frontend with orthography separated from phonology."""
+"""Script frontends with observed orthography separated from phonology."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
 from typing import Iterator, Literal
+import unicodedata
 
-from sktlm.latent.phonology import Phoneme, match_iast_phoneme, normalize_iast
+from sktlm.latent.phonology import (
+    IAST_TO_PHONEME,
+    Phoneme,
+    match_iast_phoneme,
+    normalize_iast,
+)
+from sktlm.representations.devanagari import (
+    CONSONANTS,
+    INDEPENDENT_VOWELS,
+    VIRAMA,
+    VOWEL_MARKS,
+)
+
+
+_DEVANAGARI_CONSONANTS = {
+    written: IAST_TO_PHONEME[iast] for iast, written in CONSONANTS.items()
+}
+_DEVANAGARI_INDEPENDENT_VOWELS = {
+    written: IAST_TO_PHONEME[iast] for iast, written in INDEPENDENT_VOWELS.items()
+}
+_DEVANAGARI_VOWEL_MARKS = {
+    written: IAST_TO_PHONEME[iast]
+    for iast, written in VOWEL_MARKS.items()
+    if written
+}
+_DEVANAGARI_SIGNS = {
+    "ं": Phoneme.ANUSVARA,
+    "ः": Phoneme.VISARGA,
+    "ँ": Phoneme.ANUNASIKA,
+}
+_DEVANAGARI_AVAGRAHA = "ऽ"
+_DEVANAGARI_DANDAS = frozenset({"।", "॥"})
+_DEVANAGARI_OM = "ॐ"
 
 
 class CueKind(str, Enum):
@@ -134,6 +167,102 @@ def parse_iast_surface(text: str) -> ParsedSurface:
     return ParsedSurface(written, tuple(phonemes), tuple(spans), tuple(cues))
 
 
+def parse_devanagari_surface(text: str) -> ParsedSurface:
+    """Parse the repository's generated M0 Devanagari representation."""
+
+    written = unicodedata.normalize("NFC", text)
+    phonemes: list[Phoneme] = []
+    spans: list[tuple[int, int]] = []
+    cues: list[OrthographicCue] = []
+    position = 0
+
+    def append(symbol: Phoneme, start: int, end: int) -> None:
+        phonemes.append(symbol)
+        spans.append((start, end))
+
+    while position < len(written):
+        character = written[position]
+        if character.isspace():
+            end = position + 1
+            while end < len(written) and written[end].isspace():
+                end += 1
+            cues.append(
+                OrthographicCue(
+                    CueKind.SPACE,
+                    written[position:end],
+                    position,
+                    end,
+                    len(phonemes),
+                )
+            )
+            position = end
+            continue
+        if character == _DEVANAGARI_AVAGRAHA:
+            cues.append(
+                OrthographicCue(
+                    CueKind.AVAGRAHA,
+                    character,
+                    position,
+                    position + 1,
+                    len(phonemes),
+                )
+            )
+            position += 1
+            continue
+        if character == _DEVANAGARI_OM:
+            append(Phoneme.O, position, position + 1)
+            append(Phoneme.ANUSVARA, position, position + 1)
+            position += 1
+            continue
+        independent = _DEVANAGARI_INDEPENDENT_VOWELS.get(character)
+        if independent is not None:
+            append(independent, position, position + 1)
+            position += 1
+            continue
+        consonant = _DEVANAGARI_CONSONANTS.get(character)
+        if consonant is not None:
+            following = written[position + 1] if position + 1 < len(written) else ""
+            if following == VIRAMA:
+                append(consonant, position, position + 2)
+                position += 2
+                continue
+            append(consonant, position, position + 1)
+            vowel = _DEVANAGARI_VOWEL_MARKS.get(following)
+            if vowel is not None:
+                append(vowel, position + 1, position + 2)
+                position += 2
+            else:
+                append(Phoneme.A, position, position + 1)
+                position += 1
+            continue
+        sign = _DEVANAGARI_SIGNS.get(character)
+        if sign is not None:
+            append(sign, position, position + 1)
+            position += 1
+            continue
+        cues.append(
+            OrthographicCue(
+                CueKind.PUNCTUATION,
+                character,
+                position,
+                position + 1,
+                len(phonemes),
+            )
+        )
+        position += 1
+    return ParsedSurface(written, tuple(phonemes), tuple(spans), tuple(cues))
+
+
+def parse_surface(text: str, *, script: str = "iast") -> ParsedSurface:
+    """Dispatch one formal M0 script to its observation parser."""
+
+    if script == "iast":
+        return parse_iast_surface(text)
+    if script == "devanagari":
+        return parse_devanagari_surface(text)
+    raise ValueError(f"unsupported latent frontend script: {script}")
+
+
 def _events(parsed: ParsedSurface) -> Iterator[tuple[int, int, str, object]]:
     for phoneme, (start, end) in zip(parsed.phonemes, parsed.phoneme_spans):
         yield start, end, "phoneme", phoneme
@@ -145,17 +274,18 @@ def iter_observed_segments(
     text: str,
     *,
     max_tokens: int = 128,
+    script: str = "iast",
 ) -> Iterator[ObservedSegment]:
     """Yield punctuation-bounded, deterministically sharded surface segments.
 
-    Punctuation is retained in :func:`parse_iast_surface` as an observed cue
+    Punctuation is retained by the script frontend as an observed cue
     but delimits lexical inference. Long punctuation-free lines are sharded at
     a visible-space cue to keep memory bounded.
     """
 
     if max_tokens < 1:
         raise ValueError("max_tokens must be >= 1")
-    parsed = parse_iast_surface(text)
+    parsed = parse_surface(text, script=script)
     tokens: list[ObservedToken] = []
     separators: list[str] = []
     token_units: list[SurfaceUnit] = []
