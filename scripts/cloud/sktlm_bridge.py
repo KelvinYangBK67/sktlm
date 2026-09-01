@@ -1569,6 +1569,7 @@ def collect_action(
     *,
     run_id: str,
     metrics_id: str,
+    profile: str,
     output_root: Path | None,
 ) -> Mapping[str, Any]:
     assignment = collection_registry_assignment(
@@ -1586,7 +1587,7 @@ def collect_action(
         runner,
         run_id=run_id,
         metrics_id=metrics_id,
-        profile="report",
+        profile=profile,
         output_root=output_root,
     )
     audit_path = collection / "remote_audit.json"
@@ -1600,7 +1601,12 @@ def collect_action(
     }
     files = [*details["files"], audit_file]
     comparisons, hash_failures = validate_downloaded_audit_hashes(collection, audit)
-    remote_only = [name for name in SCIENTIFIC_FILES if name not in REPORT_RUN_FILES]
+    selected_run_files, _selected_metrics_files = profile_files(profile)
+    remote_only = (
+        []
+        if selected_run_files is None
+        else [name for name in SCIENTIFIC_FILES if name not in selected_run_files]
+    )
     valid = audit.get("valid") is True and not hash_failures
     if audit.get("valid") is not True:
         receipt["failures"].append("remote scientific audit is invalid")
@@ -1704,10 +1710,15 @@ def build_parser() -> argparse.ArgumentParser:
     collect = commands.add_parser(
         "collect",
         parents=[host_selection],
-        help="remote audit followed by report-profile collection",
+        help="remote audit followed by selected-profile collection",
     )
     collect.add_argument("run_id")
     collect.add_argument("--metrics-id", help="metrics directory ID (default: run ID)")
+    collect.add_argument(
+        "--profile",
+        choices=("report", "scientific", "full"),
+        default="report",
+    )
     collect.add_argument("--output-root", type=Path)
     return parser
 
@@ -1915,6 +1926,7 @@ def main(
                     active_runner,
                     run_id=args.run_id,
                     metrics_id=metrics_id,
+                    profile=args.profile,
                     output_root=args.output_root,
                 ),
             )

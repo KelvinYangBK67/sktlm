@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import subprocess
@@ -479,6 +480,151 @@ def test_downloaded_files_are_compared_with_remote_audit(tmp_path: Path) -> None
     assert failures == ["downloaded artifact differs from remote audit: summary.json"]
 
 
+def test_scientific_collect_is_single_audited_receipted_collection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = "run-one"
+    metrics_id = "metrics-one"
+    output_root = tmp_path / "artifacts/post_gate/collected"
+    collection = output_root / run_id
+    scientific_names = ("summary.json", *bridge.SCIENTIFIC_FILES)
+    payloads = {
+        name: f"fixture:{name}\n".encode("utf-8") for name in scientific_names
+    }
+    audit = {
+        "valid": True,
+        "failures": [],
+        "scientific_artifacts": {
+            name: {
+                "bytes": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }
+            for name, payload in payloads.items()
+        },
+    }
+    events: list[str] = []
+
+    def fake_assignment(
+        _repo_root: Path,
+        _config: object,
+        selected_run_id: str,
+        selected_metrics_id: str,
+    ) -> dict[str, str]:
+        events.append("registry")
+        assert (selected_run_id, selected_metrics_id) == (run_id, metrics_id)
+        return {"run_id": run_id, "metrics_id": metrics_id}
+
+    def fake_audit(
+        _config: object,
+        _runner: object,
+        selected_run_id: str,
+        selected_metrics_id: str,
+    ) -> dict[str, object]:
+        events.append("audit")
+        assert (selected_run_id, selected_metrics_id) == (run_id, metrics_id)
+        return audit
+
+    def fake_transfer(
+        receipt: dict[str, object],
+        _config: object,
+        _repo_root: Path,
+        _runner: object,
+        *,
+        run_id: str,
+        metrics_id: str,
+        profile: str,
+        output_root: Path | None,
+    ) -> tuple[Path, dict[str, object]]:
+        events.append(f"transfer:{profile}")
+        assert profile == "scientific"
+        assert output_root is not None
+        destination = output_root / run_id
+        benchmark = destination / "benchmark"
+        metrics = destination / "metrics"
+        benchmark.mkdir(parents=True)
+        metrics.mkdir()
+        for name in (*bridge.REPORT_RUN_FILES, *bridge.SCIENTIFIC_FILES):
+            (benchmark / name).write_bytes(
+                payloads.get(name, f"fixture:{name}\n".encode("utf-8"))
+            )
+        for name in bridge.REPORT_METRICS_FILES:
+            (metrics / name).write_text(f"fixture:{name}\n", encoding="utf-8")
+        (destination / bridge.COLLECTION_STATE_FILE).write_text(
+            json.dumps({"status": "complete"}) + "\n", encoding="utf-8"
+        )
+        files = bridge._inventory_collected_files(destination, profile)
+        details: dict[str, object] = {
+            "run_id": run_id,
+            "metrics_id": metrics_id,
+            "transfer_profile": profile,
+            "local_destination": str(destination),
+            "files": files,
+            "file_count": len(files),
+            "byte_count": sum(int(row["bytes"]) for row in files),
+            "remote_repo_head": "a" * 40,
+        }
+        receipt.update(details)
+        return destination, details
+
+    monkeypatch.setattr(bridge, "find_executable", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(bridge, "collection_registry_assignment", fake_assignment)
+    monkeypatch.setattr(bridge, "remote_audit_result", fake_audit)
+    monkeypatch.setattr(bridge, "transfer_results", fake_transfer)
+    runner = FakeRunner(_git_callback("a" * 40))
+    config = remote_config()
+    receipt, receipt_path, error = bridge.execute_receipted(
+        "collect",
+        "remote_to_local",
+        tmp_path,
+        config,
+        runner,
+        lambda active_receipt: bridge.collect_action(
+            active_receipt,
+            config,
+            tmp_path,
+            runner,
+            run_id=run_id,
+            metrics_id=metrics_id,
+            profile="scientific",
+            output_root=output_root,
+        ),
+    )
+
+    assert error is None
+    assert events == ["registry", "audit", "transfer:scientific"]
+    assert receipt["valid"] is True
+    assert receipt["transfer_profile"] == "scientific"
+    assert receipt["remote_audit"] == audit
+    assert receipt["remote_only_scientific_files"] == []
+    assert all(row["remote_audit_equal"] for row in receipt["downloaded_hash_validation"])
+    assert receipt["registry_assignment"] == {
+        "run_id": run_id,
+        "metrics_id": metrics_id,
+    }
+    assert receipt_path.is_file()
+    persisted_receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert persisted_receipt["transfer_profile"] == "scientific"
+    assert persisted_receipt["remote_audit"] == audit
+    assert (collection / "remote_audit.json").is_file()
+    assert (collection / bridge.COLLECTION_STATE_FILE).is_file()
+    assert all(
+        (collection / "benchmark" / name).is_file()
+        for name in bridge.SCIENTIFIC_FILES
+    )
+    assert all(
+        (collection / "benchmark" / name).is_file()
+        for name in bridge.REPORT_RUN_FILES
+    )
+    assert all(
+        (collection / "metrics" / name).is_file()
+        for name in bridge.REPORT_METRICS_FILES
+    )
+    assert not (collection / "benchmark/learner.sqlite").exists()
+    with pytest.raises(bridge.BridgeError, match="refusing overwrite"):
+        bridge._local_collection_root(tmp_path, output_root, run_id)
+
+
 def test_collection_registry_requires_exact_profile_assignment(tmp_path: Path) -> None:
     registry = tmp_path / bridge.REGISTRY_RELATIVE_PATH
     registry.parent.mkdir(parents=True)
@@ -658,3 +804,8 @@ def test_help_and_unknown_argument_rejection() -> None:
         ]
     )
     assert selected.host_profile == "core-02"
+    assert selected.profile == "report"
+    scientific = parser.parse_args(
+        ["collect", "run-one", "--profile", "scientific"]
+    )
+    assert scientific.profile == "scientific"

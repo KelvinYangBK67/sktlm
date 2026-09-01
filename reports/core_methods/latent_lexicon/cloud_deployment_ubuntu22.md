@@ -72,8 +72,7 @@ python3 scripts/cloud/sktlm_bridge.py status --json
 python3 scripts/cloud/sktlm_bridge.py push-inputs
 python3 scripts/cloud/sktlm_bridge.py verify-remote --json
 # The user manually runs and waits for smoke/medium here.
-python3 scripts/cloud/sktlm_bridge.py collect <RUN_ID>
-python3 scripts/cloud/sktlm_bridge.py pull-results <RUN_ID> --profile scientific
+python3 scripts/cloud/sktlm_bridge.py collect <RUN_ID> --profile scientific
 ```
 
 The bridge `deploy-code` subcommand is retained as a legacy GitHub-backed
@@ -360,23 +359,46 @@ during the run; process I/O bytes alone do not expose storage queueing.
 
 ## 7. Result collection
 
-`pull-results` is selective and defaults to `report`:
+`collect` and the lower-level transfer-only `pull-results` both accept
+`--profile report|scientific|full` and default to `report`:
 
 - `report`: small benchmark/config/provenance/audit/inspection/resource files;
 - `scientific`: report files plus the canonical scientific exports;
 - `full`: the complete benchmark and metrics directories, explicitly including
   `learner.sqlite` and any other large run artifacts.
 
-Normal `scientific` collection does not include `learner.sqlite`. A new local
-collection is created under `artifacts/cloud_collected/<RUN_ID>/`; an existing
-destination is refused rather than silently overwritten. Remote files are
-never deleted.
+Normal `scientific` collection does not include `learner.sqlite`. Without an
+explicit output root, a new local collection is created under
+`artifacts/cloud_collected/<RUN_ID>/`; an existing destination is refused rather
+than silently overwritten. Remote files are never deleted.
 
-`collect <RUN_ID>` runs the fixed remote audit command, pulls the report
-profile even when that audit is invalid, compares any downloaded files covered
-by remote audit hashes, writes `remote_audit.json`, and records which scientific
-and full-profile artifacts remain remote-only. It never commits, pushes,
-launches another job, or removes the remote run.
+`collect <RUN_ID>` runs the fixed remote audit first, transfers the selected
+profile even when that audit is invalid, writes `remote_audit.json`, validates
+all downloaded files covered by remote audit hashes, and writes the redacted
+transfer receipt. Registry assignment, resumable partial-transfer identity, and
+refusal-to-overwrite checks are unchanged. `pull-results` remains available for
+a transfer without the audit envelope; it is not needed in addition to formal
+scientific `collect`.
+
+For a completed representation-gate cell, the one-shot human command is:
+
+```bash
+python3 scripts/cloud/sktlm_bridge.py collect <RUN_ID> \
+  --metrics-id <METRICS_ID> --host-profile <HOST_PROFILE> \
+  --profile scientific --output-root artifacts/post_gate/collected
+```
+
+It produces the aggregator-ready layout:
+
+```text
+artifacts/post_gate/collected/<RUN_ID>/
+    benchmark/
+    metrics/
+    remote_audit.json
+    .sktlm-collection.json
+```
+
+It never commits, pushes, launches another job, or removes the remote run.
 
 ## 8. Full-M₀ representation gate
 

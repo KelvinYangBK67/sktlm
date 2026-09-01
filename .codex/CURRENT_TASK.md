@@ -25,8 +25,30 @@ The next remote actions are human-only after natural completion:
 
 1. require every `process_tree_summary.json` to report `return_code == 0`;
 2. run one final audit per completed run and require `valid == true`;
-3. collect the complete required local scientific/report artifacts;
-4. only then run local aggregation.
+3. collect each completed run once with `collect --profile scientific` into
+   `artifacts/post_gate/collected`;
+4. require `benchmark/`, `metrics/`, `remote_audit.json`, and
+   `.sktlm-collection.json` in every collection;
+5. only then run local aggregation.
+
+## Collection control plane prepared
+
+`collect` now accepts `--profile report|scientific|full`, defaults to `report`
+for backward compatibility, and passes the selected profile through the
+existing audit-first collection path. Formal scientific collection therefore
+needs no separate `pull-results` call. The human-only post-completion template
+is:
+
+    python3 scripts/cloud/sktlm_bridge.py collect <RUN_ID> \
+      --metrics-id <METRICS_ID> --host-profile <HOST_PROFILE> \
+      --profile scientific --output-root artifacts/post_gate/collected
+
+The scientific profile includes the existing report/metrics files plus the
+canonical scientific exports and still excludes `learner.sqlite`. Audit
+preservation, downloaded-hash validation, transfer receipts, registry checks,
+resume identity, and refusal to overwrite remain unchanged. Focused local
+synthetic bridge tests passed once (`8 passed in 0.92s`), and Python syntax
+compilation passed. No bridge command or remote operation was executed.
 
 ## Local post-gate tooling prepared
 

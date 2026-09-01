@@ -941,3 +941,23 @@ without rerunning the completed suite. The five new representation jobs remain
 RUNNING at scientific checkpoint
 `375178ba50bd1a1644d65525907692b31413b33d`; no completion or scientific
 comparison is recorded.
+
+## 35. One-shot audited scientific collection (2026-09-01)
+
+The bridge `collect` command now accepts the existing `report`, `scientific`,
+and `full` result profiles while retaining `report` as the backward-compatible
+default. `collect_action` passes the selected profile into the unchanged
+transfer path after the remote audit. Scientific collection therefore produces
+`benchmark/`, `metrics/`, `remote_audit.json`, and `.sktlm-collection.json` in
+one operation and no longer requires a separate transfer-only `pull-results`
+call.
+
+The scientific profile remains the report/metrics set plus
+`iteration_metrics.json`, `analyses.jsonl`, `boundary_posteriors.jsonl`,
+`latent_lexicon.tsv`, and `rule_usage.tsv`; it excludes `learner.sqlite`.
+Audit-first ordering, invalid-audit preservation, downloaded hash validation,
+redacted receipts, registry assignment checks, resumable partial-transfer
+identity, and refusal to overwrite remain intact. Eight focused local synthetic
+bridge tests passed in 0.92 seconds, and Python syntax compilation passed. No
+VM, SSH, SCP, rsync, remote audit, collection, benchmark, scientific runtime,
+or registry operation was performed.
