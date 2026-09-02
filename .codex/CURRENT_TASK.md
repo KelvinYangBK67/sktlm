@@ -2,90 +2,108 @@
 
 ## Current status
 
-Branch: 'exp/s1m1-final-reduction'.
+Branch:
 
-Parent checkpoint:
-'4bacb038eb00c479dd6913e63ec1543a1b21e0e6'
-('exp/s1m1-core-methods').
+`exp/s1m1-final-reduction`
 
-The S1M1 post-hoc archival/descriptive reducer is complete on this dedicated
-branch. This branch must remain separate from 'exp/s1m2-reusable-pieces'; do not
-merge it into S1M2 merely to share analysis infrastructure.
+Current checkpoint before this task:
 
-The frozen preregistered gate remains historically and scientifically
-separate:
+`88b5a1c6d710f74b3d40dc523180242bd99327e4`
 
-    S1M1 frozen preregistered gate
-    -> S1M1 post-hoc archival reduction
+This is a temporary S1M1 closure work branch. Do not create another branch and
+do not merge this work into `exp/s1m2-reusable-pieces`.
 
-The archive does not modify or reinterpret gate pass/fail criteria.
+The final S1M1 analysis specification is now:
 
-## Implemented
+`reports/core_methods/latent_lexicon/s1m1_final_analysis_plan.md`
 
-'src/sktlm/analysis/s1m1_archival.py' provides a local-only, read-only,
-fail-closed, bounded reducer over the exact six-cell gate manifest:
+## Scientific input status
 
-- audited source retention identities and row counts;
-- pass dynamics and signed absolute/relative changes;
-- lexical mass, diversity, exact discrete length, and reuse summaries;
-- ambiguity and explicit bounded-top-k labels;
-- exact boundary expectations/entropy/confidence/cue summaries;
-- exact global rule distribution plus labelled top-k segment diagnostics;
-- candidate scaling, bounded heavy-tail estimates, document and length strata;
-- runtime/resource/counter/cache/SQLite and throughput evidence;
-- bounded cross-cell head overlap, weighted distance, rank, and MinHash support;
-- deterministic bounded evidence reservoirs with stable source IDs.
+Exactly five representation cells are valid for final S1M1 analysis:
 
-'scripts/analysis/reduce_s1m1_archival.py' refuses an existing output directory
-before scanning, validates every collection through the existing six-cell
-audit contract, and atomically writes the compact archive.
+- IAST / `surface_word`
+- IAST / `legacy_joined`
+- Devanagari / `surface_word`
+- Devanagari / `legacy_joined`
+- Devanagari / `continuous`
 
-The frozen files
-'reports/core_methods/latent_lexicon/post_gate_analysis_protocol.md' and
-'scripts/analysis/aggregate_six_representation.py' are unchanged.
+IAST / `continuous` is scientifically `INVALIDATED` and formally `EXCLUDED`.
+Its terminated run is retained only as diagnostic provenance. Do not repair,
+impute, or rerun it.
 
-## Validation
+M0 itself remains frozen and historically contains six formal observation
+representations. Do not alter M0 to encode the downstream S1M1 invalidation.
 
-Completed locally without real-artifact scanning:
+## Historical midpoint analysis implementations
 
-    python -m py_compile \
-      src/sktlm/analysis/s1m1_archival.py \
-      scripts/analysis/reduce_s1m1_archival.py
+The following remain untouched historical midpoint/diagnostic implementations:
 
-    python -m pytest tests/analysis/test_s1m1_archival.py -q
+- `src/sktlm/analysis/six_representation_gate.py`
+- `scripts/analysis/aggregate_six_representation.py`
+- `src/sktlm/analysis/s1m1_archival.py`
+- `scripts/analysis/reduce_s1m1_archival.py`
 
-Focused result: 4 passed.
+Do not rename, delete, archive-copy, or retroactively manufacture logs for
+them. Git history is authoritative.
 
-The full repository suite also passed:
+## Next implementation task
 
-    python -m pytest -q
+Create the new provisional final S1M1 analysis implementation:
 
-Full result: 546 passed, 4 warnings in 48.30 seconds. The warnings are the
-existing PyTorch nested-tensor and SentencePiece/SWIG deprecation warnings.
+- `src/sktlm/analysis/s1m1_final.py`
+- `scripts/analysis/finalize_s1m1.py`
+- `tests/analysis/test_s1m1_final.py`
 
-## Human-only eventual archive command
+The implementation must:
 
-Only after all six completed/audited collections and the exact gate manifest
-are locally available:
+1. accept exactly five valid completed/audited cells;
+2. require an explicit IAST-continuous invalidation record;
+3. reject IAST continuous if presented as a valid completed cell;
+4. reuse mature bounded per-cell reduction machinery where safe rather than
+   duplicating the whole archival reducer;
+5. emit exactly the six designated formal contrasts in the frozen plan;
+6. emit deterministic compact per-cell tables, formal comparisons,
+   failure-mode indicators, evidence samples, and `decision_inputs.json`;
+7. keep scientific and runtime/resource evidence distinct;
+8. remain local-only, read-only, fail-closed, streaming/bounded-memory, and
+   fresh-output-only.
 
-    python scripts/analysis/reduce_s1m1_archival.py \
-      --manifest <completed-six-cell-gate-manifest.json> \
-      --output-dir <new-empty-archive-directory>
+Do not change learner code or scientific artifacts in this task.
 
-The output directory must not already exist. This command may scan and hash
-large artifacts for longer than five minutes, so it was not launched by this
-implementation task.
+## Validation boundary
 
-## Absolute boundary
+Use only short focused synthetic validation.
 
-Do not contact a VM, run bridge/SSH/SCP/rsync, poll a remote job, collect
-artifacts, mutate the experiment registry, scan the real large collections
-automatically, or overwrite any source/output directory.
+At minimum test:
 
-## Next repository action
+- exact five-cell acceptance;
+- missing-cell rejection;
+- IAST-continuous-as-valid rejection;
+- missing or contradictory invalidation-record rejection;
+- incomplete/non-audited valid-cell rejection;
+- exactly six designated comparisons;
+- absence of an IAST-vs-Devanagari continuous comparison;
+- deterministic output;
+- source read-only behavior;
+- output overwrite refusal.
 
-This branch should be committed and pushed as the S1M1 archival-reduction
-line. S1M2-P1 continues independently from
-'f95bc5f1bb92ce4beb899b13fa5a83070852d734' on
-'exp/s1m2-reusable-pieces'. Do not transplant these Task A files onto that
-branch.
+Do not run the complete real-artifact reduction yet.
+Do not run full-corpus work.
+Do not contact or poll a VM.
+Do not SSH/SCP/rsync/bridge.
+Do not interfere with the running Devanagari continuous experiment.
+
+If any validation is likely to exceed five minutes, stop and leave the exact
+command for the human researcher.
+
+## Freeze status
+
+- final analysis plan/specification: `FROZEN`
+- final analysis implementation: `PROVISIONAL`
+- S1M1 result release: `NOT YET FROZEN`
+
+The implementation freezes only after successful complete real-data execution,
+audit/sanity review, and any implementation-only corrections.
+
+At the eventual S1M1 freeze, the human researcher will reconcile this temporary
+closure branch back into the long-term `exp/s1m1-core-methods` milestone branch.

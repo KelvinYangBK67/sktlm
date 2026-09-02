@@ -1021,3 +1021,83 @@ Focused synthetic archival tests passed (4 passed). Python syntax compilation
 passed. The full repository suite passed (546 passed, 4 warnings) in 48.30
 seconds; the warnings are the existing PyTorch nested-tensor and
 SentencePiece/SWIG deprecation warnings.
+
+## 19. S1M1 final-analysis amendment (2026-09-02)
+
+The active S1M1 closure work branch is:
+
+`exp/s1m1-final-reduction`
+
+Current branch checkpoint before the final-analysis implementation:
+
+`88b5a1c6d710f74b3d40dc523180242bd99327e4`
+
+The long-term milestone branch `exp/s1m1-core-methods` remains at
+`4bacb038eb00c479dd6913e63ec1543a1b21e0e6` until the S1M1 freeze. The
+temporary closure branch will be reconciled with the milestone branch only at
+that freeze.
+
+### Final valid S1M1 representation set
+
+The final analysis designates five valid cells. Each must be completed and
+audited before final reduction:
+
+- IAST / `surface_word`
+- IAST / `legacy_joined`
+- Devanagari / `surface_word`
+- Devanagari / `legacy_joined`
+- Devanagari / `continuous`
+
+IAST / `continuous` is scientifically invalidated for downstream S1M1 formal
+analysis. Whitespace deletion before ordinary IAST serialization is not
+phoneme-sequence preserving in attested cross-boundary vowel hiatus, especially
+`a + i -> ai`, where the frontend reads a single diphthong phoneme.
+
+Its status is:
+
+- scientific status: `INVALIDATED`
+- runtime status: `TERMINATED EARLY BY RESEARCHER`
+- completed passes: `2`
+- termination point: pass `3`, `next_document_index = 86`
+- formal comparison: `EXCLUDED`
+- diagnostic evidence: `RETAINED`
+- rerun/repair: `NONE`
+- runtime scientific commit:
+  `375178ba50bd1a1644d65525907692b31413b33d`
+- termination archive SHA-256:
+  `386c94233ead7f569d0a7cdc1436a874d165dd1e0cede349f943c0196fafaa9d`
+
+M0 itself remains frozen and historically retains six formal representation
+conditions. No M0 representation, manifest, corpus byte, freeze metadata, or
+external-sandhi rule is changed by this downstream invalidation.
+
+### Final analysis contract
+
+The frozen specification is:
+
+`reports/core_methods/latent_lexicon/s1m1_final_analysis_plan.md`
+
+Formal comparisons are exactly:
+
+1. IAST `surface_word` -> Devanagari `surface_word`
+2. IAST `legacy_joined` -> Devanagari `legacy_joined`
+3. IAST `surface_word` -> IAST `legacy_joined`
+4. Devanagari `surface_word` -> Devanagari `legacy_joined`
+5. Devanagari `surface_word` -> Devanagari `continuous`
+6. Devanagari `legacy_joined` -> Devanagari `continuous`
+
+No IAST-versus-Devanagari continuous script comparison is valid.
+
+The earlier six-cell aggregation and later archival reducer are now historical
+midpoint/diagnostic implementations. They remain preserved by Git history and
+are not the final S1M1 analysis implementation.
+
+Current freeze status:
+
+- final analysis plan/specification: `FROZEN`
+- final analysis implementation: `PROVISIONAL / not yet implemented`
+- complete five-cell S1M1 result: `NOT YET FROZEN`
+
+The Devanagari continuous full run remains human-operated. Do not infer its
+final result until the process exits successfully and its final artifacts,
+process metrics, and audit are complete.
