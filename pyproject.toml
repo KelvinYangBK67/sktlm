@@ -13,6 +13,7 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
 ]
 dependencies = [
+    "numpy",
     "sentencepiece",
     "PyYAML",
     "regex",

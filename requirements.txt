@@ -1,3 +1,4 @@
+numpy
 sentencepiece
 PyYAML
 regex
