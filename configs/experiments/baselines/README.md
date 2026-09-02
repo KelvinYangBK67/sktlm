@@ -54,3 +54,8 @@ requires `--production`; this flag rejects limits, tokenizer-only mode, runtime
 overrides, and dirty Git state. Completed production bundles are aggregated only
 through the fail-closed validator documented in
 `reports/baselines/m0_aggregation_and_validity_gate.md`.
+
+The non-blocking TransLIST interface is documented in
+`reports/baselines/m0_translist_adapter.md`. The exact first-cell production and
+audit procedure is `reports/baselines/m0_first_production_cell_audit.md`; no
+command in that section was executed during local pre-cloud closure.
