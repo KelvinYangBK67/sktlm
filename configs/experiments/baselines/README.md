@@ -48,3 +48,9 @@ Transformer contract. Add `--tokenizer-only` only for bounded diagnostics;
 formal aggregation rejects such artifacts. Local smoke can use
 `--downstream-device cpu --downstream-max-steps 1` without changing the frozen
 production config. See `reports/baselines/m0_common_downstream_lm_contract.md`.
+
+A bounded diagnostic requires both segment limits. An unbounded cell additionally
+requires `--production`; this flag rejects limits, tokenizer-only mode, runtime
+overrides, and dirty Git state. Completed production bundles are aggregated only
+through the fail-closed validator documented in
+`reports/baselines/m0_aggregation_and_validity_gate.md`.

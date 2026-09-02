@@ -7,7 +7,9 @@ import hashlib
 import json
 import math
 import platform
+import resource
 import subprocess
+import time
 import unicodedata
 from collections import Counter
 from importlib import metadata
@@ -24,6 +26,7 @@ from sktlm.experiments.artifacts import (
     current_git_commit,
     payload_sha256,
 )
+from sktlm.experiments.environment import write_environment
 from sktlm.experiments.baselines.frozen import FrozenRepresentationCatalog, load_frozen_catalog
 from sktlm.experiments.baselines.downstream import run_common_downstream_lm
 from sktlm.experiments.baselines.matrix import (
@@ -153,6 +156,34 @@ def _write_json(path: Path, value: Any) -> None:
     )
 
 
+def _peak_rss_bytes() -> int:
+    value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    return value if platform.system() == "Darwin" else value * 1024
+
+
+def _write_completion_manifest(
+    artifact_dir: Path,
+    *,
+    condition_id: str,
+    run_scope: str,
+) -> None:
+    files = {
+        path.relative_to(artifact_dir).as_posix(): file_sha256(path)
+        for path in sorted(artifact_dir.rglob("*"))
+        if path.is_file() and path.name != "COMPLETED.json"
+    }
+    _write_json(
+        artifact_dir / "COMPLETED.json",
+        {
+            "schema_version": "m0-baseline-completion-v1",
+            "condition_id": condition_id,
+            "condition_status": VALID,
+            "run_scope": run_scope,
+            "files": files,
+        },
+    )
+
+
 def _fit_cell_tokenizer(
     spec: BaselineRunSpec,
     tokenizer_config: dict[str, Any],
@@ -201,10 +232,17 @@ def run_supported_cell(
     run_downstream: bool = True,
     downstream_device: str | None = None,
     downstream_max_steps: int | None = None,
+    run_mode: str = "diagnostic",
 ) -> Path:
     """Fit and evaluate one of the 18 valid cells using frozen files directly."""
+    started = time.monotonic()
     if eval_split not in {"dev", "test"}:
         raise ValueError("eval_split must be 'dev' or 'test'")
+    if run_mode not in {"diagnostic", "production"}:
+        raise ValueError("run_mode must be diagnostic or production")
+    # Resolve validity before any execution-mode checks so retired conditions
+    # always receive the scientific retirement error rather than a CLI hint.
+    spec = _select_spec(settings, condition_id)
     for name, value in (
         ("max_train_segments", max_train_segments),
         ("max_eval_segments", max_eval_segments),
@@ -216,8 +254,22 @@ def run_supported_cell(
         raise ValueError("segment limits must be positive when provided")
     if downstream_max_steps is not None and downstream_max_steps <= 0:
         raise ValueError("downstream_max_steps must be positive when provided")
+    if run_mode == "diagnostic":
+        if max_train_segments is None or max_eval_segments is None:
+            raise ValueError(
+                "diagnostic baseline runs require both segment limits; "
+                "full-corpus execution requires explicit run_mode='production'"
+            )
+    else:
+        if max_train_segments is not None or max_eval_segments is not None:
+            raise ValueError("production runs must use complete frozen train/evaluation splits")
+        if not run_downstream:
+            raise ValueError("production runs require the common downstream LM")
+        if downstream_device is not None or downstream_max_steps is not None:
+            raise ValueError("production runs reject downstream device or step overrides")
+        if not require_clean_git:
+            raise ValueError("production runs require clean Git verification")
 
-    spec = _select_spec(settings, condition_id)
     if not spec.cell.tokenizer_supported:
         raise NotImplementedError(
             f"{condition_id} is blocked on its pending method contract; no substitute is allowed"
@@ -386,12 +438,15 @@ def run_supported_cell(
         tokenizer.fingerprint_payload(),
     )
 
+    run_scope = "formal_production" if run_mode == "production" else "bounded_diagnostic"
+
     execution_config: dict[str, Any] = {
         "matrix": "formal_m0_baselines",
         "condition_manifest_version": settings.condition_manifest_version,
         "condition_id": condition_id,
         "condition_status": VALID,
         "retirement_reason": None,
+        "run_scope": run_scope,
         "method": spec.cell.method,
         "script": spec.cell.script,
         "spacing": spec.cell.spacing,
@@ -415,6 +470,17 @@ def run_supported_cell(
             "max_eval_segments": max_eval_segments,
         },
     }
+    config_sha256 = payload_sha256(execution_config)
+    environment = write_environment(artifact_dir)
+    training_instance_id = payload_sha256(
+        {
+            "condition_id": condition_id,
+            "seed": settings.seed,
+            "data_fingerprint_sha256": data_fingerprint["fingerprint_sha256"],
+            "tokenizer_fingerprint_sha256": tokenizer_fingerprint["fingerprint_sha256"],
+            "common_downstream_contract": settings.downstream_lm.contract_version,
+        }
+    )
     provenance: dict[str, Any] = {
         "method": spec.cell.method,
         "script": spec.cell.script,
@@ -422,13 +488,20 @@ def run_supported_cell(
         "condition_status": VALID,
         "retirement_reason": None,
         "condition_manifest_version": settings.condition_manifest_version,
+        "run_scope": run_scope,
         "config": execution_config,
+        "config_sha256": config_sha256,
         "seed": settings.seed,
         "code_commit": git_commit,
         "code_worktree": "clean" if require_clean_git else "check_disabled",
         "corpus_freeze_id": settings.freeze_id,
         "canonical_manifest_sha256": canonical_manifest_sha256,
         "representation_manifest_sha256": representation_manifest_sha256,
+        "data_fingerprint_sha256": data_fingerprint["fingerprint_sha256"],
+        "tokenizer_fingerprint_sha256": tokenizer_fingerprint["fingerprint_sha256"],
+        "environment_fingerprint_sha256": environment["environment_fingerprint_sha256"],
+        "training_initialization": "fresh_per_cell",
+        "training_instance_id": training_instance_id,
         "software_versions": _software_versions(),
         "artifact_location": artifact_dir.as_posix(),
     }
@@ -444,6 +517,7 @@ def run_supported_cell(
         "spacing": spec.cell.spacing,
         "condition_status": VALID,
         "retirement_reason": None,
+        "run_scope": run_scope,
         "tokenizer": tokenizer.name,
         "vocab_size": tokenizer.vocab_size,
         "seed": settings.seed,
@@ -453,11 +527,18 @@ def run_supported_cell(
         "bits_per_character": bits_per_character,
         "bits_per_byte": bits_per_byte,
         "bits_per_canonical_unit": bits_per_canonical_unit,
-        "phase": "tokenizer_diagnostics",
+        "phase": (
+            "complete_common_downstream"
+            if downstream_metrics["common_downstream_status"] == "complete"
+            else "tokenizer_diagnostics"
+        ),
         **diagnostics,
         **method_metrics,
         **downstream_metrics,
     }
+    metrics["runtime_seconds"] = time.monotonic() - started
+    metrics["peak_rss_bytes"] = _peak_rss_bytes()
+    metrics["resource_measurement_scope"] = "process_peak_lifetime"
     logs = [
         f"condition_id={condition_id}",
         "input=frozen representation manifest paths",
@@ -486,6 +567,11 @@ def run_supported_cell(
             handle.write(json.dumps(prediction, ensure_ascii=False, sort_keys=True) + "\n")
     (artifact_dir / "logs.txt").write_text("\n".join(logs) + "\n", encoding="utf-8")
     write_result_table([metrics], artifact_dir / "result.csv")
+    _write_completion_manifest(
+        artifact_dir,
+        condition_id=condition_id,
+        run_scope=run_scope,
+    )
     return artifact_dir
 
 
@@ -511,6 +597,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--downstream-device", choices=("cpu", "cuda", "mps"))
     parser.add_argument("--downstream-max-steps", type=int)
+    parser.add_argument(
+        "--production",
+        action="store_true",
+        help="explicitly authorize one unbounded formal cell under the frozen config",
+    )
     return parser.parse_args(argv)
 
 
@@ -529,6 +620,7 @@ def main(argv: list[str] | None = None) -> None:
         run_downstream=not args.tokenizer_only,
         downstream_device=args.downstream_device,
         downstream_max_steps=args.downstream_max_steps,
+        run_mode="production" if args.production else "diagnostic",
     )
     print(f"baseline artifacts: {artifact_dir}")
 

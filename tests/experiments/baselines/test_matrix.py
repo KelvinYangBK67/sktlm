@@ -97,9 +97,10 @@ def test_run_specs_address_all_18_valid_cells_independently() -> None:
     assert plan["pending_method_contract_cell_count"] == 0
     assert all(cell["condition_status"] == "valid" for cell in plan["cells"])
     assert all(cell["retirement_reason"] is None for cell in plan["cells"])
-    assert all(len(cell["required_provenance"]) == 14 for cell in plan["cells"])
+    assert all(len(cell["required_provenance"]) == 21 for cell in plan["cells"])
 
     queue = build_production_queue(settings, config_path=config_path)
     assert queue["scheduled_job_count"] == 18
     assert queue["launches_jobs"] is False
     assert all("__iast__continuous" not in job["condition_id"] for job in queue["jobs"])
+    assert all("--production" in job["command_argv"] for job in queue["jobs"])

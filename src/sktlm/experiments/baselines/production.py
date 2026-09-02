@@ -48,6 +48,7 @@ def build_production_queue(
             config_path.as_posix(),
             "--condition",
             spec.cell.condition_id,
+            "--production",
         ]
         jobs.append(
             {

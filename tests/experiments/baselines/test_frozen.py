@@ -162,11 +162,17 @@ def test_supported_cell_reads_frozen_text_and_writes_complete_provenance(tmp_pat
         "predictions.jsonl",
         "logs.txt",
         "result.csv",
+        "environment.json",
+        "requirements-freeze.txt",
+        "COMPLETED.json",
     }
     provenance = json.loads((artifact_dir / "provenance.json").read_text(encoding="utf-8"))
     assert set(REQUIRED_PROVENANCE) <= set(provenance)
     assert provenance["corpus_freeze_id"] == FROZEN_M0_ID
     assert provenance["software_versions"]["python"]
+    assert provenance["run_scope"] == "bounded_diagnostic"
+    assert provenance["training_initialization"] == "fresh_per_cell"
+    assert provenance["environment_fingerprint_sha256"]
     metrics = json.loads((artifact_dir / "metrics.json").read_text(encoding="utf-8"))
     assert metrics["unk_count"] >= 0
     assert 0.0 <= metrics["unk_rate"] <= 1.0
@@ -317,9 +323,44 @@ def test_supported_cell_requires_reproducible_git_state_by_default(tmp_path) -> 
             settings,
             "unicode_codepoint__iast__surface_word",
             repo_root=tmp_path,
+            max_train_segments=1,
+            max_eval_segments=1,
             expected_documents=2,
             run_downstream=False,
         )
+
+
+def test_full_corpus_requires_explicit_production_mode(tmp_path) -> None:
+    settings = _build_fixture(tmp_path)
+    with pytest.raises(ValueError, match="explicit run_mode='production'"):
+        run_supported_cell(
+            settings,
+            "unicode_codepoint__iast__surface_word",
+            repo_root=tmp_path,
+            expected_documents=2,
+            require_clean_git=False,
+            run_downstream=False,
+        )
+    with pytest.raises(ValueError, match="complete frozen"):
+        run_supported_cell(
+            settings,
+            "unicode_codepoint__iast__surface_word",
+            repo_root=tmp_path,
+            max_train_segments=1,
+            max_eval_segments=1,
+            expected_documents=2,
+            run_mode="production",
+        )
+    with pytest.raises(ValueError, match="require the common downstream"):
+        run_supported_cell(
+            settings,
+            "unicode_codepoint__iast__surface_word",
+            repo_root=tmp_path,
+            expected_documents=2,
+            run_downstream=False,
+            run_mode="production",
+        )
+    assert not (tmp_path / settings.artifact_root).exists()
 
 
 @pytest.mark.parametrize(
