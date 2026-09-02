@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,6 +19,7 @@ from sktlm.analysis.s1m1_final import (
     INVALIDATION_SCIENTIFIC_COMMIT,
     parse_final_manifest,
     load_final_input,
+    reduce_final_per_cell,
 )
 
 
@@ -304,3 +306,183 @@ def test_final_input_rejects_cross_cell_scientific_mismatch(
         match="non-identity scientific configuration differs",
     ):
         load_final_input(path)
+
+
+def _patch_per_cell_reducers(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    boundary_digest: str = "same",
+) -> None:
+    monkeypatch.setattr(
+        "sktlm.analysis.s1m1_final._reduce_passes",
+        lambda cell: (
+            [
+                {
+                    "cell_id": cell.spec.cell_id,
+                    "pass": 1,
+                    "metric": "fixture",
+                    "value": 1.0,
+                }
+            ],
+            3,
+        ),
+    )
+
+    monkeypatch.setattr(
+        "sktlm.analysis.s1m1_final._reduce_lexicon",
+        lambda cell: SimpleNamespace(
+            row_count=4,
+            distribution_rows=[],
+            length_rows=[],
+            reuse_rows=[],
+            evidence=[],
+            top_order=(),
+            top_weights={},
+            mass_sketches={},
+        ),
+    )
+
+    monkeypatch.setattr(
+        "sktlm.analysis.s1m1_final._reduce_analyses",
+        lambda cell: SimpleNamespace(
+            row_count=2,
+            phoneme_count=8,
+            id_digest="same",
+            ambiguity_rows=[],
+            candidate_rows=[],
+            document_rows=[],
+            length_rows=[],
+            evidence=[],
+            topk_rule_mass={},
+        ),
+    )
+
+    monkeypatch.setattr(
+        "sktlm.analysis.s1m1_final._reduce_boundaries",
+        lambda cell: SimpleNamespace(
+            row_count=2,
+            boundary_count=1,
+            expected_boundary_total=0.5,
+            id_digest=boundary_digest,
+            rows=[],
+            evidence=[],
+        ),
+    )
+
+    monkeypatch.setattr(
+        "sktlm.analysis.s1m1_final._reduce_rules",
+        lambda cell, **kwargs: (
+            [
+                {
+                    "cell_id": cell.spec.cell_id,
+                    "family": "exact_global_rule",
+                    "metric": "R1",
+                    "expected_usage": 1.0,
+                    "normalized_usage": 1.0,
+                }
+            ],
+            1,
+        ),
+    )
+
+    monkeypatch.setattr(
+        "sktlm.analysis.s1m1_final._reduce_runtime",
+        lambda cell, **kwargs: [
+            {
+                "cell_id": cell.spec.cell_id,
+                "family": "fixture",
+                "metric": "wall_seconds",
+                "value": 1.0,
+            }
+        ],
+    )
+
+
+def test_final_per_cell_reduction_uses_exactly_five_valid_cells(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = _write_manifest(tmp_path, _payload())
+    payload, specs, invalidated = parse_final_manifest(path)
+    loaded = tuple(_fake_loaded_cell(spec) for spec in specs)
+
+    monkeypatch.setattr(
+        "sktlm.analysis.s1m1_final.load_final_input",
+        lambda manifest_path: (payload, loaded, invalidated),
+    )
+    _patch_per_cell_reducers(monkeypatch)
+
+    result = reduce_final_per_cell(path)
+
+    assert tuple(
+        (row["script"], row["condition"])
+        for row in result.tables["cells"]
+    ) == FINAL_VALID_CELLS
+    assert len(result.tables["cells"]) == 5
+    assert set(result.lexicons) == {
+        f"{script}__{condition}"
+        for script, condition in FINAL_VALID_CELLS
+    }
+    assert set(result.boundaries) == set(result.lexicons)
+    assert INVALIDATED_CELL not in {
+        (row["script"], row["condition"])
+        for row in result.tables["cells"]
+    }
+    assert "formal_comparisons" not in result.tables
+    assert "pairwise_stability" not in result.tables
+    assert "failure_mode_indicators" not in result.tables
+
+
+def test_final_per_cell_reduction_rejects_segment_identity_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = _write_manifest(tmp_path, _payload())
+    payload, specs, invalidated = parse_final_manifest(path)
+    loaded = tuple(_fake_loaded_cell(spec) for spec in specs)
+
+    monkeypatch.setattr(
+        "sktlm.analysis.s1m1_final.load_final_input",
+        lambda manifest_path: (payload, loaded, invalidated),
+    )
+    _patch_per_cell_reducers(
+        monkeypatch,
+        boundary_digest="different",
+    )
+
+    with pytest.raises(
+        FinalValidationError,
+        match="segment identities/order differ",
+    ):
+        reduce_final_per_cell(path)
+
+
+def test_final_per_cell_reduction_translates_legacy_reducer_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = _write_manifest(tmp_path, _payload())
+    payload, specs, invalidated = parse_final_manifest(path)
+    loaded = tuple(_fake_loaded_cell(spec) for spec in specs)
+
+    monkeypatch.setattr(
+        "sktlm.analysis.s1m1_final.load_final_input",
+        lambda manifest_path: (payload, loaded, invalidated),
+    )
+    _patch_per_cell_reducers(monkeypatch)
+
+    def fail_lexicon(cell):
+        raise GateValidationError(
+            (f"{cell.spec.cell_id}: fixture lexicon failure",)
+        )
+
+    monkeypatch.setattr(
+        "sktlm.analysis.s1m1_final._reduce_lexicon",
+        fail_lexicon,
+    )
+
+    with pytest.raises(
+        FinalValidationError,
+        match="fixture lexicon failure",
+    ):
+        reduce_final_per_cell(path)

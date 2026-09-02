@@ -13,6 +13,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .s1m1_archival import (
+    EVIDENCE_LIMIT,
+    BoundaryReduction,
+    LexiconReduction,
+    _reduce_analyses,
+    _reduce_boundaries,
+    _reduce_lexicon,
+    _reduce_passes,
+    _reduce_rules,
+    _reduce_runtime,
+)
+
 from .six_representation_gate import (
     CellSpec,
     GateValidationError,
@@ -512,3 +524,173 @@ def load_final_input(
         raise FinalValidationError(exc.errors) from exc
 
     return payload, loaded, invalidated
+
+
+PER_CELL_TABLE_NAMES = (
+    "cells",
+    "pass_dynamics",
+    "lexicon_distribution",
+    "lexical_length",
+    "reuse_distribution",
+    "ambiguity_distribution",
+    "boundary_distribution",
+    "rule_usage",
+    "candidate_scaling",
+    "document_distribution",
+    "length_strata",
+    "runtime_breakdown",
+)
+
+
+@dataclass(slots=True)
+class FinalPerCellReduction:
+    manifest_payload: dict[str, Any]
+    invalidated: InvalidatedCellSpec
+    loaded: tuple[LoadedCell, ...]
+    tables: dict[str, list[dict[str, Any]]]
+    evidence: list[dict[str, Any]]
+    lexicons: dict[str, LexiconReduction]
+    boundaries: dict[str, BoundaryReduction]
+
+
+def reduce_final_per_cell(path: Path) -> FinalPerCellReduction:
+    """Reduce the five audited final cells without cross-cell comparisons."""
+
+    manifest_payload, loaded, invalidated = load_final_input(path)
+
+    tables: dict[str, list[dict[str, Any]]] = {
+        name: [] for name in PER_CELL_TABLE_NAMES
+    }
+    evidence: list[dict[str, Any]] = []
+    lexicons: dict[str, LexiconReduction] = {}
+    boundaries: dict[str, BoundaryReduction] = {}
+
+    try:
+        for cell in loaded:
+            cell_id = cell.spec.cell_id
+
+            pass_rows, _pass_count = _reduce_passes(cell)
+            lexicon = _reduce_lexicon(cell)
+            analyses = _reduce_analyses(cell)
+            boundary = _reduce_boundaries(cell)
+
+            if analyses.id_digest != boundary.id_digest:
+                raise GateValidationError(
+                    (
+                        f"{cell_id}: analyses and boundary "
+                        "segment identities/order differ",
+                    )
+                )
+
+            rules, rule_count = _reduce_rules(
+                cell,
+                segments=analyses.row_count,
+                expected_boundaries=boundary.expected_boundary_total,
+                phonemes=analyses.phoneme_count,
+                topk_rule_mass=analyses.topk_rule_mass,
+            )
+            runtime = _reduce_runtime(
+                cell,
+                phonemes=analyses.phoneme_count,
+            )
+
+            lexicons[cell_id] = lexicon
+            boundaries[cell_id] = boundary
+
+            tables["pass_dynamics"].extend(pass_rows)
+            tables["lexicon_distribution"].extend(
+                lexicon.distribution_rows
+            )
+            tables["lexical_length"].extend(lexicon.length_rows)
+            tables["reuse_distribution"].extend(lexicon.reuse_rows)
+            tables["ambiguity_distribution"].extend(
+                analyses.ambiguity_rows
+            )
+            tables["boundary_distribution"].extend(boundary.rows)
+            tables["rule_usage"].extend(rules)
+            tables["candidate_scaling"].extend(
+                analyses.candidate_rows
+            )
+            tables["document_distribution"].extend(
+                analyses.document_rows
+            )
+            tables["length_strata"].extend(analyses.length_rows)
+            tables["runtime_breakdown"].extend(runtime)
+
+            evidence.extend(lexicon.evidence)
+            evidence.extend(analyses.evidence)
+            evidence.extend(boundary.evidence)
+
+            exact_rule_rows = [
+                row
+                for row in rules
+                if row.get("family") == "exact_global_rule"
+            ]
+            for category, ordered_rules in (
+                (
+                    "common_rules",
+                    exact_rule_rows[:EVIDENCE_LIMIT],
+                ),
+                (
+                    "low_usage_rules",
+                    sorted(
+                        exact_rule_rows,
+                        key=lambda row: (
+                            float(row["expected_usage"]),
+                            str(row["metric"]),
+                        ),
+                    )[:EVIDENCE_LIMIT],
+                ),
+            ):
+                evidence.extend(
+                    {
+                        "cell_id": cell_id,
+                        "category": category,
+                        "source_id": str(row["metric"]),
+                        "source_artifact": "rule_usage.tsv",
+                        "rule_id": row["metric"],
+                        "expected_usage": row["expected_usage"],
+                        "normalized_usage": row["normalized_usage"],
+                    }
+                    for row in ordered_rules
+                )
+
+            tables["cells"].append(
+                {
+                    "cell_id": cell_id,
+                    "script": cell.spec.script,
+                    "condition": cell.spec.condition,
+                    "run_id": cell.spec.run_id,
+                    "metrics_id": cell.spec.metrics_id,
+                    "scientific_git_sha": cell.spec.scientific_commit,
+                    "segments": analyses.row_count,
+                    "surface_phonemes": analyses.phoneme_count,
+                    "lexical_types": lexicon.row_count,
+                    "candidate_boundaries": boundary.boundary_count,
+                    "expected_boundaries": (
+                        boundary.expected_boundary_total
+                    ),
+                    "rules": rule_count,
+                }
+            )
+
+    except GateValidationError as exc:
+        raise FinalValidationError(exc.errors) from exc
+
+    evidence.sort(
+        key=lambda row: (
+            str(row.get("cell_id", "")),
+            str(row.get("category", "")),
+            str(row.get("source_id", "")),
+        )
+    )
+
+    return FinalPerCellReduction(
+        manifest_payload=manifest_payload,
+        invalidated=invalidated,
+        loaded=loaded,
+        tables=tables,
+        evidence=evidence,
+        lexicons=lexicons,
+        boundaries=boundaries,
+    )
