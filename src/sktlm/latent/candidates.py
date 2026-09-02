@@ -67,6 +67,8 @@ class TokenLattice:
     nodes: tuple[InternalBoundaryNode, ...]
     edges: tuple[LexicalEdge, ...]
     overflowed: bool = False
+    raw_internal_matches: int = 0
+    retained_internal_matches: int = 0
 
     @property
     def outgoing_edges(self) -> tuple[tuple[LexicalEdge, ...], ...]:
@@ -129,6 +131,12 @@ def candidate_graph_statistics(graph: CandidateGraph) -> dict[str, int]:
         "factors": len(graph.factors),
         "merged_factors": sum(factor.is_merge for factor in graph.factors),
         "token_lattices": len(lattices),
+        "raw_internal_matches": sum(
+            lattice.raw_internal_matches for lattice in lattices
+        ),
+        "retained_internal_matches": sum(
+            lattice.retained_internal_matches for lattice in lattices
+        ),
         "lattice_nodes": sum(len(lattice.nodes) for lattice in lattices),
         "lexical_edges": sum(len(lattice.edges) for lattice in lattices),
         "overflowed_tokens": graph.overflowed_tokens,
@@ -262,19 +270,21 @@ def _internal_nodes(
     incoming: BoundaryOption,
     outgoing: BoundaryOption,
     max_internal_matches: int,
-) -> tuple[tuple[InternalBoundaryNode, ...], bool]:
+) -> tuple[tuple[InternalBoundaryNode, ...], bool, int, int]:
     prefix_end = incoming.right_consumed
     suffix_start = len(token.units) - outgoing.left_consumed
     if prefix_end > suffix_start:
-        return (), False
+        return (), False, 0, 0
     matches = [
         match
         for match in grammar.iter_internal_matches(token.units)
         if match.start >= prefix_end and match.end <= suffix_start
     ]
-    overflowed = len(matches) > max_internal_matches
+    raw_match_count = len(matches)
+    overflowed = raw_match_count > max_internal_matches
     if overflowed:
         matches = []
+    retained_match_count = len(matches)
     start = InternalBoundaryNode(
         surface_start=prefix_end,
         surface_end=prefix_end,
@@ -314,7 +324,12 @@ def _internal_nodes(
             node.rule_ids,
         )
     )
-    return (start, *internal, end), overflowed
+    return (
+        (start, *internal, end),
+        overflowed,
+        raw_match_count,
+        retained_match_count,
+    )
 
 
 def build_token_lattice(
@@ -327,7 +342,7 @@ def build_token_lattice(
 ) -> TokenLattice | None:
     """Build a DAG whose edges emit complete lexical forms."""
 
-    nodes, overflowed = _internal_nodes(
+    nodes, overflowed, raw_match_count, retained_match_count = _internal_nodes(
         token,
         grammar,
         incoming,
@@ -388,6 +403,8 @@ def build_token_lattice(
         nodes=nodes,
         edges=tuple(edges),
         overflowed=overflowed,
+        raw_internal_matches=raw_match_count,
+        retained_internal_matches=retained_match_count,
     )
 
 

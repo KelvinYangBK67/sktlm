@@ -62,6 +62,7 @@ sktlm-experiment = "sktlm.experiments.runner:main"
 sktlm-train-latent-lexicon = "sktlm.experiments.training.latent_lexicon:main"
 sktlm-benchmark-latent = "sktlm.latent.benchmark:main"
 sktlm-compare-latent-runs = "sktlm.latent.equivalence:main"
+sktlm-profile-m1 = "sktlm.latent.profiling:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
