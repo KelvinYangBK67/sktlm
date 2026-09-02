@@ -16,7 +16,10 @@ from typing import Any
 from .six_representation_gate import (
     CellSpec,
     GateValidationError,
+    LoadedCell,
     PairSpec,
+    _load_cell,
+    _validate_cross_cell_contract,
     _is_full_sha,
     _read_json_object,
     _resolve_local_path,
@@ -483,3 +486,29 @@ def parse_final_manifest(
         )
 
     return payload, specs, invalidated
+
+
+
+def load_final_input(
+    path: Path,
+) -> tuple[
+    dict[str, Any],
+    tuple[LoadedCell, ...],
+    InvalidatedCellSpec,
+]:
+    """Load and fully validate the five valid final S1M1 collections.
+
+    Manifest structure is validated first. Each valid cell must then satisfy
+    the existing completed-run/final-audit contract, followed by the common
+    cross-cell scientific configuration and M0 provenance contract.
+    """
+
+    payload, specs, invalidated = parse_final_manifest(path)
+
+    try:
+        loaded = tuple(_load_cell(spec) for spec in specs)
+        _validate_cross_cell_contract(loaded)
+    except GateValidationError as exc:
+        raise FinalValidationError(exc.errors) from exc
+
+    return payload, loaded, invalidated

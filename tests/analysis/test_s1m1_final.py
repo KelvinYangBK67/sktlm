@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from sktlm.analysis.six_representation_gate import GateValidationError
+
 from sktlm.analysis.s1m1_final import (
     FINAL_VALID_CELLS,
     FORMAL_COMPARISONS,
@@ -15,6 +17,7 @@ from sktlm.analysis.s1m1_final import (
     INVALIDATION_REASON_CODE,
     INVALIDATION_SCIENTIFIC_COMMIT,
     parse_final_manifest,
+    load_final_input,
 )
 
 
@@ -198,3 +201,106 @@ def test_final_validation_error_uses_final_output_schema(
     assert error_payload["schema_version"] == "sktlm-s1m1-final-analysis/v1"
     assert error_payload["validation"]["valid"] is False
     assert error_payload["validation"]["errors"]
+
+
+
+def _fake_loaded_cell(spec, *, passes: int = 3):
+    class FakeLoaded:
+        pass
+
+    loaded = FakeLoaded()
+    loaded.spec = spec
+    loaded.config = {
+        "run_id": spec.run_id,
+        "script": spec.script,
+        "condition": spec.condition,
+        "output_root": "artifacts/latent_benchmarks",
+        "passes": passes,
+        "workers": 8,
+        "vocab_budget": None,
+    }
+    loaded.provenance = {
+        "implementation": "latent-lexicon-v1",
+        "freeze_id": "freeze",
+        "manifest_sha256": "manifest",
+        "rules_sha256": "rules",
+        "external_rule_count": 2,
+        "document_count": 240,
+        "seed": 0,
+    }
+    return loaded
+
+
+def test_final_input_loads_exactly_five_valid_cells(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = _write_manifest(tmp_path, _payload())
+    calls = []
+
+    def fake_load(spec):
+        calls.append(spec.key)
+        return _fake_loaded_cell(spec)
+
+    monkeypatch.setattr(
+        "sktlm.analysis.s1m1_final._load_cell",
+        fake_load,
+    )
+
+    _manifest, loaded, invalidated = load_final_input(path)
+
+    assert tuple(calls) == FINAL_VALID_CELLS
+    assert tuple(cell.spec.key for cell in loaded) == FINAL_VALID_CELLS
+    assert invalidated.key == INVALIDATED_CELL
+    assert INVALIDATED_CELL not in calls
+
+
+def test_final_input_translates_cell_audit_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = _write_manifest(tmp_path, _payload())
+
+    def fake_load(spec):
+        if spec.key == ("devanagari", "continuous"):
+            raise GateValidationError(
+                ("devanagari__continuous: final audit is missing",)
+            )
+        return _fake_loaded_cell(spec)
+
+    monkeypatch.setattr(
+        "sktlm.analysis.s1m1_final._load_cell",
+        fake_load,
+    )
+
+    with pytest.raises(
+        FinalValidationError,
+        match="final audit is missing",
+    ):
+        load_final_input(path)
+
+
+def test_final_input_rejects_cross_cell_scientific_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = _write_manifest(tmp_path, _payload())
+
+    def fake_load(spec):
+        passes = (
+            4
+            if spec.key == ("devanagari", "legacy_joined")
+            else 3
+        )
+        return _fake_loaded_cell(spec, passes=passes)
+
+    monkeypatch.setattr(
+        "sktlm.analysis.s1m1_final._load_cell",
+        fake_load,
+    )
+
+    with pytest.raises(
+        FinalValidationError,
+        match="non-identity scientific configuration differs",
+    ):
+        load_final_input(path)
