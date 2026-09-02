@@ -164,6 +164,12 @@ def test_supported_cell_reads_frozen_text_and_writes_complete_provenance(tmp_pat
     assert set(REQUIRED_PROVENANCE) <= set(provenance)
     assert provenance["corpus_freeze_id"] == FROZEN_M0_ID
     assert provenance["software_versions"]["python"]
+    metrics = json.loads((artifact_dir / "metrics.json").read_text(encoding="utf-8"))
+    assert metrics["unk_count"] >= 0
+    assert 0.0 <= metrics["unk_rate"] <= 1.0
+    assert metrics["unknown_semantics"] == "unseen_train_vocabulary_unicode_codepoint"
+    assert metrics["dependent_vowel_start_rate"] is None
+    assert metrics["script_specific_diagnostic"]["applicability"] == "not_applicable"
 
     fingerprint = json.loads(
         (artifact_dir / "data_fingerprint.json").read_text(encoding="utf-8")
@@ -210,6 +216,7 @@ def test_supported_bpe_cell_fits_only_from_frozen_train_segments(tmp_path) -> No
         (artifact_dir / "tokenizer_fingerprint.json").read_text(encoding="utf-8")
     )
     assert tokenizer_fingerprint["runtime"]["model_sha256"]
+    assert tokenizer_fingerprint["config"]["sentencepiece_trainer_contract"]
 
 
 @pytest.mark.parametrize(

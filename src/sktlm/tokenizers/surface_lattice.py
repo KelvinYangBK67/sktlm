@@ -87,6 +87,7 @@ class SurfaceLatticeTokenizer(SurrogateSentencePieceTokenizer):
     """Complete learned-piece DAG with marginal likelihood and Viterbi encoding."""
 
     name = "surface_lattice"
+    unknown_semantics = "unseen_iast_grapheme_singleton_arc_with_fixed_log_score"
 
     def __init__(self, model_path: Path) -> None:
         super().__init__(model_path, expected_contract=SURFACE_LATTICE_CONTRACT)
@@ -102,6 +103,7 @@ class SurfaceLatticeTokenizer(SurrogateSentencePieceTokenizer):
                 f"expected {expected_unicode}, found {unicodedata.unidata_version}"
             )
         self.unknown_log_score = float(self.metadata["unknown_log_score"])
+        self.unknown_semantics = type(self).unknown_semantics
         self._piece_trie = _PieceTrieNode()
         for token_id in range(4, self.vocab_size):
             atoms = self.piece_atoms(token_id)

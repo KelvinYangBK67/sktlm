@@ -75,7 +75,13 @@ def run_experiment(
     )
     encoded = [(segment.text, tokenizer.encode(segment.text)) for segment in eval_segments]
     patterns = tuple(config["evaluation"].get("sandhi_patterns", SandhiFragmentConfig().patterns))
-    diagnostics = evaluate_tokenizer(encoded, SandhiFragmentConfig(patterns))
+    diagnostics = evaluate_tokenizer(
+        encoded,
+        SandhiFragmentConfig(patterns),
+        script=representation.script,
+        unknown_id=tokenizer.unknown_id,
+        unknown_semantics=tokenizer.unknown_semantics,
+    )
 
     metrics: dict[str, Any] = {
         "run_id": run_id,

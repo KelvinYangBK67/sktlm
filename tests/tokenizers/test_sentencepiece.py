@@ -3,7 +3,11 @@
 import sys
 from types import SimpleNamespace
 
-from sktlm.tokenizers.sentencepiece import iter_processed_texts, train_sentencepiece
+from sktlm.tokenizers.sentencepiece import (
+    SENTENCEPIECE_TRAINER_CONTRACT,
+    iter_processed_texts,
+    train_sentencepiece,
+)
 
 
 def test_iter_processed_texts_is_sorted(tmp_path) -> None:
@@ -34,7 +38,7 @@ def test_sentencepiece_training_preserves_existing_options(tmp_path, monkeypatch
             "vocab_size": 24000,
             "model_type": "bpe",
             "character_coverage": 1.0,
-            "normalization_rule_name": "identity",
+            **SENTENCEPIECE_TRAINER_CONTRACT,
             "bos_id": 1,
             "eos_id": 2,
             "unk_id": 0,

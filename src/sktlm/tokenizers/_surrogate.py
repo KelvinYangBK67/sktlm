@@ -19,6 +19,17 @@ PRIVATE_USE_RANGES = (
     (0xF0000, 0xFFFFD),
     (0x100000, 0x10FFFD),
 )
+SURROGATE_SENTENCEPIECE_TRAINER_CONTRACT = {
+    "normalization_rule_name": "identity",
+    "add_dummy_prefix": False,
+    "remove_extra_whitespaces": False,
+    "escape_whitespaces": True,
+    "split_by_whitespace": False,
+    "treat_whitespace_as_suffix": False,
+    "allow_whitespace_only_pieces": False,
+    "split_by_unicode_script": False,
+    "split_by_number": False,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,13 +165,7 @@ def train_surrogate_sentencepiece(
             vocab_size=vocab_size,
             model_type=model_type,
             character_coverage=1.0,
-            normalization_rule_name="identity",
-            add_dummy_prefix=False,
-            remove_extra_whitespaces=False,
-            escape_whitespaces=True,
-            split_by_whitespace=False,
-            split_by_unicode_script=False,
-            split_by_number=False,
+            **SURROGATE_SENTENCEPIECE_TRAINER_CONTRACT,
             pretokenization_delimiter=PRETOKENIZATION_DELIMITER,
             user_defined_symbols=[PRETOKENIZATION_DELIMITER],
             max_sentencepiece_length=max_piece_atoms,
@@ -183,6 +188,7 @@ def train_surrogate_sentencepiece(
         "vocab_size_requested": vocab_size,
         "max_piece_atoms": max_piece_atoms,
         "pretokenization_delimiter": PRETOKENIZATION_DELIMITER,
+        "sentencepiece_trainer_contract": SURROGATE_SENTENCEPIECE_TRAINER_CONTRACT,
         "atoms": ordered_atoms,
         "barrier_atoms": sorted(barrier_inventory),
         **metadata,
@@ -243,6 +249,8 @@ class SurrogateSentencePieceTokenizer(Tokenizer):
             )
         self.bos_id = 1
         self.eos_id = 2
+        self.unknown_id = 0
+        self.unknown_semantics = "unseen_serialized_surface_atom"
 
     @property
     def vocab_size(self) -> int:

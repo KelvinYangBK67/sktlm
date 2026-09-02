@@ -110,9 +110,11 @@ class AksaraSafeBPETokenizer(SurrogateSentencePieceTokenizer):
     """BPE whose internal symbols are complete Devanagari akṣara atoms."""
 
     name = "aksara_safe_bpe"
+    unknown_semantics = "unseen_train_vocabulary_devanagari_aksara_atom"
 
     def __init__(self, model_path: Path) -> None:
         super().__init__(model_path, expected_contract=AKSARA_CONTRACT)
+        self.unknown_semantics = type(self).unknown_semantics
 
     def encode(self, text: str) -> Encoding:
         atoms = atomize_devanagari_aksaras(text)

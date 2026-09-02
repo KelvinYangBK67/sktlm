@@ -11,6 +11,21 @@ from typing import Any
 from sktlm.tokenizers.base import Encoding, Tokenizer
 
 
+# Preserve the historical SentencePiece defaults explicitly so library updates
+# cannot silently change spacing-sensitive behavior.
+SENTENCEPIECE_TRAINER_CONTRACT = {
+    "normalization_rule_name": "identity",
+    "add_dummy_prefix": True,
+    "remove_extra_whitespaces": True,
+    "escape_whitespaces": True,
+    "split_by_whitespace": True,
+    "treat_whitespace_as_suffix": False,
+    "allow_whitespace_only_pieces": False,
+    "split_by_unicode_script": True,
+    "split_by_number": True,
+}
+
+
 def _file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -48,6 +63,8 @@ class SentencePieceTokenizer(Tokenizer):
         self.model_type = model_type
         self.name = model_type
         self.processor = spm.SentencePieceProcessor(model_file=str(self.model_path))
+        self.unknown_id = self.processor.unk_id()
+        self.unknown_semantics = "sentencepiece_unknown_piece_for_unseen_surface_sequence"
         bos_id = self.processor.bos_id()
         self.bos_id = bos_id if bos_id >= 0 else None
         eos_id = self.processor.eos_id()
@@ -93,6 +110,7 @@ class SentencePieceTokenizer(Tokenizer):
             "model_type": self.model_type,
             "model_path": str(self.model_path.as_posix()),
             "model_sha256": _file_sha256(self.model_path),
+            "trainer_contract": dict(SENTENCEPIECE_TRAINER_CONTRACT),
         }
 
 
@@ -141,7 +159,7 @@ def train_sentencepiece(
         vocab_size=vocab_size,
         model_type=model_type,
         character_coverage=1.0,
-        normalization_rule_name="identity",
+        **SENTENCEPIECE_TRAINER_CONTRACT,
         bos_id=1,
         eos_id=2,
         unk_id=0,

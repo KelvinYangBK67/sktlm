@@ -299,7 +299,13 @@ def run_supported_cell(
                 predictions.append(prediction)
             yield segment.text, encoding
 
-    diagnostics = evaluate_tokenizer(encoded_evaluation(), SandhiFragmentConfig())
+    diagnostics = evaluate_tokenizer(
+        encoded_evaluation(),
+        SandhiFragmentConfig(),
+        script=spec.cell.script,
+        unknown_id=tokenizer.unknown_id,
+        unknown_semantics=tokenizer.unknown_semantics,
+    )
     if eval_trace.segment_count == 0:
         raise ValueError(f"baseline cell requires non-empty frozen {eval_split} segments")
 

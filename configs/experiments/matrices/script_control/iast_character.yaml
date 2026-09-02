@@ -27,4 +27,3 @@ training:
 seed: 0
 evaluation:
   prediction_examples: 5
-  sandhi_patterns: ["ोऽपि", "ोऽ", "ेऽ"]

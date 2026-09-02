@@ -34,6 +34,8 @@ class Tokenizer(ABC):
     name: str
     bos_id: int | None = None
     eos_id: int | None = None
+    unknown_id: int | None = None
+    unknown_semantics: str = "no_unknown_token"
 
     @property
     @abstractmethod
@@ -50,7 +52,12 @@ class Tokenizer(ABC):
 
     def fingerprint_payload(self) -> dict[str, Any]:
         """Return deterministic tokenizer metadata suitable for hashing."""
-        return {"type": self.name, "vocab_size": self.vocab_size}
+        return {
+            "type": self.name,
+            "vocab_size": self.vocab_size,
+            "unknown_id": self.unknown_id,
+            "unknown_semantics": self.unknown_semantics,
+        }
 
 
 def span_coverage(text: str, encoding: Encoding) -> float:

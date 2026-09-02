@@ -36,7 +36,30 @@ def test_grapheme_tokenizer_has_no_invalid_grapheme_boundary() -> None:
 def test_sandhi_fragment_metric_is_explicitly_pattern_based() -> None:
     text = "देवोऽपि"
     encoding = Encoding(ids=(5,), pieces=(text,), spans=((0, len(text)),))
-    metrics = evaluate_tokenizer([(text, encoding)])
+    metrics = evaluate_tokenizer(
+        [(text, encoding)],
+        script="devanagari",
+        unknown_id=0,
+        unknown_semantics="fixture_unknown",
+    )
     assert metrics["suspect_token_count"] == 1
     assert metrics["frequency_weighted_suspect_occupancy"] == 1.0
     assert "ोऽपि" in metrics["sandhi_patterns"]
+
+
+def test_iast_does_not_receive_devanagari_specific_quantities() -> None:
+    text = "devo'pi"
+    encoding = Encoding(ids=(0, 5), pieces=("devo", "'pi"), spans=((0, 4), (4, 7)))
+    metrics = evaluate_tokenizer(
+        [(text, encoding)],
+        script="iast",
+        unknown_id=0,
+        unknown_semantics="fixture_unknown",
+    )
+    assert metrics["unk_count"] == 1
+    assert metrics["unk_rate"] == 0.5
+    assert metrics["unknown_semantics"] == "fixture_unknown"
+    assert metrics["dependent_vowel_start_rate"] is None
+    assert metrics["suspect_sandhi_fragment_rate"] is None
+    assert metrics["sandhi_patterns"] == []
+    assert metrics["script_specific_diagnostic"]["applicability"] == "not_applicable"

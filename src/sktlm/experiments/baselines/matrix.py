@@ -14,6 +14,8 @@ from sktlm.representations.validity import (
     IAST_CONTINUOUS_RETIREMENT_ID,
     IAST_CONTINUOUS_RETIREMENT_REASON,
 )
+from sktlm.tokenizers._surrogate import SURROGATE_SENTENCEPIECE_TRAINER_CONTRACT
+from sktlm.tokenizers.sentencepiece import SENTENCEPIECE_TRAINER_CONTRACT
 
 
 FROZEN_M0_ID = "9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40"
@@ -85,7 +87,11 @@ class BaselineCell:
 
     def tokenizer_config(self, *, vocab_size: int) -> dict[str, Any]:
         if self.method in {"bpe", "unigram"}:
-            return {"type": self.method, "vocab_size": vocab_size}
+            return {
+                "type": self.method,
+                "vocab_size": vocab_size,
+                "sentencepiece_trainer_contract": dict(SENTENCEPIECE_TRAINER_CONTRACT),
+            }
         if self.method == "unicode_codepoint":
             return {"type": "character"}
         if self.method == "aksara_safe_bpe":
@@ -94,6 +100,9 @@ class BaselineCell:
                 "vocab_size": vocab_size,
                 "max_piece_atoms": 16,
                 "atomizer_contract": "devanagari_aksara_bpe_v1",
+                "sentencepiece_trainer_contract": dict(
+                    SURROGATE_SENTENCEPIECE_TRAINER_CONTRACT
+                ),
             }
         if self.method == "surface_lattice":
             return {
@@ -103,6 +112,9 @@ class BaselineCell:
                 "unknown_log_score": -20.0,
                 "atomizer_contract": "iast_surface_lattice_v1",
                 "likelihood": "complete_dag_logsumexp",
+                "sentencepiece_trainer_contract": dict(
+                    SURROGATE_SENTENCEPIECE_TRAINER_CONTRACT
+                ),
             }
         raise RuntimeError(f"historical method has no tokenizer config: {self.method}")
 

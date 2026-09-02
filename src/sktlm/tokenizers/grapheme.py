@@ -15,6 +15,8 @@ class GraphemeTokenizer(Tokenizer):
     name = "grapheme"
     bos_id = 1
     eos_id = 2
+    unknown_id = 0
+    unknown_semantics = "unseen_train_vocabulary_extended_grapheme_cluster"
 
     def __init__(self, vocabulary: Iterable[str]) -> None:
         self._pieces = tuple(list(SPECIAL_PIECES) + sorted(set(vocabulary)))
