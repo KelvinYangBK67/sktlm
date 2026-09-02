@@ -2,131 +2,90 @@
 
 ## Current status
 
-Branch: `exp/m0-core-methods`.
+Branch: 'exp/s1m1-final-reduction'.
 
-The unrestricted non-continuous 2×2 checkpoint is complete locally for IAST
-and Devanagari × `surface_word` and `legacy_joined`. Its quantitative and
-bounded qualitative evidence is recorded in
-`reports/core_methods/latent_lexicon/noncontinuous_representation_checkpoint_20260901.md`.
-The result is that spacing effects are much larger than script effects and
-that `legacy_joined` amplifies an over-long lexicalization failure mode already
-visible under `surface_word`.
+Parent checkpoint:
+'4bacb038eb00c479dd6913e63ec1543a1b21e0e6'
+('exp/s1m1-core-methods').
 
-The continuous cells are not closed by that evidence. Do not claim a closed
-six-cell gate or final M1 conclusion, and do not alter the experiment registry
-from this local analysis task. Continuous hosts remain human-operated.
-## Absolute operational boundary
+The S1M1 post-hoc archival/descriptive reducer is complete on this dedicated
+branch. This branch must remain separate from 'exp/s1m2-reusable-pieces'; do not
+merge it into S1M2 merely to share analysis infrastructure.
 
-Do not contact a VM. Do not run SSH/SCP/rsync, bridge remote operations,
-status/polling, collection, remote audit, process inspection/control, restart,
-resume, cleanup, deployment, or remote Git. Do not read or expose private
-bridge configuration. Running jobs must finish naturally.
+The frozen preregistered gate remains historically and scientifically
+separate:
 
-The next remote actions are human-only after natural completion:
+    S1M1 frozen preregistered gate
+    -> S1M1 post-hoc archival reduction
 
-1. require every `process_tree_summary.json` to report `return_code == 0`;
-2. run one final audit per completed run and require `valid == true`;
-3. collect each completed run once with `collect --profile scientific` into
-   `artifacts/post_gate/collected`;
-4. require `benchmark/`, `metrics/`, `remote_audit.json`, and
-   `.sktlm-collection.json` in every collection;
-5. only then run local aggregation.
+The archive does not modify or reinterpret gate pass/fail criteria.
 
-## Collection control plane prepared
+## Implemented
 
-`collect` now accepts `--profile report|scientific|full`, defaults to `report`
-for backward compatibility, and passes the selected profile through the
-existing audit-first collection path. Formal scientific collection therefore
-needs no separate `pull-results` call. The human-only post-completion template
-is:
+'src/sktlm/analysis/s1m1_archival.py' provides a local-only, read-only,
+fail-closed, bounded reducer over the exact six-cell gate manifest:
 
-    python3 scripts/cloud/sktlm_bridge.py collect <RUN_ID> \
-      --metrics-id <METRICS_ID> --host-profile <HOST_PROFILE> \
-      --profile scientific --output-root artifacts/post_gate/collected
+- audited source retention identities and row counts;
+- pass dynamics and signed absolute/relative changes;
+- lexical mass, diversity, exact discrete length, and reuse summaries;
+- ambiguity and explicit bounded-top-k labels;
+- exact boundary expectations/entropy/confidence/cue summaries;
+- exact global rule distribution plus labelled top-k segment diagnostics;
+- candidate scaling, bounded heavy-tail estimates, document and length strata;
+- runtime/resource/counter/cache/SQLite and throughput evidence;
+- bounded cross-cell head overlap, weighted distance, rank, and MinHash support;
+- deterministic bounded evidence reservoirs with stable source IDs.
 
-The scientific profile includes the existing report/metrics files plus the
-canonical scientific exports and still excludes `learner.sqlite`. Its local
-inventory now hashes each downloaded scientific file once and supplies those
-bytes/SHA identities directly to remote-audit validation; missing audit items,
-missing files/inventory rows, and bytes/SHA mismatches still fail closed.
-Report-only collection remains backward compatible. Audit preservation,
-transfer receipts, registry checks, resume identity, and refusal to overwrite
-remain unchanged. Focused synthetic tests and Python syntax compilation pass.
-No bridge command or remote operation was executed.
+'scripts/analysis/reduce_s1m1_archival.py' refuses an existing output directory
+before scanning, validates every collection through the existing six-cell
+audit contract, and atomically writes the compact archive.
 
-## Local post-gate tooling prepared
+The frozen files
+'reports/core_methods/latent_lexicon/post_gate_analysis_protocol.md' and
+'scripts/analysis/aggregate_six_representation.py' are unchanged.
 
-`scripts/analysis/aggregate_six_representation.py` now implements the
-local-only, fail-closed six-cell aggregation contract. Its manifest names exact
-local run/metrics/audit paths and exact scientific commits. It refuses missing
-or duplicate cells, fixed-K/scoped inputs, undeclared mixed commits, mixed
-scientific configuration/provenance, nonzero return code, invalid audit,
-missing canonical artifacts, or audit/hash mismatch.
+## Validation
 
-Successful aggregation emits deterministic JSON, tidy TSV, and descriptive
-Markdown for:
+Completed locally without real-artifact scanning:
 
-- latent structure, ambiguity, complexity, and low-count diagnostics;
-- 90/95/99/99.9/99.99% lexical mass support;
-- candidate graph and overflow diagnostics;
-- external-rule usage and normalized distributions;
-- three spacing-matched script pairs and six within-script spacing pairs;
-- scalar differences/ratios with explicit zero denominators;
-- TV and Jensen-Shannon divergence in nats;
-- process-tree runtime/resource diagnostics kept separate from science.
+    python -m py_compile \
+      src/sktlm/analysis/s1m1_archival.py \
+      scripts/analysis/reduce_s1m1_archival.py
 
-The fixed analysis order, quantitative metrics, deterministic qualitative
-selection, and interpretation discipline are in
-`reports/core_methods/latent_lexicon/post_gate_analysis_protocol.md`. Do not
-run the full local aggregation until the human returns with all six audited
-collections; hashing/scanning the complete payload may exceed five minutes.
+    python -m pytest tests/analysis/test_s1m1_archival.py -q
 
-## Independent review preparation
+Focused result: 4 passed.
 
-The researcher-authored files `notes/reviewer/reviewer_prompt.txt` and
-`notes/reviewer/method.txt` were originally ignored/untracked. They contained
-no secrets or private infrastructure and are now preserved byte-for-byte as
-tracked review sources.
+The full repository suite also passed:
 
-`scripts/review/review_packet.py` builds and verifies a deterministic,
-content-addressed packet from explicit tracked files and validates eventual
-raw-review metadata against the packet/prompt/method hashes. Portable relative
-path validation rejects POSIX traversal, Windows backslash traversal, and drive
-or alternate-stream syntax before any packet or raw-review file is resolved.
-The protocol fixes
-five independent fresh sessions, the identical frozen packet/prompt, no
-cross-review leakage, immutable raw responses, synthesis only after 5/5, and
-separate author adjudication. No reviewer LLM has been invoked and no fake raw
-review exists.
+    python -m pytest -q
 
-Formal review remains gated on six completed/audited/collected cells,
-post-gate analysis, and a frozen S1M1 method/result packet. The current
-researcher prompt names snapshot `add634e...`; before a later formal panel, the
-human researcher must verify that the frozen prompt target and packet target
-are the intended identical snapshot. No prompt change is allowed after
-`reviewer_01` begins.
+Full result: 546 passed, 4 warnings in 48.30 seconds. The warnings are the
+existing PyTorch nested-tensor and SentencePiece/SWIG deprecation warnings.
 
-## Continuous performance preparation
+## Human-only eventual archive command
 
-`reports/core_methods/latent_lexicon/continuous_performance_source_analysis.md`
-records a static source-only bottleneck map, semantics-preserving candidate
-optimizations, scientific changes that cannot be disguised as speedups, and a
-future post-freeze profiling-counter plan. No scientific/runtime
-implementation, candidate bound, or active configuration changed. Do not tune
-from partial cloud metrics.
+Only after all six completed/audited collections and the exact gate manifest
+are locally available:
 
-## Validation and next trigger
+    python scripts/analysis/reduce_s1m1_archival.py \
+      --manifest <completed-six-cell-gate-manifest.json> \
+      --output-dir <new-empty-archive-directory>
 
-The focused bridge and qualitative-selector test files passed together (`51
-passed in 1.07s`), and Python syntax compilation passed. The final
-bounded local selector stopped after 64 distinct qualified candidates at 132
-matched records, reading about 1.67 MB and 1.34 MB from the two Devanagari
-analysis files; it produced all four requested additional illustrations. No
-full pytest, full-artifact scan, artifact hash recomputation, benchmark, cloud
-command, continuous-cell operation, or registry change was performed.
+The output directory must not already exist. This command may scan and hash
+large artifacts for longer than five minutes, so it was not launched by this
+implementation task.
 
-Next, wait for human-supplied completed/audited continuous collections. Then
-run the one frozen local aggregation across all six cells, make the S1M1
-representation decision, freeze the review packet, and hand the identical
-packet to five fresh reviewer sessions. Do not treat the non-continuous 2×2
-checkpoint as a six-cell or final-M1 result.
+## Absolute boundary
+
+Do not contact a VM, run bridge/SSH/SCP/rsync, poll a remote job, collect
+artifacts, mutate the experiment registry, scan the real large collections
+automatically, or overwrite any source/output directory.
+
+## Next repository action
+
+This branch should be committed and pushed as the S1M1 archival-reduction
+line. S1M2-P1 continues independently from
+'f95bc5f1bb92ce4beb899b13fa5a83070852d734' on
+'exp/s1m2-reusable-pieces'. Do not transplant these Task A files onto that
+branch.

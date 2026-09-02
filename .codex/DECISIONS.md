@@ -118,3 +118,9 @@ predeclaring Sanskrit grammatical roles or a unique underlying form.
 ## Reproducible environments
 
 74. pyproject.toml remains install-oriented rather than globally exact-pinned. Each formal paper/release experiment should capture its actual Python, OS/machine, key-package, Torch/CUDA, Git, and installed-distribution environment as run/release provenance (environment.json plus deterministic requirements-freeze.txt).
+
+## S1M1 post-hoc archival reduction
+
+75. The frozen preregistered S1M1 gate and the later S1M1 post-hoc archival reduction are separate scientific objects. The archive may describe completed audited collections but must not alter the frozen protocol, formal six-cell aggregator, gate criteria, or gate conclusion.
+76. Full S1M1 archival reduction must remain local, read-only, fail-closed, streaming/bounded-memory, and output-only into a fresh directory. Source bytes and the final collection audits are retention identities, not mutable inputs.
+77. Archive outputs must distinguish exact streaming quantities from deterministic bounded approximations and from learner-produced bounded top-k inspection quantities. Full-tail support overlap is represented by bounded sketches rather than a giant temporary database or in-memory support set.

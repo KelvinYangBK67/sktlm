@@ -993,3 +993,31 @@ scientific-runtime change, corpus/manifest change, or registry change.
 The continuous cells remain outside this checkpoint. The six-cell gate and
 final M1 conclusion remain open until human-supplied completed/audited
 continuous collections are available.
+
+## 37. S1M1 post-hoc archival reducer prepared (2026-09-02)
+
+The S1M1 archival/descriptive reduction is implemented on the dedicated branch
+'exp/s1m1-final-reduction', whose parent is the closed S1M1 core-methods
+checkpoint '4bacb038eb00c479dd6913e63ec1543a1b21e0e6'. This work is deliberately
+separate from S1M2 and is not merged into the reusable-pieces branch.
+
+'src/sktlm/analysis/s1m1_archival.py' and
+'scripts/analysis/reduce_s1m1_archival.py' validate the exact six completed
+local collections using the existing gate input/audit contract, then produce a
+read-only bounded post-hoc archive. The reducer covers source retention
+identity, pass dynamics, lexical diversity/length/reuse, ambiguity, exact
+boundary and rule summaries, candidate scaling/heavy tails, document and
+length strata, runtime/resource evidence, bounded cross-cell stability, and a
+deterministic evidence reservoir. Exact quantities, bounded histogram/MinHash
+approximations, and inherited inspection top-k quantities are explicitly
+separated.
+
+The frozen 'post_gate_analysis_protocol.md' and formal
+'aggregate_six_representation.py' are unchanged. No real collection was
+scanned, no source artifact was mutated, no large temporary store was created,
+and no VM/cloud/registry operation was performed.
+
+Focused synthetic archival tests passed (4 passed). Python syntax compilation
+passed. The full repository suite passed (546 passed, 4 warnings) in 48.30
+seconds; the warnings are the existing PyTorch nested-tensor and
+SentencePiece/SWIG deprecation warnings.
