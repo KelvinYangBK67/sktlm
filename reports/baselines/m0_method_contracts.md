@@ -2,10 +2,12 @@
 
 Status: **APPROVED 2026-08-31**
 
-These contracts define the one Akṣara-safe BPE cell and three Surface-lattice
-cells reserved by the formal 22-condition matrix. Both methods consume frozen
-representation text directly, fit only on the selected train split, and remain
-independent across cells.
+These contracts originally defined the one Akṣara-safe BPE cell and three
+Surface-lattice cells in the historical 22-condition design. The
+IAST/`continuous` Surface-lattice cell is now retired, leaving two valid
+Surface-lattice production cells. The historical contract remains evidence;
+all valid methods consume frozen representation text directly, fit only on the
+selected train split, and remain independent across cells.
 
 The Akṣara profile is a project-specific tailoring informed by
 [Unicode UAX #29](https://unicode.org/reports/tr29/) grapheme rule GB9c and its
@@ -54,8 +56,9 @@ present.
 
 ## Surface-lattice v1
 
-Domain: IAST under `surface_word`, `legacy_joined`, and `continuous`, fitted
-independently.
+Production domain: IAST under `surface_word` and `legacy_joined`, fitted
+independently. IAST `continuous` is historical diagnostic scope only and cannot
+be scheduled or aggregated as production.
 
 Surface atoms are Unicode extended grapheme clusters produced by the exact
 recorded `regex` package version. A cluster is mergeable only if every code
@@ -90,7 +93,8 @@ hashes.
 
 ## Acceptance requirements
 
-- all 22 formal cells are enumerated and runnable;
+- all 22 historical cells are enumerated with status; only the 18 valid cells
+  are runnable in formal production;
 - no method changes frozen text, membership, or split assignment;
 - every Akṣara-safe token boundary is an approved atom boundary;
 - every lattice is connected, acyclic, exact-span preserving, and barrier-safe;
@@ -109,8 +113,9 @@ A read-only scan of the 832,012 non-empty train segments per condition found:
 | Akṣara-safe BPE / Devanagari `continuous` | 16,730,381 | 11,373 | 6 | 11,378 |
 | Surface-lattice / IAST `surface_word` | 44,074,953 | 40 | 3 | 45 |
 | Surface-lattice / IAST `legacy_joined` | 43,252,764 | 40 | 3 | 45 |
-| Surface-lattice / IAST `continuous` | 40,138,023 | 40 | 3 | 45 |
+| Surface-lattice / IAST `continuous` (retired diagnostic audit) | 40,138,023 | 40 | 3 | 45 |
 
 The formal 24,000-piece budget therefore contains every required base atom and
-reserved/internal symbol in all four cells. This audit trained no model and
-modified no frozen file.
+reserved/internal symbol in the three valid cells. The historical continuous
+inventory is retained only as diagnostic evidence. This audit trained no model
+and modified no frozen file.

@@ -3,7 +3,10 @@
 import csv
 import json
 
+import pytest
+
 from sktlm.experiments.runner import run_experiment
+from sktlm.representations.validity import RetiredRepresentationError
 
 
 def build_fixture_manifest(tmp_path):
@@ -93,7 +96,7 @@ def test_runner_fits_sentencepiece_only_from_selected_train_segments(tmp_path) -
     config = {
         "run_id": "fitted-bpe",
         "data": {"manifest": str(build_fixture_manifest(tmp_path)), "split": "test"},
-        "representation": {"script": "iast", "spacing": "continuous"},
+        "representation": {"script": "iast", "spacing": "legacy_joined"},
         "tokenizer": {"type": "bpe", "vocab_size": 32},
         "model": {"type": "none"},
         "seed": 0,
@@ -105,3 +108,18 @@ def test_runner_fits_sentencepiece_only_from_selected_train_segments(tmp_path) -
 
     assert (run_dir / "tokenizer" / "bpe_32.model").is_file()
     assert fingerprint["runtime"]["model_sha256"]
+
+
+def test_generic_runner_rejects_iast_continuous_before_writing(tmp_path) -> None:
+    config = {
+        "run_id": "retired",
+        "data": {"manifest": str(build_fixture_manifest(tmp_path)), "split": "test"},
+        "representation": {"script": "iast", "spacing": "continuous"},
+        "tokenizer": {"type": "character"},
+        "model": {"type": "none"},
+        "seed": 0,
+        "evaluation": {},
+    }
+    with pytest.raises(RetiredRepresentationError, match="not injective"):
+        run_experiment(config, tmp_path / "artifacts", dry_run=True)
+    assert not (tmp_path / "artifacts").exists()

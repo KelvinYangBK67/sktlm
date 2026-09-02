@@ -19,6 +19,7 @@ from sktlm.experiments.artifacts import (
     write_run_artifacts,
 )
 from sktlm.representations.script import RepresentationConfig
+from sktlm.representations.validity import require_valid_experimental_representation
 from sktlm.tokenizers.factory import build_tokenizer
 
 
@@ -60,6 +61,11 @@ def run_experiment(
 
     run_id = make_run_id(config)
     representation = RepresentationConfig.from_mapping(config["representation"])
+    require_valid_experimental_representation(
+        representation.script,
+        representation.spacing,
+        context="generic experiment runner",
+    )
     train_segments = represent_segments(train_canonical, representation)
     eval_segments = represent_segments(eval_canonical, representation)
     tokenizer = build_tokenizer(

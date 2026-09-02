@@ -27,8 +27,11 @@ from sktlm.experiments.artifacts import (
 from sktlm.experiments.baselines.frozen import FrozenRepresentationCatalog, load_frozen_catalog
 from sktlm.experiments.baselines.matrix import (
     REQUIRED_PROVENANCE,
+    RETIRED,
+    VALID,
     BaselineMatrixSettings,
     BaselineRunSpec,
+    RetiredConditionError,
     build_run_specs,
 )
 from sktlm.representations.canonical import RepresentedSegment
@@ -130,10 +133,16 @@ def _declared_file_fingerprint(
 
 
 def _select_spec(settings: BaselineMatrixSettings, condition_id: str) -> BaselineRunSpec:
+    record = settings.condition(condition_id)
+    if record.status == RETIRED:
+        raise RetiredConditionError(
+            f"refusing retired condition {condition_id}: {record.reason}; "
+            f"decision_id={record.decision_id}"
+        )
     for spec in build_run_specs(settings):
         if spec.cell.condition_id == condition_id:
             return spec
-    raise ValueError(f"unknown formal baseline condition: {condition_id}")
+    raise RuntimeError(f"valid condition is missing from the production plan: {condition_id}")
 
 
 def _write_json(path: Path, value: Any) -> None:
@@ -189,7 +198,7 @@ def run_supported_cell(
     expected_documents: int = 240,
     require_clean_git: bool = True,
 ) -> Path:
-    """Fit and evaluate one of the 22 formal cells using frozen files directly."""
+    """Fit and evaluate one of the 18 valid cells using frozen files directly."""
     if eval_split not in {"dev", "test"}:
         raise ValueError("eval_split must be 'dev' or 'test'")
     for name, value in (
@@ -337,7 +346,10 @@ def run_supported_cell(
 
     execution_config: dict[str, Any] = {
         "matrix": "formal_m0_baselines",
+        "condition_manifest_version": settings.condition_manifest_version,
         "condition_id": condition_id,
+        "condition_status": VALID,
+        "retirement_reason": None,
         "method": spec.cell.method,
         "script": spec.cell.script,
         "spacing": spec.cell.spacing,
@@ -359,6 +371,9 @@ def run_supported_cell(
         "method": spec.cell.method,
         "script": spec.cell.script,
         "spacing": spec.cell.spacing,
+        "condition_status": VALID,
+        "retirement_reason": None,
+        "condition_manifest_version": settings.condition_manifest_version,
         "config": execution_config,
         "seed": settings.seed,
         "code_commit": git_commit,
@@ -379,6 +394,8 @@ def run_supported_cell(
         "method": spec.cell.method,
         "script": spec.cell.script,
         "spacing": spec.cell.spacing,
+        "condition_status": VALID,
+        "retirement_reason": None,
         "tokenizer": tokenizer.name,
         "vocab_size": tokenizer.vocab_size,
         "seed": settings.seed,

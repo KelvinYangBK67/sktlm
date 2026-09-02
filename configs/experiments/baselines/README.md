@@ -1,7 +1,9 @@
 # Formal M₀ baseline matrix
 
-`m0_matrix.yaml` fixes the frozen manifests, 24k vocabulary budget, seed, and
-artifact root shared by the 22 independently addressed formal cells.
+`m0_matrix.yaml` is the versioned condition manifest. It retains the historical
+22-cell design while marking 18 representation-valid production cells and four
+IAST `continuous` cells as retired. It also fixes the frozen manifests, 24k
+vocabulary budget, seed, and artifact root.
 
 Validate and print the complete matrix without training:
 
@@ -9,7 +11,7 @@ Validate and print the complete matrix without training:
 python -m sktlm.experiments.baselines.matrix --check-inputs
 ```
 
-Run a deliberately bounded smoke check for any of the 22 implemented cells:
+Run a deliberately bounded smoke check for any valid cell:
 
 ```bash
 python -m sktlm.experiments.baselines.runner \
@@ -24,6 +26,17 @@ requires a clean Git worktree. It also refuses to overwrite an existing
 cell/seed artifact directory. Omitting both segment limits requests the full
 selected train/test data and must only be done when a formal production run has
 been explicitly authorized.
+
+Both the runner and the queue generator reject all retired cells before reading
+training data or creating artifacts:
+
+```bash
+python -m sktlm.experiments.baselines.production
+```
+
+The queue command only prints commands; it never launches them. Historical or
+diagnostic IAST-continuous artifacts must remain outside
+`artifacts/baselines/m0` and cannot be scheduled through these entry points.
 
 The approved Akṣara-safe BPE and Surface-lattice semantics, including their
 atomizers, barriers, likelihood, decoding, and reproducibility requirements,

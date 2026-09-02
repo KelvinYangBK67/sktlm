@@ -1,17 +1,27 @@
-"""Exact schema and dry-run plan for the formal 22-condition M₀ baseline matrix."""
+"""Versioned schema for the historical 22-cell and valid 18-cell M0 matrix."""
 
 from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 import yaml
 
+from sktlm.representations.validity import (
+    IAST_CONTINUOUS_RETIREMENT_ID,
+    IAST_CONTINUOUS_RETIREMENT_REASON,
+)
+
 
 FROZEN_M0_ID = "9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40"
+CONDITION_MANIFEST_VERSION = "m0-baselines-v2"
+RETIREMENT_DECISION_ID = IAST_CONTINUOUS_RETIREMENT_ID
+RETIREMENT_REASON = IAST_CONTINUOUS_RETIREMENT_REASON
+VALID = "valid"
+RETIRED = "retired"
 FORMAL_SCRIPTS = ("iast", "devanagari")
 FORMAL_SPACINGS = ("surface_word", "legacy_joined", "continuous")
 STANDARD_METHODS = ("bpe", "unigram", "unicode_codepoint")
@@ -21,6 +31,9 @@ REQUIRED_PROVENANCE = (
     "method",
     "script",
     "spacing",
+    "condition_status",
+    "retirement_reason",
+    "condition_manifest_version",
     "config",
     "seed",
     "code_commit",
@@ -32,9 +45,13 @@ REQUIRED_PROVENANCE = (
 )
 
 
+class RetiredConditionError(ValueError):
+    """Raised when production tooling is asked to run a retired condition."""
+
+
 @dataclass(frozen=True, slots=True)
 class BaselineCell:
-    """One independently trained method × script × spacing condition."""
+    """One historical method x script x spacing condition."""
 
     method: str
     script: str
@@ -42,7 +59,7 @@ class BaselineCell:
 
     def __post_init__(self) -> None:
         if self.method not in FORMAL_METHODS:
-            raise ValueError(f"unsupported formal baseline method: {self.method}")
+            raise ValueError(f"unsupported historical baseline method: {self.method}")
         if self.script not in FORMAL_SCRIPTS:
             raise ValueError(f"unsupported formal script: {self.script}")
         if self.spacing not in FORMAL_SPACINGS:
@@ -50,9 +67,9 @@ class BaselineCell:
         if self.method == "aksara_safe_bpe" and (
             self.script != "devanagari" or self.spacing != "continuous"
         ):
-            raise ValueError("aksara_safe_bpe is formal only for devanagari/continuous")
+            raise ValueError("aksara_safe_bpe is historical only for devanagari/continuous")
         if self.method == "surface_lattice" and self.script != "iast":
-            raise ValueError("surface_lattice is formal only for IAST")
+            raise ValueError("surface_lattice is historical only for IAST")
 
     @property
     def condition_id(self) -> str:
@@ -62,7 +79,11 @@ class BaselineCell:
     def tokenizer_supported(self) -> bool:
         return self.method in TOKENIZER_SUPPORTED_METHODS
 
-    def tokenizer_config(self, *, vocab_size: int) -> dict[str, Any] | None:
+    @property
+    def expected_status(self) -> str:
+        return RETIRED if self.script == "iast" and self.spacing == "continuous" else VALID
+
+    def tokenizer_config(self, *, vocab_size: int) -> dict[str, Any]:
         if self.method in {"bpe", "unigram"}:
             return {"type": self.method, "vocab_size": vocab_size}
         if self.method == "unicode_codepoint":
@@ -83,11 +104,62 @@ class BaselineCell:
                 "atomizer_contract": "iast_surface_lattice_v1",
                 "likelihood": "complete_dag_logsumexp",
             }
-        raise RuntimeError(f"formal method has no tokenizer config: {self.method}")
+        raise RuntimeError(f"historical method has no tokenizer config: {self.method}")
 
 
-def formal_matrix() -> tuple[BaselineCell, ...]:
-    """Return the canonical deterministic ordering of all 22 formal cells."""
+@dataclass(frozen=True, slots=True)
+class ConditionRecord:
+    """One versioned status record in the historical matrix manifest."""
+
+    cell: BaselineCell
+    status: str
+    decision_id: str | None = None
+    reason: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.status not in {VALID, RETIRED}:
+            raise ValueError(f"unsupported condition status: {self.status}")
+        if self.status != self.cell.expected_status:
+            raise ValueError(
+                f"condition status mismatch for {self.cell.condition_id}: "
+                f"expected {self.cell.expected_status}, found {self.status}"
+            )
+        if self.status == RETIRED:
+            if self.decision_id != RETIREMENT_DECISION_ID or self.reason != RETIREMENT_REASON:
+                raise ValueError(
+                    f"retired condition {self.cell.condition_id} must use the unified "
+                    "IAST-continuous retirement provenance"
+                )
+        elif self.decision_id is not None or self.reason is not None:
+            raise ValueError(f"valid condition {self.cell.condition_id} cannot have retirement fields")
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> "ConditionRecord":
+        return cls(
+            cell=BaselineCell(
+                method=str(value["method"]),
+                script=str(value["script"]),
+                spacing=str(value["spacing"]),
+            ),
+            status=str(value["status"]),
+            decision_id=(str(value["decision_id"]) if value.get("decision_id") is not None else None),
+            reason=(str(value["reason"]) if value.get("reason") is not None else None),
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "condition_id": self.cell.condition_id,
+            "method": self.cell.method,
+            "script": self.cell.script,
+            "spacing": self.cell.spacing,
+            "status": self.status,
+            "decision_id": self.decision_id,
+            "reason": self.reason,
+        }
+
+
+def historical_matrix() -> tuple[BaselineCell, ...]:
+    """Return the frozen historical design ordering, including retired cells."""
     cells = [
         BaselineCell(method, script, spacing)
         for method in STANDARD_METHODS
@@ -99,22 +171,65 @@ def formal_matrix() -> tuple[BaselineCell, ...]:
     return tuple(cells)
 
 
+def expected_condition_manifest() -> tuple[ConditionRecord, ...]:
+    return tuple(
+        ConditionRecord(
+            cell=cell,
+            status=cell.expected_status,
+            decision_id=RETIREMENT_DECISION_ID if cell.expected_status == RETIRED else None,
+            reason=RETIREMENT_REASON if cell.expected_status == RETIRED else None,
+        )
+        for cell in historical_matrix()
+    )
+
+
+def validate_condition_manifest(
+    records: Iterable[ConditionRecord],
+) -> tuple[ConditionRecord, ...]:
+    actual = tuple(records)
+    ids = tuple(record.cell.condition_id for record in actual)
+    if len(ids) != len(set(ids)):
+        raise ValueError("condition manifest contains duplicate cells")
+    expected = expected_condition_manifest()
+    expected_by_id = {record.cell.condition_id: record for record in expected}
+    actual_by_id = {record.cell.condition_id: record for record in actual}
+    if set(actual_by_id) != set(expected_by_id):
+        missing = sorted(set(expected_by_id) - set(actual_by_id))
+        extra = sorted(set(actual_by_id) - set(expected_by_id))
+        raise ValueError(f"historical condition manifest mismatch: missing={missing}, extra={extra}")
+    for condition_id, expected_record in expected_by_id.items():
+        if actual_by_id[condition_id] != expected_record:
+            raise ValueError(f"condition manifest provenance mismatch: {condition_id}")
+    if len(actual) != 22:
+        raise ValueError(f"historical condition manifest must contain 22 cells, found {len(actual)}")
+    return actual
+
+
+def formal_matrix() -> tuple[BaselineCell, ...]:
+    """Return the 18 representation-valid production cells."""
+    return tuple(record.cell for record in expected_condition_manifest() if record.status == VALID)
+
+
+def retired_matrix() -> tuple[BaselineCell, ...]:
+    """Return the four historical IAST-continuous cells that production rejects."""
+    return tuple(record.cell for record in expected_condition_manifest() if record.status == RETIRED)
+
+
 def validate_formal_matrix(cells: Iterable[BaselineCell]) -> tuple[BaselineCell, ...]:
-    """Reject missing, duplicate, extra, or renamed formal matrix cells."""
+    """Reject missing, duplicate, extra, renamed, or retired production cells."""
     actual = tuple(cells)
     actual_keys = tuple((cell.method, cell.script, cell.spacing) for cell in actual)
     if len(actual_keys) != len(set(actual_keys)):
-        raise ValueError("formal baseline matrix contains duplicate cells")
-
+        raise ValueError("formal production matrix contains duplicate cells")
     expected = formal_matrix()
     expected_keys = {(cell.method, cell.script, cell.spacing) for cell in expected}
     actual_key_set = set(actual_keys)
     if actual_key_set != expected_keys:
         missing = sorted(expected_keys - actual_key_set)
         extra = sorted(actual_key_set - expected_keys)
-        raise ValueError(f"formal baseline matrix mismatch: missing={missing}, extra={extra}")
-    if len(actual) != 22:
-        raise ValueError(f"formal baseline matrix must contain 22 cells, found {len(actual)}")
+        raise ValueError(f"formal production matrix mismatch: missing={missing}, extra={extra}")
+    if len(actual) != 18:
+        raise ValueError(f"formal production matrix must contain 18 valid cells, found {len(actual)}")
     return actual
 
 
@@ -128,17 +243,30 @@ class BaselineMatrixSettings:
     artifact_root: Path
     seed: int
     vocab_size: int
+    condition_manifest_version: str = CONDITION_MANIFEST_VERSION
+    condition_manifest: tuple[ConditionRecord, ...] = field(
+        default_factory=expected_condition_manifest
+    )
 
     def __post_init__(self) -> None:
         if self.freeze_id != FROZEN_M0_ID:
-            raise ValueError(f"unexpected M₀ freeze ID: {self.freeze_id}")
+            raise ValueError(f"unexpected M0 freeze ID: {self.freeze_id}")
         if self.seed < 0:
             raise ValueError("seed must be non-negative")
         if self.vocab_size <= 4:
             raise ValueError("vocab_size must exceed the four reserved tokenizer IDs")
+        if self.condition_manifest_version != CONDITION_MANIFEST_VERSION:
+            raise ValueError(
+                f"condition manifest version must be {CONDITION_MANIFEST_VERSION}, "
+                f"found {self.condition_manifest_version}"
+            )
+        validate_condition_manifest(self.condition_manifest)
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "BaselineMatrixSettings":
+        raw_manifest = value.get("conditions")
+        if not isinstance(raw_manifest, list):
+            raise ValueError("baseline matrix config requires an explicit conditions list")
         return cls(
             freeze_id=str(value["freeze_id"]),
             canonical_manifest=Path(str(value["canonical_manifest"])),
@@ -146,6 +274,8 @@ class BaselineMatrixSettings:
             artifact_root=Path(str(value["artifact_root"])),
             seed=int(value["seed"]),
             vocab_size=int(value["vocab_size"]),
+            condition_manifest_version=str(value["condition_manifest_version"]),
+            condition_manifest=tuple(ConditionRecord.from_mapping(item) for item in raw_manifest),
         )
 
     @classmethod
@@ -155,10 +285,16 @@ class BaselineMatrixSettings:
             raise ValueError("baseline matrix config must be a YAML mapping")
         return cls.from_mapping(value)
 
+    def condition(self, condition_id: str) -> ConditionRecord:
+        for record in self.condition_manifest:
+            if record.cell.condition_id == condition_id:
+                return record
+        raise ValueError(f"unknown historical baseline condition: {condition_id}")
+
 
 @dataclass(frozen=True, slots=True)
 class BaselineRunSpec:
-    """One independently addressed formal run and its frozen-input provenance."""
+    """One independently addressed valid production run."""
 
     cell: BaselineCell
     settings: BaselineMatrixSettings
@@ -173,21 +309,23 @@ class BaselineRunSpec:
             "method": self.cell.method,
             "script": self.cell.script,
             "spacing": self.cell.spacing,
+            "condition_status": VALID,
+            "retirement_reason": None,
+            "condition_manifest_version": self.settings.condition_manifest_version,
             "seed": self.settings.seed,
             "corpus_freeze_id": self.settings.freeze_id,
             "canonical_manifest": self.settings.canonical_manifest.as_posix(),
             "representation_manifest": self.settings.representation_manifest.as_posix(),
             "tokenizer": self.cell.tokenizer_config(vocab_size=self.settings.vocab_size),
-            "implementation_status": (
-                "implemented" if self.cell.tokenizer_supported else "pending_method_contract"
-            ),
+            "implementation_status": "implemented",
             "artifact_location": self.artifact_dir.as_posix(),
             "required_provenance": list(REQUIRED_PROVENANCE),
         }
 
 
 def build_run_specs(settings: BaselineMatrixSettings) -> tuple[BaselineRunSpec, ...]:
-    cells = validate_formal_matrix(formal_matrix())
+    records = validate_condition_manifest(settings.condition_manifest)
+    cells = validate_formal_matrix(record.cell for record in records if record.status == VALID)
     specs = tuple(BaselineRunSpec(cell, settings) for cell in cells)
     artifact_dirs = tuple(spec.artifact_dir for spec in specs)
     if len(artifact_dirs) != len(set(artifact_dirs)):
@@ -197,19 +335,23 @@ def build_run_specs(settings: BaselineMatrixSettings) -> tuple[BaselineRunSpec, 
 
 def build_plan(settings: BaselineMatrixSettings) -> dict[str, Any]:
     specs = build_run_specs(settings)
-    supported = sum(spec.cell.tokenizer_supported for spec in specs)
+    retired = [record.as_dict() for record in settings.condition_manifest if record.status == RETIRED]
     return {
         "matrix": "formal_m0_baselines",
+        "condition_manifest_version": settings.condition_manifest_version,
         "freeze_id": settings.freeze_id,
-        "formal_cell_count": len(specs),
-        "tokenizer_supported_cell_count": supported,
-        "pending_method_contract_cell_count": len(specs) - supported,
+        "historical_cell_count": len(settings.condition_manifest),
+        "valid_production_cell_count": len(specs),
+        "retired_cell_count": len(retired),
+        "tokenizer_supported_cell_count": len(specs),
+        "pending_method_contract_cell_count": 0,
+        "retired_conditions": retired,
         "cells": [spec.as_dict() for spec in specs],
     }
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Validate and print the formal M₀ baseline plan")
+    parser = argparse.ArgumentParser(description="Validate and print the formal M0 baseline plan")
     parser.add_argument(
         "--config",
         type=Path,

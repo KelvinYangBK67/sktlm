@@ -22,6 +22,7 @@ from sktlm.experiments.training.dataset import (
     split_train_val,
 )
 from sktlm.representations.script import RepresentationConfig
+from sktlm.representations.validity import require_valid_experimental_representation
 
 
 def parse_args() -> argparse.Namespace:
@@ -66,6 +67,11 @@ def run_controlled_training(cfg: dict, device: str) -> Path:
     training_cfg = cfg["training"]
     model_cfg = cfg["model"]
     representation = RepresentationConfig.from_mapping(cfg["representation"])
+    require_valid_experimental_representation(
+        representation.script,
+        representation.spacing,
+        context="controlled LM runner",
+    )
     manifest_path = Path(data_cfg["manifest"])
     train_canonical = load_canonical_segments(
         manifest_path,

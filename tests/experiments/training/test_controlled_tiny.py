@@ -34,7 +34,7 @@ def test_controlled_character_training_uses_fixed_text_splits(tmp_path) -> None:
 
     config = {
         "data": {"manifest": str(manifest), "eval_split": "dev"},
-        "representation": {"script": "iast", "spacing": "continuous"},
+        "representation": {"script": "iast", "spacing": "legacy_joined"},
         "tokenizer": {"type": "character"},
         "model": {"type": "tiny_transformer", "context_length": 4, "n_embd": 8, "n_head": 2, "n_layer": 1, "dropout": 0.0},
         "training": {

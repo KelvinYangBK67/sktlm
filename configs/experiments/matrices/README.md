@@ -14,6 +14,11 @@ backend then reports bits per Unicode character and bits per UTF-8 byte.
 Aggregate completed runs with `sktlm.evaluation.reporting.collect_metrics` and
 `write_result_table`.
 
+These generic configs must not be used to create IAST `continuous` experiments.
+The generic runner now rejects that representation as non-injective; frozen M0
+IAST-continuous data remains immutable historical evidence. Devanagari
+`continuous` remains a valid extreme stress condition.
+
 The five `*_continuous.yaml` configs under `tokenizer_baselines/` are the
 matched, leakage-controlled tokenizer diagnostics: BPE and Unigram are fitted
 from the same selected train segments used to fit the character and grapheme

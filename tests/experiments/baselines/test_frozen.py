@@ -13,7 +13,9 @@ from sktlm.experiments.baselines.matrix import (
     FORMAL_SPACINGS,
     BaselineMatrixSettings,
     REQUIRED_PROVENANCE,
+    RetiredConditionError,
 )
+from sktlm.experiments.baselines.production import build_production_queue
 from sktlm.experiments.baselines.runner import run_supported_cell
 
 
@@ -192,7 +194,7 @@ def test_supported_bpe_cell_fits_only_from_frozen_train_segments(tmp_path) -> No
     settings = _build_fixture(tmp_path)
     artifact_dir = run_supported_cell(
         settings,
-        "bpe__iast__continuous",
+        "bpe__devanagari__continuous",
         repo_root=tmp_path,
         max_train_segments=2,
         max_eval_segments=1,
@@ -225,11 +227,6 @@ def test_supported_bpe_cell_fits_only_from_frozen_train_segments(tmp_path) -> No
         ),
         (
             "surface_lattice__iast__legacy_joined",
-            "surface_lattice_32",
-            "surface_lattice",
-        ),
-        (
-            "surface_lattice__iast__continuous",
             "surface_lattice_32",
             "surface_lattice",
         ),
@@ -274,3 +271,33 @@ def test_supported_cell_requires_reproducible_git_state_by_default(tmp_path) -> 
             repo_root=tmp_path,
             expected_documents=2,
         )
+
+
+@pytest.mark.parametrize(
+    "condition_id",
+    [
+        "bpe__iast__continuous",
+        "unigram__iast__continuous",
+        "unicode_codepoint__iast__continuous",
+        "surface_lattice__iast__continuous",
+    ],
+)
+def test_runner_and_production_queue_reject_retired_conditions(
+    tmp_path, condition_id: str
+) -> None:
+    settings = _build_fixture(tmp_path)
+    with pytest.raises(RetiredConditionError, match="not injective"):
+        run_supported_cell(
+            settings,
+            condition_id,
+            repo_root=tmp_path,
+            expected_documents=2,
+            require_clean_git=False,
+        )
+    with pytest.raises(RetiredConditionError, match="production scheduling rejects"):
+        build_production_queue(
+            settings,
+            config_path=Path("configs/experiments/baselines/m0_matrix.yaml"),
+            condition_id=condition_id,
+        )
+    assert not (tmp_path / settings.artifact_root / condition_id).exists()

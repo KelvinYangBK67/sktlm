@@ -4,3 +4,50 @@ representation_manifest: data/manifests/representations.csv
 artifact_root: artifacts/baselines/m0
 seed: 0
 vocab_size: 24000
+condition_manifest_version: m0-baselines-v2
+
+# Historical 22-cell design, retained verbatim with versioned validity status.
+# The anchor guarantees that all four retired cells carry identical provenance.
+iast_continuous_retirement: &iast_continuous_retirement
+  status: retired
+  decision_id: iast-continuous-representation-validity-v1
+  reason: "IAST continuous is not injective: removing word spaces can make cross-word vowel hiatus indistinguishable from standard IAST diphthong spelling"
+
+conditions:
+  - {method: bpe, script: iast, spacing: surface_word, status: valid}
+  - {method: bpe, script: iast, spacing: legacy_joined, status: valid}
+  - method: bpe
+    script: iast
+    spacing: continuous
+    <<: *iast_continuous_retirement
+  - {method: bpe, script: devanagari, spacing: surface_word, status: valid}
+  - {method: bpe, script: devanagari, spacing: legacy_joined, status: valid}
+  - {method: bpe, script: devanagari, spacing: continuous, status: valid}
+
+  - {method: unigram, script: iast, spacing: surface_word, status: valid}
+  - {method: unigram, script: iast, spacing: legacy_joined, status: valid}
+  - method: unigram
+    script: iast
+    spacing: continuous
+    <<: *iast_continuous_retirement
+  - {method: unigram, script: devanagari, spacing: surface_word, status: valid}
+  - {method: unigram, script: devanagari, spacing: legacy_joined, status: valid}
+  - {method: unigram, script: devanagari, spacing: continuous, status: valid}
+
+  - {method: unicode_codepoint, script: iast, spacing: surface_word, status: valid}
+  - {method: unicode_codepoint, script: iast, spacing: legacy_joined, status: valid}
+  - method: unicode_codepoint
+    script: iast
+    spacing: continuous
+    <<: *iast_continuous_retirement
+  - {method: unicode_codepoint, script: devanagari, spacing: surface_word, status: valid}
+  - {method: unicode_codepoint, script: devanagari, spacing: legacy_joined, status: valid}
+  - {method: unicode_codepoint, script: devanagari, spacing: continuous, status: valid}
+
+  - {method: aksara_safe_bpe, script: devanagari, spacing: continuous, status: valid}
+  - {method: surface_lattice, script: iast, spacing: surface_word, status: valid}
+  - {method: surface_lattice, script: iast, spacing: legacy_joined, status: valid}
+  - method: surface_lattice
+    script: iast
+    spacing: continuous
+    <<: *iast_continuous_retirement
