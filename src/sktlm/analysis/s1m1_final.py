@@ -9,20 +9,35 @@ and the S1M1 result freeze.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import csv
+import json
+import math
+import os
+import shutil
+import tempfile
+
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 from .s1m1_archival import (
     EVIDENCE_LIMIT,
+    LENGTH_MASS_THRESHOLDS,
+    REUSE_THRESHOLDS,
+    SOURCE_FILES,
     BoundaryReduction,
     LexiconReduction,
+    _integer,
+    _number,
     _reduce_analyses,
     _reduce_boundaries,
     _reduce_lexicon,
     _reduce_passes,
     _reduce_rules,
     _reduce_runtime,
+    _relative_path,
+    _source_entry,
+    _write_tsv,
 )
 
 from .six_representation_gate import (
@@ -30,6 +45,7 @@ from .six_representation_gate import (
     GateValidationError,
     LoadedCell,
     PairSpec,
+    _file_sha256,
     _load_cell,
     _validate_cross_cell_contract,
     _is_full_sha,
@@ -694,3 +710,533 @@ def reduce_final_per_cell(path: Path) -> FinalPerCellReduction:
         lexicons=lexicons,
         boundaries=boundaries,
     )
+
+
+FORMAL_SCALAR_TABLES = {
+    "cells": "scientific_summary",
+    "pass_dynamics": "training_dynamics",
+    "lexicon_distribution": "scientific",
+    "lexical_length": "scientific",
+    "reuse_distribution": "scientific",
+    "ambiguity_distribution": "scientific",
+    "boundary_distribution": "scientific",
+    "rule_usage": "scientific",
+    "candidate_scaling": "computational_diagnostic",
+    "runtime_breakdown": "engineering",
+}
+
+FORMAL_ROW_IDENTITY_FIELDS = {
+    "cells": (),
+    "pass_dynamics": ("pass", "metric"),
+    "lexicon_distribution": ("family", "metric"),
+    "lexical_length": ("weighting", "threshold"),
+    "reuse_distribution": ("family", "metric"),
+    "ambiguity_distribution": ("family", "metric"),
+    "boundary_distribution": ("family", "metric"),
+    "rule_usage": ("family", "metric"),
+    "candidate_scaling": ("family", "metric"),
+    "runtime_breakdown": ("family", "metric"),
+}
+
+FORMAL_SCOPE_FIELDS = (
+    "estimate_scope",
+    "scope",
+    "quantile_method",
+    "formula",
+    "usage_semantics",
+    "interpretation",
+    "inclusion_note",
+)
+
+FORMAL_NONVALUE_FIELDS = {
+    "cell_id",
+    "script",
+    "condition",
+    "run_id",
+    "metrics_id",
+    "scientific_git_sha",
+    "rank",
+}
+
+
+def _formal_row_identity(
+    table_name: str,
+    row: dict[str, Any],
+) -> str:
+    fields = FORMAL_ROW_IDENTITY_FIELDS[table_name]
+    if not fields:
+        return "summary"
+    return "|".join(
+        f"{field}={row.get(field)!s}"
+        for field in fields
+        if field in row
+    )
+
+
+def _formal_scope(row: dict[str, Any]) -> str:
+    return "; ".join(
+        f"{field}={row[field]}"
+        for field in FORMAL_SCOPE_FIELDS
+        if field in row and row[field] not in (None, "")
+    )
+
+
+def _collect_formal_scalars(
+    reduction: FinalPerCellReduction,
+) -> dict[
+    str,
+    dict[tuple[str, str, str], tuple[float, str, str]],
+]:
+    known_cells = {
+        cell.spec.cell_id
+        for cell in reduction.loaded
+    }
+    values: dict[
+        str,
+        dict[tuple[str, str, str], tuple[float, str, str]],
+    ] = {
+        cell_id: {}
+        for cell_id in known_cells
+    }
+
+    for table_name, domain in FORMAL_SCALAR_TABLES.items():
+        for row in reduction.tables[table_name]:
+            cell_id = row.get("cell_id")
+            if cell_id not in known_cells:
+                raise FinalValidationError(
+                    (
+                        f"{table_name}: unknown or missing cell_id "
+                        f"{cell_id!r}",
+                    )
+                )
+
+            identity = _formal_row_identity(table_name, row)
+            identity_fields = set(
+                FORMAL_ROW_IDENTITY_FIELDS[table_name]
+            )
+            scope = _formal_scope(row)
+
+            for field, raw_value in row.items():
+                if (
+                    field in FORMAL_NONVALUE_FIELDS
+                    or field in identity_fields
+                    or field in FORMAL_SCOPE_FIELDS
+                    or isinstance(raw_value, bool)
+                    or not isinstance(raw_value, (int, float))
+                ):
+                    continue
+
+                value = float(raw_value)
+                if not math.isfinite(value):
+                    raise FinalValidationError(
+                        (
+                            f"{cell_id}: non-finite formal scalar "
+                            f"{table_name}/{identity}/{field}",
+                        )
+                    )
+
+                key = (table_name, identity, field)
+                if key in values[cell_id]:
+                    raise FinalValidationError(
+                        (
+                            f"{cell_id}: duplicate formal scalar "
+                            f"{table_name}/{identity}/{field}",
+                        )
+                    )
+                values[cell_id][key] = (value, scope, domain)
+
+    return values
+
+
+def build_formal_comparisons(
+    reduction: FinalPerCellReduction,
+) -> list[dict[str, Any]]:
+    """Build exactly the six frozen designated scalar contrasts."""
+
+    cell_ids = {
+        cell.spec.key: cell.spec.cell_id
+        for cell in reduction.loaded
+    }
+    if set(cell_ids) != set(FINAL_VALID_CELLS):
+        raise FinalValidationError(
+            ("formal comparison input is not the exact five-cell set",)
+        )
+
+    scalars = _collect_formal_scalars(reduction)
+    rows: list[dict[str, Any]] = []
+
+    for pair in FORMAL_COMPARISONS:
+        cell_a = cell_ids[pair.cell_a]
+        cell_b = cell_ids[pair.cell_b]
+        shared = sorted(
+            set(scalars[cell_a]) & set(scalars[cell_b])
+        )
+
+        if not shared:
+            raise FinalValidationError(
+                (
+                    f"{pair.pair_id}: no shared scalar quantities "
+                    "available for formal comparison",
+                )
+            )
+
+        for table_name, identity, field in shared:
+            value_a, scope_a, domain_a = scalars[cell_a][
+                (table_name, identity, field)
+            ]
+            value_b, scope_b, domain_b = scalars[cell_b][
+                (table_name, identity, field)
+            ]
+            if domain_a != domain_b:
+                raise FinalValidationError(
+                    (
+                        f"{pair.pair_id}: scalar domain mismatch for "
+                        f"{table_name}/{identity}/{field}",
+                    )
+                )
+
+            difference = value_b - value_a
+            rows.append(
+                {
+                    "pair_id": pair.pair_id,
+                    "comparison_kind": pair.kind,
+                    "cell_a": cell_a,
+                    "cell_b": cell_b,
+                    "source_table": table_name,
+                    "domain": domain_a,
+                    "row_identity": identity,
+                    "value_field": field,
+                    "value_a": value_a,
+                    "value_b": value_b,
+                    "signed_difference_b_minus_a": difference,
+                    "relative_change_from_a": (
+                        None
+                        if value_a == 0.0
+                        else difference / abs(value_a)
+                    ),
+                    "ratio_b_over_a": (
+                        None
+                        if value_a == 0.0
+                        else value_b / value_a
+                    ),
+                    "scope_a": scope_a,
+                    "scope_b": scope_b,
+                }
+            )
+
+    return rows
+
+
+FINAL_TABLE_NAMES = PER_CELL_TABLE_NAMES + (
+    "formal_comparisons",
+    "failure_mode_indicators",
+)
+
+FAILURE_EFFECT_TABLES = {
+    "cells",
+    "lexicon_distribution",
+    "lexical_length",
+    "reuse_distribution",
+    "ambiguity_distribution",
+    "boundary_distribution",
+    "rule_usage",
+}
+
+
+def _lexicon_failure_rows(cell: LoadedCell) -> list[dict[str, Any]]:
+    path = cell.spec.run_dir / "latent_lexicon.tsv"
+    long_stats = {t: [0.0, 0.0] for t in LENGTH_MASS_THRESHOLDS}
+    low_context = {t: [0.0, 0.0] for t in REUSE_THRESHOLDS}
+    low_surface = {t: [0.0, 0.0] for t in REUSE_THRESHOLDS}
+    long_low_context = {(l, r): [0.0, 0.0] for l in LENGTH_MASS_THRESHOLDS for r in REUSE_THRESHOLDS}
+    long_low_surface = {(l, r): [0.0, 0.0] for l in LENGTH_MASS_THRESHOLDS for r in REUSE_THRESHOLDS}
+    total_types = 0
+    total_mass = 0.0
+
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        required = {"form_key", "phoneme_ids", "expected_count", "number_of_surface_variants", "number_of_contexts"}
+        if reader.fieldnames is None or not required.issubset(reader.fieldnames):
+            raise GateValidationError((f"{cell.spec.cell_id}: latent lexicon header lacks fields needed for final indicators",))
+        for line_number, row in enumerate(reader, start=2):
+            label = f"{path}:{line_number}"
+            phoneme_ids = row.get("phoneme_ids", "").split()
+            if not phoneme_ids:
+                raise GateValidationError((f"{label}: phoneme_ids must be nonempty",))
+            count = _number(row.get("expected_count"), f"{label} expected_count", nonnegative=True)
+            contexts = _integer(row.get("number_of_contexts"), f"{label} contexts")
+            variants = _integer(row.get("number_of_surface_variants"), f"{label} surface variants")
+            length = len(phoneme_ids)
+            total_types += 1
+            total_mass += count
+            for t in LENGTH_MASS_THRESHOLDS:
+                if length >= t:
+                    long_stats[t][0] += 1
+                    long_stats[t][1] += count
+            for t in REUSE_THRESHOLDS:
+                if contexts < t:
+                    low_context[t][0] += 1
+                    low_context[t][1] += count
+                if variants < t:
+                    low_surface[t][0] += 1
+                    low_surface[t][1] += count
+            for l in LENGTH_MASS_THRESHOLDS:
+                if length < l:
+                    continue
+                for r in REUSE_THRESHOLDS:
+                    if contexts < r:
+                        long_low_context[(l, r)][0] += 1
+                        long_low_context[(l, r)][1] += count
+                    if variants < r:
+                        long_low_surface[(l, r)][0] += 1
+                        long_low_surface[(l, r)][1] += count
+
+    if total_types <= 0 or total_mass <= 0.0:
+        raise GateValidationError((f"{cell.spec.cell_id}: final lexicon indicators require positive lexical support",))
+
+    def emit(family: str, metric: str, values: list[float], **extra: Any) -> dict[str, Any]:
+        return {
+            "indicator_family": family,
+            "cell_id": cell.spec.cell_id,
+            "metric": metric,
+            "type_count": int(values[0]),
+            "type_fraction": values[0] / total_types,
+            "expected_mass": values[1],
+            "expected_mass_fraction": values[1] / total_mass,
+            "scope": "exact_final_lexicon_stream",
+            **extra,
+        }
+
+    rows: list[dict[str, Any]] = []
+    rows.extend(emit("long_form_lexicalization", f"phoneme_length>={t}", long_stats[t], length_threshold=t) for t in LENGTH_MASS_THRESHOLDS)
+    for t in REUSE_THRESHOLDS:
+        rows.append(emit("low_reuse_memorization", f"contexts<{t}", low_context[t], reuse_axis="contexts", reuse_threshold=t))
+        rows.append(emit("low_reuse_memorization", f"surface_variants<{t}", low_surface[t], reuse_axis="surface_variants", reuse_threshold=t))
+    for l in LENGTH_MASS_THRESHOLDS:
+        for r in REUSE_THRESHOLDS:
+            rows.append(emit("long_low_reuse_memorization", f"phoneme_length>={l};contexts<{r}", long_low_context[(l, r)], length_threshold=l, reuse_axis="contexts", reuse_threshold=r))
+            rows.append(emit("long_low_reuse_memorization", f"phoneme_length>={l};surface_variants<{r}", long_low_surface[(l, r)], length_threshold=l, reuse_axis="surface_variants", reuse_threshold=r))
+    return rows
+
+
+def _formal_effect_relevant(row: dict[str, Any]) -> bool:
+    if row.get("domain") != "scientific" or row.get("source_table") not in FAILURE_EFFECT_TABLES:
+        return False
+    if row.get("source_table") == "rule_usage":
+        identity = str(row.get("row_identity", ""))
+        return identity.startswith("family=exact_global_summary") or identity.startswith("family=exact_global_top_n")
+    return True
+
+
+def build_failure_mode_indicators(reduction: FinalPerCellReduction, formal_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    try:
+        for cell in reduction.loaded:
+            rows.extend(_lexicon_failure_rows(cell))
+    except GateValidationError as exc:
+        raise FinalValidationError(exc.errors) from exc
+
+    for row in reduction.tables["ambiguity_distribution"]:
+        if row.get("family") == "segment_posterior" and row.get("metric") in {"identity_mass", "latent_mass"}:
+            rows.append({"indicator_family": "identity_latent_concentration", "source_table": "ambiguity_distribution", **row})
+
+    spacing_pairs = {"spacing_iast_surface_to_legacy", "spacing_devanagari_surface_to_legacy"}
+    stress_pairs = {"stress_devanagari_surface_to_continuous", "stress_devanagari_legacy_to_continuous"}
+    for row in formal_rows:
+        pair_id = row["pair_id"]
+        if pair_id in spacing_pairs and _formal_effect_relevant(row):
+            rows.append({"indicator_family": "spacing_removal_lexicalization", **row})
+        if pair_id in stress_pairs and _formal_effect_relevant(row):
+            rows.append({"indicator_family": "devanagari_continuous_stress", **row})
+        if row.get("source_table") == "rule_usage" and str(row.get("row_identity", "")).startswith("family=exact_global_summary"):
+            rows.append({"indicator_family": "sandhi_use_displacement", **row})
+
+    rows.sort(key=lambda row: (str(row.get("indicator_family", "")), str(row.get("cell_id", "")), str(row.get("pair_id", "")), str(row.get("metric", "")), str(row.get("row_identity", "")), str(row.get("value_field", ""))))
+    return rows
+
+
+def _designated_difference_evidence(formal_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    evidence: list[dict[str, Any]] = []
+    for pair in FORMAL_COMPARISONS:
+        candidates: list[tuple[float, str, str, str, dict[str, Any]]] = []
+        for row in formal_rows:
+            if row["pair_id"] != pair.pair_id or row.get("domain") != "scientific":
+                continue
+            relative = row.get("relative_change_from_a")
+            if isinstance(relative, (int, float)):
+                score = abs(float(relative)); score_kind = "absolute_relative_change"
+            else:
+                score = abs(float(row["signed_difference_b_minus_a"])); score_kind = "absolute_signed_difference"
+            candidates.append((score, str(row["source_table"]), str(row["row_identity"]), str(row["value_field"]), {
+                "cell_id": "cross_cell",
+                "category": f"designated_cross_condition_differences:{pair.pair_id}",
+                "source_id": f"{pair.pair_id}:{row['source_table']}:{row['row_identity']}:{row['value_field']}",
+                "source_artifact": "derived_formal_comparisons",
+                "pair_id": pair.pair_id,
+                "comparison_kind": pair.kind,
+                "source_table": row["source_table"],
+                "row_identity": row["row_identity"],
+                "value_field": row["value_field"],
+                "value_a": row["value_a"],
+                "value_b": row["value_b"],
+                "signed_difference_b_minus_a": row["signed_difference_b_minus_a"],
+                "relative_change_from_a": row["relative_change_from_a"],
+                "ratio_b_over_a": row["ratio_b_over_a"],
+                "selection_score": score,
+                "selection_score_kind": score_kind,
+                "scope_a": row["scope_a"],
+                "scope_b": row["scope_b"],
+            }))
+        candidates.sort(key=lambda item: (-item[0], item[1], item[2], item[3]))
+        evidence.extend(item[4] for item in candidates[:EVIDENCE_LIMIT])
+    return evidence
+
+
+def _compact_effect_rows(formal_rows: list[dict[str, Any]], *, kind: str) -> list[dict[str, Any]]:
+    return [row for row in formal_rows if row.get("comparison_kind") == kind and _formal_effect_relevant(row)]
+
+
+def build_decision_inputs(reduction: FinalPerCellReduction, formal_rows: list[dict[str, Any]], failure_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "schema_version": OUTPUT_SCHEMA_VERSION,
+        "status": "objective_evidence_only",
+        "interpretation_contract": "Machine-readable evidence for human scientific interpretation.",
+        "valid_cells": [{"cell_id": cell.spec.cell_id, "script": cell.spec.script, "condition": cell.spec.condition, "scientific_git_sha": cell.spec.scientific_commit} for cell in reduction.loaded],
+        "invalidated_cell": asdict(reduction.invalidated),
+        "lexicon_economy": [row for row in reduction.tables["lexicon_distribution"] if row.get("family") in {"diversity", "mass_support", "top_mass"}],
+        "long_form_and_reuse": [row for row in failure_rows if row.get("indicator_family") in {"long_form_lexicalization", "low_reuse_memorization", "long_low_reuse_memorization"}],
+        "posterior_balance": [row for row in failure_rows if row.get("indicator_family") == "identity_latent_concentration"],
+        "sandhi_use": [row for row in reduction.tables["rule_usage"] if row.get("family") == "exact_global_summary"],
+        "designated_effects": {
+            "controlled_script": _compact_effect_rows(formal_rows, kind="controlled_script"),
+            "controlled_spacing": _compact_effect_rows(formal_rows, kind="controlled_spacing"),
+            "continuous_stress": _compact_effect_rows(formal_rows, kind="continuous_stress"),
+        },
+        "computational_diagnostics": [row for row in formal_rows if row.get("domain") == "computational_diagnostic"],
+        "engineering_evidence": [row for row in formal_rows if row.get("domain") == "engineering"],
+        "s1m2_relevance": {
+            "evidence_families": ["long_form_lexicalization", "low_reuse_memorization", "long_low_reuse_memorization", "identity_latent_concentration", "spacing_removal_lexicalization", "devanagari_continuous_stress", "sandhi_use_displacement"],
+            "interpretation": "These indicators bear on later S1M2 motivation without encoding a scientific conclusion.",
+        },
+    }
+
+
+def _build_sources(path: Path, reduction: FinalPerCellReduction) -> list[dict[str, Any]]:
+    sources: list[dict[str, Any]] = []
+    cells_by_id = {row["cell_id"]: row for row in reduction.tables["cells"]}
+    for cell in reduction.loaded:
+        cell_id = cell.spec.cell_id
+        summary_row = cells_by_id[cell_id]
+        pass_count = len({int(row["pass"]) for row in reduction.tables["pass_dynamics"] if row.get("cell_id") == cell_id})
+        row_counts = {
+            "iteration_metrics.json": pass_count,
+            "summary.json": 1,
+            "analyses.jsonl": int(summary_row["segments"]),
+            "boundary_posteriors.jsonl": reduction.boundaries[cell_id].row_count,
+            "latent_lexicon.tsv": reduction.lexicons[cell_id].row_count,
+            "rule_usage.tsv": int(summary_row["rules"]),
+            "config.json": 1,
+            "checkpoint.json": 1,
+            "provenance.json": 1,
+            "timing_metrics.json": 1,
+            "inspection_report.md": None,
+        }
+        sources.extend(_source_entry(cell, name, base=path.parent, row_count=row_counts.get(name)) for name in SOURCE_FILES)
+        process_path = cell.spec.metrics_dir / "process_tree_summary.json"
+        sources.append({
+            "cell_id": cell_id, "run_id": cell.spec.run_id, "metrics_id": cell.spec.metrics_id,
+            "script": cell.spec.script, "condition": cell.spec.condition,
+            "relative_path": _relative_path(process_path, path.parent), "bytes": process_path.stat().st_size,
+            "row_count": 1, "sha256": _file_sha256(process_path), "scientific_git_sha": cell.spec.scientific_commit,
+            "artifact_schema_or_header": cell.process.get("schema_version"), "config_signature": cell.provenance.get("config_signature"),
+        })
+        sources.append({
+            "cell_id": cell_id, "run_id": cell.spec.run_id, "metrics_id": cell.spec.metrics_id,
+            "script": cell.spec.script, "condition": cell.spec.condition,
+            "relative_path": _relative_path(cell.spec.audit_path, path.parent), "bytes": cell.spec.audit_path.stat().st_size,
+            "row_count": 1, "sha256": _file_sha256(cell.spec.audit_path), "scientific_git_sha": cell.spec.scientific_commit,
+            "artifact_schema_or_header": cell.audit.get("schema_version"), "config_signature": cell.provenance.get("config_signature"),
+            "identity_role": "completed_collection_final_audit",
+        })
+    return sources
+
+
+def render_final_summary(result: dict[str, Any]) -> str:
+    tables = result["tables"]; manifest = result["manifest"]
+    lines = [
+        "# S1M1 final analysis", "",
+        "> **Implementation status:** PROVISIONAL until the complete real five-cell execution and S1M1 result freeze.", "",
+        "The final reduction contains five completed/audited scientific cells and the frozen IAST-continuous invalidation record.", "",
+        "| Cell | Segments | Phonemes | Lexical types | Expected boundaries |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for cell in tables["cells"]:
+        lines.append(f"| {cell['cell_id']} | {cell['segments']} | {cell['surface_phonemes']} | {cell['lexical_types']} | {cell['expected_boundaries']:.6g} |")
+    lines.extend(("", "## Designated formal comparisons", ""))
+    pair_counts: dict[str, int] = {}
+    for row in tables["formal_comparisons"]:
+        pair_counts[row["pair_id"]] = pair_counts.get(row["pair_id"], 0) + 1
+    for pair in FORMAL_COMPARISONS:
+        lines.append(f"- `{pair.pair_id}` ({pair.kind}): {pair_counts.get(pair.pair_id, 0)} scalar rows")
+    invalidated = manifest["invalidated_cells"][0]
+    lines.extend(("", "## Invalidated representation", "", f"- IAST `continuous`: {invalidated['scientific_status']}; {invalidated['formal_comparison']}.", "", "## Interpretation contract", "", "Formal comparisons and failure-mode indicators are objective evidence. Runtime/resource quantities remain separate engineering evidence. Scientific conclusions are assigned during the S1M1 result review.", ""))
+    return "\n".join(lines)
+
+
+def reduce_final_manifest(path: Path) -> dict[str, Any]:
+    path = path.resolve(); reduction = reduce_final_per_cell(path)
+    formal_rows = build_formal_comparisons(reduction)
+    failure_rows = build_failure_mode_indicators(reduction, formal_rows)
+    tables = {name: list(rows) for name, rows in reduction.tables.items()}
+    tables["formal_comparisons"] = formal_rows; tables["failure_mode_indicators"] = failure_rows
+    evidence = list(reduction.evidence); evidence.extend(_designated_difference_evidence(formal_rows))
+    evidence.sort(key=lambda row: (str(row.get("cell_id", "")), str(row.get("category", "")), str(row.get("source_id", ""))))
+    decision_inputs = build_decision_inputs(reduction, formal_rows, failure_rows)
+    try:
+        sources = _build_sources(path, reduction); input_sha256 = _file_sha256(path)
+    except GateValidationError as exc:
+        raise FinalValidationError(exc.errors) from exc
+    except OSError as exc:
+        raise FinalValidationError((f"final source provenance collection failed: {exc}",)) from exc
+    payload = reduction.manifest_payload
+    manifest = {
+        "schema_version": OUTPUT_SCHEMA_VERSION,
+        "analysis_id": payload["analysis_id"],
+        "scientific_contract_id": payload["scientific_contract_id"],
+        "analysis_plan_status": "FROZEN",
+        "implementation_status": "PROVISIONAL",
+        "result_status": "NOT_YET_FROZEN",
+        "source_manifest": _relative_path(path, path.parent),
+        "source_manifest_sha256": input_sha256,
+        "approved_scientific_commits": payload["approved_scientific_commits"],
+        "cross_commit_compatibility": payload.get("cross_commit_compatibility"),
+        "valid_cells": [{"cell_id": cell.spec.cell_id, "script": cell.spec.script, "condition": cell.spec.condition, "run_id": cell.spec.run_id, "metrics_id": cell.spec.metrics_id, "scientific_git_sha": cell.spec.scientific_commit} for cell in reduction.loaded],
+        "invalidated_cells": [asdict(reduction.invalidated)],
+        "formal_comparisons": [{"pair_id": pair.pair_id, "kind": pair.kind, "cell_a": list(pair.cell_a), "cell_b": list(pair.cell_b)} for pair in FORMAL_COMPARISONS],
+        "retained_evidence_limit_per_category": EVIDENCE_LIMIT,
+        "sources": sources,
+    }
+    result = {"schema_version": OUTPUT_SCHEMA_VERSION, "manifest": manifest, "tables": tables, "evidence_samples": evidence, "decision_inputs": decision_inputs}
+    result["summary"] = render_final_summary(result)
+    return result
+
+
+def write_final_outputs(result: dict[str, Any], output_dir: Path) -> None:
+    output_dir = output_dir.resolve()
+    if output_dir.exists():
+        raise FileExistsError(f"refusing to overwrite output directory: {output_dir}")
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.", dir=output_dir.parent))
+    try:
+        (temporary / "manifest.json").write_text(json.dumps(result["manifest"], ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="")
+        for name in FINAL_TABLE_NAMES:
+            _write_tsv(temporary / f"{name}.tsv", result["tables"][name])
+        with (temporary / "evidence_samples.jsonl").open("x", encoding="utf-8", newline="") as handle:
+            for row in result["evidence_samples"]:
+                handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+        (temporary / "decision_inputs.json").write_text(json.dumps(result["decision_inputs"], ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="")
+        (temporary / "summary.md").write_text(result["summary"], encoding="utf-8", newline="")
+        os.replace(temporary, output_dir)
+    except BaseException:
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise
