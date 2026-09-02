@@ -22,6 +22,13 @@ The current framework provides:
 - config-driven runs with data, tokenizer, Git, metric, preview, and log
   artifacts.
 
+The six frozen representation trees remain immutable observations. For formal
+experiments, IAST `continuous` is retired because removing spaces is not an
+injective IAST representation. The historical 22-cell baseline design is
+retained in a versioned manifest; production contains 18 valid cells and
+rejects the four IAST-continuous method cells. See
+`configs/experiments/baselines/README.md` for the pre-cloud production contract.
+
 ## Setup and validation
 
 ```bash

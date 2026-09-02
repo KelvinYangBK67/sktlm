@@ -104,3 +104,25 @@ def test_run_specs_address_all_18_valid_cells_independently() -> None:
     assert queue["launches_jobs"] is False
     assert all("__iast__continuous" not in job["condition_id"] for job in queue["jobs"])
     assert all("--production" in job["command_argv"] for job in queue["jobs"])
+    assert settings.downstream_lm.as_dict() == {
+        "contract_version": "m0-common-downstream-lm-v1",
+        "model_class": "TinyDecoderOnlyTransformer",
+        "context_length": 32,
+        "n_embd": 64,
+        "n_head": 2,
+        "n_layer": 2,
+        "dropout": 0.0,
+        "batch_size": 8,
+        "learning_rate": 0.001,
+        "max_steps": 20,
+        "shuffle_buffer_blocks": 1024,
+        "eval_split": "test",
+        "device": "cuda",
+        "optimizer": "AdamW",
+        "context_policy": "segment_contained_sliding_context_v1",
+        "scoring_protocol": "each_within_segment_target_once_v1",
+        "canonical_unit": "frozen_iast_surface_word_unicode_codepoint_v1",
+        "prepend_bos": True,
+        "append_eos": True,
+        "deterministic_algorithms": True,
+    }

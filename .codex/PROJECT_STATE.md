@@ -2,64 +2,100 @@
 
 This file records durable shared project state. It is not a task prompt.
 
-## Frozen M₀
+## Frozen M0
 
 - Commit: `dbff6836eb35ecb1933653443ca793b1ab890c63`
-- Annotated tag: `m0`
+- Annotated tag: `m0` (unchanged)
 - Freeze ID: `9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40`
 - Canonical root: `data/canonical/gretil_iast`
 - Canonical manifest: `data/manifests/canonical_corpus.csv`
 - Representation manifest: `data/manifests/representations.csv`
-- Documents: 240
-- Characters: 57,588,079
-- Bytes: 69,864,279
+- Documents: 240; representation files: 1,440
 
-Formal M₀ observation conditions are exactly six:
-
-- IAST / `surface_word`
-- IAST / `legacy_joined`
-- IAST / `continuous`
-- Devanagari / `surface_word`
-- Devanagari / `legacy_joined`
-- Devanagari / `continuous`
-
-Older names such as `lexical_boundary` and `observed` are not formal M₀ conditions.
+The six frozen observation trees remain immutable: IAST and Devanagari under
+`surface_word`, `legacy_joined`, and `continuous`. Frozen IAST `continuous`
+remains historical data but is retired from experiments; this decision does not
+regenerate, repair, or delete M0.
 
 ## Branch division
 
 - `exp/m0-core-methods`: latent/sandhi core-method line.
 - `exp/m0-baseline-validation`: baseline production and validation line.
 
-The two lines share the frozen corpus contract, representation definitions, evaluation contracts, and provenance standards. The baseline line does not own latent learner implementation.
+The baseline line does not import, copy, merge, or modify `src/sktlm/latent/`.
 
-## Formal baseline matrix
+## Historical and production baseline matrices
 
-The formal matrix contains exactly 22 independently trained conditions:
+`configs/experiments/baselines/m0_matrix.yaml` is manifest version
+`m0-baselines-v2`:
 
-- BPE: IAST + Devanagari × three spacing conditions = 6.
-- Unigram: IAST + Devanagari × three spacing conditions = 6.
-- Unicode code point: IAST + Devanagari × three spacing conditions = 6.
-- Akṣara-safe BPE: Devanagari `continuous` = 1.
-- Surface-lattice: IAST × three spacing conditions = 3.
+- historical design: 22 cells;
+- valid production: 18 cells;
+- retired: BPE, Unigram, Unicode code point, and Surface-lattice under IAST
+  `continuous` (4 cells), all carrying decision
+  `iast-continuous-representation-validity-v1` and one reason.
 
-Total: 22.
+Valid counts are BPE 5, Unigram 5, Unicode code point 5, Akṣara-safe BPE 1
+(Devanagari `continuous`), and Surface-lattice 2 (IAST `surface_word` and
+`legacy_joined`). Runner, generic experiment/controlled LM gates, production
+queue, TransLIST adapter, and formal aggregator reject IAST `continuous`.
 
-## TransLIST
+The interrupted external S1M1 diagnostic facts are recorded without invented
+timestamps in `reports/baselines/iast_continuous_retirement.md`: Pass 1 and Pass
+2 completed; Pass 3 stopped at document 86. No tracked run artifact exists on
+this branch and it was not resumed, deleted, or rewritten.
 
-TransLIST is a separate supervised Sanskrit segmentation/desandhi reference. It is not a twenty-third matrix condition.
+## Pre-cloud production implementation
 
-## Baseline responsibility
+- `a30741c`: versioned 22/18/4 manifest and retirement gates.
+- `63fa334`: CI, explicit NumPy dependency, deterministic environment capture,
+  and shared-infrastructure reconciliation.
+- `1527116`: unknown semantics, script-scoped diagnostics, and explicit
+  SentencePiece whitespace contracts.
+- `4008404`: bounded-memory `m0-common-downstream-lm-v1` with common BPC/BPB/
+  canonical-unit normalization and separate Surface-lattice intrinsic metrics.
+- `d78829d`: diagnostic/production execution gates, full artifact completion
+  hashes/provenance, and fail-closed 18-cell aggregation.
+- `e79c5e1`: independent TransLIST adapter and first-cell audit classifier.
 
-The baseline branch owns baseline implementation, validation, configurations, artifacts, tests, and reports. It must not implement the latent lexical core method or import core-method internals into baseline state documentation.
+Formal production uses fresh tokenizer and LM initialization per cell, frozen
+train/test membership, a fixed tiny Transformer/AdamW budget, deterministic
+buffered training order, segment-contained context, and each-target-once
+autoregressive scoring. Artifacts record config, commit, freeze/manifests, data
+and tokenizer fingerprints, environment and deterministic requirements freeze,
+training instance, runtime, peak RSS, unknown behavior, and completion hashes.
 
-## Formal baseline implementation
+Formal aggregation requires exactly 18 valid production bundles at one commit,
+seed, freeze, manifest identity, and environment. It rejects bounded, retired,
+missing, duplicate, extra, wrong-seed, tampered, incompletely hashed, or
+non-independent bundles. Comparison structure has no continuous script pair.
 
-- Commit `59d60ce` implements the exact 22-cell matrix schema and completeness validator.
-- The baseline loader consumes the six frozen representation trees directly from `data/manifests/representations.csv`; it does not regenerate observation conditions dynamically.
-- All 22 formal cells are runnable. BPE, Unigram, Unicode code point, Akṣara-safe BPE, and Surface-lattice each fit independently from their own frozen train representation and have unique method/script/spacing/seed artifact directories.
-- Baseline tokenizer preparation and evaluation are streaming on the Python side. SentencePiece input preparation no longer materializes the full selected corpus in a Python list.
-- Every supported run records the required method, script, spacing, effective config, seed, clean Git commit, M₀ freeze ID, both manifest hashes, software versions, and artifact location. Existing artifact directories are never overwritten.
-- Commit `449adde` implements the approved Akṣara-safe BPE v1 and Surface-lattice v1 contracts. Their exact atomizers, barriers, deterministic surrogate training, decoding, lattice likelihood, and reproducibility requirements are recorded in `.codex/DECISIONS.md` and `reports/baselines/m0_method_contracts.md`.
-- Akṣara-safe BPE uses an explicit Devanagari orthographic atomizer and cannot split an atom or cross a barrier. Surface-lattice constructs a complete learned-piece DAG over recorded-version IAST grapheme clusters, reports a deterministic Viterbi diagnostic path, and marginalizes all complete paths for BPC/BPB.
-- A read-only full train-split inventory audit found 11,373 Akṣara types (11,378 required slots including reserved/internal symbols) and 40 Surface-lattice atom types (45 required slots) in each IAST condition, all below the formal 24k budget.
-- No formal full-corpus baseline production run has been launched.
+TransLIST is not a nineteenth cell. Its executable JSONL adapter, split
+fingerprint, comparable segmentation/desandhi metrics, provenance, and isolated
+artifact layout are implemented; external model deployment remains optional
+and non-blocking.
+
+## Verified local state (2026-09-02)
+
+- Full suite: 366 passed.
+- Frozen canonical: 240 files, exact freeze ID, zero invalid characters and
+  apostrophes.
+- Frozen representations: 1,440 files, exact freeze ID.
+- Plan/queue: 22 historical, 18 valid, 4 retired, 18 non-launching jobs, zero
+  retired jobs.
+- Environment capture: repeated `environment.json` and
+  `requirements-freeze.txt` were byte-identical.
+- Valid-cell smoke: all 18 cells completed tokenizer diagnostics and one CPU
+  downstream step with finite metrics and completion manifests under `/tmp`;
+  first 15 used at most 5,000 train/3 test segments, and the shorter-token
+  Akṣara/Surface-lattice cells used at most 50,000 train/3 test segments.
+- Explicit retired gate passed without launching an experiment.
+- No IAST-continuous tokenizer, LM, smoke, or production run was launched.
+- No formal full-corpus production was launched.
+
+The relocated local `.venv` activation script still points at its old path and
+its installed packages lack newly declared NumPy. Tests were run with the
+embedded Python framework paths explicitly set and therefore retain one NumPy
+warning plus existing Torch nested-tensor warnings. A production host must
+create a fresh environment from declared dependencies rather than reuse this
+local venv.
