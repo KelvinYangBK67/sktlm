@@ -52,6 +52,90 @@ class RetiredConditionError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class DownstreamLMSettings:
+    """One common model/training/scoring protocol shared by every valid cell."""
+
+    contract_version: str = "m0-common-downstream-lm-v1"
+    model_class: str = "TinyDecoderOnlyTransformer"
+    context_length: int = 32
+    n_embd: int = 64
+    n_head: int = 2
+    n_layer: int = 2
+    dropout: float = 0.0
+    batch_size: int = 8
+    learning_rate: float = 0.001
+    max_steps: int = 20
+    shuffle_buffer_blocks: int = 1024
+    eval_split: str = "test"
+    device: str = "cuda"
+    optimizer: str = "AdamW"
+    context_policy: str = "segment_contained_sliding_context_v1"
+    scoring_protocol: str = "each_within_segment_target_once_v1"
+    canonical_unit: str = "frozen_iast_surface_word_unicode_codepoint_v1"
+    prepend_bos: bool = True
+    append_eos: bool = True
+    deterministic_algorithms: bool = True
+
+    def __post_init__(self) -> None:
+        if self.contract_version != "m0-common-downstream-lm-v1":
+            raise ValueError(f"unsupported downstream LM contract: {self.contract_version}")
+        if self.model_class != "TinyDecoderOnlyTransformer":
+            raise ValueError(f"unsupported common downstream model: {self.model_class}")
+        if self.optimizer != "AdamW":
+            raise ValueError(f"unsupported common downstream optimizer: {self.optimizer}")
+        if self.eval_split not in {"dev", "test"}:
+            raise ValueError("common downstream eval_split must be dev or test")
+        if self.device not in {"cpu", "cuda", "mps"}:
+            raise ValueError("common downstream device must be cpu, cuda, or mps")
+        integral_positive = (
+            self.context_length,
+            self.n_embd,
+            self.n_head,
+            self.n_layer,
+            self.batch_size,
+            self.max_steps,
+            self.shuffle_buffer_blocks,
+        )
+        if any(value <= 0 for value in integral_positive):
+            raise ValueError("common downstream integer controls must be positive")
+        if self.n_embd % self.n_head:
+            raise ValueError("n_embd must be divisible by n_head")
+        if self.learning_rate <= 0 or not 0.0 <= self.dropout < 1.0:
+            raise ValueError("invalid common downstream learning rate or dropout")
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> "DownstreamLMSettings":
+        return cls(
+            contract_version=str(value["contract_version"]),
+            model_class=str(value["model_class"]),
+            context_length=int(value["context_length"]),
+            n_embd=int(value["n_embd"]),
+            n_head=int(value["n_head"]),
+            n_layer=int(value["n_layer"]),
+            dropout=float(value["dropout"]),
+            batch_size=int(value["batch_size"]),
+            learning_rate=float(value["learning_rate"]),
+            max_steps=int(value["max_steps"]),
+            shuffle_buffer_blocks=int(value["shuffle_buffer_blocks"]),
+            eval_split=str(value["eval_split"]),
+            device=str(value["device"]),
+            optimizer=str(value["optimizer"]),
+            context_policy=str(value["context_policy"]),
+            scoring_protocol=str(value["scoring_protocol"]),
+            canonical_unit=str(value["canonical_unit"]),
+            prepend_bos=bool(value["prepend_bos"]),
+            append_eos=bool(value["append_eos"]),
+            deterministic_algorithms=bool(value["deterministic_algorithms"]),
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            name: getattr(self, name)
+            for name in self.__dataclass_fields__
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class BaselineCell:
     """One historical method x script x spacing condition."""
 
@@ -259,6 +343,7 @@ class BaselineMatrixSettings:
     condition_manifest: tuple[ConditionRecord, ...] = field(
         default_factory=expected_condition_manifest
     )
+    downstream_lm: DownstreamLMSettings = field(default_factory=DownstreamLMSettings)
 
     def __post_init__(self) -> None:
         if self.freeze_id != FROZEN_M0_ID:
@@ -288,6 +373,7 @@ class BaselineMatrixSettings:
             vocab_size=int(value["vocab_size"]),
             condition_manifest_version=str(value["condition_manifest_version"]),
             condition_manifest=tuple(ConditionRecord.from_mapping(item) for item in raw_manifest),
+            downstream_lm=DownstreamLMSettings.from_mapping(value["downstream_lm"]),
         )
 
     @classmethod
@@ -357,6 +443,7 @@ def build_plan(settings: BaselineMatrixSettings) -> dict[str, Any]:
         "retired_cell_count": len(retired),
         "tokenizer_supported_cell_count": len(specs),
         "pending_method_contract_cell_count": 0,
+        "common_downstream_lm": settings.downstream_lm.as_dict(),
         "retired_conditions": retired,
         "cells": [spec.as_dict() for spec in specs],
     }

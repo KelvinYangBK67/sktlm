@@ -25,6 +25,7 @@ from sktlm.experiments.artifacts import (
     payload_sha256,
 )
 from sktlm.experiments.baselines.frozen import FrozenRepresentationCatalog, load_frozen_catalog
+from sktlm.experiments.baselines.downstream import run_common_downstream_lm
 from sktlm.experiments.baselines.matrix import (
     REQUIRED_PROVENANCE,
     RETIRED,
@@ -197,6 +198,9 @@ def run_supported_cell(
     prediction_examples: int = 5,
     expected_documents: int = 240,
     require_clean_git: bool = True,
+    run_downstream: bool = True,
+    downstream_device: str | None = None,
+    downstream_max_steps: int | None = None,
 ) -> Path:
     """Fit and evaluate one of the 18 valid cells using frozen files directly."""
     if eval_split not in {"dev", "test"}:
@@ -210,6 +214,8 @@ def run_supported_cell(
             raise ValueError(f"{name} must be non-negative")
     if max_train_segments == 0 or max_eval_segments == 0:
         raise ValueError("segment limits must be positive when provided")
+    if downstream_max_steps is not None and downstream_max_steps <= 0:
+        raise ValueError("downstream_max_steps must be positive when provided")
 
     spec = _select_spec(settings, condition_id)
     if not spec.cell.tokenizer_supported:
@@ -312,15 +318,45 @@ def run_supported_cell(
     method_metrics: dict[str, Any] = {}
     bits_per_character: float | None = None
     bits_per_byte: float | None = None
+    bits_per_canonical_unit: float | None = None
     if isinstance(tokenizer, SurfaceLatticeTokenizer):
         negative_log2 = -lattice_log_probability / math.log(2.0)
-        bits_per_character = negative_log2 / eval_trace.character_count
-        bits_per_byte = negative_log2 / eval_trace.byte_count
         method_metrics = {
-            "lattice_log_probability": lattice_log_probability,
-            "lattice_arc_count": lattice_arc_count,
-            "lattice_ambiguous_node_count": lattice_ambiguous_node_count,
+            "surface_lattice_intrinsic_log_probability": lattice_log_probability,
+            "surface_lattice_intrinsic_bits_per_character": (
+                negative_log2 / eval_trace.character_count
+            ),
+            "surface_lattice_intrinsic_bits_per_byte": negative_log2 / eval_trace.byte_count,
+            "surface_lattice_arc_count": lattice_arc_count,
+            "surface_lattice_ambiguous_node_count": lattice_ambiguous_node_count,
         }
+
+    downstream_metrics: dict[str, Any] = {
+        "common_downstream_status": "not_run_diagnostic_only",
+    }
+    if run_downstream:
+        if eval_split != settings.downstream_lm.eval_split:
+            raise ValueError(
+                "common downstream eval split is frozen as "
+                f"{settings.downstream_lm.eval_split}, found {eval_split}"
+            )
+        downstream = run_common_downstream_lm(
+            catalog,
+            spec,
+            tokenizer,
+            artifact_dir,
+            device=downstream_device,
+            max_train_segments=max_train_segments,
+            max_eval_segments=max_eval_segments,
+            max_steps=downstream_max_steps,
+        )
+        downstream_metrics = {
+            "common_downstream_status": "complete",
+            **downstream.metrics,
+        }
+        bits_per_character = float(downstream.metrics["common_downstream_bits_per_character"])
+        bits_per_byte = float(downstream.metrics["common_downstream_bits_per_byte"])
+        bits_per_canonical_unit = float(downstream.metrics["bits_per_canonical_unit"])
 
     canonical_manifest = _resolve_repo_path(settings.canonical_manifest, repo_root)
     representation_manifest = _resolve_repo_path(settings.representation_manifest, repo_root)
@@ -368,6 +404,12 @@ def run_supported_cell(
             "split": eval_split,
             "prediction_examples": prediction_examples,
         },
+        "common_downstream_lm": {
+            "enabled": run_downstream,
+            "contract": settings.downstream_lm.as_dict(),
+            "runtime_device_override": downstream_device,
+            "runtime_max_steps_override": downstream_max_steps,
+        },
         "limits": {
             "max_train_segments": max_train_segments,
             "max_eval_segments": max_eval_segments,
@@ -410,9 +452,11 @@ def run_supported_cell(
         "evaluation_segments": eval_trace.segment_count,
         "bits_per_character": bits_per_character,
         "bits_per_byte": bits_per_byte,
+        "bits_per_canonical_unit": bits_per_canonical_unit,
         "phase": "tokenizer_diagnostics",
         **diagnostics,
         **method_metrics,
+        **downstream_metrics,
     }
     logs = [
         f"condition_id={condition_id}",
@@ -424,6 +468,7 @@ def run_supported_cell(
     ]
     if isinstance(tokenizer, SurfaceLatticeTokenizer):
         logs.append(f"lattice_log_probability={lattice_log_probability}")
+    logs.append(f"common_downstream_status={downstream_metrics['common_downstream_status']}")
 
     (artifact_dir / "config.yaml").write_text(
         yaml.safe_dump(execution_config, allow_unicode=True, sort_keys=False),
@@ -459,6 +504,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-train-segments", type=int)
     parser.add_argument("--max-eval-segments", type=int)
     parser.add_argument("--prediction-examples", type=int, default=5)
+    parser.add_argument(
+        "--tokenizer-only",
+        action="store_true",
+        help="diagnostic-only run; formal production aggregation rejects this mode",
+    )
+    parser.add_argument("--downstream-device", choices=("cpu", "cuda", "mps"))
+    parser.add_argument("--downstream-max-steps", type=int)
     return parser.parse_args(argv)
 
 
@@ -474,6 +526,9 @@ def main(argv: list[str] | None = None) -> None:
         max_train_segments=args.max_train_segments,
         max_eval_segments=args.max_eval_segments,
         prediction_examples=args.prediction_examples,
+        run_downstream=not args.tokenizer_only,
+        downstream_device=args.downstream_device,
+        downstream_max_steps=args.downstream_max_steps,
     )
     print(f"baseline artifacts: {artifact_dir}")
 

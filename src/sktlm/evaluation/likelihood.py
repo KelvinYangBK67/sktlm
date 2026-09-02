@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 
 import torch
@@ -61,7 +62,7 @@ def normalize_likelihood(
 @torch.no_grad()
 def score_autoregressive_sequences(
     model,
-    segments: list[EncodedSegment],
+    segments: Iterable[EncodedSegment],
     context_length: int,
     device: str,
 ) -> tuple[float, int]:

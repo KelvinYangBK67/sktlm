@@ -42,3 +42,9 @@ The approved Akṣara-safe BPE and Surface-lattice semantics, including their
 atomizers, barriers, likelihood, decoding, and reproducibility requirements,
 are fixed in `reports/baselines/m0_method_contracts.md`. Neither method uses the
 generic grapheme tokenizer or latent/core internals as a substitute.
+
+Formal runner invocations also train and score the common downstream tiny
+Transformer contract. Add `--tokenizer-only` only for bounded diagnostics;
+formal aggregation rejects such artifacts. Local smoke can use
+`--downstream-device cpu --downstream-max-steps 1` without changing the frozen
+production config. See `reports/baselines/m0_common_downstream_lm_contract.md`.

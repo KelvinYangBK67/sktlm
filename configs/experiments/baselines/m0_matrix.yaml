@@ -6,6 +6,28 @@ seed: 0
 vocab_size: 24000
 condition_manifest_version: m0-baselines-v2
 
+downstream_lm:
+  contract_version: m0-common-downstream-lm-v1
+  model_class: TinyDecoderOnlyTransformer
+  context_length: 32
+  n_embd: 64
+  n_head: 2
+  n_layer: 2
+  dropout: 0.0
+  batch_size: 8
+  learning_rate: 0.001
+  max_steps: 20
+  shuffle_buffer_blocks: 1024
+  eval_split: test
+  device: cuda
+  optimizer: AdamW
+  context_policy: segment_contained_sliding_context_v1
+  scoring_protocol: each_within_segment_target_once_v1
+  canonical_unit: frozen_iast_surface_word_unicode_codepoint_v1
+  prepend_bos: true
+  append_eos: true
+  deterministic_algorithms: true
+
 # Historical 22-cell design, retained verbatim with versioned validity status.
 # The anchor guarantees that all four retired cells carry identical provenance.
 iast_continuous_retirement: &iast_continuous_retirement

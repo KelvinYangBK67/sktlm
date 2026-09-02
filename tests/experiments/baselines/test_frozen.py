@@ -2,6 +2,7 @@
 
 import csv
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from sktlm.experiments.baselines.matrix import (
     FORMAL_SCRIPTS,
     FORMAL_SPACINGS,
     BaselineMatrixSettings,
+    DownstreamLMSettings,
     REQUIRED_PROVENANCE,
     RetiredConditionError,
 )
@@ -144,6 +146,7 @@ def test_supported_cell_reads_frozen_text_and_writes_complete_provenance(tmp_pat
         prediction_examples=1,
         expected_documents=2,
         require_clean_git=False,
+        run_downstream=False,
     )
 
     assert artifact_dir == tmp_path / "artifacts/baselines/test" / (
@@ -193,6 +196,7 @@ def test_supported_cell_reads_frozen_text_and_writes_complete_provenance(tmp_pat
             max_eval_segments=1,
             expected_documents=2,
             require_clean_git=False,
+            run_downstream=False,
         )
 
 
@@ -207,6 +211,7 @@ def test_supported_bpe_cell_fits_only_from_frozen_train_segments(tmp_path) -> No
         prediction_examples=0,
         expected_documents=2,
         require_clean_git=False,
+        run_downstream=False,
     )
 
     model_path = artifact_dir / "tokenizer" / "bpe_32.model"
@@ -217,6 +222,40 @@ def test_supported_bpe_cell_fits_only_from_frozen_train_segments(tmp_path) -> No
     )
     assert tokenizer_fingerprint["runtime"]["model_sha256"]
     assert tokenizer_fingerprint["config"]["sentencepiece_trainer_contract"]
+
+
+def test_supported_cell_runs_common_downstream_contract(tmp_path) -> None:
+    settings = replace(
+        _build_fixture(tmp_path),
+        downstream_lm=DownstreamLMSettings(
+            context_length=4,
+            n_embd=8,
+            n_head=2,
+            n_layer=1,
+            batch_size=1,
+            max_steps=1,
+            shuffle_buffer_blocks=4,
+            device="cpu",
+        ),
+    )
+    artifact_dir = run_supported_cell(
+        settings,
+        "unicode_codepoint__iast__surface_word",
+        repo_root=tmp_path,
+        max_train_segments=1,
+        max_eval_segments=1,
+        expected_documents=2,
+        require_clean_git=False,
+        downstream_device="cpu",
+    )
+    metrics = json.loads((artifact_dir / "metrics.json").read_text(encoding="utf-8"))
+    assert metrics["common_downstream_status"] == "complete"
+    assert metrics["bits_per_character"] == metrics[
+        "common_downstream_bits_per_character"
+    ]
+    assert metrics["bits_per_byte"] == metrics["common_downstream_bits_per_byte"]
+    assert metrics["bits_per_canonical_unit"] is not None
+    assert (artifact_dir / metrics["common_downstream_checkpoint"]).is_file()
 
 
 @pytest.mark.parametrize(
@@ -252,6 +291,7 @@ def test_approved_remaining_cells_run_independently(
         prediction_examples=1,
         expected_documents=2,
         require_clean_git=False,
+        run_downstream=False,
     )
 
     tokenizer_dir = artifact_dir / "tokenizer"
@@ -260,9 +300,10 @@ def test_approved_remaining_cells_run_independently(
     metrics = json.loads((artifact_dir / "metrics.json").read_text(encoding="utf-8"))
     assert metrics["tokenizer"] == expected_tokenizer
     if expected_tokenizer == "surface_lattice":
-        assert metrics["bits_per_character"] is not None
-        assert metrics["bits_per_byte"] is not None
-        assert metrics["lattice_arc_count"] > 0
+        assert metrics["bits_per_character"] is None
+        assert metrics["surface_lattice_intrinsic_bits_per_character"] is not None
+        assert metrics["surface_lattice_intrinsic_bits_per_byte"] is not None
+        assert metrics["surface_lattice_arc_count"] > 0
         prediction = json.loads(
             (artifact_dir / "predictions.jsonl").read_text(encoding="utf-8").strip()
         )
@@ -277,6 +318,7 @@ def test_supported_cell_requires_reproducible_git_state_by_default(tmp_path) -> 
             "unicode_codepoint__iast__surface_word",
             repo_root=tmp_path,
             expected_documents=2,
+            run_downstream=False,
         )
 
 
@@ -300,6 +342,7 @@ def test_runner_and_production_queue_reject_retired_conditions(
             repo_root=tmp_path,
             expected_documents=2,
             require_clean_git=False,
+            run_downstream=False,
         )
     with pytest.raises(RetiredConditionError, match="production scheduling rejects"):
         build_production_queue(
