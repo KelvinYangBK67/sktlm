@@ -63,7 +63,7 @@ def _write_manifest(path: Path, *, available: int = 4) -> Path:
 def _patch_scientific_loaders(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     loaded: list[str] = []
 
-    def fake_load(spec):
+    def fake_load(spec, **kwargs):
         loaded.append(spec.cell_id)
         return SimpleNamespace(spec=spec)
 
@@ -114,7 +114,7 @@ def test_supplied_corruption_fails_but_na_cells_are_never_loaded(tmp_path: Path,
     manifest = _write_manifest(tmp_path / "manifest.json")
     calls: list[str] = []
 
-    def corrupt(spec):
+    def corrupt(spec, **kwargs):
         calls.append(spec.cell_id)
         if spec.cell_id == "iast__surface_word":
             raise GateValidationError(("scientific artifact SHA-256 mismatch",))

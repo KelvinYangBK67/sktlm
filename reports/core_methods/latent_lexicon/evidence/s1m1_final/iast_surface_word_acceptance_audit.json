@@ -1,0 +1,77 @@
+{
+  "audit_kind": "historical_replica_hash_acceptance_envelope",
+  "acceptance_basis": {
+    "historical_remote_audit": "artifacts/cloud_reports_final/cloud_full_m0_iast_surface_word_p10_rep01_w8_p3/remote_audit.json",
+    "historical_remote_audit_valid": false,
+    "historical_remote_audit_failure_scope": "obsolete audit contract required benchmark_metrics.json; completion and scientific artifacts were independently accepted",
+    "replica_hash_inventory": "artifacts/cloud_replica_hashes/core-01_cloud_full_m0_iast_surface_word_p10_rep01_w8_p3_sha256.tsv",
+    "tracked_acceptance_report": "reports/core_methods/latent_lexicon/noncontinuous_representation_checkpoint_20260901.md"
+  },
+  "completion": {
+    "characters": 53233989,
+    "condition": "surface_word",
+    "documents": 240,
+    "overflowed_tokens": 0,
+    "script": "iast",
+    "segments": 1261520,
+    "workers": 8
+  },
+  "failures": [],
+  "process_metrics": {
+    "caveat": "One-second /proc sampling can undercount processes that start and exit between samples; RSS is the simultaneous sum for observed members of the command's process tree.",
+    "command": [
+      "./.venv/bin/python",
+      "-m",
+      "sktlm.experiments.training.latent_lexicon",
+      "--manifest",
+      "data/manifests/representations.csv",
+      "--output-root",
+      "artifacts/latent_benchmarks",
+      "--run-id",
+      "cloud_full_m0_iast_surface_word_p10_rep01_w8_p3",
+      "--passes",
+      "3",
+      "--workers",
+      "8",
+      "--equivalence-diagnostics"
+    ],
+    "forwarded_signal": null,
+    "logical_cpu_count": 16,
+    "peak_process_count": 10,
+    "peak_process_tree_rss_bytes": 3711254528,
+    "return_code": 0,
+    "sample_interval_seconds": 1.0,
+    "sampled_process_tree_cpu_seconds": 33821.8,
+    "sampled_process_tree_read_bytes": 3150622720,
+    "sampled_process_tree_write_bytes": 657945780224,
+    "wall_seconds": 13058.676237197998
+  },
+  "provenance": {
+    "condition": "surface_word",
+    "config_signature": "4b2a2053672dd7f5ea16b9b6b7445dda4b02b3cc0a23a32328542c4d422a644c",
+    "determinism": "sorted manifest order, file order, rule IDs, graph nodes, and tie-break keys; no stochastic update",
+    "document_count": 240,
+    "document_list": null,
+    "document_list_sha256": null,
+    "external_rule_count": 1218,
+    "freeze_id": "9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40",
+    "git_commit": "cd3a092b116ad236c4ad96d7c24868e79e9a47ce",
+    "implementation": "latent-lexicon-v1",
+    "manifest": "/root/sktlm/data/manifests/representations.csv",
+    "manifest_sha256": "c04124b2bc4909750ebedc4e7ec939df3c18edecf1598345ab3f662a21fbc520",
+    "rules_path": "/root/sktlm/data/rules/external_sandhi.tsv",
+    "rules_sha256": "55a204169a1ec442e8ac6e9ca90da1e6510b24998cdeba2d76f95f513bab7e90",
+    "script": "iast",
+    "seed": 0
+  },
+  "run_dir": "/root/sktlm/artifacts/latent_benchmarks/cloud_full_m0_iast_surface_word_p10_rep01_w8_p3",
+  "scientific_artifacts": {
+    "analyses.jsonl": {"bytes": 13172446023, "sha256": "cc08bd6d5724bd2a6f84960d6d1739c2176e19cf27c3c056480d4a466e3e13a8"},
+    "boundary_posteriors.jsonl": {"bytes": 5577811201, "sha256": "dc12152add6e8211a0085fc1c89fbb51089f3c6ba7ba4de23e9d7effc099b820"},
+    "iteration_metrics.json": {"bytes": 1529, "sha256": "c31e1846362c720de3a2b586de13fb2b9fec043e338368b81b15a0cb80321e05"},
+    "latent_lexicon.tsv": {"bytes": 3703183943, "sha256": "841eeb2969bcef4726c48e10484a53ac0791d6a70a6953ea62950963ac2a36ff"},
+    "rule_usage.tsv": {"bytes": 30173, "sha256": "9aae5020fea558429aa5e17f98d45abd9a5a3397a8e319be53edd0ca4939c107"},
+    "summary.json": {"bytes": 1130, "sha256": "088bc19c2843a122c79d21701b97d54bcf002a2ca65e2e93f0be28521b6545ac"}
+  },
+  "valid": true
+}

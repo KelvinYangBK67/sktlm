@@ -62,6 +62,7 @@ class ProtocolInput:
     analysis_id: str
     declarations: tuple[CellDeclaration, ...]
     supplied: Mapping[str, CellSpec]
+    legacy_config_identity_cells: frozenset[str]
     pairs: tuple[DeclaredPair, ...]
     top_k_values: tuple[int, ...]
 
@@ -142,6 +143,7 @@ def _parse_manifest(path: Path) -> ProtocolInput:
         supplied_raw = []
     base = path.parent
     supplied: dict[str, CellSpec] = {}
+    legacy_config_identity_cells: set[str] = set()
     declaration_by_id = {cell.cell_id: cell for cell in declarations}
     for index, item in enumerate(supplied_raw):
         label = f"supplied_cells[{index}]"
@@ -164,6 +166,11 @@ def _parse_manifest(path: Path) -> ProtocolInput:
             errors.append(f"{label}.scientific_commit must be a full lowercase SHA-1")
             commit = ""
         try:
+            identity_source = item.get("config_identity_source", "config")
+            if identity_source not in {"config", "provenance_if_config_absent"}:
+                errors.append(f"{label}.config_identity_source is unknown")
+            elif identity_source == "provenance_if_config_absent":
+                legacy_config_identity_cells.add(cell_id)
             supplied[cell_id] = CellSpec(
                 script=declaration.script,
                 condition=declaration.representation,
@@ -252,7 +259,10 @@ def _parse_manifest(path: Path) -> ProtocolInput:
         top_k = tuple(sorted(set(top_k_raw)))
     if errors:
         raise GateValidationError(errors)
-    return ProtocolInput(raw, analysis_id, tuple(declarations), supplied, tuple(pairs), top_k)
+    return ProtocolInput(
+        raw, analysis_id, tuple(declarations), supplied,
+        frozenset(legacy_config_identity_cells), tuple(pairs), top_k,
+    )
 
 
 SCIENTIFIC_METRICS = (
@@ -308,7 +318,12 @@ def aggregate_manifest(manifest_path: Path) -> dict[str, Any]:
     errors: list[str] = []
     for cell_id, spec in protocol.supplied.items():
         try:
-            loaded_by_id[cell_id] = _load_cell(spec)
+            loaded_by_id[cell_id] = _load_cell(
+                spec,
+                allow_missing_config_identity=(
+                    cell_id in protocol.legacy_config_identity_cells
+                ),
+            )
         except GateValidationError as exc:
             errors.extend(f"{cell_id}: {error}" for error in exc.errors)
     if errors:

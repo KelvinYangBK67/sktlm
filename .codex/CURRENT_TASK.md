@@ -4,37 +4,61 @@
 
 Branch: `chore/shared-analysis-protocol`.
 
-Generic representation-analysis protocol v2 and generic read-only archival
-inventory/deletion-readiness tooling are implemented. The v2 protocol accepts
-a declared cell universe with zero or more supplied scientific cells. Missing,
-scientifically excluded, incomplete, and non-applicable cells produce explicit
-JSON `null` / TSV-Markdown `N/A`; only `AVAILABLE` cells enter scientific
-aggregation. Supplied corrupt, incomplete, mismatched, duplicate, or
-unapproved inputs fail closed. Pair directions are manifest-declared and are
-computed only for two available endpoints.
+S1M1 is `FINAL_ANALYSIS_PENDING_HUMAN_ARCHIVAL_GATE`, not frozen. Its final
+cell framing is four complete scientific cells plus two typed N/A cells:
 
-The historical strict six-cell v1 implementation and command remain intact;
-its CLI also dispatches v2 manifests. The public schemas and commands are in
-`docs/workflows/representation_analysis_v2.md`.
+- `AVAILABLE`: IAST/Devanagari × `surface_word`/`legacy_joined`;
+- `NA_SCIENTIFICALLY_EXCLUDED`: IAST `continuous` (non-injective hiatus vs
+  lexical-diphthong spelling; manually terminated; partial state excluded);
+- `NA_EXECUTION_INCOMPLETE`: Devanagari `continuous` (valid representation,
+  computational/finalization failure; manually terminated; partial state
+  excluded).
 
-The archival helper inventories only explicitly named paths with streaming
-SHA-256, deterministic ordering, non-overwriting atomic JSON/TSV publication,
-and a READY/NOT_READY evidence gate. It implements no destructive operation.
+The formal manifest is `configs/analysis/s1m1_final_v2.json`. The checkpoint
+and machine gate are
+`reports/core_methods/latent_lexicon/s1m1_final_checkpoint_20260903.md` and
+`s1m1_deletion_readiness_20260903.json`.
 
-## Validation and boundaries
+## Work completed in this checkpoint
 
-Focused analysis tests pass (`15 passed`). No formal S1M1 artifact was scanned,
-no formal large-file SHA-256 was computed, no artifact was deleted, no final
-S1M1 report was generated, no M0-prime work was started, and S1M2 P1c was not
-started. No VM/cloud operation occurred.
+The generic validator gained an explicit compatibility mode for the accepted
+historical IAST anchor whose config predates script/condition fields; default
+and v1 validation remain strict. Its acceptance envelope preserves the
+historical obsolete-audit failure and independently accepted replica hashes.
 
-## Next task
+The read-only compact exporter can stream exact final scorer state, inspection
+lexicon state, surface/context usage, segment metrics, boundaries, passes,
+rules, runtime, document/length/reuse tables, output hashes, and read-back
+consistency into an atomic non-overwritten directory. It opens SQLite with
+`mode=ro` and `query_only`.
 
-After a human prepares an explicit formal manifest, run only the generic entry
-point into a new directory:
+No real compact export or formal v2 aggregation ran. Twelve local large
+scientific files total 91,193,439,274 bytes, so both aggregation and local
+rehashing exceed the five-minute Codex limit. Their historical audit/replica
+hashes are recorded; local revalidation is pending. The four completed-cell
+SQLite databases are not locally collected, so training-final scorer and
+exact reuse exports are also pending.
 
-    python scripts/analysis/aggregate_representations.py --manifest <manifest.json> --output-dir <new-output-dir>
+Deletion gate: `NOT_READY`. `SAFE_TO_DELETE_REGENERABLE` is empty. Both
+continuous termination evidence sets are `RETAIN`; all large completed-cell
+sources and source-host SQLite states remain `NOT_READY`/retention-required.
 
-Formal S1M1 analysis and any large-artifact inventory remain separate,
-explicitly authorized follow-up work. Do not infer missing cell status from
-directory names and do not start deletion from this tooling.
+## Human-only next commands
+
+Follow `docs/workflows/s1m1_final_human_run.md` exactly:
+
+1. `bash scripts/analysis/HUMAN_RUN_S1M1_FINAL_SHA256.sh`
+2. run `aggregate_representations.py` with
+   `configs/analysis/s1m1_final_v2.json`;
+3. run the four explicit `export_s1m1_compact.py` commands on the source hosts;
+4. return the completed hash, aggregation, and four compact directories.
+
+The next Codex task is then limited to validating those returned outputs,
+finalizing report/gate state, and deciding `READY_TO_FREEZE`. Do not delete
+anything automatically and do not tag or merge without explicit authority.
+
+M0 is unchanged. M0-prime was not generated. S1M2 P1c was not started. No
+VM/cloud operation or long process was run in this checkpoint.
+
+Validation: focused tests `18 passed`; full repository suite `551 passed` with
+four existing warnings; Python compilation, Bash syntax, and diff checks pass.

@@ -37,6 +37,7 @@ Use schema `sktlm-representation-analysis-input/v2`:
       "run_id": "run-id",
       "metrics_id": "metrics-id",
       "scientific_commit": "0123456789abcdef0123456789abcdef01234567",
+      "config_identity_source": "config",
       "run_dir": "relative/run",
       "metrics_dir": "relative/metrics",
       "audit_path": "relative/audit.json"
@@ -56,6 +57,13 @@ cells may occur in `supplied_cells`, and every `AVAILABLE` cell must be
 supplied. The approved commit list exactly matches supplied provenance; a
 multi-commit input additionally requires an approved
 `cross_commit_compatibility` object with an explicit basis and evidence list.
+
+`config_identity_source` defaults to `config`. The narrowly scoped
+`provenance_if_config_absent` value supports accepted historical runs whose old
+config omitted both script and representation fields; it remains fail-closed
+unless both fields are absent and the separately audited provenance identity
+matches the declaration. The historical six-cell v1 path never enables this
+compatibility mode.
 
 Supplied cells reuse the strict completed-run checks from the historical gate:
 run/config/audit identity, unrestricted/full scope, common scientific config,
