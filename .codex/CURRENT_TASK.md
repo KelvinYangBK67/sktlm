@@ -4,37 +4,49 @@
 
 Branch: `exp/s1m1-core-methods`.
 
-S1M1 scientific analysis is complete. Formal aggregation
-`s1m1-final-four-cell-20260903` is valid with four `AVAILABLE` cells and two
-typed N/A cells. Source inventory `s1m1-final-source-inventory-20260903` is
-valid for all twelve large scientific sources.
+S1M1 formal scientific analysis remains complete and unchanged. SQLite-derived
+association state is supplementary microscopic evidence, not a prerequisite
+for the valid four-AVAILABLE/two-N/A representation analysis.
 
 ```text
-scientific analysis: COMPLETE
-archival compact state: PENDING
+selective SQLite archival interface: IMPLEMENTED
+external real-data execution: PENDING
 deletion gate: NOT_READY
 freeze: PENDING
 M0-prime: NOT_STARTED
 S1M2 P1c: BLOCKED
 ```
 
-The final analysis is
-`reports/core_methods/latent_lexicon/s1m1_final_checkpoint_20260903.md`.
+Retention policy:
 
-## Remaining blocker
+- Devanagari `surface_word`: raw SQLite/WAL if present plus compact state;
+- Devanagari `legacy_joined`: compact state only;
+- completed IAST cells: no SQLite microstate archival requirement;
+- continuous partial databases: excluded from completed-state retention.
 
-The four completed-cell source-VM `learner.sqlite` databases were not included
-in local scientific collections. Other local smoke/medium databases are not
-substitutes. The only remaining archival work is to produce and return the
-four compact exports with SQLite/WAL source size and SHA-256, exact final
-scorer/reuse state, compact hashes, and passing read-back consistency.
+## NEXT OPERATOR STEP
 
-When the researcher explicitly authorizes source-host access, follow the four
-existing `export_s1m1_compact.py` commands in
-`docs/workflows/s1m1_final_human_run.md`. Do not rerun source inventory or
-formal aggregation. After the compact directories are returned, the next
-small Codex task is limited to validating them and reconsidering deletion
-readiness/freeze; deletion and tagging still require separate authority.
+1. The researcher starts only the two required current source VMs.
+2. On each source host, the researcher runs the corresponding SQLite-only
+   export commands in `docs/workflows/s1m1_sqlite_retention.md`.
+3. The researcher pulls:
+   - Devanagari `surface_word`: raw `learner.sqlite`, non-empty
+     `learner.sqlite-wal` if present, and the complete compact state;
+   - Devanagari `legacy_joined`: the complete compact state only.
+4. The researcher returns control to Codex with those paths.
 
-Do not access `notes/**`. Do not delete scientific sources. Do not start
-M0-prime or S1M2 P1c while this archival blocker remains.
+Do not rerun formal aggregation or the 91 GB source inventory. Do not use an
+unverified historical host address. Do not access `notes/**`.
+
+## Next Codex task after return
+
+- validate the returned identities, compact hashes, and read-back checks;
+- perform SQLite-derived association analysis if supported by the returned
+  compact state;
+- update the final M1 report and deletion-readiness classifications;
+- never execute deletion;
+- after researcher-authorized manual deletion, perform the final M1 audit and
+  only then decide whether S1M1 is `READY_TO_FREEZE`.
+
+M0 must remain unchanged. Do not generate M0-prime or start S1M2 P1c during
+this archival checkpoint.

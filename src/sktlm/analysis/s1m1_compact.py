@@ -1,7 +1,7 @@
 """Read-only streaming compact export for one completed S1M1 cell.
 
 The source run and SQLite database are never mutated. Publication is atomic
-and refuses an existing destination; long real-data execution is human-run.
+and refuses an existing destination; long real-data execution is external.
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ from urllib.parse import quote
 from .six_representation_gate import GateValidationError
 
 SCHEMA_VERSION = "sktlm-s1m1-compact-cell/v1"
+SQLITE_STATE_SCHEMA_VERSION = "sktlm-s1m1-sqlite-state/v1"
 REQUIRED_RUN_FILES = (
     "iteration_metrics.json", "summary.json", "analyses.jsonl",
     "boundary_posteriors.jsonl", "latent_lexicon.tsv", "rule_usage.tsv",
@@ -49,9 +50,11 @@ def _source_database_identity(path: Path, *, role: str, required: bool) -> dict[
             "size_bytes": None,
             "sha256": None,
         }
-    size_bytes = path.stat().st_size
+    before = path.stat()
+    size_bytes = before.st_size
     sha256 = _sha256(path)
-    if path.stat().st_size != size_bytes:
+    after = path.stat()
+    if (after.st_size, after.st_mtime_ns) != (before.st_size, before.st_mtime_ns):
         raise GateValidationError((f"source database artifact changed while hashing: {path}",))
     return {
         "artifact_role": role,
@@ -89,8 +92,8 @@ def _gzip_writer(path: Path, fields: Iterable[str]):
 
 
 def _open_database(path: Path) -> sqlite3.Connection:
-    if not path.is_file():
-        raise GateValidationError((f"learner SQLite is missing: {path}",))
+    if not path.is_file() or path.stat().st_size == 0:
+        raise GateValidationError((f"learner SQLite is missing or empty: {path}",))
     uri = f"file:{quote(path.resolve().as_posix(), safe='/:')}?mode=ro"
     connection = sqlite3.connect(uri, uri=True)
     connection.execute("PRAGMA query_only = ON")
@@ -509,6 +512,115 @@ def export_compact_cell(
         )
         checksum_files = sorted(path for path in temporary.iterdir() if path.is_file())
         with (temporary / "SHA256SUMS").open("x", encoding="utf-8", newline="") as handle:
+            for path in checksum_files:
+                handle.write(f"{_sha256(path)}  {path.name}\n")
+        os.replace(temporary, output_dir)
+    except BaseException:
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise
+    finally:
+        if connection is not None:
+            connection.close()
+
+
+def export_sqlite_state(
+    *,
+    cell_id: str,
+    database_path: Path,
+    output_dir: Path,
+    wal_path: Path | None = None,
+) -> None:
+    """Export only training-final scorer and association state from SQLite."""
+
+    database_path = database_path.resolve()
+    output_dir = output_dir.resolve()
+    wal_resolution = "explicit" if wal_path is not None else "derived_as_<database>-wal"
+    resolved_wal_path = (
+        wal_path.resolve()
+        if wal_path is not None
+        else database_path.with_name(f"{database_path.name}-wal")
+    )
+    if output_dir.exists():
+        raise FileExistsError(f"refusing to overwrite output directory: {output_dir}")
+
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.", dir=output_dir.parent))
+    connection: sqlite3.Connection | None = None
+    try:
+        connection = _open_database(database_path)
+        database = _export_database(connection, temporary)
+        readback = {
+            "final_scorer": _readback_gzip(
+                temporary / "final_scorer.tsv.gz", "training_expected_count"
+            ),
+            "surface_usage": _readback_gzip(
+                temporary / "surface_usage.tsv.gz", "expected_mass"
+            ),
+            "context_usage": _readback_gzip(
+                temporary / "context_usage.tsv.gz", "expected_mass"
+            ),
+        }
+        consistency = {
+            f"{name}_readback_rows_match": readback[name]["rows"] == database[name]["rows"]
+            for name in readback
+        }
+        for name, numeric_field in (
+            ("final_scorer", "training_expected_count"),
+            ("surface_usage", "expected_mass"),
+            ("context_usage", "expected_mass"),
+        ):
+            consistency[f"{name}_readback_mass_matches"] = math.isclose(
+                readback[name][f"sum_{numeric_field}"],
+                database[name][f"sum_{numeric_field}"],
+                rel_tol=1e-10,
+                abs_tol=1e-6,
+            )
+        consistency["database_lexicon_checks_pass"] = all(
+            database["final_scorer"][key]
+            for key in (
+                "row_count_matches_database",
+                "expected_count_sum_matches_database",
+                "probability_sum_is_one",
+            )
+        )
+        if not all(consistency.values()):
+            raise GateValidationError(
+                (f"SQLite-state export consistency failed: {consistency}",)
+            )
+
+        compact_artifacts = [
+            {"name": path.name, "size_bytes": path.stat().st_size, "sha256": _sha256(path)}
+            for path in sorted(temporary.iterdir())
+            if path.is_file()
+        ]
+        database_identity = _source_database_identity(
+            database_path, role="learner_sqlite", required=True
+        )
+        database_identity["database_path"] = str(database_path)
+        wal_identity = _source_database_identity(
+            resolved_wal_path, role="learner_sqlite_wal", required=False
+        )
+        manifest = {
+            "schema_version": SQLITE_STATE_SCHEMA_VERSION,
+            "cell_id": cell_id,
+            "source_artifacts": [database_identity, wal_identity],
+            "wal_path_resolution": wal_resolution,
+            "statistics": {"database": database},
+            "readback": readback,
+            "consistency": consistency,
+            "compact_artifacts": compact_artifacts,
+            "sqlite_view": "mode=ro/query_only; includes committed WAL-visible state",
+            "source_mutation": "none; no checkpoint, journal-mode change, or SQL write",
+        }
+        (temporary / "manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+            newline="",
+        )
+        checksum_files = sorted(path for path in temporary.iterdir() if path.is_file())
+        with (temporary / "SHA256SUMS").open(
+            "x", encoding="utf-8", newline=""
+        ) as handle:
             for path in checksum_files:
                 handle.write(f"{_sha256(path)}  {path.name}\n")
         os.replace(temporary, output_dir)

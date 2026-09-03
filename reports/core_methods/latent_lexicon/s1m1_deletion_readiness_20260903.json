@@ -20,16 +20,22 @@
       "artifact_count": 12,
       "total_size_bytes": 91193439274
     },
-    "archival_compact_state": "PENDING",
+    "archival_compact_state": "SELECTIVE_RETENTION_PENDING",
+    "sqlite_retention_policy": {
+      "status": "SELECTIVE",
+      "policy_id": "s1m1-selective-sqlite-retention-20260903",
+      "manifest_path": "configs/analysis/s1m1_sqlite_retention.json"
+    },
     "freeze": "PENDING"
   },
   "policy": {
     "automatic_deletion_implemented": false,
     "scientific_source_deletion_performed": false,
     "safe_requires": [
-      "source size and SHA-256 recorded",
+      "required source size and SHA-256 recorded",
       "scientific provenance and configuration retained",
-      "required compact replacements complete and hashed",
+      "Devanagari surface-word raw database/WAL retained and identity-verified",
+      "Devanagari surface-word and legacy-joined compact association state complete and hashed",
       "read-back consistency passed",
       "final report independent of unarchived source-only information",
       "source confirmed regenerable from frozen inputs and exact code provenance"
@@ -181,54 +187,53 @@
       "deletion_status": "NOT_READY"
     }
   ],
-  "uncollected_exact_state_sources": [
-    {
-      "cell_id": "iast__surface_word",
-      "relative_path_on_source_host": "artifacts/latent_benchmarks/cloud_full_m0_iast_surface_word_p10_rep01_w8_p3/learner.sqlite",
-      "size_bytes": null,
-      "sha256": null,
-      "wal_relative_path_on_source_host": "artifacts/latent_benchmarks/cloud_full_m0_iast_surface_word_p10_rep01_w8_p3/learner.sqlite-wal",
-      "wal_size_bytes": null,
-      "wal_sha256": null,
-      "artifact_role": "exact final scorer and reuse associations",
-      "replacement_compact_artifacts": ["compact/iast__surface_word/final_scorer.tsv.gz", "compact/iast__surface_word/surface_usage.tsv.gz", "compact/iast__surface_word/context_usage.tsv.gz"],
-      "deletion_status": "NOT_READY"
-    },
-    {
-      "cell_id": "iast__legacy_joined",
-      "relative_path_on_source_host": "artifacts/latent_benchmarks/cloud_full_m0_iast_legacy_joined_p10_w8_p3/learner.sqlite",
-      "size_bytes": null,
-      "sha256": null,
-      "wal_relative_path_on_source_host": "artifacts/latent_benchmarks/cloud_full_m0_iast_legacy_joined_p10_w8_p3/learner.sqlite-wal",
-      "wal_size_bytes": null,
-      "wal_sha256": null,
-      "artifact_role": "exact final scorer and reuse associations",
-      "replacement_compact_artifacts": ["compact/iast__legacy_joined/final_scorer.tsv.gz", "compact/iast__legacy_joined/surface_usage.tsv.gz", "compact/iast__legacy_joined/context_usage.tsv.gz"],
-      "deletion_status": "NOT_READY"
-    },
+  "selective_sqlite_retention": [
     {
       "cell_id": "devanagari__surface_word",
+      "scientific_role": "successful boundary-visible reference condition",
       "relative_path_on_source_host": "artifacts/latent_benchmarks/cloud_full_m0_devanagari_surface_word_p10_w8_p3/learner.sqlite",
       "size_bytes": null,
       "sha256": null,
       "wal_relative_path_on_source_host": "artifacts/latent_benchmarks/cloud_full_m0_devanagari_surface_word_p10_w8_p3/learner.sqlite-wal",
       "wal_size_bytes": null,
       "wal_sha256": null,
-      "artifact_role": "exact final scorer and reuse associations",
-      "replacement_compact_artifacts": ["compact/devanagari__surface_word/final_scorer.tsv.gz", "compact/devanagari__surface_word/surface_usage.tsv.gz", "compact/devanagari__surface_word/context_usage.tsv.gz"],
-      "deletion_status": "NOT_READY"
+      "retain_raw_database": true,
+      "retain_wal_if_present": true,
+      "export_sqlite_associations": true,
+      "required_compact_artifacts": ["final_scorer.tsv.gz", "surface_usage.tsv.gz", "context_usage.tsv.gz", "manifest.json", "SHA256SUMS"],
+      "retention_status": "NOT_READY"
     },
     {
       "cell_id": "devanagari__legacy_joined",
+      "scientific_role": "completed diagnostic failure / boundary-reduction stress condition",
       "relative_path_on_source_host": "artifacts/latent_benchmarks/cloud_full_m0_devanagari_legacy_joined_p10_w8_p3/learner.sqlite",
       "size_bytes": null,
       "sha256": null,
       "wal_relative_path_on_source_host": "artifacts/latent_benchmarks/cloud_full_m0_devanagari_legacy_joined_p10_w8_p3/learner.sqlite-wal",
       "wal_size_bytes": null,
       "wal_sha256": null,
-      "artifact_role": "exact final scorer and reuse associations",
-      "replacement_compact_artifacts": ["compact/devanagari__legacy_joined/final_scorer.tsv.gz", "compact/devanagari__legacy_joined/surface_usage.tsv.gz", "compact/devanagari__legacy_joined/context_usage.tsv.gz"],
-      "deletion_status": "NOT_READY"
+      "retain_raw_database": false,
+      "retain_wal_if_present": false,
+      "export_sqlite_associations": true,
+      "required_compact_artifacts": ["final_scorer.tsv.gz", "surface_usage.tsv.gz", "context_usage.tsv.gz", "manifest.json", "SHA256SUMS"],
+      "raw_database_deletion_assessment": "PENDING_COMPACT_VALIDATION",
+      "retention_status": "NOT_READY"
+    },
+    {
+      "cell_id": "iast__surface_word",
+      "retain_raw_database": false,
+      "retain_wal_if_present": false,
+      "export_sqlite_associations": false,
+      "retention_status": "NOT_REQUIRED_BY_SELECTIVE_POLICY",
+      "reason": "Matched-spacing script effect is negligible; existing scientific outputs and provenance remain retained."
+    },
+    {
+      "cell_id": "iast__legacy_joined",
+      "retain_raw_database": false,
+      "retain_wal_if_present": false,
+      "export_sqlite_associations": false,
+      "retention_status": "NOT_REQUIRED_BY_SELECTIVE_POLICY",
+      "reason": "Matched-spacing script effect is negligible; existing scientific outputs and provenance remain retained."
     }
   ],
   "retained_failure_evidence": [
@@ -248,5 +253,5 @@
     }
   ],
   "safe_to_delete_regenerable": [],
-  "not_ready_reason": "Completed-cell training-final learner SQLite/WAL compact identity and read-back archival evidence has not yet been collected from the source VMs."
+  "not_ready_reason": "Selective retention is pending: Devanagari surface-word raw SQLite/WAL plus compact association state, and Devanagari legacy-joined compact association state, have not yet been returned and validated."
 }

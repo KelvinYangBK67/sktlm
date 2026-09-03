@@ -11,10 +11,26 @@ import pytest
 
 import sktlm.analysis.s1m1_compact as compact
 from sktlm.analysis.s1m1_compact import export_compact_cell
+from sktlm.analysis.s1m1_compact import export_sqlite_state
+from sktlm.analysis.six_representation_gate import GateValidationError
 
 
 def _json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value), encoding="utf-8")
+
+
+def _database_fixture(database: Path) -> None:
+    connection = sqlite3.connect(database)
+    connection.executescript(
+        "CREATE TABLE lexicon(form_key TEXT PRIMARY KEY, expected_count REAL NOT NULL, probability REAL NOT NULL) WITHOUT ROWID;"
+        "CREATE TABLE surface_usage(form_key TEXT NOT NULL, surface TEXT NOT NULL, expected_mass REAL NOT NULL, PRIMARY KEY(form_key,surface));"
+        "CREATE TABLE context_usage(form_key TEXT NOT NULL, context TEXT NOT NULL, expected_mass REAL NOT NULL, PRIMARY KEY(form_key,context));"
+        "INSERT INTO lexicon VALUES ('A',2,0.6),('B',1,0.4);"
+        "INSERT INTO surface_usage VALUES ('A','a',2),('B','ba',1);"
+        "INSERT INTO context_usage VALUES ('A','left',2),('B','right',1);"
+    )
+    connection.commit()
+    connection.close()
 
 
 def _fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
@@ -46,18 +62,72 @@ def _fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
     ]
     (run / "boundary_posteriors.jsonl").write_text("".join(json.dumps(row) + "\n" for row in boundaries), encoding="utf-8")
     database = tmp_path / "learner.sqlite"
+    _database_fixture(database)
+    return run, metrics, database
+
+
+def test_sqlite_only_export_needs_no_scientific_outputs(tmp_path: Path) -> None:
+    database = tmp_path / "learner.sqlite"
+    _database_fixture(database)
+    before = hashlib.sha256(database.read_bytes()).hexdigest()
+    size_before = database.stat().st_size
+    output = tmp_path / "sqlite_state"
+
+    export_sqlite_state(
+        cell_id="devanagari__surface_word",
+        database_path=database,
+        output_dir=output,
+    )
+
+    assert hashlib.sha256(database.read_bytes()).hexdigest() == before
+    assert {path.name for path in output.iterdir()} == {
+        "SHA256SUMS",
+        "context_usage.tsv.gz",
+        "final_scorer.tsv.gz",
+        "manifest.json",
+        "surface_usage.tsv.gz",
+    }
+    manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+    assert all(manifest["consistency"].values())
+    assert manifest["readback"]["final_scorer"] == {
+        "rows": 2,
+        "sum_training_expected_count": 3.0,
+    }
+    source_artifacts = {
+        artifact["artifact_role"]: artifact
+        for artifact in manifest["source_artifacts"]
+    }
+    assert source_artifacts["learner_sqlite"]["size_bytes"] == size_before
+    assert source_artifacts["learner_sqlite"]["sha256"] == before
+    assert source_artifacts["learner_sqlite_wal"]["present"] is False
+    assert source_artifacts["learner_sqlite_wal"]["size_bytes"] is None
+    assert source_artifacts["learner_sqlite_wal"]["sha256"] is None
+    with pytest.raises(FileExistsError):
+        export_sqlite_state(
+            cell_id="devanagari__surface_word",
+            database_path=database,
+            output_dir=output,
+        )
+
+
+def test_sqlite_only_export_rejects_missing_required_table(tmp_path: Path) -> None:
+    database = tmp_path / "malformed.sqlite"
     connection = sqlite3.connect(database)
-    connection.executescript(
-        "CREATE TABLE lexicon(form_key TEXT PRIMARY KEY, expected_count REAL NOT NULL, probability REAL NOT NULL) WITHOUT ROWID;"
-        "CREATE TABLE surface_usage(form_key TEXT NOT NULL, surface TEXT NOT NULL, expected_mass REAL NOT NULL, PRIMARY KEY(form_key,surface));"
-        "CREATE TABLE context_usage(form_key TEXT NOT NULL, context TEXT NOT NULL, expected_mass REAL NOT NULL, PRIMARY KEY(form_key,context));"
-        "INSERT INTO lexicon VALUES ('A',2,0.6),('B',1,0.4);"
-        "INSERT INTO surface_usage VALUES ('A','a',2),('B','ba',1);"
-        "INSERT INTO context_usage VALUES ('A','left',2),('B','right',1);"
+    connection.execute(
+        "CREATE TABLE lexicon(form_key TEXT, expected_count REAL, probability REAL)"
     )
     connection.commit()
     connection.close()
-    return run, metrics, database
+    output = tmp_path / "sqlite_state"
+
+    with pytest.raises(GateValidationError):
+        export_sqlite_state(
+            cell_id="devanagari__legacy_joined",
+            database_path=database,
+            output_dir=output,
+        )
+    assert not output.exists()
+    assert not list(tmp_path.glob(".sqlite_state.*"))
 
 
 def test_compact_export_is_complete_consistent_and_read_only(tmp_path: Path) -> None:

@@ -167,6 +167,12 @@ Targets such as `gaccha|ti` or `gacch|a|ti` should be tested as learned,
 script-neutral reusable pieces; this checkpoint does not claim S1M2 has solved
 the problem.
 
+`surface_word` is the successful boundary-visible reference condition, not the
+preferred downstream representation. `legacy_joined` is a completed
+diagnostic failure/stress condition: its sharper posterior coexists with worse
+lexicon economy. A corrected and scalable continuous representation remains
+the downstream target direction.
+
 For future continuous IAST work, derived M0-prime will use frozen M0
 Devanagari continuous as its source, render lexical `/ai/` and `/au/` as `ē`
 and `ō`, and retain ordinary `ai` and `au` for cross-boundary hiatus after
@@ -182,10 +188,23 @@ the known local cloud-collection directories. Other local smoke and medium-run
 databases do exist, but they are not the four source-VM training-final states
 and do not satisfy this gate.
 
-The only remaining archival blocker is collection of per-cell compact exports
-containing training-final SQLite/WAL source identity, exact scorer/reuse state,
-compact hashes, and passing read-back consistency. Until those four compact
-archives are returned and validated:
+SQLite-derived association state is supplementary microscopic reuse/context
+evidence; it is not required for the validity of the completed formal S1M1
+analysis. The selective policy is recorded in
+`configs/analysis/s1m1_sqlite_retention.json`:
+
+- Devanagari `surface_word`: retain raw SQLite, a non-empty WAL if present,
+  and compact scorer/association state;
+- Devanagari `legacy_joined`: retain compact scorer/association state only;
+- both completed IAST cells: no SQLite microstate archival requirement because
+  the matched-spacing script effect is negligible;
+- both continuous partial states: excluded from the completed-state contract;
+  existing representation/runtime/termination evidence remains retained.
+
+Freeze remains pending because the researcher chose to complete this selective
+retention, deletion-readiness, and final artifact-audit sequence first—not
+because four raw SQLite databases are scientific prerequisites. Until the two
+required Devanagari archival products are returned and validated:
 
 - deletion gate: `NOT_READY`;
 - `SAFE_TO_DELETE_REGENERABLE`: empty;

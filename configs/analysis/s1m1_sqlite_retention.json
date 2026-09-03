@@ -1,0 +1,70 @@
+{
+  "schema_version": "sktlm-s1m1-sqlite-retention/v1",
+  "policy_id": "s1m1-selective-sqlite-retention-20260903",
+  "scientific_status": "SCIENTIFIC_ANALYSIS_COMPLETE",
+  "sqlite_state_role": "supplementary microscopic reuse/context evidence",
+  "completed_cells": [
+    {
+      "cell_id": "devanagari__surface_word",
+      "scientific_role": "successful boundary-visible reference condition",
+      "retain_raw_database": true,
+      "retain_wal_if_present": true,
+      "export_sqlite_associations": true,
+      "rationale": "Preserve the most complete and stable M1 microscopic reference for unforeseen follow-up analyses."
+    },
+    {
+      "cell_id": "devanagari__legacy_joined",
+      "scientific_role": "completed diagnostic failure / boundary-reduction stress condition",
+      "retain_raw_database": false,
+      "retain_wal_if_present": false,
+      "export_sqlite_associations": true,
+      "rationale": "Retain compact scorer/context/surface association state for direct comparison while avoiding redundant raw database retention."
+    },
+    {
+      "cell_id": "iast__surface_word",
+      "scientific_role": "script-control counterpart",
+      "retain_raw_database": false,
+      "retain_wal_if_present": false,
+      "export_sqlite_associations": false,
+      "rationale": "Matched-spacing formal aggregation establishes microscopic script redundancy for the selective archival purpose."
+    },
+    {
+      "cell_id": "iast__legacy_joined",
+      "scientific_role": "script-control counterpart",
+      "retain_raw_database": false,
+      "retain_wal_if_present": false,
+      "export_sqlite_associations": false,
+      "rationale": "Matched-spacing formal aggregation establishes microscopic script redundancy for the selective archival purpose."
+    }
+  ],
+  "continuous_partial_states": [
+    {
+      "cell_id": "iast__continuous",
+      "retention_status": "excluded_from_completed_sqlite_retention",
+      "reason": "Representation is scientifically excluded and the partial learner state is diagnostic only."
+    },
+    {
+      "cell_id": "devanagari__continuous",
+      "retention_status": "excluded_from_completed_sqlite_retention",
+      "reason": "Execution/finalization is incomplete and the partial learner state is diagnostic only."
+    }
+  ],
+  "sqlite_association_outputs": [
+    "final_scorer.tsv.gz",
+    "surface_usage.tsv.gz",
+    "context_usage.tsv.gz",
+    "manifest.json",
+    "SHA256SUMS"
+  ],
+  "deletion_authority": {
+    "repository_tooling_may_classify": [
+      "RETAIN",
+      "SAFE_TO_DELETE",
+      "NOT_READY",
+      "NOT_SAFE"
+    ],
+    "repository_tooling_may_delete": false,
+    "codex_may_delete": false,
+    "manual_researcher_authority_required": true
+  }
+}

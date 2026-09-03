@@ -1078,8 +1078,40 @@ The completed scientific collection profile excluded `learner.sqlite` by
 contract. Metadata-only checks found the four canonical completed-cell
 training-final databases absent from this checkout and found no
 `learner.sqlite` in the known local cloud-collection directories. Other local
-smoke/medium databases exist but are not substitutes. The sole archival
-blocker is collection and validation of the four compact exports containing
-training-final SQLite/WAL source identity, scorer/reuse state, compact hashes,
-and read-back consistency. No artifact is approved for deletion and freeze
-remains pending.
+smoke/medium databases exist but are not substitutes. The archival policy
+recorded at that closure point required four compact exports; section
+40 supersedes that archival policy. No artifact was approved for deletion and
+freeze remained pending.
+
+## 40. Selective S1M1 SQLite retention interface (2026-09-03)
+
+SQLite microstate preservation is now selective rather than a four-cell
+requirement. The machine-readable policy is
+`configs/analysis/s1m1_sqlite_retention.json`:
+
+- Devanagari `surface_word` is the successful boundary-visible microscopic
+  reference. Retain its raw `learner.sqlite`, its non-empty WAL if present,
+  and compact scorer/surface/context association state.
+- Devanagari `legacy_joined` is a completed diagnostic failure/stress
+  condition. Retain its compact scorer/surface/context state, but not its raw
+  SQLite/WAL permanently.
+- Neither completed IAST cell requires SQLite microstate archival because the
+  matched-spacing script effect is negligible. Existing scientific
+  outputs/provenance remain governed by their existing retention policy.
+- Both continuous partial databases are excluded from the completed
+  training-final contract; existing failure/termination evidence is retained.
+
+`export_s1m1_sqlite_state.py` reuses the existing read-only SQLite query and
+table-export machinery without reading scientific JSONL/TSV inputs. It writes
+three compressed tables, database/WAL source identities, compact hashes,
+read-back row/mass checks, a manifest, and `SHA256SUMS` through atomic
+non-overwriting publication. It uses SQLite `mode=ro` plus `query_only` and
+performs no checkpoint, journal-mode change, or SQL write.
+
+No real database was opened, hashed, or exported in this implementation task.
+The next external step is limited to the two Devanagari products above. S1M1
+scientific analysis remains complete; freeze remains pending solely because
+the researcher chose to finish selective archival, deletion-readiness, and
+final artifact audit first. Codex/repository tooling never performs deletion.
+Focused validation passed: `4 passed in 0.90s`; changed Python files compiled,
+both changed JSON files parsed, and `git diff --check` passed.

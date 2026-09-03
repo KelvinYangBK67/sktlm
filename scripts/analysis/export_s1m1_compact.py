@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Human-run compact archival export for one completed S1M1 cell."""
+"""Compact archival export for one completed S1M1 cell."""
 
 from __future__ import annotations
 
