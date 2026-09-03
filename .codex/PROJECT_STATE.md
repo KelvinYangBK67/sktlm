@@ -993,3 +993,22 @@ scientific-runtime change, corpus/manifest change, or registry change.
 The continuous cells remain outside this checkpoint. The six-cell gate and
 final M1 conclusion remain open until human-supplied completed/audited
 continuous collections are available.
+
+## 37. Generic representation analysis and archival gate (2026-09-03)
+
+`src/sktlm/analysis/representation_protocol.py` implements v2 partial-cell
+aggregation while reusing strict validation and scientific metrics from the
+historical six-cell gate. The manifest separates the declared universe from
+supplied cells, records typed N/A reasons and optional runtime/termination
+evidence, and declares pair directions. Only available endpoints produce
+scientific scalar, rule-distribution, and top-k comparisons; unavailable
+values are JSON null and TSV/Markdown `N/A`. The historical v1 behavior is
+preserved.
+
+`src/sktlm/analysis/artifact_inventory.py` implements explicit-path,
+streaming-SHA, deterministic, read-only inventory plus an evidence-based
+READY/NOT_READY gate and atomic non-overwriting JSON/TSV output. It contains no
+delete function. Focused synthetic and legacy compatibility tests passed (`15
+passed`). Formal S1M1 analysis was not run, formal large files were not hashed,
+no artifact was deleted, M0-prime was not started, S1M2 P1c was not started,
+and no VM/cloud operation occurred.

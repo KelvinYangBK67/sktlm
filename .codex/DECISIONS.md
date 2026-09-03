@@ -118,3 +118,6 @@ predeclaring Sanskrit grammatical roles or a unique underlying form.
 ## Reproducible environments
 
 74. pyproject.toml remains install-oriented rather than globally exact-pinned. Each formal paper/release experiment should capture its actual Python, OS/machine, key-package, Torch/CUDA, Git, and installed-distribution environment as run/release provenance (environment.json plus deterministic requirements-freeze.txt).
+75. Generic representation analysis declares its cell universe separately from supplied artifacts. Only `AVAILABLE` cells enter scientific aggregation; all other declared statuses remain explicit N/A, while optional runtime/termination evidence stays separate from science.
+76. Missing scientific input is allowed only through an explicit N/A status. Any supplied cell remains subject to fail-closed provenance, configuration, completion, schema, artifact, and hash validation.
+77. Artifact inventory is read-only and deletion readiness is evidence-based. The repository tooling may report `PENDING`, `RETAIN`, `SAFE_TO_DELETE_REGENERABLE`, or `NOT_SAFE`, but it must not implement or execute deletion.
