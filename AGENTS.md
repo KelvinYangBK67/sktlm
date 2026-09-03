@@ -16,6 +16,9 @@ Do not modify the frozen M₀ corpus, manifest, formal representations, freeze m
 
 Do not rewrite `data/rules/external_sandhi.tsv` unless the user explicitly requests a rule-inventory change.
 
+`notes/**` is strictly local-only. Never read, modify, track, stage, commit,
+restore, delete, move, copy, or force-add anything under `notes/`.
+
 ## Research guardrails
 
 - Do not equate lexical boundary with whitespace, `#`, apostrophe, or avagraha.

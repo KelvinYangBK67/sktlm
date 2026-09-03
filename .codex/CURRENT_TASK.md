@@ -4,30 +4,37 @@
 
 Branch: `exp/s1m1-core-methods`.
 
-The shared generic representation-analysis and artifact-inventory protocol has
-been integrated through `main`.
+S1M1 scientific analysis is complete. Formal aggregation
+`s1m1-final-four-cell-20260903` is valid with four `AVAILABLE` cells and two
+typed N/A cells. Source inventory `s1m1-final-source-inventory-20260903` is
+valid for all twelve large scientific sources.
 
-S1M1 scientific status is:
+```text
+scientific analysis: COMPLETE
+archival compact state: PENDING
+deletion gate: NOT_READY
+freeze: PENDING
+M0-prime: NOT_STARTED
+S1M2 P1c: BLOCKED
+```
 
-- `AVAILABLE`: IAST/Devanagari × `surface_word`/`legacy_joined`;
-- `NA_SCIENTIFICALLY_EXCLUDED`: IAST `continuous`;
-- `NA_EXECUTION_INCOMPLETE`: Devanagari `continuous`.
+The final analysis is
+`reports/core_methods/latent_lexicon/s1m1_final_checkpoint_20260903.md`.
 
-Neither continuous partial learner state enters formal scientific aggregation.
+## Remaining blocker
 
-## Immediate task
+The four completed-cell source-VM `learner.sqlite` databases were not included
+in local scientific collections. Other local smoke/medium databases are not
+substitutes. The only remaining archival work is to produce and return the
+four compact exports with SQLite/WAL source size and SHA-256, exact final
+scorer/reuse state, compact hashes, and passing read-back consistency.
 
-Finish the S1M1 closure interface on this branch:
+When the researcher explicitly authorizes source-host access, follow the four
+existing `export_s1m1_compact.py` commands in
+`docs/workflows/s1m1_final_human_run.md`. Do not rerun source inventory or
+formal aggregation. After the compact directories are returned, the next
+small Codex task is limited to validating them and reconsidering deletion
+readiness/freeze; deletion and tagging still require separate authority.
 
-1. restore the S1M1-specific final manifest, compact exporter, evidence, and
-   human-run workflow from the archived `8b3e8a9` checkpoint;
-2. do not restore the S1M1-specific SHA shell;
-3. route local source hashing/inventory through the generic
-   `inventory_artifacts.py` interface;
-4. then run the human archival/aggregation/compact-export sequence.
-
-S1M1 remains `FINAL_ANALYSIS_PENDING_HUMAN_ARCHIVAL_GATE`.
-
-Do not delete scientific source artifacts.
-Do not start M0-prime yet.
-Do not resume S1M2 P1c yet.
+Do not access `notes/**`. Do not delete scientific sources. Do not start
+M0-prime or S1M2 P1c while this archival blocker remains.

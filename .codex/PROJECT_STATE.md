@@ -1024,18 +1024,62 @@ IAST-anchor acceptance envelope are tracked.
 
 Formal aggregation was not launched because its strict hash validation and
 scientific reduction would scan twelve local large sources totaling
-91,193,439,274 bytes. Existing audit/replica hashes are recorded, but local
-revalidation is human-pending. Completed-cell SQLite databases were not
-included in local scientific collections, so exact training-final scorer and
-reuse state require source-host compact export.
+91,193,439,274 bytes. Existing audit/replica hashes were recorded, but local
+revalidation was still pending at this preparation checkpoint. Completed-cell
+SQLite databases were not included in local scientific collections, so exact
+training-final scorer and reuse state require source-host compact export.
 
-A standard-library, read-only streaming exporter and explicit resumable human
+A standard-library, read-only streaming exporter and explicit resumable operator
 SHA script are prepared and synthetically tested. The exporter writes exact
 scorer/inspection/reuse/segment/boundary/pass/rule/runtime summaries with
 atomic output, SHA-256, and read-back consistency. No real compact export ran.
-The machine-readable deletion gate is `NOT_READY`: no source is safe to delete,
-both failure-evidence sets are retained, and S1M1 is
-`FINAL_ANALYSIS_PENDING_HUMAN_ARCHIVAL_GATE`. M0 remains frozen, M0-prime was
-not generated, S1M2 P1c was not started, and no cloud/VM or long process ran.
+At this preparation checkpoint, the machine-readable deletion gate was
+`NOT_READY`: no source was safe to delete and both failure-evidence sets were
+retained. M0 remained frozen, M0-prime was not generated, S1M2 P1c was not
+started, and no cloud/VM or long process ran.
 Focused tests passed (`18 passed`), and the full pure test suite passed once
 (`551 passed`, four warnings, 27.86 seconds); syntax and diff checks passed.
+
+## 39. S1M1 scientific analysis closed; archival pending (2026-09-03)
+
+The preparation and pre-closure states in sections 36-38 are superseded for
+current status by the completed small outputs supplied by the researcher:
+
+```text
+S1M1 scientific analysis: COMPLETE
+formal aggregation: VALID
+large-source inventory: VALID
+archival compact state: PENDING
+deletion gate: NOT_READY
+freeze: NOT_STARTED / PENDING
+M0-prime: NOT_STARTED
+S1M2 P1c: BLOCKED
+```
+
+Formal analysis `s1m1-final-four-cell-20260903` validated six declared cells:
+four `AVAILABLE`, IAST `continuous` as `NA_SCIENTIFICALLY_EXCLUDED`, and
+Devanagari `continuous` as `NA_EXECUTION_INCOMPLETE`. The completed source
+inventory `s1m1-final-source-inventory-20260903` validated size and SHA-256 for
+all twelve large scientific sources totaling 91,193,439,274 bytes. These
+existing outputs were used without rerunning aggregation or hashing/scanning
+the large sources.
+
+The formal conclusion is spacing effect substantially greater than script
+effect. `surface_word` is scientifically equal across scripts except raw
+character accounting; `legacy_joined` has negligible nonzero script residuals.
+Removing visible spacing reproducibly expands active types about 36.23% and
+low-count types about 36.70%, reduces expected lexical tokens about 21.33%,
+reduces entropy about 19.54%, raises top-1 posterior about 5.04%, and reduces
+external-rule expected usage about 28.79%. The joint pattern identifies
+context-specific over-long lexicalization under the current flat lexical
+objective: a sharper posterior coexists with worse lexicon economy.
+
+The completed scientific collection profile excluded `learner.sqlite` by
+contract. Metadata-only checks found the four canonical completed-cell
+training-final databases absent from this checkout and found no
+`learner.sqlite` in the known local cloud-collection directories. Other local
+smoke/medium databases exist but are not substitutes. The sole archival
+blocker is collection and validation of the four compact exports containing
+training-final SQLite/WAL source identity, scorer/reuse state, compact hashes,
+and read-back consistency. No artifact is approved for deletion and freeze
+remains pending.

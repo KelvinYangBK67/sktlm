@@ -1,8 +1,28 @@
 {
   "schema_version": "sktlm-s1m1-deletion-readiness/v1",
   "analysis_id": "s1m1-final-four-cell-20260903",
-  "s1m1_status": "FINAL_ANALYSIS_PENDING_HUMAN_ARCHIVAL_GATE",
+  "s1m1_status": "FINAL_ANALYSIS_COMPLETE_ARCHIVAL_PENDING",
   "deletion_gate": "NOT_READY",
+  "closure_evidence": {
+    "scientific_analysis": "COMPLETE",
+    "formal_aggregation": {
+      "status": "VALID",
+      "analysis_id": "s1m1-final-four-cell-20260903",
+      "result_path": "artifacts/s1m1_final/aggregation/aggregation.json",
+      "declared_cells": 6,
+      "available_cells": 4,
+      "n_a_cells": 2
+    },
+    "large_source_inventory": {
+      "status": "VALID",
+      "inventory_id": "s1m1-final-source-inventory-20260903",
+      "result_path": "artifacts/s1m1_final/source_inventory/inventory.json",
+      "artifact_count": 12,
+      "total_size_bytes": 91193439274
+    },
+    "archival_compact_state": "PENDING",
+    "freeze": "PENDING"
+  },
   "policy": {
     "automatic_deletion_implemented": false,
     "scientific_source_deletion_performed": false,
@@ -167,6 +187,9 @@
       "relative_path_on_source_host": "artifacts/latent_benchmarks/cloud_full_m0_iast_surface_word_p10_rep01_w8_p3/learner.sqlite",
       "size_bytes": null,
       "sha256": null,
+      "wal_relative_path_on_source_host": "artifacts/latent_benchmarks/cloud_full_m0_iast_surface_word_p10_rep01_w8_p3/learner.sqlite-wal",
+      "wal_size_bytes": null,
+      "wal_sha256": null,
       "artifact_role": "exact final scorer and reuse associations",
       "replacement_compact_artifacts": ["compact/iast__surface_word/final_scorer.tsv.gz", "compact/iast__surface_word/surface_usage.tsv.gz", "compact/iast__surface_word/context_usage.tsv.gz"],
       "deletion_status": "NOT_READY"
@@ -176,6 +199,9 @@
       "relative_path_on_source_host": "artifacts/latent_benchmarks/cloud_full_m0_iast_legacy_joined_p10_w8_p3/learner.sqlite",
       "size_bytes": null,
       "sha256": null,
+      "wal_relative_path_on_source_host": "artifacts/latent_benchmarks/cloud_full_m0_iast_legacy_joined_p10_w8_p3/learner.sqlite-wal",
+      "wal_size_bytes": null,
+      "wal_sha256": null,
       "artifact_role": "exact final scorer and reuse associations",
       "replacement_compact_artifacts": ["compact/iast__legacy_joined/final_scorer.tsv.gz", "compact/iast__legacy_joined/surface_usage.tsv.gz", "compact/iast__legacy_joined/context_usage.tsv.gz"],
       "deletion_status": "NOT_READY"
@@ -185,6 +211,9 @@
       "relative_path_on_source_host": "artifacts/latent_benchmarks/cloud_full_m0_devanagari_surface_word_p10_w8_p3/learner.sqlite",
       "size_bytes": null,
       "sha256": null,
+      "wal_relative_path_on_source_host": "artifacts/latent_benchmarks/cloud_full_m0_devanagari_surface_word_p10_w8_p3/learner.sqlite-wal",
+      "wal_size_bytes": null,
+      "wal_sha256": null,
       "artifact_role": "exact final scorer and reuse associations",
       "replacement_compact_artifacts": ["compact/devanagari__surface_word/final_scorer.tsv.gz", "compact/devanagari__surface_word/surface_usage.tsv.gz", "compact/devanagari__surface_word/context_usage.tsv.gz"],
       "deletion_status": "NOT_READY"
@@ -194,6 +223,9 @@
       "relative_path_on_source_host": "artifacts/latent_benchmarks/cloud_full_m0_devanagari_legacy_joined_p10_w8_p3/learner.sqlite",
       "size_bytes": null,
       "sha256": null,
+      "wal_relative_path_on_source_host": "artifacts/latent_benchmarks/cloud_full_m0_devanagari_legacy_joined_p10_w8_p3/learner.sqlite-wal",
+      "wal_size_bytes": null,
+      "wal_sha256": null,
       "artifact_role": "exact final scorer and reuse associations",
       "replacement_compact_artifacts": ["compact/devanagari__legacy_joined/final_scorer.tsv.gz", "compact/devanagari__legacy_joined/surface_usage.tsv.gz", "compact/devanagari__legacy_joined/context_usage.tsv.gz"],
       "deletion_status": "NOT_READY"
@@ -216,5 +248,5 @@
     }
   ],
   "safe_to_delete_regenerable": [],
-  "not_ready_reason": "No completed-cell compact export exists, exact scorer/reuse SQLite state is not locally collected, and local read-back/source-hash validation has not run."
+  "not_ready_reason": "Completed-cell training-final learner SQLite/WAL compact identity and read-back archival evidence has not yet been collected from the source VMs."
 }

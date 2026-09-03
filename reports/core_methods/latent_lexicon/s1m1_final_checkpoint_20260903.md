@@ -1,31 +1,45 @@
-# S1M1 final-analysis and archival checkpoint (2026-09-03)
+# S1M1 final scientific analysis and archival checkpoint (2026-09-03)
 
-## Status
+## Closure status
 
-**S1M1 = `FINAL_ANALYSIS_PENDING_HUMAN_ARCHIVAL_GATE`.**
-
-The final scientific framing is fixed as:
+S1M1 has reached:
 
 ```text
-4 complete controlled scientific cells
-+ 1 scientifically invalid representation
-+ 1 scientifically valid but computationally incomplete execution
+SCIENTIFIC_ANALYSIS_COMPLETE
+ARCHIVAL_COMPLETENESS_PENDING
+NOT_FROZEN
 ```
 
-This is not a completed six-cell experiment. The formal v2 manifest is
-`configs/analysis/s1m1_final_v2.json`. It declares four `AVAILABLE` cells,
-IAST `continuous` as `NA_SCIENTIFICALLY_EXCLUDED`, and Devanagari `continuous`
-as `NA_EXECUTION_INCOMPLETE`. Partial continuous learner state is excluded
-from every scientific estimate.
+The scientific conclusions are closed; archival completeness and freeze
+remain pending. The formal result is four complete quantitative cells plus two
+typed N/A cells, not a completed six-cell experiment:
 
-Formal v2 aggregation was deliberately not executed in this checkpoint. The
-twelve large local analyses/boundary/lexicon sources total 91,193,439,274
-bytes, and strict validation plus scientific reduction would scan them. That
-clearly exceeds the five-minute stop rule. No long process was launched or
-stopped. The exact human-run sequence is in
-`docs/workflows/s1m1_final_human_run.md`.
+| Script | Representation | Formal status | Scientific use |
+|---|---|---|---|
+| IAST | `surface_word` | `AVAILABLE` | quantitative |
+| IAST | `legacy_joined` | `AVAILABLE` | quantitative |
+| IAST | `continuous` | `NA_SCIENTIFICALLY_EXCLUDED` | representation result; partial learner state excluded |
+| Devanagari | `surface_word` | `AVAILABLE` | quantitative |
+| Devanagari | `legacy_joined` | `AVAILABLE` | quantitative |
+| Devanagari | `continuous` | `NA_EXECUTION_INCOMPLETE` | scalability result; partial learner state excluded |
 
-## Frozen experiment provenance
+## Authoritative evidence and provenance
+
+The formal analysis ID is `s1m1-final-four-cell-20260903`. Its manifest is
+`configs/analysis/s1m1_final_v2.json`; its already-completed output is
+`artifacts/s1m1_final/aggregation/`. `aggregation.json` reports validation
+`valid: true`, with six declared cells, four `AVAILABLE`, and two N/A. The
+machine-readable outputs are `aggregation.json`, `cells.tsv`, `pairs.tsv`,
+`rule_distances.tsv`, `rule_usage.tsv`, and `top_k_overlap.tsv`; `summary.md`
+is the claim-free human summary.
+
+The source inventory ID is `s1m1-final-source-inventory-20260903`. The input is
+`configs/analysis/s1m1_source_inventory.json` and the completed result is
+`artifacts/s1m1_final/source_inventory/inventory.json`. Its validation is
+`valid: true`; it records size and SHA-256 for all twelve completed-cell large
+scientific sources, totaling 91,193,439,274 bytes. This closure reads those
+small outputs and does not rerun aggregation, rescan the large files, or
+recompute their hashes.
 
 All four complete cells use frozen M0 freeze ID
 `9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40`,
@@ -35,146 +49,156 @@ and the 1,218-rule SHA-256
 `55a204169a1ec442e8ac6e9ca90da1e6510b24998cdeba2d76f95f513bab7e90`.
 The IAST `surface_word` anchor was produced at
 `cd3a092b116ad236c4ad96d7c24868e79e9a47ce`; the other three cells were
-produced at `375178ba50bd1a1644d65525907692b31413b33d`. Their compatibility
-basis remains the completed non-continuous checkpoint.
+produced at `375178ba50bd1a1644d65525907692b31413b33d`. Their approved
+cross-commit compatibility is recorded in the formal manifest and acceptance
+evidence.
 
-The older IAST anchor predates config-level `script`/`condition` fields and its
-historical remote audit failed only because that obsolete audit contract
-required `benchmark_metrics.json`. Its completed process evidence and exact
-four-replica scientific hashes were already accepted. The transparent local
-acceptance envelope preserves both facts at
-`reports/core_methods/latent_lexicon/evidence/s1m1_final/iast_surface_word_acceptance_audit.json`;
-it does not rewrite the historical failed audit.
+## Scientific result
 
-## Four-cell scientific result already established
+### Script effect: negligible under matched spacing
 
-The prior completed four-cell analysis remains authoritative until the v2
-aggregation is human-run. Its detailed scalar tables and bounded qualitative
-examples are in `noncontinuous_representation_checkpoint_20260901.md`.
+Within `surface_word`, IAST and Devanagari are exactly equal on the aggregated
+latent-structure, posterior, graph, lexicon, and rule metrics. Rule total
+variation and Jensen-Shannon divergence are both zero, and top-k lexical
+overlap is exact at k=100, 1,000, and 10,000. The sole reported difference is
+orthographic character accounting: 53,233,989 IAST characters versus
+48,678,812 Devanagari characters (-8.556896%). This is an orthographic
+representation effect, not a learned latent-structure effect.
 
-- Script effect under `surface_word`: exact scientific equivalence except raw
-  character count; rule TV and JSD are both zero.
-- Script effect under `legacy_joined`: negligible but nonzero; rule TV is
-  `1.3080489453873241e-05` and JSD is
-  `2.339464786880391e-06` nats.
-- Spacing effect is large and nearly script-invariant. From `surface_word` to
-  `legacy_joined`, active lexical types rise about 36.23%, low-count types
-  about 36.71%, expected lexical tokens fall about 21.33%, entropy falls about
-  19.54%, identity mass rises about 25.13%, and external-rule usage falls
-  about 28.79%.
-- The sharper joined posterior is not evidence of better lexical analysis.
-  Together with a larger/longer low-reuse lexicon, it supports an over-long
-  lexicalization/economy failure already visible in `surface_word` and
-  amplified when spacing evidence is removed.
+Within `legacy_joined`, the script comparison is near-equivalent rather than
+mathematically identical. From IAST to Devanagari, active lexical types change
+by +0.002094%, low-count types by +0.002095%, expected lexical tokens by
++0.001690%, mean identity mass by -0.000293%, entropy by +0.004974%, top-1
+posterior by -0.000780%, and candidate edges by -0.008110%. Rule TV is
+`1.3080489453873243e-05` and JSD is `2.339464786880392e-06` nats. Top-k
+overlap is exact at k=100 and 1,000 and 9,998/10,000 at k=10,000. The large
+character-count difference (-9.843212%) again reflects script encoding. The
+scientifically meaningful residuals are orders of magnitude below the spacing
+effects.
 
-The v2 human run will regenerate formal single-cell metrics, mass-support
-thresholds, all four available pair comparisons, rule TV/JSD, and top-k
-overlap. Every declared comparison involving either continuous cell will be
-emitted as `N/A` with its status/reason rather than aborting the analysis.
+### Spacing effect: large and replicated across scripts
 
-## IAST continuous: representation failure
+The formal `surface_word` to `legacy_joined` comparisons are:
 
-Status: `NA_SCIENTIFICALLY_EXCLUDED`.
+| Metric | IAST | Devanagari |
+|---|---:|---:|
+| active lexical types | +36.227805% | +36.230658% |
+| low-count lexical types | +36.703865% | +36.706730% |
+| expected lexical tokens | -21.335704% | -21.334375% |
+| mean identity mass | +25.133947% | +25.133580% |
+| mean latent mass | -4.320038% | -4.319975% |
+| mean posterior entropy | -19.545603% | -19.541601% |
+| mean top-1 posterior | +5.036431% | +5.035612% |
+| candidate edges | +15.996962% | +15.987554% |
+| candidate factors | -21.379752% | -21.378641% |
+| candidate nodes | -6.471913% | -6.475032% |
+| external-rule expected usage | -28.788099% | -28.787904% |
+| complexity penalty | +4.491664% | +4.492846% |
 
-Ordinary IAST with lexical spaces removed is non-injective. Cross-boundary
-hiatus `a + i` serializes as `ai`, colliding with the ordinary spelling of a
-lexical diphthong; likewise `a + u` serializes as `au`. No unproven
-consonant/aspirate collision argument is needed. The representation was
-scientifically invalidated, the run was manually terminated, and its partial
-two-pass/partial-pass-3 learner state is diagnostic only.
+The long tail worsens in both scripts: low-count types grow from 18,851,674 to
+25,770,967 in IAST and to 25,771,507 in Devanagari, while their share rises
+from 98.8625% to 99.2080%. Support also spreads across more types: the number
+needed for 90%, 95%, and 99% lexical mass rises respectively by about 27.31%,
+14.00%, and 5.55%.
 
-The retained 6,739,892-byte termination archive has SHA-256
-`386c94233ead7f569d0a7cdc1436a874d165dd1e0cede349f943c0196fafaa9d`.
-It records SIGTERM/return code `-15`, 78,831.586 wall seconds, 82,376.37
-sampled CPU seconds, peak process-tree RSS 11,493,634,048 bytes, about 2.316 TB
-sampled reads, about 2.253 TB sampled writes, two complete passes, and 86
-documents traversed in pass 3. These are runtime/termination diagnostics, not
-scientific estimates. Rerunning the same invalid representation has no
-scientific purpose.
+Lexical top-k overlap between spacing conditions is only 73/100, 769/1,000,
+and 7,899/10,000 in either script (Jaccard 0.574803, 0.624695, and 0.652756).
+Rule distributions also move substantially: IAST rule TV/JSD are
+`0.1905965334208121` and `0.06972276490145518` nats; Devanagari values are
+`0.19058822550539367` and `0.06971220943933126` nats. These nearly identical
+effects under both scripts establish the controlled conclusion:
 
-Historical frozen M0 is unchanged and retained.
+> Across the four completed cells, spacing exerts a substantially larger
+> effect than script.
 
-## Devanagari continuous: computational failure
+### Interpretation: sharper posterior, worse lexicon economy
 
-Status: `NA_EXECUTION_INCOMPLETE`.
+The direct observation is a tension. Removing visible spacing lowers entropy
+and raises top-1 concentration, yet expands the active and low-count lexicon,
+raises the complexity penalty, requires more types to cover most lexical mass,
+reduces expected lexical-token count, and sharply reduces external-rule use.
+Posterior sharpness is therefore not sufficient evidence of lexical or
+morphological quality.
 
-This representation remains scientifically valid, but the execution was
-manually terminated during pass 3 after all 240 documents had been traversed,
-before pass finalization and inspection. Pass-2/pass-3 database state is not a
-formal scientific result.
+The coherent model-level interpretation is context-specific over-long
+lexicalization. Without visible boundary evidence, the current flat lexical
+objective can absorb longer surface contexts into single lexical identities.
+Those identities can win locally and sharpen the posterior while reusing less
+well across contexts, enlarging the inventory and its low-count tail. The
+bounded examples in
+`noncontinuous_representation_checkpoint_20260901.md` directly illustrate
+this tendency and show that it already exists under `surface_word` but is
+amplified by `legacy_joined`.
 
-The retained termination evidence records SIGTERM/return code `-15` at
-`2026-09-02T21:45:54+08:00`, 107,097.277 wall seconds, 102,970.58 sampled CPU
-seconds, peak process-tree RSS 11,938,275,328 bytes, about 3.138 TB sampled
-reads, about 2.856 TB sampled writes, and peak process count 10. A completed
-pass contained 875,448,908 candidate edges. Immediately before termination,
-`learner.sqlite` was 78,628,376,576 bytes and its WAL was 79,089,093,872
-bytes. The retained evidence-manifest SHA-256 is
-`f0689f122e09bbeb710aa4f16b6ee2a13caadc656cadd5639bba527d3c2dbf79`.
+Visible spacing here acts as editorial/lexical-boundary evidence that supplies
+strong supervision or regularization to this particular
+representation-by-objective combination. This is not a universal claim that
+Sanskrit requires spaces, not a definition of linguistic wordhood, and not a
+license to treat whitespace as a gold lexical boundary.
 
-All scientific fields for this cell are N/A. The figures above are explicitly
-runtime/scalability evidence.
+## Continuous cells: two different results
 
-## M0-prime motivation (not generated)
+### IAST `continuous`: representation invalidation
 
-Future work should create a new derived `M0-prime IAST continuous`
-representation from frozen M0 Devanagari continuous, without modifying or
-replacing M0. Its design decision is:
+Ordinary IAST after spacing removal is non-injective. Cross-boundary hiatus
+`a + i` serializes as `ai`, colliding with lexical diphthong spelling, and
+`a + u` similarly collides with lexical `au`. The cell is therefore
+`NA_SCIENTIFICALLY_EXCLUDED`; its absence is itself a representation result.
+The manually terminated partial learner state (two completed passes and 86
+documents in pass 3) is diagnostic only and contributes no quantitative
+scientific estimate.
 
-```text
-source: frozen M0 Devanagari continuous
-lexical diphthong /ai/: ai -> ē
-lexical diphthong /au/: au -> ō
-cross-boundary hiatus after space removal: a + i -> ai; a + u -> au
-```
+### Devanagari `continuous`: computational scalability failure
 
-Thus lexical `/ai/` remains distinct from hiatus `/a i/`, and lexical `/au/`
-from hiatus `/a u/`. This section records motivation only. No representation
-script or M0-prime data was created in this task, and M0-prime must not be
-retroactively counted as a completed S1M1 cell.
+The Devanagari representation remains scientifically valid, but the current
+learner/finalization path is computationally unacceptable for this condition.
+The run was manually terminated after pass 3 had traversed 240/240 documents
+but before pass finalization and inspection. A completed pass contained
+875,448,908 candidate edges; before termination the database and WAL were
+78,628,376,576 and 79,089,093,872 bytes. These are execution diagnostics, not
+scientific estimates. The cell is `NA_EXECUTION_INCOMPLETE`, not a negative
+representation result.
 
-## Compact archive and deletion readiness
+## Consequence for subsequent work
 
-The read-only human-run exporter now preserves, per complete cell:
+S1M1 identifies a concrete failure mode of flat lexical induction and supplies
+the empirical motivation for testing reusable compositional pieces in S1M2.
+Targets such as `gaccha|ti` or `gacch|a|ti` should be tested as learned,
+script-neutral reusable pieces; this checkpoint does not claim S1M2 has solved
+the problem.
 
-- exact final SQLite scorer state (`form_key`, training expected count,
-  probability), kept distinct from inspection expected counts;
-- full rendered/phonological lexicon inventory, length, probability, surface
-  variant counts, and context counts;
-- exact surface/context reuse associations;
-- segment metrics and top-1 form/rule IDs;
-- boundary table, pass dynamics, rule use, runtime breakdown, lexical-length,
-  reuse, document, and length-stratum tables;
-- compact-output SHA-256 and row/count/mass read-back checks.
+For future continuous IAST work, derived M0-prime will use frozen M0
+Devanagari continuous as its source, render lexical `/ai/` and `/au/` as `ē`
+and `ō`, and retain ordinary `ai` and `au` for cross-boundary hiatus after
+spacing removal. Frozen M0 is unchanged. M0-prime was not generated and S1M2
+P1c was not started here.
 
-None of those four real compact exports has run. The completed-cell SQLite
-databases were not included in the local scientific collections, so exact
-training-final scorer and reuse tables must be exported on their source hosts
-before any large source can be considered disposable.
+## Archival completeness and deletion readiness
 
-The machine-readable gate is
-`reports/core_methods/latent_lexicon/s1m1_deletion_readiness_20260903.json`:
+The completed scientific collection profiles intentionally excluded
+`learner.sqlite`. The four completed-cell training-final databases are absent
+from their canonical paths in this checkout, and no `learner.sqlite` exists in
+the known local cloud-collection directories. Other local smoke and medium-run
+databases do exist, but they are not the four source-VM training-final states
+and do not satisfy this gate.
 
-- `SAFE_TO_DELETE_REGENERABLE`: none;
-- `RETAIN`: both continuous-cell termination evidence sets;
-- `NOT_READY`: all twelve large local scientific exports and all four
-  uncollected exact-state SQLite sources.
+The only remaining archival blocker is collection of per-cell compact exports
+containing training-final SQLite/WAL source identity, exact scorer/reuse state,
+compact hashes, and passing read-back consistency. Until those four compact
+archives are returned and validated:
 
-No artifact was deleted. The gate cannot become ready until human-run hashes,
-all four compact exports, read-back consistency, compact hashes, and final v2
-aggregation have been validated and incorporated into the final report.
+- deletion gate: `NOT_READY`;
+- `SAFE_TO_DELETE_REGENERABLE`: empty;
+- all twelve large scientific sources remain retained;
+- both continuous termination-evidence sets remain retained;
+- freeze: pending.
 
-## Freeze decision
+No VM, remote hash, SQLite export, long artifact scan, deletion, M0-prime work,
+or freeze operation was performed in this scientific-closure pass.
 
-S1M1 is not `READY_TO_FREEZE`. After the human outputs are returned, the next
-small task is limited to validating them, populating the final v2 result paths,
-updating deletion statuses, finalizing this report, and only then marking the
-milestone ready. No tag or merge is authorized by this checkpoint. S1M2 P1c
-has not started.
+## Validation boundary
 
-## Validation
-
-Focused analysis/archival tests passed (`18 passed in 1.93s`). The complete
-repository suite passed once (`551 passed, 4 warnings in 27.86s`). Changed
-Python files compiled, the human SHA script passed Bash syntax validation, and
-`git diff --check` passed. No formal large-file scan was part of these tests.
+This report uses the already-completed formal aggregation and source inventory,
+both of which declare `valid: true`. The closure pass performs only JSON syntax,
+Git diff, and repository-status checks; it does not repeat either long-running
+validation.
