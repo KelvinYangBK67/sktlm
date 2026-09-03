@@ -62,16 +62,50 @@ def _fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
 
 def test_compact_export_is_complete_consistent_and_read_only(tmp_path: Path) -> None:
     run, metrics, database = _fixture(tmp_path)
+    wal_connection = sqlite3.connect(database)
+    wal_connection.execute("PRAGMA journal_mode = WAL")
+    wal_connection.execute("PRAGMA wal_autocheckpoint = 0")
+    wal_connection.execute("CREATE TABLE wal_marker(value TEXT)")
+    wal_connection.commit()
+    wal_path = database.with_name(f"{database.name}-wal")
+    assert wal_path.stat().st_size > 0
+    database_size = database.stat().st_size
+    wal_size = wal_path.stat().st_size
     before = hashlib.sha256(database.read_bytes()).hexdigest()
+    wal_before = hashlib.sha256(wal_path.read_bytes()).hexdigest()
     output = tmp_path / "compact"
-    export_compact_cell(
-        cell_id="iast__surface_word", script="iast", representation="surface_word",
-        run_dir=run, metrics_dir=metrics, database_path=database, output_dir=output,
-    )
-    assert hashlib.sha256(database.read_bytes()).hexdigest() == before
-    manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+    try:
+        export_compact_cell(
+            cell_id="iast__surface_word", script="iast", representation="surface_word",
+            run_dir=run, metrics_dir=metrics, database_path=database, output_dir=output,
+        )
+        assert hashlib.sha256(database.read_bytes()).hexdigest() == before
+        assert hashlib.sha256(wal_path.read_bytes()).hexdigest() == wal_before
+        manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+    finally:
+        wal_connection.close()
     assert all(manifest["consistency"].values())
     assert manifest["statistics"]["database"]["final_scorer"]["database_probability_sum"] == 1.0
+    source_artifacts = {
+        artifact.get("artifact_role"): artifact
+        for artifact in manifest["source_artifacts"]
+        if "artifact_role" in artifact
+    }
+    assert source_artifacts["learner_sqlite"] == {
+        "artifact_role": "learner_sqlite",
+        "database_path": str(database.resolve()),
+        "present": True,
+        "sha256": before,
+        "size_bytes": database_size,
+        "source_path": str(database.resolve()),
+    }
+    assert source_artifacts["learner_sqlite_wal"] == {
+        "artifact_role": "learner_sqlite_wal",
+        "present": True,
+        "sha256": wal_before,
+        "size_bytes": wal_size,
+        "source_path": str(wal_path.resolve()),
+    }
     with gzip.open(output / "segment_metrics.tsv.gz", "rt", encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle, delimiter="\t"))
     assert [row["segment_id"] for row in rows] == ["s1", "s2"]

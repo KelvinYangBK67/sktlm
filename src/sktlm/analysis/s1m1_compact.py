@@ -38,6 +38,30 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _source_database_identity(path: Path, *, role: str, required: bool) -> dict[str, Any]:
+    if not path.is_file() or path.stat().st_size == 0:
+        if required:
+            raise GateValidationError((f"required source database artifact is absent or empty: {path}",))
+        return {
+            "artifact_role": role,
+            "source_path": str(path),
+            "present": False,
+            "size_bytes": None,
+            "sha256": None,
+        }
+    size_bytes = path.stat().st_size
+    sha256 = _sha256(path)
+    if path.stat().st_size != size_bytes:
+        raise GateValidationError((f"source database artifact changed while hashing: {path}",))
+    return {
+        "artifact_role": role,
+        "source_path": str(path),
+        "present": True,
+        "size_bytes": size_bytes,
+        "sha256": sha256,
+    }
+
+
 def _number(value: object, label: str) -> float:
     if isinstance(value, bool):
         raise GateValidationError((f"{label} must be numeric",))
@@ -453,6 +477,15 @@ def export_compact_cell(
             {"name": path.name, "size_bytes": path.stat().st_size, "sha256": _sha256(path)}
             for path in data_files
         ]
+        database_identity = _source_database_identity(
+            database_path, role="learner_sqlite", required=True
+        )
+        database_identity["database_path"] = str(database_path)
+        wal_identity = _source_database_identity(
+            database_path.with_name(f"{database_path.name}-wal"),
+            role="learner_sqlite_wal",
+            required=False,
+        )
         manifest = {
             "schema_version": SCHEMA_VERSION,
             "cell_id": cell_id, "script": script, "representation": representation,
@@ -461,7 +494,7 @@ def export_compact_cell(
             "source_artifacts": [
                 {"relative_to_run_dir": name, "size_bytes": (run_dir / name).stat().st_size}
                 for name in REQUIRED_RUN_FILES
-            ] + [{"database_path": str(database_path), "size_bytes": database_path.stat().st_size}],
+            ] + [database_identity, wal_identity],
             "statistics": {
                 "database": database, "lexicon_inventory": lexicon,
                 "segments": segments, "boundaries": boundaries,

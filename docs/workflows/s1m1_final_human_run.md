@@ -81,7 +81,11 @@ python scripts/analysis/export_s1m1_compact.py \
 ```
 
 Each successful directory contains its own `manifest.json`, read-back results,
-and `SHA256SUMS`. Copy the four complete compact directories back beneath
+and `SHA256SUMS`. The manifest's `source_artifacts` records the source-host
+`learner.sqlite` size and SHA-256 and, when a non-empty sibling
+`learner.sqlite-wal` exists, its size and SHA-256. An absent or empty WAL is
+recorded explicitly with null size/hash, so no separate manual SQLite/WAL hash
+command is needed. Copy the four complete compact directories back beneath
 `artifacts/s1m1_final/compact/` without deleting the source-host copies.
 
 ## 4. Return for the small finalization pass
