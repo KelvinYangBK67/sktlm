@@ -45,8 +45,6 @@ The artifact path may be cited by a report, but the report must contain enough m
 - six_representation_gate_launch_checkpoint_20260901.md — scientific SHA, six-cell status, assignments/PIDs, frozen-input hashes, bundle deployment, and immediate launch verification.
 - `post_gate_analysis_protocol.md` — frozen fail-closed six-cell aggregation, paired comparison, mass-support, TV/JSD, and qualitative-inspection contract; it contains no result.
 - `continuous_performance_source_analysis.md` — static source-only bottleneck analysis and post-freeze profiling/optimization plan; it changes no runtime semantics.
-- `s1m1_final_checkpoint_20260903.md` — fixes the final four-complete/two-N/A framing, continuous failure evidence, M0-prime motivation, and the human archival gate; formal large scans remain pending.
-- `s1m1_deletion_readiness_20260903.json` — machine-readable `NOT_READY` inventory for completed-cell large sources, uncollected exact SQLite state, and retained termination evidence.
 - [`../../../reviews/protocol/independent_llm_review_protocol.md`](../../../reviews/protocol/independent_llm_review_protocol.md) — five fresh-session reviewers, identical frozen packet, raw preservation, synthesis, and adjudication protocol.
 
 The `evidence/` subdirectory preserves the minimum machine-readable evidence

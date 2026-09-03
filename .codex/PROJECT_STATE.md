@@ -1012,30 +1012,3 @@ delete function. Focused synthetic and legacy compatibility tests passed (`15
 passed`). Formal S1M1 analysis was not run, formal large files were not hashed,
 no artifact was deleted, M0-prime was not started, S1M2 P1c was not started,
 and no VM/cloud operation occurred.
-
-## 38. S1M1 final-analysis/archive preparation (2026-09-03)
-
-The final status contract is now four complete non-continuous scientific cells,
-IAST `continuous` scientifically excluded, and Devanagari `continuous`
-execution-incomplete. Both continuous runs were manually terminated and their
-partial scientific state is excluded; their retained runtime/termination
-evidence remains diagnostic. The formal v2 manifest and transparent historical
-IAST-anchor acceptance envelope are tracked.
-
-Formal aggregation was not launched because its strict hash validation and
-scientific reduction would scan twelve local large sources totaling
-91,193,439,274 bytes. Existing audit/replica hashes are recorded, but local
-revalidation is human-pending. Completed-cell SQLite databases were not
-included in local scientific collections, so exact training-final scorer and
-reuse state require source-host compact export.
-
-A standard-library, read-only streaming exporter and explicit resumable human
-SHA script are prepared and synthetically tested. The exporter writes exact
-scorer/inspection/reuse/segment/boundary/pass/rule/runtime summaries with
-atomic output, SHA-256, and read-back consistency. No real compact export ran.
-The machine-readable deletion gate is `NOT_READY`: no source is safe to delete,
-both failure-evidence sets are retained, and S1M1 is
-`FINAL_ANALYSIS_PENDING_HUMAN_ARCHIVAL_GATE`. M0 remains frozen, M0-prime was
-not generated, S1M2 P1c was not started, and no cloud/VM or long process ran.
-Focused tests passed (`18 passed`), and the full pure test suite passed once
-(`551 passed`, four warnings, 27.86 seconds); syntax and diff checks passed.
