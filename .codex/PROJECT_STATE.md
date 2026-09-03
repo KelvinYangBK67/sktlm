@@ -994,110 +994,48 @@ The continuous cells remain outside this checkpoint. The six-cell gate and
 final M1 conclusion remain open until human-supplied completed/audited
 continuous collections are available.
 
-## 37. S1M1 post-hoc archival reducer prepared (2026-09-02)
+## 37. Generic representation analysis and archival gate (2026-09-03)
 
-The S1M1 archival/descriptive reduction is implemented on the dedicated branch
-'exp/s1m1-final-reduction', whose parent is the closed S1M1 core-methods
-checkpoint '4bacb038eb00c479dd6913e63ec1543a1b21e0e6'. This work is deliberately
-separate from S1M2 and is not merged into the reusable-pieces branch.
+`src/sktlm/analysis/representation_protocol.py` implements v2 partial-cell
+aggregation while reusing strict validation and scientific metrics from the
+historical six-cell gate. The manifest separates the declared universe from
+supplied cells, records typed N/A reasons and optional runtime/termination
+evidence, and declares pair directions. Only available endpoints produce
+scientific scalar, rule-distribution, and top-k comparisons; unavailable
+values are JSON null and TSV/Markdown `N/A`. The historical v1 behavior is
+preserved.
 
-'src/sktlm/analysis/s1m1_archival.py' and
-'scripts/analysis/reduce_s1m1_archival.py' validate the exact six completed
-local collections using the existing gate input/audit contract, then produce a
-read-only bounded post-hoc archive. The reducer covers source retention
-identity, pass dynamics, lexical diversity/length/reuse, ambiguity, exact
-boundary and rule summaries, candidate scaling/heavy tails, document and
-length strata, runtime/resource evidence, bounded cross-cell stability, and a
-deterministic evidence reservoir. Exact quantities, bounded histogram/MinHash
-approximations, and inherited inspection top-k quantities are explicitly
-separated.
+`src/sktlm/analysis/artifact_inventory.py` implements explicit-path,
+streaming-SHA, deterministic, read-only inventory plus an evidence-based
+READY/NOT_READY gate and atomic non-overwriting JSON/TSV output. It contains no
+delete function. Focused synthetic and legacy compatibility tests passed (`15
+passed`). Formal S1M1 analysis was not run, formal large files were not hashed,
+no artifact was deleted, M0-prime was not started, S1M2 P1c was not started,
+and no VM/cloud operation occurred.
 
-The frozen 'post_gate_analysis_protocol.md' and formal
-'aggregate_six_representation.py' are unchanged. No real collection was
-scanned, no source artifact was mutated, no large temporary store was created,
-and no VM/cloud/registry operation was performed.
+## 38. S1M1 final-analysis/archive preparation (2026-09-03)
 
-Focused synthetic archival tests passed (4 passed). Python syntax compilation
-passed. The full repository suite passed (546 passed, 4 warnings) in 48.30
-seconds; the warnings are the existing PyTorch nested-tensor and
-SentencePiece/SWIG deprecation warnings.
+The final status contract is now four complete non-continuous scientific cells,
+IAST `continuous` scientifically excluded, and Devanagari `continuous`
+execution-incomplete. Both continuous runs were manually terminated and their
+partial scientific state is excluded; their retained runtime/termination
+evidence remains diagnostic. The formal v2 manifest and transparent historical
+IAST-anchor acceptance envelope are tracked.
 
-## 19. S1M1 final-analysis amendment (2026-09-02)
+Formal aggregation was not launched because its strict hash validation and
+scientific reduction would scan twelve local large sources totaling
+91,193,439,274 bytes. Existing audit/replica hashes are recorded, but local
+revalidation is human-pending. Completed-cell SQLite databases were not
+included in local scientific collections, so exact training-final scorer and
+reuse state require source-host compact export.
 
-The active S1M1 closure work branch is:
-
-`exp/s1m1-final-reduction`
-
-Current branch checkpoint before the final-analysis implementation:
-
-`88b5a1c6d710f74b3d40dc523180242bd99327e4`
-
-The long-term milestone branch `exp/s1m1-core-methods` remains at
-`4bacb038eb00c479dd6913e63ec1543a1b21e0e6` until the S1M1 freeze. The
-temporary closure branch will be reconciled with the milestone branch only at
-that freeze.
-
-### Final valid S1M1 representation set
-
-The final analysis designates five valid cells. Each must be completed and
-audited before final reduction:
-
-- IAST / `surface_word`
-- IAST / `legacy_joined`
-- Devanagari / `surface_word`
-- Devanagari / `legacy_joined`
-- Devanagari / `continuous`
-
-IAST / `continuous` is scientifically invalidated for downstream S1M1 formal
-analysis. Whitespace deletion before ordinary IAST serialization is not
-phoneme-sequence preserving in attested cross-boundary vowel hiatus, especially
-`a + i -> ai`, where the frontend reads a single diphthong phoneme.
-
-Its status is:
-
-- scientific status: `INVALIDATED`
-- runtime status: `TERMINATED EARLY BY RESEARCHER`
-- completed passes: `2`
-- termination point: pass `3`, `next_document_index = 86`
-- formal comparison: `EXCLUDED`
-- diagnostic evidence: `RETAINED`
-- rerun/repair: `NONE`
-- runtime scientific commit:
-  `375178ba50bd1a1644d65525907692b31413b33d`
-- termination archive SHA-256:
-  `386c94233ead7f569d0a7cdc1436a874d165dd1e0cede349f943c0196fafaa9d`
-
-M0 itself remains frozen and historically retains six formal representation
-conditions. No M0 representation, manifest, corpus byte, freeze metadata, or
-external-sandhi rule is changed by this downstream invalidation.
-
-### Final analysis contract
-
-The frozen specification is:
-
-`reports/core_methods/latent_lexicon/s1m1_final_analysis_plan.md`
-
-Formal comparisons are exactly:
-
-1. IAST `surface_word` -> Devanagari `surface_word`
-2. IAST `legacy_joined` -> Devanagari `legacy_joined`
-3. IAST `surface_word` -> IAST `legacy_joined`
-4. Devanagari `surface_word` -> Devanagari `legacy_joined`
-5. Devanagari `surface_word` -> Devanagari `continuous`
-6. Devanagari `legacy_joined` -> Devanagari `continuous`
-
-No IAST-versus-Devanagari continuous script comparison is valid.
-
-The earlier six-cell aggregation and later archival reducer are now historical
-midpoint/diagnostic implementations. They remain preserved by Git history and
-are not the final S1M1 analysis implementation.
-
-Current freeze status:
-
-- final analysis plan/specification: `FROZEN`
-- final analysis implementation: `PROVISIONAL / not yet implemented`
-- complete five-cell S1M1 result: `NOT YET FROZEN`
-
-The Devanagari continuous full run remains human-operated. Do not infer its
-final result until the process exits successfully and its final artifacts,
-process metrics, and audit are complete.
+A standard-library, read-only streaming exporter and explicit resumable human
+SHA script are prepared and synthetically tested. The exporter writes exact
+scorer/inspection/reuse/segment/boundary/pass/rule/runtime summaries with
+atomic output, SHA-256, and read-back consistency. No real compact export ran.
+The machine-readable deletion gate is `NOT_READY`: no source is safe to delete,
+both failure-evidence sets are retained, and S1M1 is
+`FINAL_ANALYSIS_PENDING_HUMAN_ARCHIVAL_GATE`. M0 remains frozen, M0-prime was
+not generated, S1M2 P1c was not started, and no cloud/VM or long process ran.
+Focused tests passed (`18 passed`), and the full pure test suite passed once
+(`551 passed`, four warnings, 27.86 seconds); syntax and diff checks passed.

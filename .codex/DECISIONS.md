@@ -118,56 +118,9 @@ predeclaring Sanskrit grammatical roles or a unique underlying form.
 ## Reproducible environments
 
 74. pyproject.toml remains install-oriented rather than globally exact-pinned. Each formal paper/release experiment should capture its actual Python, OS/machine, key-package, Torch/CUDA, Git, and installed-distribution environment as run/release provenance (environment.json plus deterministic requirements-freeze.txt).
-
-## S1M1 post-hoc archival reduction
-
-75. The frozen preregistered S1M1 gate and the later S1M1 post-hoc archival reduction are separate scientific objects. The archive may describe completed audited collections but must not alter the frozen protocol, formal six-cell aggregator, gate criteria, or gate conclusion.
-76. Full S1M1 archival reduction must remain local, read-only, fail-closed, streaming/bounded-memory, and output-only into a fresh directory. Source bytes and the final collection audits are retention identities, not mutable inputs.
-77. Archive outputs must distinguish exact streaming quantities from deterministic bounded approximations and from learner-produced bounded top-k inspection quantities. Full-tail support overlap is represented by bounded sketches rather than a giant temporary database or in-memory support set.
-
-## S1M1 final-analysis amendment (2026-09-02)
-
-78. M0 remains the frozen common substrate with its historically defined six
-formal observation representations. Downstream S1M1 validity is amended without
-rewriting M0: IAST `continuous` is scientifically invalidated because deleting
-whitespace before ordinary IAST serialization can collapse cross-boundary vowel
-hiatus such as `a + i` into written `ai`, which the frontend parses as one
-diphthong phoneme. No speculative consonant/aspirate collision claim is part of
-this decision.
-
-79. The final S1M1 valid-cell set contains exactly five cells: IAST
-`surface_word`, IAST `legacy_joined`, Devanagari `surface_word`, Devanagari
-`legacy_joined`, and Devanagari `continuous`. Each valid cell must be
-completed and audited before final reduction. IAST `continuous` is
-`INVALIDATED`, `EXCLUDED` from formal comparison, retained only as diagnostic
-provenance, and will not be repaired, imputed, or rerun.
-
-80. Final S1M1 inference across representations is restricted to six designated
-contrasts: the two script-matched non-continuous pairs, the two within-script
-`surface_word -> legacy_joined` spacing pairs, and the two Devanagari
-non-continuous -> `continuous` stress pairs. No IAST-versus-Devanagari
-continuous script claim is permitted, and arbitrary all-pairs comparisons are
-not part of the final formal result.
-
-81. `scripts/analysis/aggregate_six_representation.py` /
-`src/sktlm/analysis/six_representation_gate.py` and
-`scripts/analysis/reduce_s1m1_archival.py` /
-`src/sktlm/analysis/s1m1_archival.py` are retained as historical
-midpoint/diagnostic implementations. Git history is their authoritative
-implementation archive. Do not fabricate retrospective logs or rewrite their
-historical protocols to look as if they originally specified the final
-five-cell contract.
-
-82. `reports/core_methods/latent_lexicon/s1m1_final_analysis_plan.md` is the
-frozen final S1M1 analysis specification. The corresponding final implementation
-remains provisional until it has successfully processed the complete real
-five-cell input and is frozen together with the S1M1 result release. Before that
-release, implementation bugs may be corrected without changing the frozen
-scientific comparisons, metric families, threshold families, or interpretation
-contract after results are observed.
-
-83. `exp/s1m1-final-reduction` is a temporary S1M1 closure work branch, not a
-new scientific milestone. At S1M1 freeze, the intended repository cleanup is to
-advance the long-term `exp/s1m1-core-methods` milestone branch to the accepted
-S1M1 freeze commit and retire the temporary closure branch. Until that freeze,
-do not independently advance `exp/s1m1-core-methods`.
+75. Generic representation analysis declares its cell universe separately from supplied artifacts. Only `AVAILABLE` cells enter scientific aggregation; all other declared statuses remain explicit N/A, while optional runtime/termination evidence stays separate from science.
+76. Missing scientific input is allowed only through an explicit N/A status. Any supplied cell remains subject to fail-closed provenance, configuration, completion, schema, artifact, and hash validation.
+77. Artifact inventory is read-only and deletion readiness is evidence-based. The repository tooling may report `PENDING`, `RETAIN`, `SAFE_TO_DELETE_REGENERABLE`, or `NOT_SAFE`, but it must not implement or execute deletion.
+78. The final S1M1 cell universe is four complete scientific cells plus two typed N/A cells: IAST `continuous` is scientifically excluded because ordinary space deletion is non-injective, and Devanagari `continuous` is scientifically valid but execution-incomplete. Neither partial learner state may enter scientific aggregation.
+79. A future derived M0-prime IAST-continuous representation will use frozen M0 Devanagari continuous as source, render lexical diphthongs `/ai/` and `/au/` as `ē` and `ō`, and reserve `ai`/`au` for cross-boundary `a+i`/`a+u` hiatus after spacing removal. M0 itself remains unchanged; M0-prime is not yet generated.
+80. S1M1 cannot become `READY_TO_FREEZE`, and no completed-cell large artifact can be marked safe to delete, until exact training-final scorer/reuse state is compactly exported, source and compact hashes are recorded, read-back consistency passes, and the formal four-cell/two-N/A aggregation is validated.

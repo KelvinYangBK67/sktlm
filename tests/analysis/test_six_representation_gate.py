@@ -9,6 +9,8 @@ import pytest
 from sktlm.analysis.six_representation_gate import (
     FORMAL_CELLS,
     GateValidationError,
+    _load_cell,
+    _parse_manifest,
     aggregate_manifest,
     jensen_shannon_nats,
     lexical_mass_summary,
@@ -245,6 +247,22 @@ def test_run_and_representation_identity_mismatches_fail_closed(tmp_path: Path) 
     _json(run / "config.json", config)
     with pytest.raises(GateValidationError, match="representation identity"):
         aggregate_manifest(manifest)
+
+
+def test_explicit_legacy_config_identity_uses_matching_provenance(tmp_path: Path) -> None:
+    _manifest_path, payload = _manifest(tmp_path)
+    first = payload["cells"][0]
+    run = tmp_path / first["run_dir"]
+    config = json.loads((run / "config.json").read_text(encoding="utf-8"))
+    del config["script"]
+    del config["condition"]
+    _json(run / "config.json", config)
+    spec = next(
+        cell for cell in _parse_manifest(_manifest_path)[1]
+        if cell.key == (first["script"], first["condition"])
+    )
+    loaded = _load_cell(spec, allow_missing_config_identity=True)
+    assert loaded.provenance["script"] == first["script"]
 
 
 def test_lexicon_sorting_and_mass_support_are_deterministic(tmp_path: Path) -> None:
