@@ -225,7 +225,9 @@ def _parse_manifest(path: Path) -> tuple[dict[str, Any], tuple[CellSpec, ...]]:
     return payload, tuple(by_key[key] for key in FORMAL_CELLS)
 
 
-def _load_cell(spec: CellSpec) -> LoadedCell:
+def _load_cell(
+    spec: CellSpec, *, allow_missing_config_identity: bool = False
+) -> LoadedCell:
     errors: list[str] = []
     if not spec.run_dir.is_dir():
         errors.append(f"{spec.cell_id}: run directory is missing: {spec.run_dir}")
@@ -252,7 +254,10 @@ def _load_cell(spec: CellSpec) -> LoadedCell:
 
     if config.get("run_id") != spec.run_id:
         errors.append(f"{spec.cell_id}: config run_id does not match manifest")
-    if config.get("script") != spec.script or config.get("condition") != spec.condition:
+    config_identity = (config.get("script"), config.get("condition"))
+    if allow_missing_config_identity and config_identity == (None, None):
+        pass
+    elif config_identity != (spec.script, spec.condition):
         errors.append(f"{spec.cell_id}: config representation identity does not match")
     if config.get("vocab_budget") is not None:
         errors.append(f"{spec.cell_id}: fixed-vocabulary input cannot replace unrestricted")
