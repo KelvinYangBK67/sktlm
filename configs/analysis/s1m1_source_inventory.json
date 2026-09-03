@@ -1,0 +1,96 @@
+{
+  "schema_version": "sktlm-artifact-inventory-input/v1",
+  "inventory_id": "s1m1-final-source-inventory-20260903",
+  "base_dir": "../..",
+  "retained_evidence": {
+    "provenance": [],
+    "config": [],
+    "runtime_termination": []
+  },
+  "artifacts": [
+    {
+      "path": "artifacts/cloud_scientific/cloud_full_m0_iast_surface_word_p10_rep01_w8_p3/benchmark/analyses.jsonl",
+      "expected_sha256": "cc08bd6d5724bd2a6f84960d6d1739c2176e19cf27c3c056480d4a466e3e13a8",
+      "artifact_role": "iast__surface_word:segment analyses",
+      "regenerability": "UNKNOWN",
+      "retention_required": false
+    },
+    {
+      "path": "artifacts/cloud_scientific/cloud_full_m0_iast_surface_word_p10_rep01_w8_p3/benchmark/boundary_posteriors.jsonl",
+      "expected_sha256": "dc12152add6e8211a0085fc1c89fbb51089f3c6ba7ba4de23e9d7effc099b820",
+      "artifact_role": "iast__surface_word:boundary posterior detail",
+      "regenerability": "UNKNOWN",
+      "retention_required": false
+    },
+    {
+      "path": "artifacts/cloud_scientific/cloud_full_m0_iast_surface_word_p10_rep01_w8_p3/benchmark/latent_lexicon.tsv",
+      "expected_sha256": "841eeb2969bcef4726c48e10484a53ac0791d6a70a6953ea62950963ac2a36ff",
+      "artifact_role": "iast__surface_word:inspection lexicon inventory",
+      "regenerability": "UNKNOWN",
+      "retention_required": false
+    },
+    {
+      "path": "artifacts/post_gate/collected/cloud_full_m0_iast_legacy_joined_p10_w8_p3/benchmark/analyses.jsonl",
+      "expected_sha256": "619928a9a28f66199e2c94a1eb931fe9fc8efcc5258ae839ced12228bcd2d5f8",
+      "artifact_role": "iast__legacy_joined:segment analyses",
+      "regenerability": "UNKNOWN",
+      "retention_required": false
+    },
+    {
+      "path": "artifacts/post_gate/collected/cloud_full_m0_iast_legacy_joined_p10_w8_p3/benchmark/boundary_posteriors.jsonl",
+      "expected_sha256": "b96595c2e2a61772d3e03059e14adba409e33b30c3f3e262390b5ad2441542a8",
+      "artifact_role": "iast__legacy_joined:boundary posterior detail",
+      "regenerability": "UNKNOWN",
+      "retention_required": false
+    },
+    {
+      "path": "artifacts/post_gate/collected/cloud_full_m0_iast_legacy_joined_p10_w8_p3/benchmark/latent_lexicon.tsv",
+      "expected_sha256": "4867e4e527fcb495651627985da39a0164b62a5e506ab575701cb28351b9dc05",
+      "artifact_role": "iast__legacy_joined:inspection lexicon inventory",
+      "regenerability": "UNKNOWN",
+      "retention_required": false
+    },
+    {
+      "path": "artifacts/post_gate/collected/cloud_full_m0_devanagari_surface_word_p10_w8_p3/benchmark/analyses.jsonl",
+      "expected_sha256": "97d2e22f2823492df4c2e20795bf04d26fc3975f764de4d60b01c218e9ba88d3",
+      "artifact_role": "devanagari__surface_word:segment analyses",
+      "regenerability": "UNKNOWN",
+      "retention_required": false
+    },
+    {
+      "path": "artifacts/post_gate/collected/cloud_full_m0_devanagari_surface_word_p10_w8_p3/benchmark/boundary_posteriors.jsonl",
+      "expected_sha256": "a93b6b91554e2cb1662d777a47f93e28c610ae93b812f939948a730adbf91c63",
+      "artifact_role": "devanagari__surface_word:boundary posterior detail",
+      "regenerability": "UNKNOWN",
+      "retention_required": false
+    },
+    {
+      "path": "artifacts/post_gate/collected/cloud_full_m0_devanagari_surface_word_p10_w8_p3/benchmark/latent_lexicon.tsv",
+      "expected_sha256": "841eeb2969bcef4726c48e10484a53ac0791d6a70a6953ea62950963ac2a36ff",
+      "artifact_role": "devanagari__surface_word:inspection lexicon inventory",
+      "regenerability": "UNKNOWN",
+      "retention_required": false
+    },
+    {
+      "path": "artifacts/post_gate/collected/cloud_full_m0_devanagari_legacy_joined_p10_w8_p3/benchmark/analyses.jsonl",
+      "expected_sha256": "42d5b8838c8f9cbde8ad6b330991baa9e9b478798a66050ecae472674c231c4d",
+      "artifact_role": "devanagari__legacy_joined:segment analyses",
+      "regenerability": "UNKNOWN",
+      "retention_required": false
+    },
+    {
+      "path": "artifacts/post_gate/collected/cloud_full_m0_devanagari_legacy_joined_p10_w8_p3/benchmark/boundary_posteriors.jsonl",
+      "expected_sha256": "956e2f1116e241a51cbb54d82a7f60aa9b3c328fa4a97fa85327107d0dff805d",
+      "artifact_role": "devanagari__legacy_joined:boundary posterior detail",
+      "regenerability": "UNKNOWN",
+      "retention_required": false
+    },
+    {
+      "path": "artifacts/post_gate/collected/cloud_full_m0_devanagari_legacy_joined_p10_w8_p3/benchmark/latent_lexicon.tsv",
+      "expected_sha256": "cdf87db7d4a1795c72a2aa0a7cdba732d9daff5a8f8202be6ddede3d4a9ff6bc",
+      "artifact_role": "devanagari__legacy_joined:inspection lexicon inventory",
+      "regenerability": "UNKNOWN",
+      "retention_required": false
+    }
+  ]
+}

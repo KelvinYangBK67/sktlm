@@ -1,0 +1,220 @@
+{
+  "schema_version": "sktlm-s1m1-deletion-readiness/v1",
+  "analysis_id": "s1m1-final-four-cell-20260903",
+  "s1m1_status": "FINAL_ANALYSIS_PENDING_HUMAN_ARCHIVAL_GATE",
+  "deletion_gate": "NOT_READY",
+  "policy": {
+    "automatic_deletion_implemented": false,
+    "scientific_source_deletion_performed": false,
+    "safe_requires": [
+      "source size and SHA-256 recorded",
+      "scientific provenance and configuration retained",
+      "required compact replacements complete and hashed",
+      "read-back consistency passed",
+      "final report independent of unarchived source-only information",
+      "source confirmed regenerable from frozen inputs and exact code provenance"
+    ]
+  },
+  "large_completed_cell_sources": [
+    {
+      "cell_id": "iast__surface_word",
+      "relative_path": "artifacts/cloud_scientific/cloud_full_m0_iast_surface_word_p10_rep01_w8_p3/benchmark/analyses.jsonl",
+      "size_bytes": 13172446023,
+      "sha256": "cc08bd6d5724bd2a6f84960d6d1739c2176e19cf27c3c056480d4a466e3e13a8",
+      "sha256_source": "historical four-replica inventory",
+      "artifact_role": "segment analyses",
+      "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
+      "replacement_compact_artifacts": ["compact/iast__surface_word/segment_metrics.tsv.gz", "compact/iast__surface_word/document_distribution.tsv", "compact/iast__surface_word/length_strata.tsv"],
+      "retention_required": true,
+      "deletion_status": "NOT_READY"
+    },
+    {
+      "cell_id": "iast__surface_word",
+      "relative_path": "artifacts/cloud_scientific/cloud_full_m0_iast_surface_word_p10_rep01_w8_p3/benchmark/boundary_posteriors.jsonl",
+      "size_bytes": 5577811201,
+      "sha256": "dc12152add6e8211a0085fc1c89fbb51089f3c6ba7ba4de23e9d7effc099b820",
+      "sha256_source": "historical four-replica inventory",
+      "artifact_role": "boundary posterior detail",
+      "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
+      "replacement_compact_artifacts": ["compact/iast__surface_word/boundary_table.tsv.gz"],
+      "retention_required": true,
+      "deletion_status": "NOT_READY"
+    },
+    {
+      "cell_id": "iast__surface_word",
+      "relative_path": "artifacts/cloud_scientific/cloud_full_m0_iast_surface_word_p10_rep01_w8_p3/benchmark/latent_lexicon.tsv",
+      "size_bytes": 3703183943,
+      "sha256": "841eeb2969bcef4726c48e10484a53ac0791d6a70a6953ea62950963ac2a36ff",
+      "sha256_source": "historical four-replica inventory",
+      "artifact_role": "inspection lexicon inventory",
+      "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
+      "replacement_compact_artifacts": ["compact/iast__surface_word/lexicon_inventory.tsv.gz", "compact/iast__surface_word/lexical_length.tsv", "compact/iast__surface_word/reuse_distribution.tsv"],
+      "retention_required": true,
+      "deletion_status": "NOT_READY"
+    },
+    {
+      "cell_id": "iast__legacy_joined",
+      "relative_path": "artifacts/post_gate/collected/cloud_full_m0_iast_legacy_joined_p10_w8_p3/benchmark/analyses.jsonl",
+      "size_bytes": 12182541352,
+      "sha256": "619928a9a28f66199e2c94a1eb931fe9fc8efcc5258ae839ced12228bcd2d5f8",
+      "sha256_source": "completed collection final audit",
+      "artifact_role": "segment analyses",
+      "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
+      "replacement_compact_artifacts": ["compact/iast__legacy_joined/segment_metrics.tsv.gz", "compact/iast__legacy_joined/document_distribution.tsv", "compact/iast__legacy_joined/length_strata.tsv"],
+      "retention_required": true,
+      "deletion_status": "NOT_READY"
+    },
+    {
+      "cell_id": "iast__legacy_joined",
+      "relative_path": "artifacts/post_gate/collected/cloud_full_m0_iast_legacy_joined_p10_w8_p3/benchmark/boundary_posteriors.jsonl",
+      "size_bytes": 5553339003,
+      "sha256": "b96595c2e2a61772d3e03059e14adba409e33b30c3f3e262390b5ad2441542a8",
+      "sha256_source": "completed collection final audit",
+      "artifact_role": "boundary posterior detail",
+      "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
+      "replacement_compact_artifacts": ["compact/iast__legacy_joined/boundary_table.tsv.gz"],
+      "retention_required": true,
+      "deletion_status": "NOT_READY"
+    },
+    {
+      "cell_id": "iast__legacy_joined",
+      "relative_path": "artifacts/post_gate/collected/cloud_full_m0_iast_legacy_joined_p10_w8_p3/benchmark/latent_lexicon.tsv",
+      "size_bytes": 5270325531,
+      "sha256": "4867e4e527fcb495651627985da39a0164b62a5e506ab575701cb28351b9dc05",
+      "sha256_source": "completed collection final audit",
+      "artifact_role": "inspection lexicon inventory",
+      "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
+      "replacement_compact_artifacts": ["compact/iast__legacy_joined/lexicon_inventory.tsv.gz", "compact/iast__legacy_joined/lexical_length.tsv", "compact/iast__legacy_joined/reuse_distribution.tsv"],
+      "retention_required": true,
+      "deletion_status": "NOT_READY"
+    },
+    {
+      "cell_id": "devanagari__surface_word",
+      "relative_path": "artifacts/post_gate/collected/cloud_full_m0_devanagari_surface_word_p10_w8_p3/benchmark/analyses.jsonl",
+      "size_bytes": 13242169158,
+      "sha256": "97d2e22f2823492df4c2e20795bf04d26fc3975f764de4d60b01c218e9ba88d3",
+      "sha256_source": "completed collection final audit",
+      "artifact_role": "segment analyses",
+      "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
+      "replacement_compact_artifacts": ["compact/devanagari__surface_word/segment_metrics.tsv.gz", "compact/devanagari__surface_word/document_distribution.tsv", "compact/devanagari__surface_word/length_strata.tsv"],
+      "retention_required": true,
+      "deletion_status": "NOT_READY"
+    },
+    {
+      "cell_id": "devanagari__surface_word",
+      "relative_path": "artifacts/post_gate/collected/cloud_full_m0_devanagari_surface_word_p10_w8_p3/benchmark/boundary_posteriors.jsonl",
+      "size_bytes": 5646106771,
+      "sha256": "a93b6b91554e2cb1662d777a47f93e28c610ae93b812f939948a730adbf91c63",
+      "sha256_source": "completed collection final audit",
+      "artifact_role": "boundary posterior detail",
+      "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
+      "replacement_compact_artifacts": ["compact/devanagari__surface_word/boundary_table.tsv.gz"],
+      "retention_required": true,
+      "deletion_status": "NOT_READY"
+    },
+    {
+      "cell_id": "devanagari__surface_word",
+      "relative_path": "artifacts/post_gate/collected/cloud_full_m0_devanagari_surface_word_p10_w8_p3/benchmark/latent_lexicon.tsv",
+      "size_bytes": 3703183943,
+      "sha256": "841eeb2969bcef4726c48e10484a53ac0791d6a70a6953ea62950963ac2a36ff",
+      "sha256_source": "completed collection final audit",
+      "artifact_role": "inspection lexicon inventory",
+      "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
+      "replacement_compact_artifacts": ["compact/devanagari__surface_word/lexicon_inventory.tsv.gz", "compact/devanagari__surface_word/lexical_length.tsv", "compact/devanagari__surface_word/reuse_distribution.tsv"],
+      "retention_required": true,
+      "deletion_status": "NOT_READY"
+    },
+    {
+      "cell_id": "devanagari__legacy_joined",
+      "relative_path": "artifacts/post_gate/collected/cloud_full_m0_devanagari_legacy_joined_p10_w8_p3/benchmark/analyses.jsonl",
+      "size_bytes": 12250492108,
+      "sha256": "42d5b8838c8f9cbde8ad6b330991baa9e9b478798a66050ecae472674c231c4d",
+      "sha256_source": "completed collection final audit",
+      "artifact_role": "segment analyses",
+      "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
+      "replacement_compact_artifacts": ["compact/devanagari__legacy_joined/segment_metrics.tsv.gz", "compact/devanagari__legacy_joined/document_distribution.tsv", "compact/devanagari__legacy_joined/length_strata.tsv"],
+      "retention_required": true,
+      "deletion_status": "NOT_READY"
+    },
+    {
+      "cell_id": "devanagari__legacy_joined",
+      "relative_path": "artifacts/post_gate/collected/cloud_full_m0_devanagari_legacy_joined_p10_w8_p3/benchmark/boundary_posteriors.jsonl",
+      "size_bytes": 5619420232,
+      "sha256": "956e2f1116e241a51cbb54d82a7f60aa9b3c328fa4a97fa85327107d0dff805d",
+      "sha256_source": "completed collection final audit",
+      "artifact_role": "boundary posterior detail",
+      "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
+      "replacement_compact_artifacts": ["compact/devanagari__legacy_joined/boundary_table.tsv.gz"],
+      "retention_required": true,
+      "deletion_status": "NOT_READY"
+    },
+    {
+      "cell_id": "devanagari__legacy_joined",
+      "relative_path": "artifacts/post_gate/collected/cloud_full_m0_devanagari_legacy_joined_p10_w8_p3/benchmark/latent_lexicon.tsv",
+      "size_bytes": 5272420009,
+      "sha256": "cdf87db7d4a1795c72a2aa0a7cdba732d9daff5a8f8202be6ddede3d4a9ff6bc",
+      "sha256_source": "completed collection final audit",
+      "artifact_role": "inspection lexicon inventory",
+      "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
+      "replacement_compact_artifacts": ["compact/devanagari__legacy_joined/lexicon_inventory.tsv.gz", "compact/devanagari__legacy_joined/lexical_length.tsv", "compact/devanagari__legacy_joined/reuse_distribution.tsv"],
+      "retention_required": true,
+      "deletion_status": "NOT_READY"
+    }
+  ],
+  "uncollected_exact_state_sources": [
+    {
+      "cell_id": "iast__surface_word",
+      "relative_path_on_source_host": "artifacts/latent_benchmarks/cloud_full_m0_iast_surface_word_p10_rep01_w8_p3/learner.sqlite",
+      "size_bytes": null,
+      "sha256": null,
+      "artifact_role": "exact final scorer and reuse associations",
+      "replacement_compact_artifacts": ["compact/iast__surface_word/final_scorer.tsv.gz", "compact/iast__surface_word/surface_usage.tsv.gz", "compact/iast__surface_word/context_usage.tsv.gz"],
+      "deletion_status": "NOT_READY"
+    },
+    {
+      "cell_id": "iast__legacy_joined",
+      "relative_path_on_source_host": "artifacts/latent_benchmarks/cloud_full_m0_iast_legacy_joined_p10_w8_p3/learner.sqlite",
+      "size_bytes": null,
+      "sha256": null,
+      "artifact_role": "exact final scorer and reuse associations",
+      "replacement_compact_artifacts": ["compact/iast__legacy_joined/final_scorer.tsv.gz", "compact/iast__legacy_joined/surface_usage.tsv.gz", "compact/iast__legacy_joined/context_usage.tsv.gz"],
+      "deletion_status": "NOT_READY"
+    },
+    {
+      "cell_id": "devanagari__surface_word",
+      "relative_path_on_source_host": "artifacts/latent_benchmarks/cloud_full_m0_devanagari_surface_word_p10_w8_p3/learner.sqlite",
+      "size_bytes": null,
+      "sha256": null,
+      "artifact_role": "exact final scorer and reuse associations",
+      "replacement_compact_artifacts": ["compact/devanagari__surface_word/final_scorer.tsv.gz", "compact/devanagari__surface_word/surface_usage.tsv.gz", "compact/devanagari__surface_word/context_usage.tsv.gz"],
+      "deletion_status": "NOT_READY"
+    },
+    {
+      "cell_id": "devanagari__legacy_joined",
+      "relative_path_on_source_host": "artifacts/latent_benchmarks/cloud_full_m0_devanagari_legacy_joined_p10_w8_p3/learner.sqlite",
+      "size_bytes": null,
+      "sha256": null,
+      "artifact_role": "exact final scorer and reuse associations",
+      "replacement_compact_artifacts": ["compact/devanagari__legacy_joined/final_scorer.tsv.gz", "compact/devanagari__legacy_joined/surface_usage.tsv.gz", "compact/devanagari__legacy_joined/context_usage.tsv.gz"],
+      "deletion_status": "NOT_READY"
+    }
+  ],
+  "retained_failure_evidence": [
+    {
+      "cell_id": "iast__continuous",
+      "relative_path": "artifacts/invalidated_cells/cloud_full_m0_iast_continuous_p10_w8_p3_termination_audit.tgz",
+      "size_bytes": 6739892,
+      "sha256": "386c94233ead7f569d0a7cdc1436a874d165dd1e0cede349f943c0196fafaa9d",
+      "deletion_status": "RETAIN"
+    },
+    {
+      "cell_id": "devanagari__continuous",
+      "relative_path": "artifacts/post_gate/terminated_runs/core05_devanagari_continuous/SHA256SUMS",
+      "size_bytes": 2500,
+      "sha256": "f0689f122e09bbeb710aa4f16b6ee2a13caadc656cadd5639bba527d3c2dbf79",
+      "deletion_status": "RETAIN"
+    }
+  ],
+  "safe_to_delete_regenerable": [],
+  "not_ready_reason": "No completed-cell compact export exists, exact scorer/reuse SQLite state is not locally collected, and local read-back/source-hash validation has not run."
+}
