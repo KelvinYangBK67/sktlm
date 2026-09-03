@@ -10,6 +10,7 @@ for the valid four-AVAILABLE/two-N/A representation analysis.
 
 ```text
 selective SQLite archival interface: IMPLEMENTED
+pre-execution audit safeguards: IMPLEMENTED
 external real-data execution: PENDING
 deletion gate: NOT_READY
 freeze: PENDING
@@ -26,14 +27,20 @@ Retention policy:
 
 ## NEXT OPERATOR STEP
 
-1. The researcher starts only the two required current source VMs.
-2. On each source host, the researcher runs the corresponding SQLite-only
+1. The researcher starts only the two required current source VMs, stops and
+   confirms termination of each source learner, and verifies that its DB/WAL
+   are quiescent.
+2. Without switching/pulling/resetting the scientific source checkout, the
+   researcher fetches and checks out the exact reported archival-export commit
+   in a separate detached worktree, then runs the corresponding SQLite-only
    export commands in `docs/workflows/s1m1_sqlite_retention.md`.
 3. The researcher pulls:
    - Devanagari `surface_word`: raw `learner.sqlite`, non-empty
      `learner.sqlite-wal` if present, and the complete compact state;
    - Devanagari `legacy_joined`: the complete compact state only.
-4. The researcher returns control to Codex with those paths.
+4. The researcher runs the documented local checksum/manifest checks, including
+   Devanagari `surface_word` source size/SHA-256 and exporter-commit identity.
+5. The researcher returns control to Codex with those paths.
 
 Do not rerun formal aggregation or the 91 GB source inventory. Do not use an
 unverified historical host address. Do not access `notes/**`.
@@ -44,6 +51,8 @@ unverified historical host address. Do not access `notes/**`.
 - perform SQLite-derived association analysis if supported by the returned
   compact state;
 - update the final M1 report and deletion-readiness classifications;
+- use only `PENDING`, `RETAIN`, `SAFE_TO_DELETE_REGENERABLE`, or `NOT_SAFE` for
+  artifact classifications; reserve `NOT_READY` for the deletion gate;
 - never execute deletion;
 - after researcher-authorized manual deletion, perform the final M1 audit and
   only then decide whether S1M1 is `READY_TO_FREEZE`.

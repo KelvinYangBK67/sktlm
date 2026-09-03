@@ -52,7 +52,7 @@
       "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
       "replacement_compact_artifacts": ["compact/iast__surface_word/segment_metrics.tsv.gz", "compact/iast__surface_word/document_distribution.tsv", "compact/iast__surface_word/length_strata.tsv"],
       "retention_required": true,
-      "deletion_status": "NOT_READY"
+      "deletion_status": "PENDING"
     },
     {
       "cell_id": "iast__surface_word",
@@ -64,7 +64,7 @@
       "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
       "replacement_compact_artifacts": ["compact/iast__surface_word/boundary_table.tsv.gz"],
       "retention_required": true,
-      "deletion_status": "NOT_READY"
+      "deletion_status": "PENDING"
     },
     {
       "cell_id": "iast__surface_word",
@@ -76,7 +76,7 @@
       "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
       "replacement_compact_artifacts": ["compact/iast__surface_word/lexicon_inventory.tsv.gz", "compact/iast__surface_word/lexical_length.tsv", "compact/iast__surface_word/reuse_distribution.tsv"],
       "retention_required": true,
-      "deletion_status": "NOT_READY"
+      "deletion_status": "PENDING"
     },
     {
       "cell_id": "iast__legacy_joined",
@@ -88,7 +88,7 @@
       "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
       "replacement_compact_artifacts": ["compact/iast__legacy_joined/segment_metrics.tsv.gz", "compact/iast__legacy_joined/document_distribution.tsv", "compact/iast__legacy_joined/length_strata.tsv"],
       "retention_required": true,
-      "deletion_status": "NOT_READY"
+      "deletion_status": "PENDING"
     },
     {
       "cell_id": "iast__legacy_joined",
@@ -100,7 +100,7 @@
       "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
       "replacement_compact_artifacts": ["compact/iast__legacy_joined/boundary_table.tsv.gz"],
       "retention_required": true,
-      "deletion_status": "NOT_READY"
+      "deletion_status": "PENDING"
     },
     {
       "cell_id": "iast__legacy_joined",
@@ -112,7 +112,7 @@
       "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
       "replacement_compact_artifacts": ["compact/iast__legacy_joined/lexicon_inventory.tsv.gz", "compact/iast__legacy_joined/lexical_length.tsv", "compact/iast__legacy_joined/reuse_distribution.tsv"],
       "retention_required": true,
-      "deletion_status": "NOT_READY"
+      "deletion_status": "PENDING"
     },
     {
       "cell_id": "devanagari__surface_word",
@@ -124,7 +124,7 @@
       "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
       "replacement_compact_artifacts": ["compact/devanagari__surface_word/segment_metrics.tsv.gz", "compact/devanagari__surface_word/document_distribution.tsv", "compact/devanagari__surface_word/length_strata.tsv"],
       "retention_required": true,
-      "deletion_status": "NOT_READY"
+      "deletion_status": "PENDING"
     },
     {
       "cell_id": "devanagari__surface_word",
@@ -136,7 +136,7 @@
       "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
       "replacement_compact_artifacts": ["compact/devanagari__surface_word/boundary_table.tsv.gz"],
       "retention_required": true,
-      "deletion_status": "NOT_READY"
+      "deletion_status": "PENDING"
     },
     {
       "cell_id": "devanagari__surface_word",
@@ -148,7 +148,7 @@
       "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
       "replacement_compact_artifacts": ["compact/devanagari__surface_word/lexicon_inventory.tsv.gz", "compact/devanagari__surface_word/lexical_length.tsv", "compact/devanagari__surface_word/reuse_distribution.tsv"],
       "retention_required": true,
-      "deletion_status": "NOT_READY"
+      "deletion_status": "PENDING"
     },
     {
       "cell_id": "devanagari__legacy_joined",
@@ -160,7 +160,7 @@
       "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
       "replacement_compact_artifacts": ["compact/devanagari__legacy_joined/segment_metrics.tsv.gz", "compact/devanagari__legacy_joined/document_distribution.tsv", "compact/devanagari__legacy_joined/length_strata.tsv"],
       "retention_required": true,
-      "deletion_status": "NOT_READY"
+      "deletion_status": "PENDING"
     },
     {
       "cell_id": "devanagari__legacy_joined",
@@ -172,7 +172,7 @@
       "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
       "replacement_compact_artifacts": ["compact/devanagari__legacy_joined/boundary_table.tsv.gz"],
       "retention_required": true,
-      "deletion_status": "NOT_READY"
+      "deletion_status": "PENDING"
     },
     {
       "cell_id": "devanagari__legacy_joined",
@@ -184,7 +184,7 @@
       "regenerability": "REGENERABLE_FROM_FROZEN_INPUTS_AND_CODE",
       "replacement_compact_artifacts": ["compact/devanagari__legacy_joined/lexicon_inventory.tsv.gz", "compact/devanagari__legacy_joined/lexical_length.tsv", "compact/devanagari__legacy_joined/reuse_distribution.tsv"],
       "retention_required": true,
-      "deletion_status": "NOT_READY"
+      "deletion_status": "PENDING"
     }
   ],
   "selective_sqlite_retention": [
@@ -201,7 +201,8 @@
       "retain_wal_if_present": true,
       "export_sqlite_associations": true,
       "required_compact_artifacts": ["final_scorer.tsv.gz", "surface_usage.tsv.gz", "context_usage.tsv.gz", "manifest.json", "SHA256SUMS"],
-      "retention_status": "NOT_READY"
+      "artifact_classification": "PENDING",
+      "classification_reason": "Required raw database/WAL and compact association state have not yet been returned and validated."
     },
     {
       "cell_id": "devanagari__legacy_joined",
@@ -216,15 +217,15 @@
       "retain_wal_if_present": false,
       "export_sqlite_associations": true,
       "required_compact_artifacts": ["final_scorer.tsv.gz", "surface_usage.tsv.gz", "context_usage.tsv.gz", "manifest.json", "SHA256SUMS"],
-      "raw_database_deletion_assessment": "PENDING_COMPACT_VALIDATION",
-      "retention_status": "NOT_READY"
+      "artifact_classification": "PENDING",
+      "classification_reason": "Compact association state has not yet been returned and validated."
     },
     {
       "cell_id": "iast__surface_word",
       "retain_raw_database": false,
       "retain_wal_if_present": false,
       "export_sqlite_associations": false,
-      "retention_status": "NOT_REQUIRED_BY_SELECTIVE_POLICY",
+      "retention_requirement": "NOT_REQUIRED_BY_SELECTIVE_POLICY",
       "reason": "Matched-spacing script effect is negligible; existing scientific outputs and provenance remain retained."
     },
     {
@@ -232,7 +233,7 @@
       "retain_raw_database": false,
       "retain_wal_if_present": false,
       "export_sqlite_associations": false,
-      "retention_status": "NOT_REQUIRED_BY_SELECTIVE_POLICY",
+      "retention_requirement": "NOT_REQUIRED_BY_SELECTIVE_POLICY",
       "reason": "Matched-spacing script effect is negligible; existing scientific outputs and provenance remain retained."
     }
   ],

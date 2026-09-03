@@ -40,12 +40,12 @@
   "continuous_partial_states": [
     {
       "cell_id": "iast__continuous",
-      "retention_status": "excluded_from_completed_sqlite_retention",
+      "completed_retention_scope": "EXCLUDED",
       "reason": "Representation is scientifically excluded and the partial learner state is diagnostic only."
     },
     {
       "cell_id": "devanagari__continuous",
-      "retention_status": "excluded_from_completed_sqlite_retention",
+      "completed_retention_scope": "EXCLUDED",
       "reason": "Execution/finalization is incomplete and the partial learner state is diagnostic only."
     }
   ],
@@ -58,9 +58,9 @@
   ],
   "deletion_authority": {
     "repository_tooling_may_classify": [
+      "PENDING",
       "RETAIN",
-      "SAFE_TO_DELETE",
-      "NOT_READY",
+      "SAFE_TO_DELETE_REGENERABLE",
       "NOT_SAFE"
     ],
     "repository_tooling_may_delete": false,

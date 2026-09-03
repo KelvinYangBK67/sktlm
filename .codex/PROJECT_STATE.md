@@ -1106,12 +1106,23 @@ table-export machinery without reading scientific JSONL/TSV inputs. It writes
 three compressed tables, database/WAL source identities, compact hashes,
 read-back row/mass checks, a manifest, and `SHA256SUMS` through atomic
 non-overwriting publication. It uses SQLite `mode=ro` plus `query_only` and
-performs no checkpoint, journal-mode change, or SQL write.
+performs no checkpoint, journal-mode change, or SQL write. Schema v2 also
+records the exact exporter Git commit, implementation identity, schema identity,
+and implementation-file hashes, and fails closed if Git provenance cannot be
+resolved.
+
+The pre-execution workflow requires the learner to be stopped and DB/WAL state
+to be quiescent. It leaves the scientific source checkout unchanged, runs the
+audited commit from a separate detached Git worktree, writes compact output
+outside the source checkout, and verifies returned Devanagari `surface_word`
+raw identities against `manifest.json`. Artifact classifications use only
+`PENDING`, `RETAIN`, `SAFE_TO_DELETE_REGENERABLE`, and `NOT_SAFE`; `NOT_READY`
+is gate-level only.
 
 No real database was opened, hashed, or exported in this implementation task.
 The next external step is limited to the two Devanagari products above. S1M1
 scientific analysis remains complete; freeze remains pending solely because
 the researcher chose to finish selective archival, deletion-readiness, and
 final artifact audit first. Codex/repository tooling never performs deletion.
-Focused validation passed: `4 passed in 0.90s`; changed Python files compiled,
+Focused validation passed: `5 passed in 0.94s`; changed Python files compiled,
 both changed JSON files parsed, and `git diff --check` passed.

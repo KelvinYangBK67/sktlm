@@ -14,6 +14,7 @@ import math
 import os
 import shutil
 import sqlite3
+import subprocess
 import tempfile
 from collections import defaultdict
 from pathlib import Path
@@ -23,7 +24,12 @@ from urllib.parse import quote
 from .six_representation_gate import GateValidationError
 
 SCHEMA_VERSION = "sktlm-s1m1-compact-cell/v1"
-SQLITE_STATE_SCHEMA_VERSION = "sktlm-s1m1-sqlite-state/v1"
+SQLITE_STATE_SCHEMA_VERSION = "sktlm-s1m1-sqlite-state/v2"
+SQLITE_STATE_IMPLEMENTATION_ID = "sktlm.analysis.s1m1_compact:export_sqlite_state"
+SQLITE_STATE_IMPLEMENTATION_FILES = (
+    "src/sktlm/analysis/s1m1_compact.py",
+    "scripts/analysis/export_s1m1_sqlite_state.py",
+)
 REQUIRED_RUN_FILES = (
     "iteration_metrics.json", "summary.json", "analyses.jsonl",
     "boundary_posteriors.jsonl", "latent_lexicon.tsv", "rule_usage.tsv",
@@ -37,6 +43,60 @@ def _sha256(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _exporter_provenance() -> dict[str, Any]:
+    source_path = Path(__file__).resolve()
+
+    def git_output(*arguments: str) -> str:
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(source_path.parent), *arguments],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise GateValidationError(
+                (f"cannot resolve SQLite-state exporter git provenance: {exc}",)
+            ) from exc
+        value = result.stdout.strip()
+        if not value:
+            raise GateValidationError(
+                ("cannot resolve SQLite-state exporter git provenance: empty git output",)
+            )
+        return value
+
+    repository_root = Path(git_output("rev-parse", "--show-toplevel")).resolve()
+    git_commit_sha = git_output("rev-parse", "--verify", "HEAD^{commit}").lower()
+    if len(git_commit_sha) != 40 or any(
+        character not in "0123456789abcdef" for character in git_commit_sha
+    ):
+        raise GateValidationError(
+            (f"invalid SQLite-state exporter git commit SHA: {git_commit_sha!r}",)
+        )
+
+    implementation_files = []
+    for relative_path in SQLITE_STATE_IMPLEMENTATION_FILES:
+        implementation_path = repository_root / relative_path
+        if not implementation_path.is_file():
+            raise GateValidationError(
+                (f"SQLite-state exporter implementation file is missing: {implementation_path}",)
+            )
+        implementation_files.append(
+            {
+                "relative_path": relative_path,
+                "sha256": _sha256(implementation_path),
+            }
+        )
+    return {
+        "git_commit_sha": git_commit_sha,
+        "git_resolution": "resolved_fail_closed",
+        "implementation_id": SQLITE_STATE_IMPLEMENTATION_ID,
+        "schema_version": SQLITE_STATE_SCHEMA_VERSION,
+        "implementation_files": implementation_files,
+    }
 
 
 def _source_database_identity(path: Path, *, role: str, required: bool) -> dict[str, Any]:
@@ -543,6 +603,8 @@ def export_sqlite_state(
     if output_dir.exists():
         raise FileExistsError(f"refusing to overwrite output directory: {output_dir}")
 
+    exporter_provenance = _exporter_provenance()
+
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.", dir=output_dir.parent))
     connection: sqlite3.Connection | None = None
@@ -603,6 +665,7 @@ def export_sqlite_state(
         manifest = {
             "schema_version": SQLITE_STATE_SCHEMA_VERSION,
             "cell_id": cell_id,
+            "exporter_provenance": exporter_provenance,
             "source_artifacts": [database_identity, wal_identity],
             "wal_path_resolution": wal_resolution,
             "statistics": {"database": database},

@@ -89,6 +89,20 @@ def test_sqlite_only_export_needs_no_scientific_outputs(tmp_path: Path) -> None:
     }
     manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
     assert all(manifest["consistency"].values())
+    exporter = manifest["exporter_provenance"]
+    assert len(exporter["git_commit_sha"]) == 40
+    assert all(character in "0123456789abcdef" for character in exporter["git_commit_sha"])
+    assert exporter["git_resolution"] == "resolved_fail_closed"
+    assert exporter["implementation_id"] == compact.SQLITE_STATE_IMPLEMENTATION_ID
+    assert exporter["schema_version"] == compact.SQLITE_STATE_SCHEMA_VERSION
+    implementation_files = {
+        item["relative_path"]: item["sha256"]
+        for item in exporter["implementation_files"]
+    }
+    assert set(implementation_files) == set(compact.SQLITE_STATE_IMPLEMENTATION_FILES)
+    assert implementation_files["src/sktlm/analysis/s1m1_compact.py"] == hashlib.sha256(
+        Path(compact.__file__).read_bytes()
+    ).hexdigest()
     assert manifest["readback"]["final_scorer"] == {
         "rows": 2,
         "sum_training_expected_count": 3.0,
@@ -128,6 +142,27 @@ def test_sqlite_only_export_rejects_missing_required_table(tmp_path: Path) -> No
         )
     assert not output.exists()
     assert not list(tmp_path.glob(".sqlite_state.*"))
+
+
+def test_sqlite_only_export_fails_closed_without_git_provenance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = tmp_path / "learner.sqlite"
+    _database_fixture(database)
+    output = tmp_path / "sqlite_state"
+    monkeypatch.setattr(
+        compact.subprocess,
+        "run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(FileNotFoundError("git")),
+    )
+
+    with pytest.raises(GateValidationError, match="cannot resolve.*git provenance"):
+        export_sqlite_state(
+            cell_id="devanagari__surface_word",
+            database_path=database,
+            output_dir=output,
+        )
+    assert not output.exists()
 
 
 def test_compact_export_is_complete_consistent_and_read_only(tmp_path: Path) -> None:
