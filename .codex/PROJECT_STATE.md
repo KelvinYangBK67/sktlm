@@ -1126,3 +1126,47 @@ the researcher chose to finish selective archival, deletion-readiness, and
 final artifact audit first. Codex/repository tooling never performs deletion.
 Focused validation passed: `5 passed in 0.94s`; changed Python files compiled,
 both changed JSON files parsed, and `git diff --check` passed.
+
+## 41. S1M1 association-microanalysis implementation (2026-09-04)
+
+The returned Devanagari `surface_word` and `legacy_joined` compact states
+are present locally. A metadata-only preflight accepted both schema-v2
+manifests, their exact exporter commit/implementation identities, small
+manifest checksums, declared file sizes, and their previously verified
+`SHA256SUMS` identities. It did not scan or rehash the large compressed
+payloads. Declared rows are:
+
+- `surface_word`: 19,068,580 scorer, 8,356,854 surface, and 11,226,279
+  context rows;
+- `legacy_joined`: 25,977,252 scorer, 6,495,224 surface, and 8,741,612
+  context rows.
+
+`src/sktlm/analysis/association_specialization.py` now provides the generic
+bounded-memory mechanism. It validates strict scorer/association ordering and
+duplicate-pair absence while streaming, computes per-form context and surface
+concentration/entropy/effective-support metrics, emits type-, scorer-mass-, and
+association-mass-weighted summaries, fixed length/count/joint bins, online
+length/count relationships, exact shared/left-only/right-only matched-form
+comparisons, count-increase strata, and bounded deterministic diagnostics.
+`scripts/analysis/analyze_association_specialization.py` is the thin CLI;
+`configs/analysis/s1m1_association_microanalysis.json` contains the S1M1
+cells, direction, bins, namespace declaration, and diagnostic thresholds.
+
+Lexical length is the number of validated canonical script-neutral
+`Phoneme` IDs in `form_key`, not Unicode or morphology. Entropy uses natural
+logs; normalized entropy is zero at support one and `H / ln(n)` above one;
+effective supports are `exp(H)` and `1 / sum(p_i^2)`. The audit confirmed
+that scorer counts are final-training-pass state, surface associations are
+thresholded inspection expected counts, and contexts come from retained
+top-K inspection analyses above threshold. Cross-table equality is therefore
+not a valid invariant; each table is instead reconciled independently to its
+compact manifest row/mass totals.
+
+Focused association plus compact-export regressions passed (`10 passed`);
+the complete analysis suite passed (`64 passed`), and the repository suite
+passed (`594 passed, 4 warnings`).
+The full association scan has not run. No formal aggregation, source
+inventory, learner, raw SQLite hash, VM operation, deletion-readiness update,
+scientific-conclusion change, M0-prime work, or S1M2 work occurred. The only
+recommended full command is recorded in
+`docs/workflows/association_specialization_analysis.md`.

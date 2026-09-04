@@ -1,0 +1,75 @@
+{
+  "schema_version": "sktlm-association-specialization-input/v1",
+  "analysis_id": "s1m1-devanagari-association-microanalysis-20260904",
+  "scientific_scope": "Supplementary SQLite-derived microscopic association evidence; does not reopen the validated four-AVAILABLE/two-N/A aggregation.",
+  "input_contract": {
+    "compact_schema_version": "sktlm-s1m1-sqlite-state/v2",
+    "exporter_implementation_id": "sktlm.analysis.s1m1_compact:export_sqlite_state",
+    "allowed_exporter_git_commits": [
+      "67df8582152d225635d79b63e865efd5d23a8ab3"
+    ],
+    "payload_hash_policy": "Use compact manifest and externally verified SHA256SUMS identities; do not rehash the large compressed tables."
+  },
+  "cells": [
+    {
+      "cell_id": "devanagari__surface_word",
+      "compact_dir": "../../artifacts/s1m1_final/retained/devanagari__surface_word/compact",
+      "form_key_namespace": "sktlm-script-neutral-phoneme-sequence/v1",
+      "checksum_status": "VERIFIED_PRE_ANALYSIS_SHA256SUMS"
+    },
+    {
+      "cell_id": "devanagari__legacy_joined",
+      "compact_dir": "../../artifacts/s1m1_final/retained/devanagari__legacy_joined/compact",
+      "form_key_namespace": "sktlm-script-neutral-phoneme-sequence/v1",
+      "checksum_status": "VERIFIED_PRE_ANALYSIS_SHA256SUMS"
+    }
+  ],
+  "comparisons": [
+    {
+      "comparison_id": "devanagari__surface_to_legacy",
+      "cell_a": "devanagari__surface_word",
+      "cell_b": "devanagari__legacy_joined",
+      "form_alignment": {
+        "status": "SUPPORTED",
+        "namespace": "sktlm-script-neutral-phoneme-sequence/v1"
+      },
+      "strong_count_increase_ratio": 2.0
+    }
+  ],
+  "diagnostics": [
+    {
+      "diagnostic_id": "legacy_long_low_count_context_specialization",
+      "comparison_id": "devanagari__surface_to_legacy",
+      "target_cell": "devanagari__legacy_joined",
+      "reference_cell": "devanagari__surface_word",
+      "min_phoneme_length": 9,
+      "max_training_expected_count": 5.0,
+      "min_context_top1_share": 0.9,
+      "max_context_effective_support": 2.0,
+      "min_context_top1_delta": 0.1,
+      "limit_per_category": 25
+    }
+  ],
+  "parameters": {
+    "association_top_k": 3,
+    "bins": {
+      "phoneme_length": {
+        "upper_bounds": [1, 4, 8, 16, 32],
+        "labels": ["1", "2-4", "5-8", "9-16", "17-32", "33+"]
+      },
+      "training_expected_count": {
+        "upper_bounds": [0.1, 1.0, 2.0, 5.0, 10.0, 100.0, 1000.0],
+        "labels": [
+          "<=0.1",
+          "(0.1,1]",
+          "(1,2]",
+          "(2,5]",
+          "(5,10]",
+          "(10,100]",
+          "(100,1000]",
+          ">1000"
+        ]
+      }
+    }
+  }
+}
