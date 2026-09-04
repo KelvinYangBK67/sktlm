@@ -2,10 +2,11 @@
 
 [![tests](https://github.com/KelvinYangBK67/sktlm/actions/workflows/tests.yml/badge.svg)](https://github.com/KelvinYangBK67/sktlm/actions/workflows/tests.yml)
 
-`sktlm` is a reproducible framework for controlled Sanskrit representation,
-tokenization, and small language-model experiments. The experimental path keeps
-one canonical text identity and fixed train/dev/test membership, then varies
-only explicit script, spacing, tokenizer, or model configuration.
+`sktlm` is a research framework for Sanskrit tokenization and latent
+lexical/compositional induction under sandhi and other context-conditioned
+surface variation. Its controlled experimental path keeps one canonical text
+identity and fixed train/dev/test membership, then varies only explicit
+representation or model conditions.
 
 ## Research direction
 
@@ -19,10 +20,13 @@ the limit of the intended general claim.
 script/spacing representations, and shared provenance/evaluation contracts.
 It is not a model milestone. Accordingly, `full-M₀` means full frozen-corpus
 extent for one representation condition, not that the latent model is “M0”.
-The project is currently in pre-S1M1 infrastructure and capacity calibration,
-working toward the first formal Stage 1 scientific milestone. See the
-[research roadmap](docs/research_roadmap.md) for the Stage/Milestone
-nomenclature and the S1–S3 program.
+S1M1 is scientifically frozen. Across its four completed controlled cells,
+visible spacing has a substantially larger effect than script: weakening
+boundary evidence makes the flat lexical objective produce a sharper posterior
+but a much larger, low-count, over-long lexicon. The next milestone, S1M2,
+tests whether reusable untyped pieces can improve compositional sharing while
+concatenating exactly to each grammar-licensed lexical form. See the
+[research roadmap](docs/research_roadmap.md) for the full S1–S3 program.
 
 The current framework provides:
 
@@ -32,6 +36,14 @@ The current framework provides:
   split metadata;
 - the formal M0 representation matrix: IAST and Devanagari, each generated as
   `surface_word`, `legacy_joined`, and `continuous`;
+- a derived M0-prime IAST-continuous representation that preserves lexical
+  diphthong/hiatus and aspirate/consonant-plus-`h` distinctions without
+  changing frozen M0;
+- script-neutral latent lexical induction with a fixed external-sandhi grammar,
+  streaming exact inference, deterministic artifacts, and representation-level
+  scientific analysis;
+- an exact reference and partial production engine for reusable, untyped
+  compositional pieces;
 - a common tokenizer interface for SentencePiece BPE, SentencePiece Unigram,
   Unicode characters, UTF-8 bytes, and extended grapheme clusters;
 - token span, orthographic-boundary, and explicitly heuristic sandhi-fragment
@@ -76,6 +88,8 @@ sktlm-validate-representations
 
 The formal generator creates exactly these six text datasets and no boundary
 sidecars. See `docs/methodology/representations.md` for the spacing contracts.
+M0-prime is generated separately from frozen M0 Devanagari `continuous`; see
+`docs/workflows/m0_prime.md` for its contract and commands.
 
 Run a provenance and tokenizer-diagnostics pass without model training:
 
@@ -118,8 +132,8 @@ python scripts/repro/capture_environment.py --output-dir path/to/output
 The command writes `environment.json` and a deterministically sorted
 `requirements-freeze.txt`, and refuses to overwrite either file. A formal
 paper/release run should preserve these alongside its exact Git commit, frozen
-input fingerprint, experiment config, and run provenance. Current pre-S1M1
-runs are not restarted or retroactively modified to add these files.
+input fingerprint, experiment config, and run provenance. Completed historical
+runs are not restarted or retroactively modified solely to add these files.
 
 ## License
 

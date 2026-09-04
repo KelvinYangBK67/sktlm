@@ -49,7 +49,8 @@ from sktlm.latent.vocabulary import (
 
 EXPECTED_FREEZE_ID = "9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40"
 IMPLEMENTATION = "latent-lexicon-v1"
-FORMAL_SCRIPTS = frozenset({"iast", "devanagari"})
+FORMAL_M0_SCRIPTS = frozenset({"iast", "devanagari"})
+SUPPORTED_OBSERVATION_SCRIPTS = FORMAL_M0_SCRIPTS | {"iast_m0_prime"}
 FORMAL_CONDITIONS = frozenset({"surface_word", "legacy_joined", "continuous"})
 
 _WORKER_GRAMMAR: StructuredSandhiGrammar | None = None
@@ -89,10 +90,12 @@ class TrainingConfig:
     resume: bool = False
 
     def __post_init__(self) -> None:
-        if self.script not in FORMAL_SCRIPTS:
+        if self.script not in SUPPORTED_OBSERVATION_SCRIPTS:
             raise ValueError(f"unsupported formal script: {self.script}")
         if self.condition not in FORMAL_CONDITIONS:
             raise ValueError(f"unsupported formal condition: {self.condition}")
+        if self.script == "iast_m0_prime" and self.condition != "continuous":
+            raise ValueError("iast_m0_prime is defined only for continuous spacing")
         if self.passes < 1:
             raise ValueError("passes must be >= 1")
         if self.vocab_budget is not None and self.vocab_budget < BASE_UNIT_COUNT:
@@ -363,10 +366,12 @@ def load_documents(
     script: str = "iast",
     condition: str = "surface_word",
 ) -> tuple[CorpusDocument, ...]:
-    if script not in FORMAL_SCRIPTS:
+    if script not in SUPPORTED_OBSERVATION_SCRIPTS:
         raise ValueError(f"unsupported formal script: {script}")
     if condition not in FORMAL_CONDITIONS:
         raise ValueError(f"unsupported formal condition: {condition}")
+    if script == "iast_m0_prime" and condition != "continuous":
+        raise ValueError("iast_m0_prime is defined only for continuous spacing")
     with manifest.open("r", encoding="utf-8", newline="") as handle:
         rows = [
             row

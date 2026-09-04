@@ -51,71 +51,45 @@ increasing model-family number across stages.
 Names such as `v1` remain implementation/version labels. They do not carry
 Stage or Milestone semantics.
 
-## Current position: unrestricted representation gate
+## Current position: S1M1 frozen; S1M2 P1c next
 
-Pre-S1M1 VM and vocabulary-capacity calibration is closed. IAST +
-`surface_word` remains the implementation/deployment anchor, but it is not
-the sole representation. Four unrestricted replicas established cross-VM
-scientific equivalence; their result supplies that one cell of the current
-six-representation gate.
+Pre-S1M1 VM scaling and vocabulary-capacity calibration are closed. K=16,384
+and K=32,768 remain appendix pressure conditions; they mainly induce
+atomization and phoneme fallback and must not be treated as morphology or as
+endpoints of a reopened capacity search.
 
-The unrestricted lexical support is approximately 19.07 million word-form
-identities. Expected-count mass reaches 90%, 95%, 99%, 99.9%, and 99.99% only
-at approximately 1.027M, 1.493M, 2.084M, 2.875M, and 3.893M identities. This
-million-scale long tail is evidence about the limitations of a flat
-whole-form/near-whole-form hypothesis class under the fixed sandhi grammar.
+S1M1 is scientifically frozen under the explicit four-AVAILABLE/two-typed-N/A
+protocol. IAST and Devanagari `surface_word` are scientifically identical apart
+from character accounting, and `legacy_joined` has only negligible script
+residuals. By contrast, weakening visible boundary evidence increases active
+lexical types by about 36.23% and low-count types by about 36.70%, reduces
+expected lexical tokens by about 21.33%, and reduces external-rule use by about
+28.79%. The posterior becomes sharper while lexicon economy worsens.
 
-K=16,384 and K=32,768 mainly induce atomization and phoneme fallback under
-high compression pressure. That pressure is not morphology. These runs remain
-capacity-stress and appendix sensitivity evidence only: do not add new K
-values, search for a vocabulary sweet spot, or run a fixed-K 18-cell matrix.
+The full association-level follow-up confirms the mechanism directly, with a
+weighting qualification: expected-count and association-mass weighting show
+substantially more concentrated legacy contexts and surfaces, while not every
+type-weighted comparison moves in that direction. The decisive pattern is a
+large proliferation of long, low-count, narrowly associated identities,
+including deterministic whole-context lexicalizations. Visible spacing is
+evidence/regularization for this objective, not gold wordhood and not a claim
+that Sanskrit inherently requires spaces.
 
-The active gate is the unrestricted learner across all six M₀
-representations. Five new cells are currently running at the exact frozen
-representation-gate checkpoint; no result is inferred until natural
-completion and final audit.
+The original M0 IAST `continuous` representation is
+`NA_SCIENTIFICALLY_EXCLUDED` because ordinary space deletion makes lexical
+`ai`/`au` collide with cross-boundary `a+i`/`a+u`. Devanagari `continuous` is
+scientifically valid but its S1M1 run is `NA_EXECUTION_INCOMPLETE` because the
+flat learner did not scale. Derived M0-prime repairs the IAST encoding from the
+frozen Devanagari source without changing M0: lexical `/ai/` and `/au/` render
+as `ē` and `ō`, while separate `a+i` and `a+u` remain `ai` and `au`;
+aspirated consonants use modifier `ʰ`, leaving plain stop+`h` sequences
+unambiguous.
 
-The post-gate metric set, pair directions, fail-closed local aggregation contract,
-qualitative sample-selection rules, and independent five-reviewer provenance
-workflow are now specified in tracked preparation materials. This preparation
-does not aggregate partial results, freeze S1M1, or invoke a reviewer.
-
-## Entry path to S1M1
-
-After pre-S1M1 calibration closes—and assuming VM differences are negligible—
-the next scientific gate is one unrestricted run for each of the six M₀
-representations:
-
-- IAST + `surface_word`;
-- IAST + `legacy_joined`;
-- IAST + `continuous`;
-- Devanagari + `surface_word`;
-- Devanagari + `legacy_joined`;
-- Devanagari + `continuous`.
-
-This gate tests script neutrality as well as spacing-condition behavior. For
-the same spacing condition, the IAST and Devanagari runs should be compared on
-latent behavior, learned lexical support, identity/latent mass, ambiguity,
-grammar usage, segmentation/reconstruction diagnostics, and other common
-scientific outputs. Mapping both scripts into the same script-neutral
-representation should yield substantially consistent core behavior.
-
-If the comparison exposes a script- or orthography-specific problem, fix the
-Devanagari frontend first. Change shared model/scoring parameters only for a
-shared scientific problem. Do not manufacture agreement with divergent
-IAST-specific and Devanagari-specific scientific hyperparameters.
-
-Only after this six-representation unrestricted gate and any necessary
-frontend/shared adjustment should the S1M1 scientific specification freeze.
-The accepted unrestricted cells—not a fixed-K expansion—will define the
-primary representation evidence. K16/K32 remain appendix stress evidence.
-
-Baseline/tokenizer comparison, common evaluation, and execution/population of
-paper-facing S1M1 aggregation and tables/figures are deliberately deferred
-until the unrestricted gate completes and the S1M1 specification freezes. Only
-then should the project execute and populate the prepared path:
-
-    declarative matrix -> per-cell provenance -> audit -> aggregation -> tables/figures
+S1M2 now tests reusable untyped compositional pieces. P0 reference semantics
+and the P1a production scorer/P1b lazy lexical-span representation are
+complete. P1c shared/composed exact inference and its tiny oracle-equivalence
+gates are the next implementation boundary. No full-corpus S1M2 experiment is
+authorized by that readiness state.
 
 ## Stage 1: known realization grammar
 
@@ -129,6 +103,11 @@ latent lexical identity are separated. The central question is:
 > Given a known realization grammar, can the model unify multiple surface
 > realizations of one lexical identity without lexicalizing every surface
 > accident?
+
+The frozen S1M1 answer is conditional: the script-neutral machinery is stable
+across scripts, but the flat whole-form objective does not remain economical as
+visible boundary evidence is weakened. Its failure mode motivates S1M2 rather
+than a claim that posterior sharpness alone establishes lexical quality.
 
 ### S1M2 — reusable untyped compositional pieces
 
@@ -159,6 +138,10 @@ table. It introduces no gold morpheme boundaries, stem/suffix labels, paradigm
 tables, POS, lemma, morphological analyzer, TransLIST/gold segmentation,
 Sanskrit-specific suffix inventory or morphological prior, or newly learned
 internal morphophonological rewrite rules.
+
+Implementation status: P0 and P1a/P1b are complete; P1c exact shared/composed
+inference is next. This is an implementation-readiness boundary, not evidence
+that S1M2 has run or solved the scientific problem.
 
 ### S1M3 — optional scientific extension
 

@@ -4,6 +4,7 @@
 /data/processed/
 /data/canonical
 /data/representations
+/data/derived/
 /data/tokenizer_corpora/
 /data/canonical_candidate/
 /reports/cleaning/generated/

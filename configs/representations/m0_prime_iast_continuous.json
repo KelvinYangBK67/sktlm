@@ -1,0 +1,38 @@
+{
+  "schema_version": "sktlm-m0-prime-generation-config/v1",
+  "derivation_id": "m0-prime-iast-continuous-v1",
+  "source": {
+    "substrate": "M0",
+    "freeze_id": "9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40",
+    "script": "devanagari",
+    "condition": "continuous",
+    "root": "data/representations/gretil/devanagari/continuous",
+    "representation_manifest": "data/manifests/representations.csv",
+    "representation_manifest_sha256": "c04124b2bc4909750ebedc4e7ec939df3c18edecf1598345ab3f662a21fbc520",
+    "canonical_manifest": "data/manifests/canonical_corpus.csv",
+    "canonical_manifest_sha256": "ccec95eedc9ab37634d24d7d8fa2c47fc3189c3960b07cceb87fd48417ab3cb5",
+    "documents": 240
+  },
+  "transform": {
+    "source_script": "devanagari",
+    "source_condition": "continuous",
+    "output_script": "iast_m0_prime",
+    "output_condition": "continuous",
+    "lexical_ai": "ē",
+    "lexical_au": "ō",
+    "hiatus_ai": "ai",
+    "hiatus_au": "au",
+    "aspirated_consonants": "kʰ gʰ cʰ jʰ ṭʰ ḍʰ tʰ dʰ pʰ bʰ",
+    "plain_consonant_sequences": "kh gh ch jh ṭh ḍh th dh ph bh"
+  },
+  "output": {
+    "root": "data/derived/m0_prime/iast/continuous",
+    "artifact_dir": "artifacts/m0_prime/m0_prime_iast_continuous_v1"
+  },
+  "validation": {
+    "require_observed_contrasts": true
+  },
+  "provenance": {
+    "require_clean_git": true
+  }
+}

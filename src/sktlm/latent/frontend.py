@@ -19,6 +19,7 @@ from sktlm.representations.devanagari import (
     VIRAMA,
     VOWEL_MARKS,
 )
+from sktlm.representations.iast import normalize_m0_prime_iast
 
 
 _DEVANAGARI_CONSONANTS = {
@@ -40,6 +41,21 @@ _DEVANAGARI_SIGNS = {
 _DEVANAGARI_AVAGRAHA = "ऽ"
 _DEVANAGARI_DANDAS = frozenset({"।", "॥"})
 _DEVANAGARI_OM = "ॐ"
+_M0_PRIME_ASPIRATES = {
+    "kʰ": Phoneme.KH,
+    "gʰ": Phoneme.GH,
+    "cʰ": Phoneme.CH,
+    "jʰ": Phoneme.JH,
+    "ṭʰ": Phoneme.TTH,
+    "ḍʰ": Phoneme.DDH,
+    "tʰ": Phoneme.TH,
+    "dʰ": Phoneme.DH,
+    "pʰ": Phoneme.PH,
+    "bʰ": Phoneme.BH,
+}
+_M0_PRIME_PLAIN_DIGRAPHS = tuple(
+    token.replace("ʰ", "h") for token in _M0_PRIME_ASPIRATES
+)
 
 
 class CueKind(str, Enum):
@@ -167,6 +183,104 @@ def parse_iast_surface(text: str) -> ParsedSurface:
     return ParsedSurface(written, tuple(phonemes), tuple(spans), tuple(cues))
 
 
+def parse_m0_prime_iast_surface(text: str) -> ParsedSurface:
+    """Parse the injective derived M0-prime IAST-continuous encoding.
+
+    In this encoding ``ē`` and ``ō`` denote lexical /ai/ and /au/, and the
+    modifier letter in ``kʰ`` ... ``bʰ`` marks one aspirated consonant. Plain
+    ``ai``/``au`` and ``kh`` ... ``bh`` are deliberately parsed as two
+    phonemes, preserving hiatus and consonant-cluster distinctions inherited
+    from the Devanagari source.
+    """
+
+    written = normalize_m0_prime_iast(text)
+    phonemes: list[Phoneme] = []
+    spans: list[tuple[int, int]] = []
+    cues: list[OrthographicCue] = []
+    position = 0
+    while position < len(written):
+        character = written[position]
+        if character.isspace():
+            end = position + 1
+            while end < len(written) and written[end].isspace():
+                end += 1
+            cues.append(
+                OrthographicCue(
+                    CueKind.SPACE,
+                    written[position:end],
+                    position,
+                    end,
+                    len(phonemes),
+                )
+            )
+            position = end
+            continue
+        if character in {"'", "’", "ʼ"}:
+            cues.append(
+                OrthographicCue(
+                    CueKind.AVAGRAHA,
+                    character,
+                    position,
+                    position + 1,
+                    len(phonemes),
+                )
+            )
+            position += 1
+            continue
+        if character == "ē":
+            phonemes.append(Phoneme.AI)
+            spans.append((position, position + 1))
+            position += 1
+            continue
+        if character == "ō":
+            phonemes.append(Phoneme.AU)
+            spans.append((position, position + 1))
+            position += 1
+            continue
+        aspirate = next(
+            (
+                (token, phoneme)
+                for token, phoneme in _M0_PRIME_ASPIRATES.items()
+                if written.startswith(token, position)
+            ),
+            None,
+        )
+        if aspirate is not None:
+            token, phoneme = aspirate
+            phonemes.append(phoneme)
+            spans.append((position, position + len(token)))
+            position += len(token)
+            continue
+        if written.startswith(("ai", "au"), position):
+            phonemes.append(Phoneme.A)
+            spans.append((position, position + 1))
+            position += 1
+            continue
+        if written.startswith(_M0_PRIME_PLAIN_DIGRAPHS, position):
+            phonemes.append(IAST_TO_PHONEME[character])
+            spans.append((position, position + 1))
+            position += 1
+            continue
+        matched = match_iast_phoneme(written, position)
+        if matched is not None:
+            phoneme, end = matched
+            phonemes.append(phoneme)
+            spans.append((position, end))
+            position = end
+            continue
+        cues.append(
+            OrthographicCue(
+                CueKind.PUNCTUATION,
+                character,
+                position,
+                position + 1,
+                len(phonemes),
+            )
+        )
+        position += 1
+    return ParsedSurface(written, tuple(phonemes), tuple(spans), tuple(cues))
+
+
 def parse_devanagari_surface(text: str) -> ParsedSurface:
     """Parse the repository's generated M0 Devanagari representation."""
 
@@ -254,12 +368,14 @@ def parse_devanagari_surface(text: str) -> ParsedSurface:
 
 
 def parse_surface(text: str, *, script: str = "iast") -> ParsedSurface:
-    """Dispatch one formal M0 script to its observation parser."""
+    """Dispatch one M0 or derived M0-prime observation parser."""
 
     if script == "iast":
         return parse_iast_surface(text)
     if script == "devanagari":
         return parse_devanagari_surface(text)
+    if script == "iast_m0_prime":
+        return parse_m0_prime_iast_surface(text)
     raise ValueError(f"unsupported latent frontend script: {script}")
 
 

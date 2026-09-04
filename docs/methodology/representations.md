@@ -30,3 +30,16 @@ Run and validate with:
 sktlm-generate-representations
 sktlm-validate-representations
 ```
+
+## Derived M0-prime
+
+The six paths above remain frozen M0. The scientifically excluded ordinary
+IAST `continuous` cell is not edited or relabeled. A separate M0-prime
+derivation uses frozen M0 Devanagari `continuous` as source and renders lexical
+`/ai/` and `/au/` as `ē` and `ō`, leaving `ai` and `au` for separate `a+i` and
+`a+u`. It likewise renders aspirated consonants with modifier `ʰ`, leaving
+plain `kh` ... `bh` for two-phoneme stop-plus-`h` sequences. This makes the
+downstream IAST continuous encoding injective at the distinctions exposed by
+the frozen Devanagari source. See
+`docs/workflows/m0_prime.md` for generation, validation, provenance, and the
+downstream six-cell contract.

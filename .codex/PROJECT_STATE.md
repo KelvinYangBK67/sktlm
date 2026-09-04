@@ -1210,3 +1210,34 @@ with a much larger long/low-count lexicon and less external-rule use. Visible
 spacing is evidence/regularization for this objective, not gold wordhood and
 not a claim that Sanskrit requires spaces. A corrected continuous substrate
 and S1M2 reusable untyped pieces are the next work; S1M2 P1c has not started.
+
+## 43. M0-prime implementation and formal-run boundary (2026-09-05)
+
+The generic M0-prime generator/validator is implemented on `main` in
+`src/sktlm/representations/m0_prime.py`, with formal configuration at
+`configs/representations/m0_prime_iast_continuous.json` and workflow contract
+at `docs/workflows/m0_prime.md`. It derives only from frozen M0 Devanagari
+`continuous` (240 documents; freeze ID and both source-manifest hashes are
+fail-closed) and never edits M0.
+
+The derived text uses `ē`/`ō` for lexical `/ai/` and `/au/`, leaving `ai`/`au`
+for separate vowel sequences. A real-corpus preflight exposed the analogous
+ordinary-IAST collision between lexical aspirates and plain consonant+`h`
+sequences, so M0-prime also uses modifier `ʰ` for lexical aspirates and leaves
+ordinary `kh` ... `bh` for two phonemes. The `iast_m0_prime` frontend maps the
+encoding into the same script-neutral `Phoneme` inventory as the M0 frontends.
+
+Generation is streaming by document, atomic, non-overwriting, and requires a
+clean Git worktree. Validation independently checks exact source hashes,
+document/path/split/canonical identity, output membership and hashes,
+deterministic regeneration, line/whitespace preservation, absence of retained
+Devanagari, all declared contrasts, and equality of source/output
+script-neutral phoneme sequences. It emits a permanent manifest, generation
+and validation records, config snapshot, and `SHA256SUMS`.
+
+Focused representation/frontend/training tests passed (`93 passed`), the full
+repository suite passed (`600 passed`, four warnings), and a bounded 29-file
+real-corpus check preserved phoneme identity while observing every declared
+contrast. The formal full-data output has not yet been generated or validated.
+Its exact generation and validation commands are documented in the workflow;
+they must run sequentially once in the authorized detached Windows job.

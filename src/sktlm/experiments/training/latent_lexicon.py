@@ -12,7 +12,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Train the streaming v1 latent Sanskrit unigram lexicon for one "
-            "frozen M0 script/spacing condition."
+            "frozen M0 or derived M0-prime script/spacing condition."
         )
     )
     parser.add_argument(
@@ -29,7 +29,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-id")
     parser.add_argument(
         "--script",
-        choices=("iast", "devanagari"),
+        choices=("iast", "devanagari", "iast_m0_prime"),
         default="iast",
     )
     parser.add_argument(

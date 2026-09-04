@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "sktlm"
 version = "0.2.0"
-description = "Controlled Sanskrit corpus, tokenization, and language-model experiments"
+description = "Sanskrit tokenization and latent lexical/compositional induction research framework"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
@@ -54,6 +54,8 @@ sktlm-close-gretil-pre-m0-single-consonants = "sktlm.corpus.gretil.cleaning.sing
 sktlm-normalize-corpus = "sktlm.representations.corpus:main"
 sktlm-generate-representations = "sktlm.representations.generate:main"
 sktlm-validate-representations = "sktlm.representations.generate:validate_main"
+sktlm-generate-m0-prime = "sktlm.representations.m0_prime:generate_main"
+sktlm-validate-m0-prime = "sktlm.representations.m0_prime:validate_main"
 sktlm-inspect-tokenization = "sktlm.tokenizers.inspect:main"
 sktlm-generate = "sktlm.experiments.models.generation:main"
 sktlm-experiment = "sktlm.experiments.runner:main"
