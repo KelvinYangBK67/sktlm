@@ -2,54 +2,44 @@
 
 ## Current status
 
-Branch: `exp/s1m1-core-methods`.
-
-S1M1 formal scientific analysis remains complete and unchanged. SQLite-derived
-association state is supplementary microscopic evidence.
+S1M1 is scientifically and archivally frozen on `exp/s1m1-core-methods`.
 
 ```text
-selective SQLite compact states: RETURNED / METADATA-PREFLIGHT-VALID
-association microanalysis implementation: IMPLEMENTED
-full association microanalysis: PENDING EXTERNAL RESEARCHER RUN
-direct association-level scientific claim: NOT YET ASSESSED
-deletion gate: NOT_READY
-freeze: PENDING
-M0-prime: NOT_STARTED
-S1M2 P1c: BLOCKED
+formal four-cell/two-N/A analysis: VALID
+association microanalysis: VALID / SHA256 VERIFIED
+direct association-level evidence: YES (weighting-qualified)
+selective archival: COMPLETE
+deletion gate: READY (classification only; no deletion authorized or done)
+S1M1: FROZEN
+M0-prime: NEXT
+S1M2 P1c: NOT STARTED
 ```
 
-The generic streaming mechanism, S1M1 manifest, focused tests, and workflow are
-complete. The full 45M-form/association scan was deliberately not launched.
+Do not rerun any S1M1 learner, formal aggregation, 91 GB source inventory,
+raw SQLite identity hash, compact export, or association scan. Do not delete
+any artifact. `notes/**` may be read/searched when useful but must never be
+modified, moved, copied, deleted, tracked, staged, committed, restored,
+checked out, or force-added.
 
-## NEXT OPERATOR STEP
+## Next task
 
-From the repository root, the researcher runs exactly:
+Integrate the generic/public-facing repository updates and the derived
+M0-prime IAST-continuous generator/validator on `main`. M0-prime must use
+frozen M0 Devanagari `continuous` as source, preserve document/segment/split
+identity, and distinguish both lexical diphthongs from hiatus and aspirated
+consonants from plain consonant+`h` sequences. Frozen M0 itself remains
+untouched.
 
-```bash
-PYTHONPATH="$PWD/src" python3 scripts/analysis/analyze_association_specialization.py \
-  --manifest configs/analysis/s1m1_association_microanalysis.json \
-  --output-dir artifacts/s1m1_final/association_microanalysis
+After implementation/configuration and cheap validation are committed in a
+clean worktree, launch the exact formal M0-prime generation followed by
+validation exactly once as a genuinely detached Windows job. Record durable
+launch/log/result state and do not poll after launch. On a later invocation,
+inspect completion evidence once, validate the formal outputs, freeze their
+provenance/hashes, then synchronize S1M2 P0/P1a/P1b onto the updated common
+state without implementing P1c.
+
+The exact stop condition remains:
+
+```text
+S1M2 P1c READY TO START
 ```
-
-The output directory must not already exist. Expected outputs are
-`per_form_metrics.tsv.gz`, `comparison.tsv.gz`, `cell_summary.json`,
-`comparison_summary.tsv`, `comparison_strata.tsv`, `length_bins.tsv`,
-`count_bins.tsv`, `joint_bins.tsv`, `relationship_summary.tsv`,
-`diagnostic_examples.tsv`, `manifest.json`, and `SHA256SUMS`.
-
-Do not run this command as a smoke test. Do not rerun formal aggregation, the
-91 GB source inventory, a learner, or raw SQLite hashing. Do not access
-`notes/**`.
-
-## Next Codex task after return
-
-- validate output checksums, provenance, row counts, and summaries;
-- decide whether the association evidence supports upgrading the conservative
-  aggregate-level mechanism statement;
-- only then update the final M1 report and deletion-readiness classifications;
-- use only `PENDING`, `RETAIN`, `SAFE_TO_DELETE_REGENERABLE`, or `NOT_SAFE`
-  for artifact classifications; reserve `NOT_READY` for the deletion gate;
-- never execute deletion.
-
-M0 remains unchanged. Do not generate M0-prime or start S1M2 P1c during this
-checkpoint.

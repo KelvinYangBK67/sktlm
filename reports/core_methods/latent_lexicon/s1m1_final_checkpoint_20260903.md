@@ -1,4 +1,4 @@
-# S1M1 final scientific analysis and archival checkpoint (2026-09-03)
+# S1M1 final scientific analysis and freeze (closed 2026-09-04)
 
 ## Closure status
 
@@ -6,12 +6,13 @@ S1M1 has reached:
 
 ```text
 SCIENTIFIC_ANALYSIS_COMPLETE
-ARCHIVAL_COMPLETENESS_PENDING
-NOT_FROZEN
+ARCHIVAL_COMPLETE
+DELETION_GATE_READY
+FROZEN
 ```
 
-The scientific conclusions are closed; archival completeness and freeze
-remain pending. The formal result is four complete quantitative cells plus two
+The scientific conclusions, selective archival contract, and milestone are
+closed. The formal result is four complete quantitative cells plus two
 typed N/A cells, not a completed six-cell experiment:
 
 | Script | Representation | Formal status | Scientific use |
@@ -136,6 +137,59 @@ representation-by-objective combination. This is not a universal claim that
 Sanskrit requires spaces, not a definition of linguistic wordhood, and not a
 license to treat whitespace as a gold lexical boundary.
 
+### Direct association-level evidence: YES
+
+The full supplementary association analysis is
+`s1m1-devanagari-association-microanalysis-20260904`, schema
+`sktlm-association-specialization/v1`. It read the retained Devanagari compact
+states and emitted 45,045,832 per-form rows and 27,897,467 aligned-comparison
+rows. Its output manifest records implementation commit
+`ccf4002ce8100e02a436e447a1c2172722ef1421`; all eleven output files validate
+against `SHA256SUMS`.
+
+The direct population evidence is:
+
+- `legacy_joined` contains 25,977,252 scorer forms versus 19,068,580 in
+  `surface_word`. Of the aligned union, 17,148,365 forms are shared,
+  1,920,215 are surface-only, and 8,828,887 are legacy-only.
+- Expected-count-weighted context top-1 share rises from 0.3204 to 0.4188 and
+  context entropy falls from 4.7255 to 3.7926 nats. Association-mass weighting
+  gives the same direction (top-1 0.3203 to 0.4228; entropy 4.7246 to 3.7627).
+- Expected-count-weighted surface top-1 share rises from 0.3246 to 0.4453 and
+  surface entropy falls from 4.7817 to 3.7422 nats; association-mass-weighted
+  values are 0.3188 to 0.4424 and 4.8101 to 3.7553.
+- The long tail is not merely an aggregate vocabulary count. Forms of length
+  17 or more increase from 5,048,227 to 8,213,592, and forms with final
+  expected count at most 0.1 increase from 16,673,665 to 23,534,035. In the
+  joint length/count cells, legacy has 6,713,168 forms of length at least 17
+  and count at most 0.1, versus 3,829,489 for surface-word.
+- Low count directly predicts narrow association: in `legacy_joined`, the
+  correlation between `log1p(expected_count)` and top-1 share is -0.7936 for
+  context and -0.8148 for surface under expected-count weighting; corresponding
+  entropy correlations are 0.9818 and 0.9871. Length has a much weaker
+  type-weighted relationship, so the scientifically defensible statement is a
+  joint long/low-count proliferation, not an independent morphology-like
+  length law.
+
+The deterministic diagnostics make the mechanism concrete. The shared form
+`abhyadhikam` has expected count 0.616 in `legacy_joined` versus 32.290 in
+`surface_word`; its legacy context top-1 share/effective support are 1.0/1.0,
+versus 0.0286/84.53 in the reference, and its surface top-1 share is 0.9303
+versus 0.0290. A legacy-only 266-phoneme form is an entire joined textual
+sequence with expected count 0.99975 and both context and surface top-1 share
+1.0. These examples are deterministic diagnostics, not representative effect
+estimates; the population summaries above carry the general claim.
+
+The weighting qualification matters. Type-weighted context top-1 share is
+0.8607 for `surface_word` and 0.8509 for `legacy_joined`, while type-weighted
+surface top-1 share rises from 0.9389 to 0.9507. Within fixed low-count/length
+bins, the two conditions can also be similar. The evidence therefore does not
+support the stronger claim that every legacy type is more context-specialized.
+It directly supports the stated mechanism: removing visible boundary evidence
+creates far more long, low-count, narrowly associated lexical identities and
+shifts scientifically important mass toward concentrated contexts and
+surfaces.
+
 ## Continuous cells: two different results
 
 ### IAST `continuous`: representation invalidation
@@ -173,20 +227,20 @@ diagnostic failure/stress condition: its sharper posterior coexists with worse
 lexicon economy. A corrected and scalable continuous representation remains
 the downstream target direction.
 
-For future continuous IAST work, derived M0-prime will use frozen M0
-Devanagari continuous as its source, render lexical `/ai/` and `/au/` as `ē`
-and `ō`, and retain ordinary `ai` and `au` for cross-boundary hiatus after
-spacing removal. Frozen M0 is unchanged. M0-prime was not generated and S1M2
-P1c was not started here.
+For future continuous IAST work, derived M0-prime uses frozen M0
+Devanagari continuous as its source, renders lexical `/ai/` and `/au/` as `ē`
+and `ō`, and retains ordinary `ai` and `au` for cross-boundary hiatus after
+spacing removal. Frozen M0 is unchanged. M0-prime implementation and S1M2
+integration are separate post-freeze work and are not part of the S1M1 result.
 
 ## Archival completeness and deletion readiness
 
-The completed scientific collection profiles intentionally excluded
-`learner.sqlite`. The four completed-cell training-final databases are absent
-from their canonical paths in this checkout, and no `learner.sqlite` exists in
-the known local cloud-collection directories. Other local smoke and medium-run
-databases do exist, but they are not the four source-VM training-final states
-and do not satisfy this gate.
+Selective archival is complete. The retained Devanagari `surface_word` raw
+`learner.sqlite` is 10,488,496,128 bytes and its locally recomputed SHA-256,
+`e62ec033052c4dcdfedf7c3164faa88c7e954a4c2fbc5b73379faa49395d5c8c`,
+exactly matches the exporter-recorded source identity. No WAL was present at
+export or in the returned raw directory, so the policy's conditional WAL
+requirement is satisfied.
 
 SQLite-derived association state is supplementary microscopic reuse/context
 evidence; it is not required for the validity of the completed formal S1M1
@@ -201,23 +255,34 @@ analysis. The selective policy is recorded in
 - both continuous partial states: excluded from the completed-state contract;
   existing representation/runtime/termination evidence remains retained.
 
-Freeze remains pending because the researcher chose to complete this selective
-retention, deletion-readiness, and final artifact-audit sequence first—not
-because four raw SQLite databases are scientific prerequisites. Until the two
-required Devanagari archival products are returned and validated:
+Both compact-state `SHA256SUMS` files validate locally, including manifests and
+all six compressed scorer/context/surface payloads. Both manifests report all
+database and read-back consistency checks true. The association output
+checksum set also validates locally.
 
-- deletion gate: `NOT_READY`;
-- `SAFE_TO_DELETE_REGENERABLE`: empty;
-- all twelve large scientific sources remain retained;
-- both continuous termination-evidence sets remain retained;
-- freeze: pending.
+The final classifications are:
 
-No VM, remote hash, SQLite export, long artifact scan, deletion, M0-prime work,
-or freeze operation was performed in this scientific-closure pass.
+- `RETAIN`: Devanagari `surface_word` raw SQLite; both retained Devanagari
+  compact states; the full association-microanalysis directory; formal
+  aggregation/inventory and tracked provenance; both continuous-cell
+  failure/termination evidence.
+- `SAFE_TO_DELETE_REGENERABLE`: the twelve completed-cell large scientific
+  sources totaling 91,193,439,274 bytes. Their exact sizes/hashes, frozen
+  inputs, code/config provenance, scientific reductions, and required retained
+  microscopic state are preserved.
+- `PENDING`: none in the S1M1 closure scope.
+- `NOT_SAFE`: none in the S1M1 closure scope.
+
+The gate is `READY`. This is deletion readiness, not deletion authority. No
+file, VM artifact, raw SQLite database, compact export, association payload, or
+scientific source artifact was deleted. Any physical deletion remains a
+separate manual researcher decision.
 
 ## Validation boundary
 
 This report uses the already-completed formal aggregation and source inventory,
-both of which declare `valid: true`. The closure pass performs only JSON syntax,
-Git diff, and repository-status checks; it does not repeat either long-running
-validation.
+both of which declare `valid: true`. Closure additionally validated both
+compact-state checksum sets, all association-output checksums, JSON syntax, the
+retained raw-SQLite source identity, focused tests, Git diff, and repository
+status. It did not rerun a learner, formal aggregation, the 91 GB inventory, or
+the full association scan.

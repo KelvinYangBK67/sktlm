@@ -16,8 +16,11 @@ Do not modify the frozen M₀ corpus, manifest, formal representations, freeze m
 
 Do not rewrite `data/rules/external_sandhi.tsv` unless the user explicitly requests a rule-inventory change.
 
-`notes/**` is strictly local-only. Never read, modify, track, stage, commit,
-restore, delete, move, copy, or force-add anything under `notes/`.
+`notes/**` is strictly local-only. Read, inspect, or search it only when useful
+for the current research or implementation task. Never modify, create, move,
+rename, delete, copy, overwrite, track, stage, commit, restore, checkout, or
+force-add anything under `notes/`; never weaken ignore/tracking policy to make
+it trackable.
 
 ## Research guardrails
 

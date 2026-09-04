@@ -1170,3 +1170,43 @@ inventory, learner, raw SQLite hash, VM operation, deletion-readiness update,
 scientific-conclusion change, M0-prime work, or S1M2 work occurred. The only
 recommended full command is recorded in
 `docs/workflows/association_specialization_analysis.md`.
+
+## 42. S1M1 scientific closure and freeze (2026-09-05)
+
+Section 41's pending state is superseded. The full association microanalysis
+`s1m1-devanagari-association-microanalysis-20260904` completed successfully:
+45,045,832 per-form rows and 27,897,467 comparison rows were emitted, its
+manifest is valid, and every entry in its `SHA256SUMS` file was verified. Both
+retained compact-state checksum sets were also verified. The retained
+Devanagari `surface_word` raw `learner.sqlite` is 10,488,496,128 bytes; its
+locally recomputed SHA-256 is
+`e62ec033052c4dcdfedf7c3164faa88c7e954a4c2fbc5b73379faa49395d5c8c`,
+exactly matching the exporter-recorded source identity. No WAL was present at
+export or in the retained raw directory.
+
+Direct association-level evidence is `YES`, with an explicit weighting
+qualification. Expected-count-weighted context top-1 share rises from 0.3204
+under `surface_word` to 0.4188 under `legacy_joined`, while context entropy
+falls from 4.7255 to 3.7926 nats; association-mass and surface metrics show the
+same mechanism. The joint length-at-least-17/count-at-most-0.1 region contains
+6,713,168 legacy forms versus 3,829,489 surface forms. Type-weighted context
+top-1 does not uniformly increase (0.8607 surface versus 0.8509 legacy), so the
+claim is population/mass-level proliferation of long, low-count, narrowly
+associated identities, not that every legacy type is more specialized.
+
+S1M1 is now `SCIENTIFIC_ANALYSIS_COMPLETE`, `ARCHIVAL_COMPLETE`,
+`DELETION_GATE_READY`, and `FROZEN`. The final deletion-readiness contract
+classifies the twelve large completed-cell scientific sources (91,193,439,274
+bytes total) as `SAFE_TO_DELETE_REGENERABLE`; required raw SQLite, compact
+state, association evidence, aggregation/inventory, and continuous-cell
+failure evidence are `RETAIN`. No file, database, VM artifact, compact export,
+association payload, or scientific source was deleted. Physical deletion
+requires a separate researcher decision.
+
+The frozen conclusion is that the flat lexical objective is effectively
+script-invariant across the completed cells but strongly dependent on visible
+boundary evidence. Reducing that evidence yields a sharper posterior together
+with a much larger long/low-count lexicon and less external-rule use. Visible
+spacing is evidence/regularization for this objective, not gold wordhood and
+not a claim that Sanskrit requires spaces. A corrected continuous substrate
+and S1M2 reusable untyped pieces are the next work; S1M2 P1c has not started.
