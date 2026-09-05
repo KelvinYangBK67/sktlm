@@ -22,7 +22,7 @@ from sktlm.latent.lazy_candidates import (
     LazySegmentFactor,
     LazyTokenLattice,
 )
-from sktlm.latent.phonology import PhonologicalForm
+from sktlm.latent.phonology import Phoneme, PhonologicalForm
 from sktlm.pieces.inference import PieceSegmentation
 from sktlm.pieces.model import PieceModelConfig
 from sktlm.pieces.scorer import PieceScorer
@@ -286,7 +286,7 @@ class ComposedPieceInference:
         self.cache_config = cache_config
         self.inspection_top_k = inspection_top_k
         self._piece_scores: OrderedDict[
-            PhonologicalForm, tuple[float, int]
+            tuple[Phoneme, ...], tuple[PhonologicalForm, float, int]
         ] = OrderedDict()
         self._piece_score_bytes = 0
         self._forms: OrderedDict[
@@ -360,31 +360,35 @@ class ComposedPieceInference:
             raise ValueError(f"unknown composed timing: {name}")
         self._timings[name] += time.perf_counter() - started
 
-    def _piece_score(self, piece: PhonologicalForm) -> float:
+    def _piece_and_score(
+        self,
+        symbols: tuple[Phoneme, ...],
+    ) -> tuple[PhonologicalForm, float]:
         self._events["piece_score_calls"] += 1
-        cached = self._piece_scores.get(piece)
+        cached = self._piece_scores.get(symbols)
         if cached is not None:
             self._events["piece_score_cache_hits"] += 1
-            self._piece_scores.move_to_end(piece)
-            return cached[0]
+            self._piece_scores.move_to_end(symbols)
+            return cached[0], cached[1]
         self._events["piece_score_cache_misses"] += 1
+        piece = PhonologicalForm(symbols)
         score = self.scorer.score(piece)
         size = 64 + _estimated_form_bytes(piece)
         if size > self.cache_config.piece_score_bytes:
             self._events["piece_score_cache_oversize"] += 1
-            return score
+            return piece, score
         while self._piece_scores and (
             len(self._piece_scores) >= self.cache_config.piece_score_entries
             or self._piece_score_bytes + size > self.cache_config.piece_score_bytes
         ):
-            _old_piece, (_old_score, old_size) = self._piece_scores.popitem(
-                last=False
+            _old_symbols, (_old_piece, _old_score, old_size) = (
+                self._piece_scores.popitem(last=False)
             )
             self._piece_score_bytes -= old_size
             self._events["piece_score_cache_evictions"] += 1
-        self._piece_scores[piece] = (score, size)
+        self._piece_scores[symbols] = (piece, score, size)
         self._piece_score_bytes += size
-        return score
+        return piece, score
 
     def evaluate_form(self, form: PhonologicalForm) -> FormPieceEvaluation:
         """Evaluate the complete P0 support directly, with no P0 lattice."""
@@ -417,10 +421,10 @@ class ComposedPieceInference:
             ):
                 transition_count += 1
                 prior = _raw_prior_score(start, end, rho=self.model_config.rho)
-                piece = PhonologicalForm(form.symbols[start:end])
-                transitions.append(
-                    (end, piece, prior, prior + self._piece_score(piece))
+                piece, piece_score = self._piece_and_score(
+                    form.symbols[start:end]
                 )
+                transitions.append((end, piece, prior, prior + piece_score))
             transitions_by_start.append(tuple(transitions))
         self.add_timing("inner_piece_transition_build_seconds", transition_started)
 
