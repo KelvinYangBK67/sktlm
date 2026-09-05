@@ -113,6 +113,33 @@ def test_shared_piece_and_form_caches_are_bounded_and_counted() -> None:
     assert counters.store_lookups == scorer.store_lookups
 
 
+def test_inspection_top_paths_are_bounded_and_keep_exact_concatenation() -> None:
+    grammar = StructuredSandhiGrammar.from_default_inventory()
+    segment = next(iter_observed_segments("devo'pi"))
+    graph = build_lazy_candidate_graph(segment, grammar)
+    engine = ComposedPieceInference(
+        _production_scorer(),
+        model_config=PieceModelConfig(max_piece_length=3),
+        inspection_top_k=5,
+    )
+
+    inference = infer_composed_segment(
+        graph,
+        engine,
+        whitespace_merge_penalty=8.0,
+    )
+
+    assert 0 < len(inference.top_analyses) <= 5
+    assert inference.top_analysis_mass <= 1.0 + 1e-12
+    assert inference.piece_occurrence_support
+    for analysis in inference.top_analyses:
+        assert len(analysis.words) == len(analysis.piece_segmentations)
+        for word, pieces in zip(analysis.words, analysis.piece_segmentations):
+            assert tuple(
+                symbol for piece in pieces for symbol in piece.symbols
+            ) == word.symbols
+
+
 def _compare_outer(surface: str, *, script: str = "iast") -> None:
     grammar = StructuredSandhiGrammar.from_default_inventory()
     segment = next(iter_observed_segments(surface, script=script))
@@ -146,6 +173,7 @@ def _compare_outer(surface: str, *, script: str = "iast") -> None:
         whitespace_merge_penalty=8.0,
     )
 
+    assert composed.top_analyses == ()
     assert composed.log_partition == pytest.approx(
         reference.log_partition, rel=1e-10, abs=1e-12
     )

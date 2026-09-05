@@ -1,6 +1,7 @@
 """Exact reusable-piece reference semantics for S1M2-P0."""
 
 from sktlm.pieces.composed import (
+    ComposedAnalysisPosterior,
     ComposedCacheConfig,
     ComposedInferenceCounters,
     ComposedPieceInference,
@@ -40,6 +41,7 @@ from sktlm.pieces.production import (
 
 __all__ = [
     "BaseMeasurePieceScorer",
+    "ComposedAnalysisPosterior",
     "ComposedCacheConfig",
     "ComposedInferenceCounters",
     "ComposedPieceInference",

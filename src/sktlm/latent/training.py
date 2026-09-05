@@ -37,7 +37,7 @@ from sktlm.latent.inference import (
     infer_training_segment,
 )
 from sktlm.latent.phonology import PhonologicalForm
-from sktlm.latent.store import LexiconScorer, LexiconStore
+from sktlm.latent.store import LexiconScorer, LexiconStore, PieceStoreScorer
 from sktlm.latent.telemetry import RuntimeTelemetry
 from sktlm.latent.vocabulary import (
     BASE_UNIT_COUNT,
@@ -45,10 +45,26 @@ from sktlm.latent.vocabulary import (
     SELECTION_PASS,
     FrozenVocabulary,
 )
+from sktlm.latent.lazy_candidates import (
+    build_lazy_candidate_graph,
+    lazy_candidate_graph_statistics,
+)
+from sktlm.pieces.composed import (
+    ComposedAnalysisPosterior,
+    ComposedCacheConfig,
+    ComposedInferenceCounters,
+    ComposedPieceInference,
+    ComposedSegmentInference,
+    infer_composed_segment,
+)
+from sktlm.pieces.model import PieceModelConfig
+from sktlm.pieces.scorer import NeutralPieceScorer
 
 
 EXPECTED_FREEZE_ID = "9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40"
 IMPLEMENTATION = "latent-lexicon-v1"
+S1M1_MODEL = "latent_lexicon_v1"
+S1M2_MODEL = "reusable_pieces_v1"
 FORMAL_M0_SCRIPTS = frozenset({"iast", "devanagari"})
 SUPPORTED_OBSERVATION_SCRIPTS = FORMAL_M0_SCRIPTS | {"iast_m0_prime"}
 FORMAL_CONDITIONS = frozenset({"surface_word", "legacy_joined", "continuous"})
@@ -57,6 +73,7 @@ _WORKER_GRAMMAR: StructuredSandhiGrammar | None = None
 _WORKER_SCORER: NeutralFormScorer | LexiconScorer | None = None
 _WORKER_CONNECTION: sqlite3.Connection | None = None
 _WORKER_VOCABULARY: FrozenVocabulary | None = None
+_WORKER_PIECE_ENGINE: ComposedPieceInference | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +82,7 @@ class TrainingConfig:
     document_list: Path | None = None
     output_root: Path = Path("artifacts/latent_lexicon")
     run_id: str | None = None
+    model: str = S1M1_MODEL
     script: str = "iast"
     condition: str = "surface_word"
     passes: int = 3
@@ -87,9 +105,25 @@ class TrainingConfig:
     max_lines_per_document: int | None = None
     seed: int = 0
     equivalence_diagnostics: bool = False
+    piece_max_length: int = 8
+    piece_boundary_probability: float = 0.5
+    piece_alpha: float = 0.1
+    piece_complexity_weight: float = 0.5
+    piece_complexity_kappa: float = 1.0
+    piece_complexity_beta: float = 0.25
+    piece_complexity_tau: float = 1.0
+    piece_base_stop_probability: float = 0.5
+    piece_min_reuse_occurrences: int = 2
+    piece_support_epsilon: float = 0.0
+    piece_score_cache_entries: int = 65_536
+    piece_score_cache_bytes: int = 32 * 1024 * 1024
+    piece_form_cache_entries: int = 8_192
+    piece_form_cache_bytes: int = 256 * 1024 * 1024
     resume: bool = False
 
     def __post_init__(self) -> None:
+        if self.model not in {S1M1_MODEL, S1M2_MODEL}:
+            raise ValueError(f"unsupported model: {self.model}")
         if self.script not in SUPPORTED_OBSERVATION_SCRIPTS:
             raise ValueError(f"unsupported formal script: {self.script}")
         if self.condition not in FORMAL_CONDITIONS:
@@ -102,6 +136,8 @@ class TrainingConfig:
             raise ValueError(
                 f"vocab_budget must be >= {BASE_UNIT_COUNT}; got {self.vocab_budget}"
             )
+        if self.model == S1M2_MODEL and self.vocab_budget is not None:
+            raise ValueError("vocab_budget is an S1M1-only comparison condition")
         if self.workers < 1:
             raise ValueError('workers must be >= 1')
         if self.lexical_alpha <= 0.0:
@@ -118,6 +154,30 @@ class TrainingConfig:
             raise ValueError("analysis_top_k must be >= 1")
         if not 0.0 <= self.high_confidence_threshold <= 1.0:
             raise ValueError("high_confidence_threshold must be in [0, 1]")
+        PieceModelConfig(
+            max_piece_length=self.piece_max_length,
+            rho=self.piece_boundary_probability,
+            alpha=self.piece_alpha,
+            lambda_=self.piece_complexity_weight,
+            kappa=self.piece_complexity_kappa,
+            beta=self.piece_complexity_beta,
+            tau=self.piece_complexity_tau,
+            top_k=self.analysis_top_k,
+        )
+        if not 0.0 < self.piece_base_stop_probability < 1.0:
+            raise ValueError(
+                "piece_base_stop_probability must be strictly between 0 and 1"
+            )
+        if self.piece_min_reuse_occurrences < 2:
+            raise ValueError("piece_min_reuse_occurrences must be >= 2")
+        if self.piece_support_epsilon < 0.0:
+            raise ValueError("piece_support_epsilon must be >= 0")
+        ComposedCacheConfig(
+            piece_score_entries=self.piece_score_cache_entries,
+            piece_score_bytes=self.piece_score_cache_bytes,
+            form_entries=self.piece_form_cache_entries,
+            form_bytes=self.piece_form_cache_bytes,
+        )
 
     def payload(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -129,6 +189,28 @@ class TrainingConfig:
         payload.pop("resume")
         if self.vocab_budget is None:
             payload.pop("vocab_budget")
+        if self.model == S1M1_MODEL:
+            # Preserve the frozen S1M1 configuration identity.  S1M2-only
+            # fields must not invalidate an existing S1M1 checkpoint merely
+            # because this trainer learned how to run another model.
+            payload.pop("model")
+            for name in (
+                "piece_max_length",
+                "piece_boundary_probability",
+                "piece_alpha",
+                "piece_complexity_weight",
+                "piece_complexity_kappa",
+                "piece_complexity_beta",
+                "piece_complexity_tau",
+                "piece_base_stop_probability",
+                "piece_min_reuse_occurrences",
+                "piece_support_epsilon",
+                "piece_score_cache_entries",
+                "piece_score_cache_bytes",
+                "piece_form_cache_entries",
+                "piece_form_cache_bytes",
+            ):
+                payload.pop(name)
         return payload
 
     @property
@@ -137,6 +219,28 @@ class TrainingConfig:
             max_internal_matches=self.max_internal_matches,
             allow_whitespace_merge=self.allow_whitespace_merge,
             whitespace_merge_penalty=self.whitespace_merge_penalty,
+        )
+
+    @property
+    def piece_model_config(self) -> PieceModelConfig:
+        return PieceModelConfig(
+            max_piece_length=self.piece_max_length,
+            rho=self.piece_boundary_probability,
+            alpha=self.piece_alpha,
+            lambda_=self.piece_complexity_weight,
+            kappa=self.piece_complexity_kappa,
+            beta=self.piece_complexity_beta,
+            tau=self.piece_complexity_tau,
+            top_k=self.analysis_top_k,
+        )
+
+    @property
+    def piece_cache_config(self) -> ComposedCacheConfig:
+        return ComposedCacheConfig(
+            piece_score_entries=self.piece_score_cache_entries,
+            piece_score_bytes=self.piece_score_cache_bytes,
+            form_entries=self.piece_form_cache_entries,
+            form_bytes=self.piece_form_cache_bytes,
         )
 
 
@@ -158,15 +262,29 @@ class PassMetrics:
     identity_mass_sum: float = 0.0
     latent_mass_sum: float = 0.0
     expected_lexical_tokens: float = 0.0
+    expected_piece_tokens: float = 0.0
+    piece_segmentation_entropy: float = 0.0
+    expected_whole_form_uses: float = 0.0
+    expected_singleton_path_uses: float = 0.0
+    expected_multi_piece_uses: float = 0.0
     overflowed_tokens: int = 0
     candidate_factors: int = 0
     candidate_nodes: int = 0
     candidate_edges: int = 0
+    lazy_span_traversals: int = 0
+    composed_states: int = 0
+    composed_transitions: int = 0
+    piece_score_calls: int = 0
+    piece_score_cache_hits: int = 0
+    piece_score_cache_misses: int = 0
+    form_cache_hits: int = 0
+    form_cache_misses: int = 0
+    piece_store_lookups: int = 0
 
     def update(
         self,
         segment: ObservedSegment,
-        inference: SegmentInference | TrainingSegmentInference,
+        inference: SegmentInference | TrainingSegmentInference | ComposedSegmentInference,
         *,
         overflowed_tokens: int,
         candidate_factors: int,
@@ -179,6 +297,27 @@ class PassMetrics:
         self.identity_mass_sum += inference.identity_mass
         self.latent_mass_sum += inference.latent_mass
         self.expected_lexical_tokens += inference.expected_lexical_tokens
+        counters = getattr(inference, "counters", None)
+        if isinstance(inference, ComposedSegmentInference):
+            self.expected_piece_tokens += inference.expected_piece_tokens
+            self.piece_segmentation_entropy += (
+                inference.piece_segmentation_entropy
+            )
+            self.expected_whole_form_uses += inference.expected_whole_form_uses
+            self.expected_singleton_path_uses += (
+                inference.expected_singleton_path_uses
+            )
+            self.expected_multi_piece_uses += inference.expected_multi_piece_uses
+        if counters is not None:
+            self.lazy_span_traversals += counters.lazy_span_traversals
+            self.composed_states += counters.composed_state_count
+            self.composed_transitions += counters.composed_transition_count
+            self.piece_score_calls += counters.piece_score_calls
+            self.piece_score_cache_hits += counters.piece_score_cache_hits
+            self.piece_score_cache_misses += counters.piece_score_cache_misses
+            self.form_cache_hits += counters.form_cache_hits
+            self.form_cache_misses += counters.form_cache_misses
+            self.piece_store_lookups += counters.store_lookups
         self.overflowed_tokens += overflowed_tokens
         self.candidate_factors += candidate_factors
         self.candidate_nodes += candidate_nodes
@@ -196,10 +335,16 @@ class PassMetrics:
             "mean_identity_mass": self.identity_mass_sum / denominator,
             "mean_latent_mass": self.latent_mass_sum / denominator,
             "expected_lexical_tokens": self.expected_lexical_tokens,
+            "expected_piece_tokens": self.expected_piece_tokens,
+            "piece_segmentation_entropy": self.piece_segmentation_entropy,
+            "expected_whole_form_uses": self.expected_whole_form_uses,
+            "expected_singleton_path_uses": self.expected_singleton_path_uses,
+            "expected_multi_piece_uses": self.expected_multi_piece_uses,
             "overflowed_tokens": self.overflowed_tokens,
             "candidate_factors": self.candidate_factors,
             "candidate_nodes": self.candidate_nodes,
             "candidate_edges": self.candidate_edges,
+            "lazy_span_traversals": self.lazy_span_traversals,
         }
 
     def merged(self, other: PassMetrics) -> PassMetrics:
@@ -214,11 +359,67 @@ class PassMetrics:
             expected_lexical_tokens=(
                 self.expected_lexical_tokens + other.expected_lexical_tokens
             ),
+            expected_piece_tokens=(
+                self.expected_piece_tokens + other.expected_piece_tokens
+            ),
+            piece_segmentation_entropy=(
+                self.piece_segmentation_entropy
+                + other.piece_segmentation_entropy
+            ),
+            expected_whole_form_uses=(
+                self.expected_whole_form_uses + other.expected_whole_form_uses
+            ),
+            expected_singleton_path_uses=(
+                self.expected_singleton_path_uses
+                + other.expected_singleton_path_uses
+            ),
+            expected_multi_piece_uses=(
+                self.expected_multi_piece_uses + other.expected_multi_piece_uses
+            ),
             overflowed_tokens=self.overflowed_tokens + other.overflowed_tokens,
             candidate_factors=self.candidate_factors + other.candidate_factors,
             candidate_nodes=self.candidate_nodes + other.candidate_nodes,
             candidate_edges=self.candidate_edges + other.candidate_edges,
+            lazy_span_traversals=(
+                self.lazy_span_traversals + other.lazy_span_traversals
+            ),
+            composed_states=self.composed_states + other.composed_states,
+            composed_transitions=(
+                self.composed_transitions + other.composed_transitions
+            ),
+            piece_score_calls=self.piece_score_calls + other.piece_score_calls,
+            piece_score_cache_hits=(
+                self.piece_score_cache_hits + other.piece_score_cache_hits
+            ),
+            piece_score_cache_misses=(
+                self.piece_score_cache_misses + other.piece_score_cache_misses
+            ),
+            form_cache_hits=self.form_cache_hits + other.form_cache_hits,
+            form_cache_misses=self.form_cache_misses + other.form_cache_misses,
+            piece_store_lookups=(
+                self.piece_store_lookups + other.piece_store_lookups
+            ),
         )
+
+
+def _record_composed_telemetry(
+    telemetry: RuntimeTelemetry,
+    counters: ComposedInferenceCounters,
+    *,
+    phase: str,
+) -> None:
+    gauges = {
+        "piece_score_cache_entries",
+        "piece_score_cache_estimated_bytes",
+        "form_cache_entries",
+        "form_cache_estimated_bytes",
+    }
+    for name, value in asdict(counters).items():
+        label = f"{phase}_{name}"
+        if name in gauges:
+            telemetry.maximum(label, int(value))
+        else:
+            telemetry.increment(label, int(value))
 
 
 def _canonical_json(value: Any) -> str:
@@ -521,10 +722,32 @@ def _metrics_from_mapping(payload: dict[str, Any] | None) -> PassMetrics:
         identity_mass_sum=float(payload.get("identity_mass_sum", 0.0)),
         latent_mass_sum=float(payload.get("latent_mass_sum", 0.0)),
         expected_lexical_tokens=float(payload.get("expected_lexical_tokens", 0.0)),
+        expected_piece_tokens=float(payload.get("expected_piece_tokens", 0.0)),
+        piece_segmentation_entropy=float(
+            payload.get("piece_segmentation_entropy", 0.0)
+        ),
+        expected_whole_form_uses=float(
+            payload.get("expected_whole_form_uses", 0.0)
+        ),
+        expected_singleton_path_uses=float(
+            payload.get("expected_singleton_path_uses", 0.0)
+        ),
+        expected_multi_piece_uses=float(
+            payload.get("expected_multi_piece_uses", 0.0)
+        ),
         overflowed_tokens=int(payload.get("overflowed_tokens", 0)),
         candidate_factors=int(payload.get("candidate_factors", 0)),
         candidate_nodes=int(payload.get("candidate_nodes", 0)),
         candidate_edges=int(payload.get("candidate_edges", 0)),
+        lazy_span_traversals=int(payload.get("lazy_span_traversals", 0)),
+        composed_states=int(payload.get("composed_states", 0)),
+        composed_transitions=int(payload.get("composed_transitions", 0)),
+        piece_score_calls=int(payload.get("piece_score_calls", 0)),
+        piece_score_cache_hits=int(payload.get("piece_score_cache_hits", 0)),
+        piece_score_cache_misses=int(payload.get("piece_score_cache_misses", 0)),
+        form_cache_hits=int(payload.get("form_cache_hits", 0)),
+        form_cache_misses=int(payload.get("form_cache_misses", 0)),
+        piece_store_lookups=int(payload.get("piece_store_lookups", 0)),
     )
 
 
@@ -544,9 +767,38 @@ def _initialize_training_worker(
     config: TrainingConfig,
     vocabulary: FrozenVocabulary | None,
 ) -> None:
-    global _WORKER_CONNECTION, _WORKER_GRAMMAR, _WORKER_SCORER, _WORKER_VOCABULARY
+    global _WORKER_CONNECTION, _WORKER_GRAMMAR, _WORKER_PIECE_ENGINE
+    global _WORKER_SCORER, _WORKER_VOCABULARY
     _WORKER_GRAMMAR = StructuredSandhiGrammar.from_default_inventory()
     _WORKER_VOCABULARY = vocabulary
+    _WORKER_PIECE_ENGINE = None
+    if config.model == S1M2_MODEL:
+        if pass_index == 1:
+            piece_scorer = NeutralPieceScorer()
+            _WORKER_CONNECTION = None
+        else:
+            uri = database_path.resolve().as_uri() + '?mode=ro'
+            connection = sqlite3.connect(uri, uri=True)
+            connection.execute('PRAGMA query_only=ON')
+            _WORKER_CONNECTION = connection
+            piece_scorer = PieceStoreScorer(
+                connection,
+                alpha=config.piece_alpha,
+                complexity_weight=config.piece_complexity_weight,
+                complexity_kappa=config.piece_complexity_kappa,
+                complexity_beta=config.piece_complexity_beta,
+                complexity_tau=config.piece_complexity_tau,
+                base_stop_probability=config.piece_base_stop_probability,
+                cache_size=config.lexicon_cache_size,
+                telemetry=RuntimeTelemetry(),
+            )
+        _WORKER_PIECE_ENGINE = ComposedPieceInference(
+            piece_scorer,
+            model_config=config.piece_model_config,
+            cache_config=config.piece_cache_config,
+        )
+        _WORKER_SCORER = None
+        return
     if pass_index == 1:
         _WORKER_SCORER = NeutralFormScorer()
         _WORKER_CONNECTION = None
@@ -574,7 +826,11 @@ def _write_training_shard(
     run_dir: Path,
     config_signature: str,
 ) -> dict[str, Any]:
-    if _WORKER_GRAMMAR is None or _WORKER_SCORER is None:
+    if _WORKER_GRAMMAR is None or (
+        config.model == S1M1_MODEL and _WORKER_SCORER is None
+    ) or (
+        config.model == S1M2_MODEL and _WORKER_PIECE_ENGINE is None
+    ):
         raise RuntimeError('Training worker was not initialized.')
     shard_path, marker_path = _training_shard_paths(
         run_dir,
@@ -584,6 +840,8 @@ def _write_training_shard(
     shard_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = shard_path.with_suffix(shard_path.suffix + '.tmp')
     counts: Counter[PhonologicalForm] = Counter()
+    piece_counts: Counter[PhonologicalForm] = Counter()
+    piece_support: Counter[PhonologicalForm] = Counter()
     metrics = PassMetrics()
     seen_lines: set[int] = set()
     row_count = 0
@@ -593,18 +851,43 @@ def _write_training_shard(
     frontend_seconds = 0.0
     wall_started = time.perf_counter()
     cpu_started = time.process_time()
-    scorer_calls_before = int(getattr(_WORKER_SCORER, 'score_calls', 0))
-    sqlite_selects_before = int(getattr(_WORKER_SCORER, 'sqlite_selects', 0))
-    sqlite_seconds_before = float(getattr(_WORKER_SCORER, 'sqlite_seconds', 0.0))
+    active_scorer = (
+        _WORKER_SCORER
+        if config.model == S1M1_MODEL
+        else _WORKER_PIECE_ENGINE.scorer
+    )
+    scorer_calls_before = int(getattr(active_scorer, 'score_calls', 0))
+    sqlite_selects_before = int(getattr(active_scorer, 'sqlite_selects', 0))
+    sqlite_seconds_before = float(getattr(active_scorer, 'sqlite_seconds', 0.0))
+    piece_counters_before = (
+        _WORKER_PIECE_ENGINE.counter_snapshot()
+        if config.model == S1M2_MODEL
+        else None
+    )
 
     def flush(handle: Any) -> None:
         nonlocal row_count
-        if not counts:
+        if not counts and not piece_counts:
             return
-        for form, value in sorted(counts.items(), key=lambda item: item[0].key):
-            handle.write(f'{form.key}\t{float(value).hex()}\n')
-            row_count += 1
+        if config.model == S1M1_MODEL:
+            for form, value in sorted(counts.items(), key=lambda item: item[0].key):
+                handle.write(f'{form.key}\t{float(value).hex()}\n')
+                row_count += 1
+        else:
+            for form, value in sorted(counts.items(), key=lambda item: item[0].key):
+                handle.write(f'L\t{form.key}\t{float(value).hex()}\n')
+                row_count += 1
+            for piece, value in sorted(
+                piece_counts.items(), key=lambda item: item[0].key
+            ):
+                handle.write(
+                    f'P\t{piece.key}\t{float(value).hex()}\t'
+                    f'{piece_support[piece]}\n'
+                )
+                row_count += 1
         counts.clear()
+        piece_counts.clear()
+        piece_support.clear()
 
     with temporary.open('w', encoding='utf-8', newline='') as handle:
         iterator = _iter_document_segments(document, config)
@@ -618,23 +901,50 @@ def _write_training_shard(
             frontend_seconds += time.perf_counter() - started
             seen_lines.add(line_number)
             started = time.perf_counter()
-            graph = build_candidate_graph(
-                segment,
-                _WORKER_GRAMMAR,
-                config.candidate_config,
+            graph = (
+                build_candidate_graph(
+                    segment,
+                    _WORKER_GRAMMAR,
+                    config.candidate_config,
+                )
+                if config.model == S1M1_MODEL
+                else build_lazy_candidate_graph(
+                    segment,
+                    _WORKER_GRAMMAR,
+                    config.candidate_config,
+                )
             )
             candidate_seconds += time.perf_counter() - started
-            candidate_counts = candidate_graph_statistics(graph)
-            started = time.perf_counter()
-            inference = infer_training_segment(
-                graph,
-                _WORKER_SCORER,
-                whitespace_merge_penalty=config.whitespace_merge_penalty,
-                vocabulary=_WORKER_VOCABULARY,
+            candidate_counts = (
+                candidate_graph_statistics(graph)
+                if config.model == S1M1_MODEL
+                else lazy_candidate_graph_statistics(graph)
             )
+            started = time.perf_counter()
+            if config.model == S1M1_MODEL:
+                inference = infer_training_segment(
+                    graph,
+                    _WORKER_SCORER,
+                    whitespace_merge_penalty=config.whitespace_merge_penalty,
+                    vocabulary=_WORKER_VOCABULARY,
+                )
+            else:
+                inference = infer_composed_segment(
+                    graph,
+                    _WORKER_PIECE_ENGINE,
+                    whitespace_merge_penalty=config.whitespace_merge_penalty,
+                    support_epsilon=config.piece_support_epsilon,
+                )
             inference_seconds += time.perf_counter() - started
             started = time.perf_counter()
-            counts.update(inference.expected_counts)
+            counts.update(
+                inference.expected_counts
+                if config.model == S1M1_MODEL
+                else inference.lexical_expected_counts
+            )
+            if config.model == S1M2_MODEL:
+                piece_counts.update(inference.piece_expected_counts)
+                piece_support.update(inference.piece_occurrence_support)
             aggregation_seconds += time.perf_counter() - started
             metrics.update(
                 segment,
@@ -642,9 +952,13 @@ def _write_training_shard(
                 overflowed_tokens=graph.overflowed_tokens,
                 candidate_factors=candidate_counts['factors'],
                 candidate_nodes=candidate_counts['lattice_nodes'],
-                candidate_edges=candidate_counts['lexical_edges'],
+                candidate_edges=(
+                    candidate_counts['lexical_edges']
+                    if config.model == S1M1_MODEL
+                    else candidate_counts['lexical_span_hypotheses']
+                ),
             )
-            if len(counts) >= config.flush_types:
+            if len(counts) + len(piece_counts) >= config.flush_types:
                 flush(handle)
         flush(handle)
         handle.flush()
@@ -653,7 +967,7 @@ def _write_training_shard(
     metrics.documents = 1
     metrics.lines = len(seen_lines)
     payload = {
-        'schema_version': 1,
+        'schema_version': 1 if config.model == S1M1_MODEL else 2,
         'config_signature': config_signature,
         'pass_index': pass_index,
         'document_index': document_index,
@@ -670,21 +984,48 @@ def _write_training_shard(
             'training_worker_document_total': time.perf_counter() - wall_started,
             'training_worker_cpu': time.process_time() - cpu_started,
             'lexical_score_calls': (
-                int(getattr(_WORKER_SCORER, 'score_calls', 0))
+                int(getattr(active_scorer, 'score_calls', 0))
                 - scorer_calls_before
             ),
             'sqlite_selects': (
-                int(getattr(_WORKER_SCORER, 'sqlite_selects', 0))
+                int(getattr(active_scorer, 'sqlite_selects', 0))
                 - sqlite_selects_before
             ),
             'sqlite_seconds': (
-                float(getattr(_WORKER_SCORER, 'sqlite_seconds', 0.0))
+                float(getattr(active_scorer, 'sqlite_seconds', 0.0))
                 - sqlite_seconds_before
+            ),
+            'composed_counters': (
+                asdict(
+                    _WORKER_PIECE_ENGINE.counter_delta(piece_counters_before)
+                )
+                if piece_counters_before is not None
+                else {}
             ),
         },
     }
     _write_json(marker_path, payload)
     return payload
+
+
+def _flush_piece_training_counts(
+    store: LexiconStore,
+    lexical_counts: Counter[PhonologicalForm],
+    piece_counts: Counter[PhonologicalForm],
+    piece_support: Counter[PhonologicalForm],
+) -> None:
+    if lexical_counts:
+        store.add_document_lexical_diagnostics(lexical_counts.items())
+        lexical_counts.clear()
+    if piece_counts:
+        store.add_document_piece_counts(
+            (
+                (piece, count, piece_support[piece])
+                for piece, count in piece_counts.items()
+            )
+        )
+        piece_counts.clear()
+        piece_support.clear()
 
 
 def _load_training_shard(
@@ -742,15 +1083,47 @@ def _apply_training_shard(
     store.begin_document_counts()
     try:
         buffered: list[tuple[PhonologicalForm, float]] = []
+        buffered_pieces: list[tuple[PhonologicalForm, float, int]] = []
         with shard_path.open(encoding='utf-8') as handle:
             for line in handle:
-                key, value = line.rstrip('\n').split('\t', 1)
-                buffered.append((PhonologicalForm.from_key(key), float.fromhex(value)))
-                if len(buffered) >= config.flush_types:
-                    store.add_document_counts(buffered)
-                    buffered.clear()
+                fields = line.rstrip('\n').split('\t')
+                if config.model == S1M1_MODEL:
+                    key, value = fields
+                    buffered.append(
+                        (PhonologicalForm.from_key(key), float.fromhex(value))
+                    )
+                    if len(buffered) >= config.flush_types:
+                        store.add_document_counts(buffered)
+                        buffered.clear()
+                elif fields[0] == 'L':
+                    _kind, key, value = fields
+                    buffered.append(
+                        (PhonologicalForm.from_key(key), float.fromhex(value))
+                    )
+                    if len(buffered) >= config.flush_types:
+                        store.add_document_lexical_diagnostics(buffered)
+                        buffered.clear()
+                elif fields[0] == 'P':
+                    _kind, key, value, support = fields
+                    buffered_pieces.append(
+                        (
+                            PhonologicalForm.from_key(key),
+                            float.fromhex(value),
+                            int(support),
+                        )
+                    )
+                    if len(buffered_pieces) >= config.flush_types:
+                        store.add_document_piece_counts(buffered_pieces)
+                        buffered_pieces.clear()
+                else:
+                    raise RuntimeError(f'Unknown S1M2 shard row: {fields[0]!r}')
         if buffered:
-            store.add_document_counts(buffered)
+            if config.model == S1M1_MODEL:
+                store.add_document_counts(buffered)
+            else:
+                store.add_document_lexical_diagnostics(buffered)
+        if buffered_pieces:
+            store.add_document_piece_counts(buffered_pieces)
         store.commit_document(next_checkpoint)
     except BaseException:
         store.rollback_document()
@@ -775,6 +1148,12 @@ def _apply_training_shard(
         int(runtime['sqlite_selects']),
     )
     telemetry.add_seconds('training_worker_sqlite', float(runtime['sqlite_seconds']))
+    if runtime.get('composed_counters'):
+        _record_composed_telemetry(
+            telemetry,
+            ComposedInferenceCounters(**runtime['composed_counters']),
+            phase='training',
+        )
     _timed_checkpoint(run_dir, checkpoint, telemetry)
     shard_path.unlink()
     marker_path.unlink()
@@ -871,17 +1250,38 @@ def _training_pass(
     if config.vocab_budget is not None and pass_index > 1 and vocabulary is None:
         raise RuntimeError("Pass 2+ requires the frozen pass-1 vocabulary.")
     scorer = None
+    piece_engine = None
     if config.workers == 1:
-        scorer = (
-            NeutralFormScorer()
-            if pass_index == 1
-            else store.scorer(
-                alpha=config.lexical_alpha,
-                complexity_weight=config.complexity_weight,
-                complexity_tau=config.complexity_tau,
-                cache_size=config.lexicon_cache_size,
+        if config.model == S1M1_MODEL:
+            scorer = (
+                NeutralFormScorer()
+                if pass_index == 1
+                else store.scorer(
+                    alpha=config.lexical_alpha,
+                    complexity_weight=config.complexity_weight,
+                    complexity_tau=config.complexity_tau,
+                    cache_size=config.lexicon_cache_size,
+                )
             )
-        )
+        else:
+            piece_scorer = (
+                NeutralPieceScorer()
+                if pass_index == 1
+                else store.piece_scorer(
+                    alpha=config.piece_alpha,
+                    complexity_weight=config.piece_complexity_weight,
+                    complexity_kappa=config.piece_complexity_kappa,
+                    complexity_beta=config.piece_complexity_beta,
+                    complexity_tau=config.piece_complexity_tau,
+                    base_stop_probability=config.piece_base_stop_probability,
+                    cache_size=config.lexicon_cache_size,
+                )
+            )
+            piece_engine = ComposedPieceInference(
+                piece_scorer,
+                model_config=config.piece_model_config,
+                cache_config=config.piece_cache_config,
+            )
     checkpoint.update(
         {
             "active_pass": pass_index,
@@ -889,7 +1289,10 @@ def _training_pass(
             "active_metrics": asdict(metrics),
         }
     )
-    store.begin_count_pass(resume=resuming, checkpoint=checkpoint)
+    if config.model == S1M1_MODEL:
+        store.begin_count_pass(resume=resuming, checkpoint=checkpoint)
+    else:
+        store.begin_piece_count_pass(resume=resuming, checkpoint=checkpoint)
     _timed_checkpoint(run_dir, checkpoint, telemetry)
 
     if config.workers > 1:
@@ -910,6 +1313,8 @@ def _training_pass(
     for document_index in range(start_document, len(documents)):
         document = documents[document_index]
         counts: Counter[PhonologicalForm] = Counter()
+        piece_counts: Counter[PhonologicalForm] = Counter()
+        piece_support: Counter[PhonologicalForm] = Counter()
         seen_lines: set[int] = set()
         document_metrics = PassMetrics()
         document_started = telemetry.now()
@@ -923,20 +1328,51 @@ def _training_pass(
             ):
                 seen_lines.add(line_number)
                 started = telemetry.now()
-                graph = build_candidate_graph(segment, grammar, config.candidate_config)
-                telemetry.elapsed('training_candidate_generation', started)
-                candidate_counts = candidate_graph_statistics(graph)
-                started = telemetry.now()
-                assert scorer is not None
-                inference = infer_training_segment(
-                    graph,
-                    scorer,
-                    whitespace_merge_penalty=config.whitespace_merge_penalty,
-                    vocabulary=vocabulary,
+                graph = (
+                    build_candidate_graph(segment, grammar, config.candidate_config)
+                    if config.model == S1M1_MODEL
+                    else build_lazy_candidate_graph(
+                        segment, grammar, config.candidate_config
+                    )
                 )
+                telemetry.elapsed('training_candidate_generation', started)
+                candidate_counts = (
+                    candidate_graph_statistics(graph)
+                    if config.model == S1M1_MODEL
+                    else lazy_candidate_graph_statistics(graph)
+                )
+                started = telemetry.now()
+                if config.model == S1M1_MODEL:
+                    assert scorer is not None
+                    inference = infer_training_segment(
+                        graph,
+                        scorer,
+                        whitespace_merge_penalty=config.whitespace_merge_penalty,
+                        vocabulary=vocabulary,
+                    )
+                else:
+                    assert piece_engine is not None
+                    inference = infer_composed_segment(
+                        graph,
+                        piece_engine,
+                        whitespace_merge_penalty=config.whitespace_merge_penalty,
+                        support_epsilon=config.piece_support_epsilon,
+                    )
+                    _record_composed_telemetry(
+                        telemetry,
+                        inference.counters,
+                        phase="training",
+                    )
                 telemetry.elapsed('training_inference', started)
                 started = telemetry.now()
-                counts.update(inference.expected_counts)
+                counts.update(
+                    inference.expected_counts
+                    if config.model == S1M1_MODEL
+                    else inference.lexical_expected_counts
+                )
+                if config.model == S1M2_MODEL:
+                    piece_counts.update(inference.piece_expected_counts)
+                    piece_support.update(inference.piece_occurrence_support)
                 telemetry.elapsed('training_count_aggregation', started)
                 document_metrics.update(
                     segment,
@@ -944,19 +1380,33 @@ def _training_pass(
                     overflowed_tokens=graph.overflowed_tokens,
                     candidate_factors=candidate_counts["factors"],
                     candidate_nodes=candidate_counts["lattice_nodes"],
-                    candidate_edges=candidate_counts["lexical_edges"],
+                    candidate_edges=(
+                        candidate_counts["lexical_edges"]
+                        if config.model == S1M1_MODEL
+                        else candidate_counts["lexical_span_hypotheses"]
+                    ),
                 )
-                if len(counts) >= config.flush_types:
-                    _flush_counts(
-                        store,
-                        counts,
-                        document_transaction=True,
-                    )
-            _flush_counts(
-                store,
-                counts,
-                document_transaction=True,
-            )
+                if len(counts) + len(piece_counts) >= config.flush_types:
+                    if config.model == S1M1_MODEL:
+                        _flush_counts(
+                            store,
+                            counts,
+                            document_transaction=True,
+                        )
+                    else:
+                        _flush_piece_training_counts(
+                            store, counts, piece_counts, piece_support
+                        )
+            if config.model == S1M1_MODEL:
+                _flush_counts(
+                    store,
+                    counts,
+                    document_transaction=True,
+                )
+            else:
+                _flush_piece_training_counts(
+                    store, counts, piece_counts, piece_support
+                )
             document_metrics.documents = 1
             document_metrics.lines = len(seen_lines)
             next_metrics = metrics.merged(document_metrics)
@@ -984,15 +1434,22 @@ def _training_pass(
         checkpoint["vocabulary_budget"] = vocabulary.checkpoint_payload()
         _materialize_vocabulary_artifacts(run_dir, vocabulary)
 
+    count_table = (
+        "counts_next" if config.model == S1M1_MODEL else "piece_counts_next"
+    )
     row = store.connection.execute(
-        "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) FROM counts_next"
+        f"SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) FROM {count_table}"
     ).fetchone()
     assert row is not None
     vocabulary_size = int(row[0])
     total_count = float(row[1])
     summary = metrics.summary(pass_index)
-    summary["lexicon_types"] = vocabulary_size
-    summary["lexical_count_total"] = total_count
+    if config.model == S1M1_MODEL:
+        summary["lexicon_types"] = vocabulary_size
+        summary["lexical_count_total"] = total_count
+    else:
+        summary["piece_types"] = vocabulary_size
+        summary["piece_count_total"] = total_count
     checkpoint["history"].append(summary)
     checkpoint.update(
         {
@@ -1003,11 +1460,28 @@ def _training_pass(
         }
     )
     started = telemetry.now()
-    store.finalize_count_pass(
-        alpha=config.lexical_alpha,
-        checkpoint=checkpoint,
-    )
-    telemetry.elapsed('lexicon_finalize', started)
+    if config.model == S1M1_MODEL:
+        store.finalize_count_pass(
+            alpha=config.lexical_alpha,
+            checkpoint=checkpoint,
+        )
+        telemetry.elapsed('lexicon_finalize', started)
+    else:
+        all_types, active_types, active_total = store.finalize_piece_count_pass(
+            min_reuse_occurrences=config.piece_min_reuse_occurrences,
+            checkpoint=checkpoint,
+        )
+        summary["piece_types"] = all_types
+        summary["active_piece_types"] = active_types
+        summary["active_piece_count_total"] = active_total
+        checkpoint["history"][-1].update(
+            {
+                "piece_types": all_types,
+                "active_piece_types": active_types,
+                "active_piece_count_total": active_total,
+            }
+        )
+        telemetry.elapsed('piece_finalize', started)
     _timed_checkpoint(run_dir, checkpoint, telemetry)
     return summary
 
@@ -1036,6 +1510,24 @@ def _analysis_payload(analysis: AnalysisPosterior) -> dict[str, Any]:
             for boundary in analysis.boundaries
         ],
     }
+
+
+def _composed_analysis_payload(
+    analysis: ComposedAnalysisPosterior,
+) -> dict[str, Any]:
+    payload = _analysis_payload(analysis)  # identical outer presentation fields
+    payload["piece_segmentations"] = [
+        [
+            {
+                "piece_key": piece.key,
+                "iast": piece.iast,
+                "phoneme_ids": list(piece.phoneme_ids),
+            }
+            for piece in segmentation
+        ]
+        for segmentation in analysis.piece_segmentations
+    ]
+    return payload
 
 
 def _boundary_posterior_payload(item: BoundaryPosterior) -> dict[str, Any]:
@@ -1087,6 +1579,7 @@ _INSPECTION_SHARD_KINDS = (
     "analyses",
     "boundaries",
     "counts",
+    "pieces",
     "surfaces",
     "contexts",
     "reductions",
@@ -1103,6 +1596,7 @@ def _inspection_shard_paths(
         "analyses": root / f"{stem}.analyses.jsonl",
         "boundaries": root / f"{stem}.boundaries.jsonl",
         "counts": root / f"{stem}.counts.tsv",
+        "pieces": root / f"{stem}.pieces.tsv",
         "surfaces": root / f"{stem}.surfaces.tsv",
         "contexts": root / f"{stem}.contexts.tsv",
         "reductions": root / f"{stem}.reductions.jsonl",
@@ -1115,7 +1609,16 @@ def _initialize_inspection_worker(
     config: TrainingConfig,
     vocabulary: FrozenVocabulary | None,
 ) -> None:
+    global _WORKER_PIECE_ENGINE
     _initialize_training_worker(2, database_path, config, vocabulary)
+    if config.model == S1M2_MODEL:
+        assert _WORKER_PIECE_ENGINE is not None
+        _WORKER_PIECE_ENGINE = ComposedPieceInference(
+            _WORKER_PIECE_ENGINE.scorer,
+            model_config=config.piece_model_config,
+            cache_config=config.piece_cache_config,
+            inspection_top_k=config.analysis_top_k,
+        )
 
 
 def _write_inspection_shard(
@@ -1125,7 +1628,11 @@ def _write_inspection_shard(
     run_dir: Path,
     config_signature: str,
 ) -> dict[str, Any]:
-    if _WORKER_GRAMMAR is None or _WORKER_SCORER is None:
+    if _WORKER_GRAMMAR is None or (
+        config.model == S1M1_MODEL and _WORKER_SCORER is None
+    ) or (
+        config.model == S1M2_MODEL and _WORKER_PIECE_ENGINE is None
+    ):
         raise RuntimeError("Inspection worker was not initialized.")
     paths = _inspection_shard_paths(run_dir, document_index)
     paths["marker"].parent.mkdir(parents=True, exist_ok=True)
@@ -1134,8 +1641,11 @@ def _write_inspection_shard(
         for kind in _INSPECTION_SHARD_KINDS
     }
     counts: Counter[PhonologicalForm] = Counter()
+    piece_counts: Counter[PhonologicalForm] = Counter()
+    piece_support: Counter[PhonologicalForm] = Counter()
     seen_lines: set[int] = set()
     count_rows = 0
+    piece_rows = 0
     surface_rows = 0
     context_rows = 0
     reduction_rows = 0
@@ -1146,9 +1656,19 @@ def _write_inspection_shard(
     serialization_seconds = 0.0
     wall_started = time.perf_counter()
     cpu_started = time.process_time()
-    scorer_calls_before = int(getattr(_WORKER_SCORER, "score_calls", 0))
-    sqlite_selects_before = int(getattr(_WORKER_SCORER, "sqlite_selects", 0))
-    sqlite_seconds_before = float(getattr(_WORKER_SCORER, "sqlite_seconds", 0.0))
+    active_scorer = (
+        _WORKER_SCORER
+        if config.model == S1M1_MODEL
+        else _WORKER_PIECE_ENGINE.scorer
+    )
+    scorer_calls_before = int(getattr(active_scorer, "score_calls", 0))
+    sqlite_selects_before = int(getattr(active_scorer, "sqlite_selects", 0))
+    sqlite_seconds_before = float(getattr(active_scorer, "sqlite_seconds", 0.0))
+    piece_counters_before = (
+        _WORKER_PIECE_ENGINE.counter_snapshot()
+        if config.model == S1M2_MODEL
+        else None
+    )
 
     def flush_counts(handle: Any) -> None:
         nonlocal count_rows
@@ -1158,6 +1678,20 @@ def _write_inspection_shard(
             handle.write(f"{form.key}\t{float(value).hex()}\n")
             count_rows += 1
         counts.clear()
+
+    def flush_pieces(handle: Any) -> None:
+        nonlocal piece_rows
+        if not piece_counts:
+            return
+        for piece, value in sorted(
+            piece_counts.items(), key=lambda item: item[0].key
+        ):
+            handle.write(
+                f"{piece.key}\t{float(value).hex()}\t{piece_support[piece]}\n"
+            )
+            piece_rows += 1
+        piece_counts.clear()
+        piece_support.clear()
 
     handles: dict[str, Any] = {}
     try:
@@ -1178,24 +1712,51 @@ def _write_inspection_shard(
             frontend_seconds += time.perf_counter() - started
             seen_lines.add(line_number)
             started = time.perf_counter()
-            graph = build_candidate_graph(
-                segment,
-                _WORKER_GRAMMAR,
-                config.candidate_config,
+            graph = (
+                build_candidate_graph(
+                    segment,
+                    _WORKER_GRAMMAR,
+                    config.candidate_config,
+                )
+                if config.model == S1M1_MODEL
+                else build_lazy_candidate_graph(
+                    segment,
+                    _WORKER_GRAMMAR,
+                    config.candidate_config,
+                )
             )
             candidate_seconds += time.perf_counter() - started
-            candidate_values = candidate_graph_statistics(graph)
-            started = time.perf_counter()
-            inference = infer_segment(
-                graph,
-                _WORKER_SCORER,
-                whitespace_merge_penalty=config.whitespace_merge_penalty,
-                top_k=config.analysis_top_k,
-                vocabulary=_WORKER_VOCABULARY,
+            candidate_values = (
+                candidate_graph_statistics(graph)
+                if config.model == S1M1_MODEL
+                else lazy_candidate_graph_statistics(graph)
             )
+            started = time.perf_counter()
+            if config.model == S1M1_MODEL:
+                inference = infer_segment(
+                    graph,
+                    _WORKER_SCORER,
+                    whitespace_merge_penalty=config.whitespace_merge_penalty,
+                    top_k=config.analysis_top_k,
+                    vocabulary=_WORKER_VOCABULARY,
+                )
+            else:
+                inference = infer_composed_segment(
+                    graph,
+                    _WORKER_PIECE_ENGINE,
+                    whitespace_merge_penalty=config.whitespace_merge_penalty,
+                    support_epsilon=config.piece_support_epsilon,
+                )
             inference_seconds += time.perf_counter() - started
             started = time.perf_counter()
-            counts.update(inference.expected_counts)
+            counts.update(
+                inference.expected_counts
+                if config.model == S1M1_MODEL
+                else inference.lexical_expected_counts
+            )
+            if config.model == S1M2_MODEL:
+                piece_counts.update(inference.piece_expected_counts)
+                piece_support.update(inference.piece_occurrence_support)
             aggregation_seconds += time.perf_counter() - started
 
             serialization_started = time.perf_counter()
@@ -1204,7 +1765,7 @@ def _write_inspection_shard(
                 f"s{segment_index:04d}"
             )
             analysis_row = {
-                "schema_version": 1,
+                "schema_version": 1 if config.model == S1M1_MODEL else 2,
                 "segment_id": segment_id,
                 "document": document.relative_path,
                 "line_number": line_number,
@@ -1212,7 +1773,11 @@ def _write_inspection_shard(
                 "source_end": segment.source_end,
                 "surface": segment.written,
                 "top_analyses": [
-                    _analysis_payload(analysis)
+                    (
+                        _analysis_payload(analysis)
+                        if config.model == S1M1_MODEL
+                        else _composed_analysis_payload(analysis)
+                    )
                     for analysis in inference.top_analyses
                 ],
                 "top_analysis_mass": inference.top_analysis_mass,
@@ -1226,15 +1791,27 @@ def _write_inspection_shard(
                 "log_partition": inference.log_partition,
                 "candidate_counts": candidate_values,
             }
+            if isinstance(inference, ComposedSegmentInference):
+                analysis_row["piece_posterior"] = {
+                    "expected_piece_tokens": inference.expected_piece_tokens,
+                    "segmentation_entropy": inference.piece_segmentation_entropy,
+                    "whole_form_uses": inference.expected_whole_form_uses,
+                    "singleton_path_uses": (
+                        inference.expected_singleton_path_uses
+                    ),
+                    "multi_piece_uses": inference.expected_multi_piece_uses,
+                }
             if config.equivalence_diagnostics:
-                analysis_row["candidate_fingerprint"] = candidate_graph_fingerprint(
-                    graph
+                analysis_row["candidate_fingerprint"] = (
+                    candidate_graph_fingerprint(graph)
+                    if config.model == S1M1_MODEL
+                    else _sha256_bytes(_canonical_json(candidate_values).encode("utf-8"))
                 )
             handles["analyses"].write(
                 json.dumps(analysis_row, ensure_ascii=False, sort_keys=True) + "\n"
             )
             boundary_row = {
-                "schema_version": 1,
+                "schema_version": 1 if config.model == S1M1_MODEL else 2,
                 "segment_id": segment_id,
                 "surface": segment.written,
                 "boundaries": [
@@ -1281,10 +1858,34 @@ def _write_inspection_shard(
                 "overflowed_tokens": graph.overflowed_tokens,
                 "candidate_factors": candidate_values["factors"],
                 "candidate_nodes": candidate_values["lattice_nodes"],
-                "candidate_edges": candidate_values["lexical_edges"],
+                "candidate_edges": (
+                    candidate_values["lexical_edges"]
+                    if config.model == S1M1_MODEL
+                    else candidate_values["lexical_span_hypotheses"]
+                ),
+                "expected_piece_tokens": getattr(
+                    inference, "expected_piece_tokens", 0.0
+                ),
+                "piece_segmentation_entropy": getattr(
+                    inference, "piece_segmentation_entropy", 0.0
+                ),
+                "expected_whole_form_uses": getattr(
+                    inference, "expected_whole_form_uses", 0.0
+                ),
+                "expected_singleton_path_uses": getattr(
+                    inference, "expected_singleton_path_uses", 0.0
+                ),
+                "expected_multi_piece_uses": getattr(
+                    inference, "expected_multi_piece_uses", 0.0
+                ),
                 "top_probability": top_probability,
                 "entropy": inference.entropy,
                 "rule_usage": dict(inference.rule_usage),
+                "composed_counters": (
+                    asdict(inference.counters)
+                    if isinstance(inference, ComposedSegmentInference)
+                    else {}
+                ),
                 "report": report_payload,
             }
             handles["reductions"].write(
@@ -1292,7 +1893,12 @@ def _write_inspection_shard(
             )
             reduction_rows += 1
 
-            for form, mass in inference.expected_counts.items():
+            inference_lexical_counts = (
+                inference.expected_counts
+                if config.model == S1M1_MODEL
+                else inference.lexical_expected_counts
+            )
+            for form, mass in inference_lexical_counts.items():
                 if mass >= config.usage_posterior_threshold:
                     surface = json.dumps(segment.written, ensure_ascii=False)
                     handles["surfaces"].write(
@@ -1318,9 +1924,11 @@ def _write_inspection_shard(
                         f"{word.key}\t{context}\t{float(analysis.probability).hex()}\n"
                     )
                     context_rows += 1
-            if len(counts) >= config.flush_types:
+            if len(counts) + len(piece_counts) >= config.flush_types:
                 flush_counts(handles["counts"])
+                flush_pieces(handles["pieces"])
         flush_counts(handles["counts"])
+        flush_pieces(handles["pieces"])
         for handle in handles.values():
             handle.flush()
             os.fsync(handle.fileno())
@@ -1337,6 +1945,7 @@ def _write_inspection_shard(
         "lines": len(seen_lines),
         "rows": {
             "counts": count_rows,
+            "pieces": piece_rows,
             "surfaces": surface_rows,
             "contexts": context_rows,
             "reductions": reduction_rows,
@@ -1353,16 +1962,23 @@ def _write_inspection_shard(
             "inspection_worker_document_total": time.perf_counter() - wall_started,
             "inspection_worker_cpu": time.process_time() - cpu_started,
             "lexical_score_calls": (
-                int(getattr(_WORKER_SCORER, "score_calls", 0))
+                int(getattr(active_scorer, "score_calls", 0))
                 - scorer_calls_before
             ),
             "sqlite_selects": (
-                int(getattr(_WORKER_SCORER, "sqlite_selects", 0))
+                int(getattr(active_scorer, "sqlite_selects", 0))
                 - sqlite_selects_before
             ),
             "sqlite_seconds": (
-                float(getattr(_WORKER_SCORER, "sqlite_seconds", 0.0))
+                float(getattr(active_scorer, "sqlite_seconds", 0.0))
                 - sqlite_seconds_before
+            ),
+            "composed_counters": (
+                asdict(
+                    _WORKER_PIECE_ENGINE.counter_delta(piece_counters_before)
+                )
+                if piece_counters_before is not None
+                else {}
             ),
         },
     }
@@ -1427,6 +2043,26 @@ def _apply_inspection_shard(
     if buffered_counts:
         store.add_counts(buffered_counts, table="inspection_counts")
 
+    if config.model == S1M2_MODEL:
+        buffered_piece_counts: list[
+            tuple[PhonologicalForm, float, int]
+        ] = []
+        with paths["pieces"].open(encoding="utf-8") as handle:
+            for line in handle:
+                key, value, support = line.rstrip("\n").split("\t", 2)
+                buffered_piece_counts.append(
+                    (
+                        PhonologicalForm.from_key(key),
+                        float.fromhex(value),
+                        int(support),
+                    )
+                )
+                if len(buffered_piece_counts) >= config.flush_types:
+                    store.add_inspection_piece_counts(buffered_piece_counts)
+                    buffered_piece_counts.clear()
+        if buffered_piece_counts:
+            store.add_inspection_piece_counts(buffered_piece_counts)
+
     for kind in ("surfaces", "contexts"):
         buffered_usage: list[tuple[str, str, float]] = []
         with paths[kind].open(encoding="utf-8") as handle:
@@ -1459,10 +2095,53 @@ def _apply_inspection_shard(
             metrics.expected_lexical_tokens += float(
                 row["expected_lexical_tokens"]
             )
+            metrics.expected_piece_tokens += float(
+                row.get("expected_piece_tokens", 0.0)
+            )
+            metrics.piece_segmentation_entropy += float(
+                row.get("piece_segmentation_entropy", 0.0)
+            )
+            metrics.expected_whole_form_uses += float(
+                row.get("expected_whole_form_uses", 0.0)
+            )
+            metrics.expected_singleton_path_uses += float(
+                row.get("expected_singleton_path_uses", 0.0)
+            )
+            metrics.expected_multi_piece_uses += float(
+                row.get("expected_multi_piece_uses", 0.0)
+            )
             metrics.overflowed_tokens += int(row["overflowed_tokens"])
             metrics.candidate_factors += int(row["candidate_factors"])
             metrics.candidate_nodes += int(row["candidate_nodes"])
             metrics.candidate_edges += int(row["candidate_edges"])
+            composed_counters = row.get("composed_counters", {})
+            metrics.lazy_span_traversals += int(
+                composed_counters.get("lazy_span_traversals", 0)
+            )
+            metrics.composed_states += int(
+                composed_counters.get("composed_state_count", 0)
+            )
+            metrics.composed_transitions += int(
+                composed_counters.get("composed_transition_count", 0)
+            )
+            metrics.piece_score_calls += int(
+                composed_counters.get("piece_score_calls", 0)
+            )
+            metrics.piece_score_cache_hits += int(
+                composed_counters.get("piece_score_cache_hits", 0)
+            )
+            metrics.piece_score_cache_misses += int(
+                composed_counters.get("piece_score_cache_misses", 0)
+            )
+            metrics.form_cache_hits += int(
+                composed_counters.get("form_cache_hits", 0)
+            )
+            metrics.form_cache_misses += int(
+                composed_counters.get("form_cache_misses", 0)
+            )
+            metrics.piece_store_lookups += int(
+                composed_counters.get("store_lookups", 0)
+            )
             aggregate.rule_usage.update(row["rule_usage"])
             top_probability = float(row["top_probability"])
             entropy = float(row["entropy"])
@@ -1515,6 +2194,12 @@ def _apply_inspection_shard(
         int(runtime["sqlite_selects"]),
     )
     telemetry.add_seconds("inspection_worker_sqlite", float(runtime["sqlite_seconds"]))
+    if runtime.get("composed_counters"):
+        _record_composed_telemetry(
+            telemetry,
+            ComposedInferenceCounters(**runtime["composed_counters"]),
+            phase="inspection",
+        )
 
 
 def _finalize_inspection(
@@ -1529,10 +2214,25 @@ def _finalize_inspection(
 ) -> dict[str, Any]:
     _replace_file(analyses_tmp, run_dir / "analyses.jsonl")
     _replace_file(boundaries_tmp, run_dir / "boundary_posteriors.jsonl")
-    store.export_lexicon(
-        run_dir / "latent_lexicon.tsv",
-        usage_threshold=config.usage_posterior_threshold,
-    )
+    if config.model == S1M1_MODEL:
+        store.export_lexicon(
+            run_dir / "latent_lexicon.tsv",
+            usage_threshold=config.usage_posterior_threshold,
+        )
+    else:
+        store.export_lexical_diagnostics(
+            run_dir / "lexical_diagnostics.tsv",
+            usage_threshold=config.usage_posterior_threshold,
+        )
+        store.export_piece_inventory(
+            run_dir / "piece_inventory.tsv",
+            alpha=config.piece_alpha,
+            complexity_weight=config.piece_complexity_weight,
+            complexity_kappa=config.piece_complexity_kappa,
+            complexity_beta=config.piece_complexity_beta,
+            complexity_tau=config.piece_complexity_tau,
+            base_stop_probability=config.piece_base_stop_probability,
+        )
     with (run_dir / "rule_usage.tsv").open(
         "w",
         encoding="utf-8",
@@ -1545,10 +2245,21 @@ def _finalize_inspection(
                 (rule.rule_id, aggregate.rule_usage.get(rule.rule_id, 0.0))
             )
 
-    complexity = store.complexity_summary(
+    lexical_complexity = store.complexity_summary(
         weight=config.complexity_weight,
         tau=config.complexity_tau,
         low_count_threshold=config.low_count_threshold,
+    )
+    complexity = (
+        lexical_complexity
+        if config.model == S1M1_MODEL
+        else store.piece_summary(
+            low_support_threshold=config.low_count_threshold,
+            complexity_weight=config.piece_complexity_weight,
+            complexity_kappa=config.piece_complexity_kappa,
+            complexity_beta=config.piece_complexity_beta,
+            complexity_tau=config.piece_complexity_tau,
+        )
     )
     denominator = max(1, aggregate.metrics.segments)
     summary: dict[str, Any] = {
@@ -1565,11 +2276,34 @@ def _finalize_inspection(
             "the bounded reported top-k analyses."
         ),
     }
+    if config.model == S1M2_MODEL:
+        expected_lexical = max(
+            1e-300,
+            aggregate.metrics.expected_lexical_tokens,
+        )
+        summary["lexical_diagnostics"] = lexical_complexity
+        summary["piece_posterior"] = {
+            "mean_segmentation_entropy_per_expected_lexical_token": (
+                aggregate.metrics.piece_segmentation_entropy / expected_lexical
+            ),
+            "whole_form_memorization_mass": (
+                aggregate.metrics.expected_whole_form_uses / expected_lexical
+            ),
+            "singleton_atomization_mass": (
+                aggregate.metrics.expected_singleton_path_uses / expected_lexical
+            ),
+            "multi_piece_compositional_mass": (
+                aggregate.metrics.expected_multi_piece_uses / expected_lexical
+            ),
+        }
     vocabulary = store.load_frozen_vocabulary()
     if vocabulary is not None:
         summary["vocabulary_budget"] = vocabulary.checkpoint_payload()
     _write_json(run_dir / "summary.json", summary)
-    report = _human_report(
+    report_builder = (
+        _human_report if config.model == S1M1_MODEL else _human_piece_report
+    )
+    report = report_builder(
         store=store,
         summary=summary,
         rule_usage=aggregate.rule_usage,
@@ -1687,7 +2421,10 @@ def _inspection_pass(
     run_dir: Path,
     telemetry: RuntimeTelemetry,
 ) -> dict[str, Any]:
-    store.begin_inspection()
+    if config.model == S1M1_MODEL:
+        store.begin_inspection()
+    else:
+        store.begin_piece_inspection()
     if config.workers > 1:
         return _parallel_inspection_pass(
             documents=documents,
@@ -1697,12 +2434,31 @@ def _inspection_pass(
             run_dir=run_dir,
             telemetry=telemetry,
         )
-    scorer = store.scorer(
-        alpha=config.lexical_alpha,
-        complexity_weight=config.complexity_weight,
-        complexity_tau=config.complexity_tau,
-        cache_size=config.lexicon_cache_size,
-    )
+    scorer = None
+    piece_engine = None
+    if config.model == S1M1_MODEL:
+        scorer = store.scorer(
+            alpha=config.lexical_alpha,
+            complexity_weight=config.complexity_weight,
+            complexity_tau=config.complexity_tau,
+            cache_size=config.lexicon_cache_size,
+        )
+    else:
+        piece_scorer = store.piece_scorer(
+            alpha=config.piece_alpha,
+            complexity_weight=config.piece_complexity_weight,
+            complexity_kappa=config.piece_complexity_kappa,
+            complexity_beta=config.piece_complexity_beta,
+            complexity_tau=config.piece_complexity_tau,
+            base_stop_probability=config.piece_base_stop_probability,
+            cache_size=config.lexicon_cache_size,
+        )
+        piece_engine = ComposedPieceInference(
+            piece_scorer,
+            model_config=config.piece_model_config,
+            cache_config=config.piece_cache_config,
+            inspection_top_k=config.analysis_top_k,
+        )
     vocabulary = store.load_frozen_vocabulary()
     if config.vocab_budget is not None and vocabulary is None:
         raise RuntimeError("Inspection requires the frozen pass-1 vocabulary.")
@@ -1710,6 +2466,8 @@ def _inspection_pass(
     boundaries_tmp = run_dir / "boundary_posteriors.jsonl.tmp"
     rule_usage: Counter[str] = Counter()
     counts: Counter[PhonologicalForm] = Counter()
+    piece_counts: Counter[PhonologicalForm] = Counter()
+    piece_support: Counter[PhonologicalForm] = Counter()
     metrics = PassMetrics()
     top1_sum = 0.0
     entropy_sum = 0.0
@@ -1734,20 +2492,52 @@ def _inspection_pass(
             ):
                 seen_lines.add(line_number)
                 started = telemetry.now()
-                graph = build_candidate_graph(segment, grammar, config.candidate_config)
-                telemetry.elapsed('inspection_candidate_generation', started)
-                candidate_counts = candidate_graph_statistics(graph)
-                started = telemetry.now()
-                inference = infer_segment(
-                    graph,
-                    scorer,
-                    whitespace_merge_penalty=config.whitespace_merge_penalty,
-                    top_k=config.analysis_top_k,
-                    vocabulary=vocabulary,
+                graph = (
+                    build_candidate_graph(segment, grammar, config.candidate_config)
+                    if config.model == S1M1_MODEL
+                    else build_lazy_candidate_graph(
+                        segment, grammar, config.candidate_config
+                    )
                 )
+                telemetry.elapsed('inspection_candidate_generation', started)
+                candidate_counts = (
+                    candidate_graph_statistics(graph)
+                    if config.model == S1M1_MODEL
+                    else lazy_candidate_graph_statistics(graph)
+                )
+                started = telemetry.now()
+                if config.model == S1M1_MODEL:
+                    assert scorer is not None
+                    inference = infer_segment(
+                        graph,
+                        scorer,
+                        whitespace_merge_penalty=config.whitespace_merge_penalty,
+                        top_k=config.analysis_top_k,
+                        vocabulary=vocabulary,
+                    )
+                else:
+                    assert piece_engine is not None
+                    inference = infer_composed_segment(
+                        graph,
+                        piece_engine,
+                        whitespace_merge_penalty=config.whitespace_merge_penalty,
+                        support_epsilon=config.piece_support_epsilon,
+                    )
+                    _record_composed_telemetry(
+                        telemetry,
+                        inference.counters,
+                        phase="inspection",
+                    )
                 telemetry.elapsed('inspection_inference', started)
                 started = telemetry.now()
-                counts.update(inference.expected_counts)
+                counts.update(
+                    inference.expected_counts
+                    if config.model == S1M1_MODEL
+                    else inference.lexical_expected_counts
+                )
+                if config.model == S1M2_MODEL:
+                    piece_counts.update(inference.piece_expected_counts)
+                    piece_support.update(inference.piece_occurrence_support)
                 rule_usage.update(inference.rule_usage)
                 telemetry.elapsed('inspection_count_aggregation', started)
                 metrics.update(
@@ -1756,7 +2546,11 @@ def _inspection_pass(
                     overflowed_tokens=graph.overflowed_tokens,
                     candidate_factors=candidate_counts["factors"],
                     candidate_nodes=candidate_counts["lattice_nodes"],
-                    candidate_edges=candidate_counts["lexical_edges"],
+                    candidate_edges=(
+                        candidate_counts["lexical_edges"]
+                        if config.model == S1M1_MODEL
+                        else candidate_counts["lexical_span_hypotheses"]
+                    ),
                 )
                 serialization_started = telemetry.now()
                 segment_id = (
@@ -1764,7 +2558,7 @@ def _inspection_pass(
                     f"s{segment_index:04d}"
                 )
                 row = {
-                    "schema_version": 1,
+                    "schema_version": 1 if config.model == S1M1_MODEL else 2,
                     "segment_id": segment_id,
                     "document": document.relative_path,
                     "line_number": line_number,
@@ -1772,7 +2566,11 @@ def _inspection_pass(
                     "source_end": segment.source_end,
                     "surface": segment.written,
                     "top_analyses": [
-                        _analysis_payload(analysis)
+                        (
+                            _analysis_payload(analysis)
+                            if config.model == S1M1_MODEL
+                            else _composed_analysis_payload(analysis)
+                        )
                         for analysis in inference.top_analyses
                     ],
                     "top_analysis_mass": inference.top_analysis_mass,
@@ -1786,13 +2584,31 @@ def _inspection_pass(
                     "log_partition": inference.log_partition,
                     "candidate_counts": candidate_counts,
                 }
+                if isinstance(inference, ComposedSegmentInference):
+                    row["piece_posterior"] = {
+                        "expected_piece_tokens": inference.expected_piece_tokens,
+                        "segmentation_entropy": (
+                            inference.piece_segmentation_entropy
+                        ),
+                        "whole_form_uses": inference.expected_whole_form_uses,
+                        "singleton_path_uses": (
+                            inference.expected_singleton_path_uses
+                        ),
+                        "multi_piece_uses": inference.expected_multi_piece_uses,
+                    }
                 if config.equivalence_diagnostics:
-                    row["candidate_fingerprint"] = candidate_graph_fingerprint(graph)
+                    row["candidate_fingerprint"] = (
+                        candidate_graph_fingerprint(graph)
+                        if config.model == S1M1_MODEL
+                        else _sha256_bytes(
+                            _canonical_json(candidate_counts).encode("utf-8")
+                        )
+                    )
                 analyses_handle.write(
                     json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n"
                 )
                 boundary_row = {
-                    "schema_version": 1,
+                    "schema_version": 1 if config.model == S1M1_MODEL else 2,
                     "segment_id": segment_id,
                     "surface": segment.written,
                     "boundaries": [
@@ -1856,7 +2672,12 @@ def _inspection_pass(
                 )
                 serial += 1
 
-                for form, mass in inference.expected_counts.items():
+                inference_lexical_counts = (
+                    inference.expected_counts
+                    if config.model == S1M1_MODEL
+                    else inference.lexical_expected_counts
+                )
+                for form, mass in inference_lexical_counts.items():
                     if mass >= config.usage_posterior_threshold:
                         surface_usage.append((form.key, segment.written, mass))
                 for analysis in inference.top_analyses:
@@ -1878,6 +2699,15 @@ def _inspection_pass(
                         )
                 if len(counts) >= config.flush_types:
                     _flush_counts(store, counts, table="inspection_counts")
+                if len(piece_counts) >= config.flush_types:
+                    store.add_inspection_piece_counts(
+                        (
+                            (piece, value, piece_support[piece])
+                            for piece, value in piece_counts.items()
+                        )
+                    )
+                    piece_counts.clear()
+                    piece_support.clear()
                 if len(surface_usage) + len(context_usage) >= config.flush_types:
                     store.add_usage(
                         surfaces=surface_usage,
@@ -1886,6 +2716,15 @@ def _inspection_pass(
                     surface_usage.clear()
                     context_usage.clear()
             _flush_counts(store, counts, table="inspection_counts")
+            if piece_counts:
+                store.add_inspection_piece_counts(
+                    (
+                        (piece, value, piece_support[piece])
+                        for piece, value in piece_counts.items()
+                    )
+                )
+                piece_counts.clear()
+                piece_support.clear()
             store.add_usage(surfaces=surface_usage, contexts=context_usage)
             metrics.documents += 1
             metrics.lines += len(seen_lines)
@@ -2009,6 +2848,123 @@ def _human_report(
     return "\n".join(lines)
 
 
+def _human_piece_report(
+    *,
+    store: LexiconStore,
+    summary: dict[str, Any],
+    rule_usage: Counter[str],
+    high_confidence: list[dict[str, Any]],
+    ambiguous: list[dict[str, Any]],
+    shifts: list[dict[str, Any]],
+    config: TrainingConfig,
+) -> str:
+    piece = summary["complexity"]
+    posterior = summary["piece_posterior"]
+    lines = [
+        "# S1M2 reusable-piece inspection",
+        "",
+        f"- implementation: `{S1M2_MODEL}`",
+        f"- representation: `{config.script} + {config.condition}`",
+        f"- segments: {summary['segments']}",
+        f"- mean identity mass: {summary['mean_identity_mass']:.6f}",
+        f"- mean latent mass: {summary['mean_latent_mass']:.6f}",
+        f"- active piece types: {piece['active_piece_types']}",
+        f"- observed piece types: {piece['piece_types']}",
+        (
+            "- whole-form memorization mass: "
+            f"{posterior['whole_form_memorization_mass']:.6f}"
+        ),
+        (
+            "- singleton atomization mass: "
+            f"{posterior['singleton_atomization_mass']:.6f}"
+        ),
+        (
+            "- multi-piece compositional mass: "
+            f"{posterior['multi_piece_compositional_mass']:.6f}"
+        ),
+        "",
+        "## Highest-frequency reusable pieces",
+        "",
+        "| piece | length | expected count | reuse occurrences | active |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for key, count, support, active in store.connection.execute(
+        "SELECT i.form_key, i.expected_count, i.occurrence_support, "
+        "CASE WHEN a.form_key IS NULL THEN 0 ELSE 1 END "
+        "FROM inspection_piece_counts i LEFT JOIN piece_lexicon a "
+        "ON a.form_key=i.form_key ORDER BY i.expected_count DESC, i.form_key "
+        "LIMIT 20"
+    ):
+        form = PhonologicalForm.from_key(str(key))
+        lines.append(
+            f"| {form.iast} | {len(form.symbols)} | {float(count):.6f} | "
+            f"{int(support)} | {int(active)} |"
+        )
+
+    def add_cases(title: str, cases: list[dict[str, Any]]) -> None:
+        lines.extend(["", f"## {title}", ""])
+        if not cases:
+            lines.append("_None in the bounded run._")
+            return
+        lines.extend(
+            [
+                "| surface | top lexical analysis | posterior | identity | latent | entropy |",
+                "|---|---|---:|---:|---:|---:|",
+            ]
+        )
+        for case in cases:
+            surface = str(case["surface"]).replace("|", "&#124;")
+            analysis = str(case["analysis"]).replace("|", "&#124;")
+            lines.append(
+                f"| {surface} | {analysis} | {case['posterior']:.6f} | "
+                f"{case['identity_mass']:.6f} | {case['latent_mass']:.6f} | "
+                f"{case['entropy']:.6f} |"
+            )
+
+    add_cases("High-confidence sandhi analyses", high_confidence)
+    add_cases("Most ambiguous composed cases", ambiguous)
+    add_cases("Largest identity-to-latent shifts", shifts)
+    lines.extend(
+        [
+            "",
+            "## Piece-length expected-count distribution",
+            "",
+            "| length | expected count |",
+            "|---:|---:|",
+        ]
+    )
+    for length, count in piece["expected_count_by_length"].items():
+        lines.append(f"| {length} | {float(count):.6f} |")
+    lines.extend(
+        [
+            "",
+            "## Most-used external sandhi rules",
+            "",
+            "| rule | expected usage |",
+            "|---|---:|",
+        ]
+    )
+    positive_rules = [item for item in rule_usage.most_common() if item[1] > 0.0]
+    for rule_id, usage in positive_rules[:20]:
+        lines.append(f"| {rule_id} | {usage:.6f} |")
+    lines.extend(
+        [
+            "",
+            "## Active/inactive semantics",
+            "",
+            (
+                "All legal pieces remain exactly scoreable. Persistent active "
+                "parameters are observed singletons plus pieces supported in at "
+                f"least {config.piece_min_reuse_occurrences} distinct lexical "
+                "occurrences."
+            ),
+            "No rule-use or generic sandhi reward is present.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
 @dataclass(frozen=True, slots=True)
 class TrainingResult:
     run_dir: Path
@@ -2069,7 +3025,9 @@ def run_training(
         grammar = StructuredSandhiGrammar.from_default_inventory()
         rules_path = repo_root / "data" / "rules" / "external_sandhi.tsv"
         provenance = {
-            "implementation": IMPLEMENTATION,
+            "implementation": (
+                IMPLEMENTATION if config.model == S1M1_MODEL else S1M2_MODEL
+            ),
             "git_commit": _git_commit(repo_root),
             "freeze_id": EXPECTED_FREEZE_ID,
             "manifest": manifest.as_posix(),
@@ -2114,6 +3072,8 @@ def run_training(
                 database_checkpoint is None
                 and (
                     store.has_table("counts_next")
+                    or store.has_table("piece_counts_next")
+                    or store.has_table("lexical_diagnostics_next")
                     or disk_checkpoint.get("active_pass") is not None
                     or int(disk_checkpoint.get("completed_passes", 0)) > 0
                 )

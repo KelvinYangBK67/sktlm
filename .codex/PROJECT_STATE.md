@@ -1353,3 +1353,41 @@ BOUNDARY_RULE_MASS_EQUIVALENCE=PASS
 S1M2_TRAINER_INTEGRATION=READY_TO_START
 FULL_M0_PROCESS_RUNNING=NO
 ```
+
+## 48. S1M2 streaming trainer integration complete (2026-09-05)
+
+The existing full-corpus-capable trainer now supports
+`model=reusable_pieces_v1` without replacing the frozen S1M1 path. S1M2 uses
+P1b lazy candidates and P1c exact inference directly. The neutral first pass
+and each later SQLite-scored pass keep one immutable piece state; pass
+finalization transactionally installs positive-count singletons plus pieces
+meeting the configured distinct-occurrence reuse threshold. Inactive pieces
+remain legal and receive the P1a countable-base-measure score. Lexical-form
+expected counts are retained only as diagnostics.
+
+Serial processing remains document-streaming and document-atomic. Parallel
+workers emit checksummed lexical/piece shards, which are reduced in canonical
+document order under bounded rolling submission. SQLite counts and the
+durable checkpoint commit together. A fresh bounded P1c engine is constructed
+after each between-pass update. Training performs no top-K decoding; bounded
+piece paths are generated only for inspection.
+
+The S1M2 artifacts include piece inventory/state/reuse/length/complexity,
+lexical diagnostics, exact analysis and boundary/rule summaries, piece
+ambiguity and memorization/atomization/composition masses, configuration,
+provenance, checkpoint/history, SQLite state, engineering telemetry, and a
+human report. Scientific output is byte-identical between serial/two-worker
+runs and after a simulated interruption immediately following a durable
+document commit. S1M1 config identity remains backward compatible because its
+payload omits all newly added S1M2-only fields.
+
+Focused pieces/latent tests passed (`76 passed`), and the repository suite
+passed (`633 passed, 2 warnings`). The warnings are unchanged PyTorch warnings.
+No production-shaped benchmark or full-M0 job has been launched.
+
+```text
+S1M2_TRAINER_INTEGRATION=COMPLETE
+RESUME_EQUIVALENCE=PASS
+S1M2_CONTINUOUS_PROFILING=READY_TO_START
+FULL_M0_PROCESS_RUNNING=NO
+```

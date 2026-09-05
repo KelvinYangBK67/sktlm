@@ -20,6 +20,7 @@ from sktlm.latent.vocabulary import (
     VocabularyEntry,
     allowed_key_sha256,
 )
+from sktlm.pieces.scorer import GeometricPhonemeBaseMeasure
 
 
 TRAINING_CHECKPOINT_KEY = "training_checkpoint"
@@ -105,6 +106,90 @@ class LexiconScorer:
         return math.log(max(probability, 1e-300)) - penalty
 
 
+class PieceStoreScorer:
+    """Bounded-cache P1a scorer over the finite active SQLite piece state."""
+
+    def __init__(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        alpha: float,
+        complexity_weight: float,
+        complexity_kappa: float,
+        complexity_beta: float,
+        complexity_tau: float,
+        base_stop_probability: float,
+        cache_size: int,
+        telemetry: RuntimeTelemetry,
+    ) -> None:
+        if not connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='piece_lexicon'"
+        ).fetchone():
+            raise RuntimeError("Cannot score before the neutral piece-count pass.")
+        self.connection = connection
+        self.alpha = alpha
+        self.complexity_weight = complexity_weight
+        self.complexity_kappa = complexity_kappa
+        self.complexity_beta = complexity_beta
+        self.complexity_tau = complexity_tau
+        self.base_measure = GeometricPhonemeBaseMeasure(base_stop_probability)
+        self.cache_size = cache_size
+        self.telemetry = telemetry
+        self._cache: OrderedDict[str, float] = OrderedDict()
+        self.score_calls = 0
+        self.cache_hits = 0
+        self.cache_misses = 0
+        self.sqlite_selects = 0
+        self.store_lookups = 0
+        self.sqlite_seconds = 0.0
+        row = connection.execute(
+            "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) "
+            "FROM piece_lexicon"
+        ).fetchone()
+        assert row is not None
+        self.active_piece_types = int(row[0])
+        self.total_count = float(row[1])
+        self.denominator = self.total_count + alpha
+
+    def _lookup(self, key: str) -> float:
+        cached = self._cache.get(key)
+        if cached is not None:
+            self.cache_hits += 1
+            self._cache.move_to_end(key)
+            return cached
+        self.cache_misses += 1
+        started = time.perf_counter()
+        row = self.connection.execute(
+            "SELECT expected_count FROM piece_lexicon WHERE form_key = ?",
+            (key,),
+        ).fetchone()
+        self.sqlite_seconds += time.perf_counter() - started
+        self.sqlite_selects += 1
+        self.store_lookups += 1
+        count = 0.0 if row is None else float(row[0])
+        self._cache[key] = count
+        if len(self._cache) > self.cache_size:
+            self._cache.popitem(last=False)
+        return count
+
+    def probability(self, piece: PhonologicalForm, count: float) -> float:
+        return (
+            count + self.alpha * self.base_measure.probability(piece)
+        ) / self.denominator
+
+    def score(self, piece: PhonologicalForm) -> float:
+        self.score_calls += 1
+        count = self._lookup(piece.key)
+        amplitude = self.complexity_weight * (
+            self.complexity_kappa
+            + self.complexity_beta * len(piece.symbols)
+        )
+        penalty = amplitude * math.log1p(
+            1.0 / (self.complexity_tau + count)
+        )
+        return math.log(max(self.probability(piece, count), 1e-300)) - penalty
+
+
 class LexiconStore:
     def __init__(
         self,
@@ -116,6 +201,7 @@ class LexiconStore:
         self.path = path
         self.telemetry = telemetry or RuntimeTelemetry()
         self._scorers: list[LexiconScorer] = []
+        self._piece_scorers: list[PieceStoreScorer] = []
         self.connection = sqlite3.connect(path)
         self.connection.execute("PRAGMA journal_mode=WAL")
         self.connection.execute("PRAGMA synchronous=NORMAL")
@@ -191,6 +277,166 @@ class LexiconStore:
                 ") WITHOUT ROWID"
             )
             self._set_training_checkpoint(checkpoint)
+
+    def begin_piece_count_pass(
+        self,
+        *,
+        resume: bool,
+        checkpoint: dict[str, Any],
+    ) -> None:
+        """Start or resume one crash-safe S1M2 lexical/piece count pass."""
+
+        with self.connection:
+            if not resume:
+                self.connection.execute("DROP TABLE IF EXISTS piece_counts_next")
+                self.connection.execute(
+                    "DROP TABLE IF EXISTS lexical_diagnostics_next"
+                )
+            self.connection.execute(
+                "CREATE TABLE IF NOT EXISTS piece_counts_next ("
+                "form_key TEXT PRIMARY KEY, "
+                "expected_count REAL NOT NULL, "
+                "occurrence_support INTEGER NOT NULL"
+                ") WITHOUT ROWID"
+            )
+            self.connection.execute(
+                "CREATE TABLE IF NOT EXISTS lexical_diagnostics_next ("
+                "form_key TEXT PRIMARY KEY, expected_count REAL NOT NULL"
+                ") WITHOUT ROWID"
+            )
+            self._set_training_checkpoint(checkpoint)
+
+    def add_document_piece_counts(
+        self,
+        counts: Iterable[tuple[PhonologicalForm, float, int]],
+    ) -> None:
+        if not self.connection.in_transaction:
+            raise RuntimeError("Document piece counts require an open transaction.")
+        rows = [
+            (piece.key, float(value), int(support))
+            for piece, value, support in counts
+            if value > 0.0
+        ]
+        started = time.perf_counter()
+        self.connection.executemany(
+            "INSERT INTO piece_counts_next("
+            "form_key, expected_count, occurrence_support"
+            ") VALUES (?, ?, ?) "
+            "ON CONFLICT(form_key) DO UPDATE SET "
+            "expected_count = expected_count + excluded.expected_count, "
+            "occurrence_support = occurrence_support + excluded.occurrence_support",
+            rows,
+        )
+        self.telemetry.elapsed("sqlite_piece_count_upsert", started)
+        self.telemetry.increment("sqlite_piece_count_upsert_calls")
+        self.telemetry.increment("sqlite_piece_count_upsert_rows", len(rows))
+
+    def add_document_lexical_diagnostics(
+        self,
+        counts: Iterable[tuple[PhonologicalForm, float]],
+    ) -> None:
+        if not self.connection.in_transaction:
+            raise RuntimeError(
+                "Document lexical diagnostics require an open transaction."
+            )
+        rows = [
+            (form.key, float(value))
+            for form, value in counts
+            if value > 0.0
+        ]
+        started = time.perf_counter()
+        self.connection.executemany(
+            "INSERT INTO lexical_diagnostics_next(form_key, expected_count) "
+            "VALUES (?, ?) ON CONFLICT(form_key) DO UPDATE SET "
+            "expected_count = expected_count + excluded.expected_count",
+            rows,
+        )
+        self.telemetry.elapsed("sqlite_lexical_diagnostic_upsert", started)
+        self.telemetry.increment("sqlite_lexical_diagnostic_upsert_calls")
+        self.telemetry.increment("sqlite_lexical_diagnostic_upsert_rows", len(rows))
+
+    def finalize_piece_count_pass(
+        self,
+        *,
+        min_reuse_occurrences: int,
+        checkpoint: dict[str, Any],
+    ) -> tuple[int, int, float]:
+        """Freeze the next finite active piece map and retain all diagnostics."""
+
+        row = self.connection.execute(
+            "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) "
+            "FROM piece_counts_next"
+        ).fetchone()
+        assert row is not None
+        all_piece_types = int(row[0])
+        if all_piece_types == 0 or float(row[1]) <= 0.0:
+            raise ValueError("Piece count pass produced an empty inventory.")
+        with self.connection:
+            self.connection.execute("DROP TABLE IF EXISTS piece_inventory")
+            self.connection.execute(
+                "ALTER TABLE piece_counts_next RENAME TO piece_inventory"
+            )
+            self.connection.execute("DROP TABLE IF EXISTS lexical_diagnostics")
+            self.connection.execute(
+                "ALTER TABLE lexical_diagnostics_next RENAME TO lexical_diagnostics"
+            )
+            self.connection.execute("DROP TABLE IF EXISTS piece_lexicon")
+            self.connection.execute(
+                "CREATE TABLE piece_lexicon ("
+                "form_key TEXT PRIMARY KEY, "
+                "expected_count REAL NOT NULL, "
+                "occurrence_support INTEGER NOT NULL"
+                ") WITHOUT ROWID"
+            )
+            self.connection.execute(
+                "INSERT INTO piece_lexicon("
+                "form_key, expected_count, occurrence_support"
+                ") SELECT form_key, expected_count, occurrence_support "
+                "FROM piece_inventory WHERE expected_count > 0.0 AND "
+                "(instr(form_key, '.') = 0 OR occurrence_support >= ?)",
+                (min_reuse_occurrences,),
+            )
+            active = self.connection.execute(
+                "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) "
+                "FROM piece_lexicon"
+            ).fetchone()
+            assert active is not None
+            checkpoint["history"][-1].update(
+                {
+                    "piece_types": all_piece_types,
+                    "active_piece_types": int(active[0]),
+                    "active_piece_count_total": float(active[1]),
+                }
+            )
+            self._set_training_checkpoint(checkpoint)
+        if int(active[0]) == 0 or float(active[1]) <= 0.0:
+            raise ValueError("Piece activation produced an empty active state.")
+        return all_piece_types, int(active[0]), float(active[1])
+
+    def piece_scorer(
+        self,
+        *,
+        alpha: float,
+        complexity_weight: float,
+        complexity_kappa: float,
+        complexity_beta: float,
+        complexity_tau: float,
+        base_stop_probability: float,
+        cache_size: int,
+    ) -> PieceStoreScorer:
+        scorer = PieceStoreScorer(
+            self.connection,
+            alpha=alpha,
+            complexity_weight=complexity_weight,
+            complexity_kappa=complexity_kappa,
+            complexity_beta=complexity_beta,
+            complexity_tau=complexity_tau,
+            base_stop_probability=base_stop_probability,
+            cache_size=cache_size,
+            telemetry=self.telemetry,
+        )
+        self._piece_scorers.append(scorer)
+        return scorer
 
     def load_frozen_vocabulary(self) -> FrozenVocabulary | None:
         """Load and validate the durable pass-1 vocabulary, if present."""
@@ -541,6 +787,19 @@ class LexiconStore:
             }
             for scorer in self._scorers
         ]
+        payload["piece_scorers"] = [
+            {
+                "score_calls": scorer.score_calls,
+                "cache_hits": scorer.cache_hits,
+                "cache_misses": scorer.cache_misses,
+                "sqlite_selects": scorer.sqlite_selects,
+                "sqlite_seconds": scorer.sqlite_seconds,
+                "cache_size": scorer.cache_size,
+                "active_piece_types": scorer.active_piece_types,
+                "active_count_total": scorer.total_count,
+            }
+            for scorer in self._piece_scorers
+        ]
         return payload
 
     def begin_inspection(self) -> None:
@@ -563,6 +822,39 @@ class LexiconStore:
                 "CREATE TABLE context_usage ("
                 "form_key TEXT NOT NULL, context TEXT NOT NULL, expected_mass REAL NOT NULL, "
                 "PRIMARY KEY(form_key, context))"
+            )
+
+    def begin_piece_inspection(self) -> None:
+        self.begin_inspection()
+        with self.connection:
+            self.connection.execute(
+                "DROP TABLE IF EXISTS inspection_piece_counts"
+            )
+            self.connection.execute(
+                "CREATE TABLE inspection_piece_counts ("
+                "form_key TEXT PRIMARY KEY, "
+                "expected_count REAL NOT NULL, "
+                "occurrence_support INTEGER NOT NULL"
+                ") WITHOUT ROWID"
+            )
+
+    def add_inspection_piece_counts(
+        self,
+        counts: Iterable[tuple[PhonologicalForm, float, int]],
+    ) -> None:
+        rows = [
+            (piece.key, float(value), int(support))
+            for piece, value, support in counts
+            if value > 0.0
+        ]
+        with self.connection:
+            self.connection.executemany(
+                "INSERT INTO inspection_piece_counts("
+                "form_key, expected_count, occurrence_support"
+                ") VALUES (?, ?, ?) ON CONFLICT(form_key) DO UPDATE SET "
+                "expected_count = expected_count + excluded.expected_count, "
+                "occurrence_support = occurrence_support + excluded.occurrence_support",
+                rows,
             )
 
     def add_usage(
@@ -659,6 +951,205 @@ class LexiconStore:
             "complexity_weight": weight,
             "complexity_tau": tau,
             "complexity_penalty": weight * raw,
+        }
+
+    def export_piece_inventory(
+        self,
+        path: Path,
+        *,
+        alpha: float,
+        complexity_weight: float,
+        complexity_kappa: float,
+        complexity_beta: float,
+        complexity_tau: float,
+        base_stop_probability: float,
+    ) -> None:
+        """Export final piece counts with the fixed active scoring state."""
+
+        active_row = self.connection.execute(
+            "SELECT COALESCE(SUM(expected_count), 0.0) FROM piece_lexicon"
+        ).fetchone()
+        assert active_row is not None
+        denominator = float(active_row[0]) + alpha
+        base = GeometricPhonemeBaseMeasure(base_stop_probability)
+        query = (
+            "SELECT i.form_key, i.expected_count, i.occurrence_support, "
+            "a.expected_count FROM inspection_piece_counts i "
+            "LEFT JOIN piece_lexicon a ON a.form_key = i.form_key "
+            "ORDER BY i.expected_count DESC, i.form_key"
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
+            writer.writerow(
+                (
+                    "piece_key",
+                    "piece",
+                    "phoneme_ids",
+                    "length",
+                    "expected_count",
+                    "occurrence_support",
+                    "active",
+                    "active_parameter_count",
+                    "model_probability",
+                    "model_log_score",
+                )
+            )
+            for key, expected, support, active_raw in self.connection.execute(query):
+                piece = PhonologicalForm.from_key(str(key))
+                active_count = 0.0 if active_raw is None else float(active_raw)
+                probability = (
+                    active_count + alpha * base.probability(piece)
+                ) / denominator
+                amplitude = complexity_weight * (
+                    complexity_kappa + complexity_beta * len(piece.symbols)
+                )
+                score = math.log(max(probability, 1e-300)) - amplitude * math.log1p(
+                    1.0 / (complexity_tau + active_count)
+                )
+                writer.writerow(
+                    (
+                        key,
+                        piece.iast,
+                        " ".join(piece.phoneme_ids),
+                        len(piece.symbols),
+                        expected,
+                        support,
+                        int(active_raw is not None),
+                        active_count,
+                        probability,
+                        score,
+                    )
+                )
+
+    def export_lexical_diagnostics(
+        self,
+        path: Path,
+        *,
+        usage_threshold: float,
+    ) -> None:
+        """Export S1M2 lexical-form counts without treating them as parameters."""
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        query = """
+            SELECT i.form_key, i.expected_count,
+                   COALESCE(s.variant_count, 0),
+                   COALESCE(c.context_count, 0)
+            FROM inspection_counts i
+            LEFT JOIN (
+                SELECT form_key, COUNT(*) AS variant_count
+                FROM surface_usage WHERE expected_mass >= ? GROUP BY form_key
+            ) s ON s.form_key = i.form_key
+            LEFT JOIN (
+                SELECT form_key, COUNT(*) AS context_count
+                FROM context_usage WHERE expected_mass >= ? GROUP BY form_key
+            ) c ON c.form_key = i.form_key
+            ORDER BY i.expected_count DESC, i.form_key
+        """
+        with path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
+            writer.writerow(
+                (
+                    "form_key",
+                    "latent_form",
+                    "phoneme_ids",
+                    "expected_count",
+                    "number_of_surface_variants",
+                    "number_of_contexts",
+                    "parameter_role",
+                )
+            )
+            for row in self.connection.execute(
+                query,
+                (usage_threshold, usage_threshold),
+            ):
+                form = PhonologicalForm.from_key(str(row[0]))
+                writer.writerow(
+                    (
+                        row[0],
+                        form.iast,
+                        " ".join(form.phoneme_ids),
+                        row[1],
+                        row[2],
+                        row[3],
+                        "diagnostic_not_scoring_parameter",
+                    )
+                )
+
+    def piece_summary(
+        self,
+        *,
+        low_support_threshold: float,
+        complexity_weight: float,
+        complexity_kappa: float,
+        complexity_beta: float,
+        complexity_tau: float,
+    ) -> dict[str, Any]:
+        row = self.connection.execute(
+            "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0), "
+            "COALESCE(SUM(CASE WHEN expected_count <= ? THEN 1 ELSE 0 END), 0) "
+            "FROM inspection_piece_counts",
+            (low_support_threshold,),
+        ).fetchone()
+        active = self.connection.execute(
+            "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) FROM piece_lexicon"
+        ).fetchone()
+        assert row is not None and active is not None
+        length_counts = {
+            str(int(length)): float(count)
+            for length, count in self.connection.execute(
+                "SELECT 1 + length(form_key) - length(replace(form_key, '.', '')), "
+                "SUM(expected_count) FROM inspection_piece_counts GROUP BY 1 "
+                "ORDER BY 1"
+            )
+        }
+        reuse_distribution = {
+            "0": 0,
+            "1": 0,
+            "2-4": 0,
+            "5-9": 0,
+            "10-99": 0,
+            "100+": 0,
+        }
+        for support, types in self.connection.execute(
+            "SELECT occurrence_support, COUNT(*) FROM inspection_piece_counts "
+            "GROUP BY occurrence_support"
+        ):
+            value = int(support)
+            bucket = (
+                "0"
+                if value == 0
+                else "1"
+                if value == 1
+                else "2-4"
+                if value < 5
+                else "5-9"
+                if value < 10
+                else "10-99"
+                if value < 100
+                else "100+"
+            )
+            reuse_distribution[bucket] += int(types)
+        complexity_raw = 0.0
+        for key, count in self.connection.execute(
+            "SELECT form_key, expected_count FROM inspection_piece_counts"
+        ):
+            length = str(key).count(".") + 1
+            complexity_raw += (
+                complexity_kappa + complexity_beta * length
+            ) * math.log1p(float(count) / complexity_tau)
+        return {
+            "piece_types": int(row[0]),
+            "expected_piece_tokens": float(row[1]),
+            "low_support_piece_types": int(row[2]),
+            "low_support_threshold": low_support_threshold,
+            "active_piece_types": int(active[0]),
+            "active_piece_count_total": float(active[1]),
+            "expected_count_by_length": length_counts,
+            "piece_types_by_occurrence_support": reuse_distribution,
+            "complexity_raw": complexity_raw,
+            "complexity_weight": complexity_weight,
+            "complexity_penalty": complexity_weight * complexity_raw,
         }
 
     def top_lexicon(self, limit: int) -> list[tuple[str, float, float]]:

@@ -13,15 +13,20 @@ S1M2 P1a production scoring: COMPLETE
 S1M2 P1b lazy candidates: COMPLETE
 S1M2 P1c exact composed inference: COMPLETE
 P1c/P0 and lazy/materialized equivalence gates: PASS
-S1M2 streaming trainer integration: READY TO START
+S1M2 streaming trainer integration: COMPLETE
+resume and serial/parallel scientific equivalence: PASS
+continuous profiling/benchmark freeze: READY TO START
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
-scores, composed with P1b lazy spans. It creates neither per-form P0 lattice
-objects nor persistent lexical-edge rows. Its form and piece-score caches have
-explicit entry and estimated-byte bounds. The focused pieces/latent suite
-passes (`70 passed`) and the P1c full-repository gate passes (`627 passed, 2
-warnings`). No full-corpus S1M2 run has started.
+scores, composed with P1b lazy spans. The streaming trainer now makes the piece
+state authoritative, updates it transactionally between passes, retains
+lexical counts as diagnostics, and exports the required exact scientific and
+bounded inspection artifacts. Document-interruption resume and one/two-worker
+scientific outputs are byte-identical. The focused pieces/latent suite passes
+(`76 passed`) and the trainer full-repository gate passes (`633 passed, 2
+warnings`). No production-shaped S1M2 benchmark or full-corpus S1M2 run has
+started.
 
 The historical deletion-readiness manifest remains provenance for the 12
 files classified `SAFE_TO_DELETE_REGENERABLE`. A read-only path check now finds
@@ -32,20 +37,16 @@ Do not rerun frozen S1M1 work or M0-prime generation/validation. `notes/**`
 remains strictly local/read-only and must never be modified, created, moved,
 copied, deleted, tracked, staged, restored, checked out, or force-added.
 
-## Next task: streaming trainer integration
+## Next task: continuous profiling and benchmark freeze
 
-Integrate the P1c engine into the existing full-corpus-capable streaming
-trainer. Preserve streaming documents, bounded memory, deterministic canonical
-reduction, SQLite durability, checkpoint/resume, and crash-safe document
-transactions. Piece parameters must be authoritative for scoring; lexical
-counts remain diagnostics.
-
-Implement fixed active piece state within each pass, expected piece and
-occurrence-support accumulation, between-pass activation, durable piece state,
-resume identity validation, required S1M2 artifacts, and tiny uninterrupted
-versus resumed equivalence. Run only cheap bounded work inline; detach any
-workload plausibly exceeding five minutes. Do not launch full-M0.
+Inspect and extend continuous-specific telemetry without feeding it into
+scientific decisions. Freeze deterministic representative and long-span stress
+document lists from static representation properties before serious
+optimization. Prepare character-, document-, and span/complexity-weighted
+projection bases. Run only cheap checks inline; detach any static scan or
+benchmark plausibly exceeding five minutes and record its exact SHA/config/run
+identity before launch. Do not launch full-M0.
 
 ```text
-S1M2_TRAINER_INTEGRATION=READY_TO_START
+S1M2_CONTINUOUS_PROFILING=READY_TO_START
 ```

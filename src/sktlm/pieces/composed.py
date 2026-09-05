@@ -22,6 +22,7 @@ from sktlm.latent.lazy_candidates import (
     LazyTokenLattice,
 )
 from sktlm.latent.phonology import PhonologicalForm
+from sktlm.pieces.inference import PieceSegmentation
 from sktlm.pieces.model import PieceModelConfig
 from sktlm.pieces.scorer import PieceScorer
 
@@ -60,6 +61,7 @@ class FormPieceEvaluation:
     whole_form_mass: float
     singleton_path_mass: float
     multi_piece_mass: float
+    top_segmentations: tuple[PieceSegmentation, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,12 +121,41 @@ class ComposedSegmentInference:
     identity_mass: float
     latent_mass: float
     expected_lexical_tokens: float
+    expected_piece_tokens: float
+    piece_segmentation_entropy: float
+    expected_whole_form_uses: float
+    expected_singleton_path_uses: float
+    expected_multi_piece_uses: float
     lexical_expected_counts: dict[PhonologicalForm, float]
     piece_expected_counts: dict[PhonologicalForm, float]
     rule_usage: dict[str, float]
     boundary_posteriors: tuple[BoundaryPosterior, ...]
+    top_analyses: tuple[ComposedAnalysisPosterior, ...]
+    top_analysis_mass: float
+    piece_occurrence_support: dict[PhonologicalForm, int]
     total_posterior_mass: float
     counters: ComposedInferenceCounters
+
+
+@dataclass(frozen=True, slots=True)
+class ComposedAnalysisPosterior:
+    """One bounded presentation path; never part of inference support."""
+
+    words: tuple[PhonologicalForm, ...]
+    piece_segmentations: tuple[tuple[PhonologicalForm, ...], ...]
+    probability: float
+    log_score: float
+    rule_ids: tuple[str, ...]
+    boundaries: tuple[LexicalBoundary, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _ComposedPath:
+    score: float
+    words: tuple[PhonologicalForm, ...]
+    piece_segmentations: tuple[tuple[PhonologicalForm, ...], ...]
+    rule_ids: tuple[str, ...]
+    boundaries: tuple[LexicalBoundary, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,11 +163,18 @@ class _TokenSummary:
     log_partition: float
     expected_log_weight: float
     identity_log_score: float
+    expected_piece_tokens: float
+    piece_segmentation_entropy: float
+    expected_whole_form_uses: float
+    expected_singleton_path_uses: float
+    expected_multi_piece_uses: float
     lexical_counts: dict[PhonologicalForm, float]
     piece_counts: dict[PhonologicalForm, float]
     boundary_mass: dict[str, float]
     boundary_meta: dict[str, LexicalBoundary]
     rule_usage: dict[str, float]
+    piece_occurrences: dict[PhonologicalForm, dict[str, float]]
+    top_paths: tuple[_ComposedPath, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,11 +183,18 @@ class _FactorSummary:
     log_score: float
     expected_log_weight: float
     identity_log_score: float
+    expected_piece_tokens: float
+    piece_segmentation_entropy: float
+    expected_whole_form_uses: float
+    expected_singleton_path_uses: float
+    expected_multi_piece_uses: float
     lexical_counts: dict[PhonologicalForm, float]
     piece_counts: dict[PhonologicalForm, float]
     boundary_mass: dict[str, float]
     boundary_meta: dict[str, LexicalBoundary]
     rule_usage: dict[str, float]
+    piece_occurrences: dict[PhonologicalForm, dict[str, float]]
+    top_paths: tuple[_ComposedPath, ...]
 
 
 def _estimated_form_bytes(form: PhonologicalForm) -> int:
@@ -161,6 +206,9 @@ def _estimated_evaluation_bytes(evaluation: FormPieceEvaluation) -> int:
     return 192 + _estimated_form_bytes(evaluation.form) + sum(
         80 + _estimated_form_bytes(piece)
         for piece in evaluation.expected_piece_counts
+    ) + sum(
+        96 + sum(_estimated_form_bytes(piece) for piece in item.pieces)
+        for item in evaluation.top_segmentations
     )
 
 
@@ -177,6 +225,24 @@ def _piece_ends(length: int, start: int, max_piece_length: int) -> tuple[int, ..
     return tuple(sorted(ends))
 
 
+def _trim_composed_paths(
+    paths: list[_ComposedPath],
+    limit: int,
+) -> list[_ComposedPath]:
+    paths.sort(
+        key=lambda path: (
+            -path.score,
+            tuple(word.key for word in path.words),
+            tuple(
+                tuple(piece.key for piece in segmentation)
+                for segmentation in path.piece_segmentations
+            ),
+            path.rule_ids,
+        )
+    )
+    return paths[:limit]
+
+
 class ComposedPieceInference:
     """One fixed-pass exact piece engine with bounded reusable state.
 
@@ -190,10 +256,14 @@ class ComposedPieceInference:
         *,
         model_config: PieceModelConfig = PieceModelConfig(),
         cache_config: ComposedCacheConfig = ComposedCacheConfig(),
+        inspection_top_k: int | None = None,
     ) -> None:
+        if inspection_top_k is not None and inspection_top_k < 1:
+            raise ValueError("inspection_top_k must be >= 1 or None")
         self.scorer = scorer
         self.model_config = model_config
         self.cache_config = cache_config
+        self.inspection_top_k = inspection_top_k
         self._piece_scores: OrderedDict[
             PhonologicalForm, tuple[float, int]
         ] = OrderedDict()
@@ -348,6 +418,42 @@ class ComposedPieceInference:
             for start in range(length)
         )
         singleton_path_mass = math.exp(singleton_score - raw_log_z)
+        top_segmentations: tuple[PieceSegmentation, ...] = ()
+        if self.inspection_top_k is not None:
+            paths: list[list[tuple[float, tuple[PhonologicalForm, ...]]]] = [
+                [] for _ in range(length + 1)
+            ]
+            paths[0] = [(0.0, ())]
+            for start in range(length):
+                for end in _piece_ends(
+                    length,
+                    start,
+                    self.model_config.max_piece_length,
+                ):
+                    piece = PhonologicalForm(form.symbols[start:end])
+                    score = _raw_prior_score(
+                        start, end, rho=self.model_config.rho
+                    ) + self._piece_score(piece)
+                    candidates = paths[end]
+                    candidates.extend(
+                        (prefix_score + score, prefix_pieces + (piece,))
+                        for prefix_score, prefix_pieces in paths[start]
+                    )
+                    candidates.sort(
+                        key=lambda item: (
+                            -item[0],
+                            tuple(piece.key for piece in item[1]),
+                        )
+                    )
+                    del candidates[self.inspection_top_k :]
+            top_segmentations = tuple(
+                PieceSegmentation(
+                    pieces=pieces,
+                    log_weight=score - prior_log_z,
+                    probability=math.exp(score - raw_log_z),
+                )
+                for score, pieces in paths[-1]
+            )
         evaluation = FormPieceEvaluation(
             form=form,
             prior_log_normalizer=prior_log_z,
@@ -359,6 +465,7 @@ class ComposedPieceInference:
             whole_form_mass=min(1.0, whole_form_mass),
             singleton_path_mass=min(1.0, singleton_path_mass),
             multi_piece_mass=max(0.0, 1.0 - whole_form_mass),
+            top_segmentations=top_segmentations,
         )
 
         size = _estimated_evaluation_bytes(evaluation)
@@ -430,7 +537,15 @@ def _evaluate_lazy_token(
     boundary_mass: dict[str, float] = defaultdict(float)
     boundary_meta: dict[str, LexicalBoundary] = {}
     rule_usage: dict[str, float] = defaultdict(float)
+    piece_occurrences: dict[
+        PhonologicalForm, dict[str, float]
+    ] = defaultdict(dict)
     expected_log_weight = 0.0
+    expected_piece_tokens = 0.0
+    piece_segmentation_entropy = 0.0
+    expected_whole_form_uses = 0.0
+    expected_singleton_path_uses = 0.0
+    expected_multi_piece_uses = 0.0
     for start in range(node_count - 1):
         for span in lattice.iter_spans_from(start):
             engine.record_lazy_span(hypothesis=False)
@@ -443,9 +558,22 @@ def _evaluate_lazy_token(
             )
             lexical_counts[span.word] += mass
             expected_log_weight += mass * evaluation.expected_log_weight
+            expected_piece_tokens += mass * evaluation.expected_piece_tokens
+            piece_segmentation_entropy += mass * evaluation.segmentation_entropy
+            expected_whole_form_uses += mass * evaluation.whole_form_mass
+            expected_singleton_path_uses += mass * evaluation.singleton_path_mass
+            expected_multi_piece_uses += mass * evaluation.multi_piece_mass
             if mass > 0.0:
                 for piece, conditional_mass in evaluation.expected_piece_counts.items():
                     piece_counts[piece] += mass * conditional_mass
+                    occurrence_id = (
+                        f"{lattice.nodes[span.start].surface_end}:"
+                        f"{lattice.nodes[span.end].surface_start}:{span.word.key}"
+                    )
+                    piece_occurrences[piece][occurrence_id] = max(
+                        piece_occurrences[piece].get(occurrence_id, 0.0),
+                        mass * conditional_mass,
+                    )
             if span.boundary is not None:
                 boundary_mass[span.boundary.boundary_id] += mass
                 boundary_meta[span.boundary.boundary_id] = span.boundary
@@ -457,15 +585,63 @@ def _evaluate_lazy_token(
     if identity is not None:
         engine.record_lazy_span(hypothesis=False)
         identity_log_score = engine.evaluate_form(identity.word).log_score
+
+    top_paths: tuple[_ComposedPath, ...] = ()
+    if engine.inspection_top_k is not None:
+        paths: list[list[_ComposedPath]] = [[] for _ in range(node_count)]
+        paths[0] = [_ComposedPath(0.0, (), (), (), ())]
+        for start in range(node_count - 1):
+            if not paths[start]:
+                continue
+            for span in lattice.iter_spans_from(start):
+                engine.record_lazy_span(hypothesis=False)
+                evaluation = engine.evaluate_form(span.word)
+                candidates = paths[span.end]
+                for prefix in paths[start]:
+                    for segmentation in evaluation.top_segmentations:
+                        candidates.append(
+                            _ComposedPath(
+                                score=prefix.score + segmentation.log_weight,
+                                words=prefix.words + (span.word,),
+                                piece_segmentations=(
+                                    prefix.piece_segmentations
+                                    + (segmentation.pieces,)
+                                ),
+                                rule_ids=prefix.rule_ids + span.rule_ids,
+                                boundaries=(
+                                    prefix.boundaries
+                                    + (
+                                        (span.boundary,)
+                                        if span.boundary is not None
+                                        else ()
+                                    )
+                                ),
+                            )
+                        )
+                paths[span.end] = _trim_composed_paths(
+                    candidates,
+                    engine.inspection_top_k,
+                )
+        top_paths = tuple(paths[-1])
     return _TokenSummary(
         log_partition=log_z,
         expected_log_weight=expected_log_weight,
         identity_log_score=identity_log_score,
+        expected_piece_tokens=expected_piece_tokens,
+        piece_segmentation_entropy=piece_segmentation_entropy,
+        expected_whole_form_uses=expected_whole_form_uses,
+        expected_singleton_path_uses=expected_singleton_path_uses,
+        expected_multi_piece_uses=expected_multi_piece_uses,
         lexical_counts=dict(lexical_counts),
         piece_counts=dict(piece_counts),
         boundary_mass=dict(boundary_mass),
         boundary_meta=boundary_meta,
         rule_usage=dict(rule_usage),
+        piece_occurrences={
+            piece: dict(occurrences)
+            for piece, occurrences in piece_occurrences.items()
+        },
+        top_paths=top_paths,
     )
 
 
@@ -479,16 +655,40 @@ def _evaluate_factor(
         engine.record_merged_form()
         evaluation = engine.evaluate_form(factor.merged_word)
         penalty = whitespace_merge_penalty * factor.ignored_whitespace
+        top_paths = tuple(
+            _ComposedPath(
+                score=segmentation.log_weight - penalty,
+                words=(factor.merged_word,),
+                piece_segmentations=(segmentation.pieces,),
+                rule_ids=(),
+                boundaries=(),
+            )
+            for segmentation in evaluation.top_segmentations
+        )
         return _FactorSummary(
             factor=factor,
             log_score=evaluation.log_score - penalty,
             expected_log_weight=evaluation.expected_log_weight - penalty,
             identity_log_score=-math.inf,
+            expected_piece_tokens=evaluation.expected_piece_tokens,
+            piece_segmentation_entropy=evaluation.segmentation_entropy,
+            expected_whole_form_uses=evaluation.whole_form_mass,
+            expected_singleton_path_uses=evaluation.singleton_path_mass,
+            expected_multi_piece_uses=evaluation.multi_piece_mass,
             lexical_counts={factor.merged_word: 1.0},
             piece_counts=evaluation.expected_piece_counts,
             boundary_mass={},
             boundary_meta={},
             rule_usage={},
+            piece_occurrences={
+                piece: {
+                    f"merge:{factor.start_token}:{factor.end_token}:"
+                    f"{factor.merged_word.key}": conditional_mass
+                }
+                for piece, conditional_mass in evaluation.expected_piece_counts.items()
+                if conditional_mass > 0.0
+            },
+            top_paths=top_paths,
         )
     assert factor.lattice is not None
     token = _evaluate_lazy_token(factor.lattice, engine)
@@ -501,11 +701,18 @@ def _evaluate_factor(
             if not factor.incoming.transformed and not factor.outgoing.transformed
             else -math.inf
         ),
+        expected_piece_tokens=token.expected_piece_tokens,
+        piece_segmentation_entropy=token.piece_segmentation_entropy,
+        expected_whole_form_uses=token.expected_whole_form_uses,
+        expected_singleton_path_uses=token.expected_singleton_path_uses,
+        expected_multi_piece_uses=token.expected_multi_piece_uses,
         lexical_counts=token.lexical_counts,
         piece_counts=token.piece_counts,
         boundary_mass=token.boundary_mass,
         boundary_meta=token.boundary_meta,
         rule_usage=token.rule_usage,
+        piece_occurrences=token.piece_occurrences,
+        top_paths=token.top_paths,
     )
 
 
@@ -563,6 +770,70 @@ def _outer_backward(
     return tuple(states)
 
 
+def _outer_top_paths(
+    graph: LazyCandidateGraph,
+    evaluations: tuple[_FactorSummary, ...],
+    *,
+    top_k: int,
+) -> tuple[_ComposedPath, ...]:
+    states: list[dict[str, list[_ComposedPath]]] = [
+        {} for _ in range(len(graph.segment.tokens) + 1)
+    ]
+    states[0]["START"] = [_ComposedPath(0.0, (), (), (), ())]
+    by_start: dict[int, list[_FactorSummary]] = defaultdict(list)
+    for evaluation in evaluations:
+        by_start[evaluation.factor.start_token].append(evaluation)
+    for position in range(len(graph.segment.tokens)):
+        for evaluation in by_start[position]:
+            factor = evaluation.factor
+            prefixes = states[position].get(factor.incoming.key, ())
+            if not prefixes:
+                continue
+            visible_boundary: tuple[LexicalBoundary, ...] = ()
+            outer_rules: tuple[str, ...] = ()
+            if factor.end_token < len(graph.segment.tokens):
+                boundary_index = factor.end_token
+                left = graph.segment.tokens[boundary_index - 1]
+                right = graph.segment.tokens[boundary_index]
+                visible_boundary = (
+                    LexicalBoundary(
+                        boundary_id=f"visible:{boundary_index}",
+                        cue_kind="space",
+                        source_start=left.source_end,
+                        source_end=right.source_start,
+                    ),
+                )
+                outer_rules = factor.outgoing.rule_ids
+            candidates = states[factor.end_token].setdefault(
+                factor.outgoing.key, []
+            )
+            for prefix in prefixes:
+                for local in evaluation.top_paths:
+                    candidates.append(
+                        _ComposedPath(
+                            score=prefix.score + local.score,
+                            words=prefix.words + local.words,
+                            piece_segmentations=(
+                                prefix.piece_segmentations
+                                + local.piece_segmentations
+                            ),
+                            rule_ids=(
+                                prefix.rule_ids + local.rule_ids + outer_rules
+                            ),
+                            boundaries=(
+                                prefix.boundaries
+                                + local.boundaries
+                                + visible_boundary
+                            ),
+                        )
+                    )
+            states[factor.end_token][factor.outgoing.key] = _trim_composed_paths(
+                candidates,
+                top_k,
+            )
+    return tuple(states[-1].get("END", ()))
+
+
 def _add_scaled(
     target: dict[object, float],
     source: dict[object, float],
@@ -577,11 +848,14 @@ def infer_composed_segment(
     engine: ComposedPieceInference,
     *,
     whitespace_merge_penalty: float,
+    support_epsilon: float = 0.0,
 ) -> ComposedSegmentInference:
     """Marginalize lazy outer analyses and all inner piece paths exactly."""
 
     if whitespace_merge_penalty < 0.0:
         raise ValueError("whitespace_merge_penalty must be >= 0")
+    if support_epsilon < 0.0:
+        raise ValueError("support_epsilon must be >= 0")
     before = engine.counter_snapshot()
     engine.record_graph(graph)
     evaluations = tuple(
@@ -603,7 +877,13 @@ def infer_composed_segment(
     rule_usage: dict[str, float] = defaultdict(float)
     boundary_mass: dict[str, float] = defaultdict(float)
     boundary_meta: dict[str, LexicalBoundary] = {}
+    piece_occurrences: dict[PhonologicalForm, set[str]] = defaultdict(set)
     expected_log_weight = 0.0
+    expected_piece_tokens = 0.0
+    piece_segmentation_entropy = 0.0
+    expected_whole_form_uses = 0.0
+    expected_singleton_path_uses = 0.0
+    expected_multi_piece_uses = 0.0
     for evaluation in evaluations:
         factor = evaluation.factor
         prefix = forward[factor.start_token].get(factor.incoming.key, -math.inf)
@@ -612,11 +892,30 @@ def infer_composed_segment(
             continue
         factor_mass = math.exp(prefix + evaluation.log_score + suffix - log_z)
         expected_log_weight += factor_mass * evaluation.expected_log_weight
+        expected_piece_tokens += factor_mass * evaluation.expected_piece_tokens
+        piece_segmentation_entropy += (
+            factor_mass * evaluation.piece_segmentation_entropy
+        )
+        expected_whole_form_uses += (
+            factor_mass * evaluation.expected_whole_form_uses
+        )
+        expected_singleton_path_uses += (
+            factor_mass * evaluation.expected_singleton_path_uses
+        )
+        expected_multi_piece_uses += (
+            factor_mass * evaluation.expected_multi_piece_uses
+        )
         _add_scaled(lexical_counts, evaluation.lexical_counts, factor_mass)
         _add_scaled(piece_counts, evaluation.piece_counts, factor_mass)
         _add_scaled(rule_usage, evaluation.rule_usage, factor_mass)
         _add_scaled(boundary_mass, evaluation.boundary_mass, factor_mass)
         boundary_meta.update(evaluation.boundary_meta)
+        for piece, occurrences in evaluation.piece_occurrences.items():
+            for occurrence_id, conditional_mass in occurrences.items():
+                if factor_mass * conditional_mass > support_epsilon:
+                    piece_occurrences[piece].add(
+                        f"{factor.start_token}:{factor.end_token}:{occurrence_id}"
+                    )
 
         if factor.end_token < len(graph.segment.tokens):
             boundary_index = factor.end_token
@@ -653,16 +952,47 @@ def infer_composed_segment(
         )
         for boundary_id, probability in sorted(boundary_mass.items())
     )
+    decoded = (
+        ()
+        if engine.inspection_top_k is None
+        else _outer_top_paths(
+            graph,
+            evaluations,
+            top_k=engine.inspection_top_k,
+        )
+    )
+    analyses = tuple(
+        ComposedAnalysisPosterior(
+            words=path.words,
+            piece_segmentations=path.piece_segmentations,
+            probability=math.exp(path.score - log_z),
+            log_score=path.score,
+            rule_ids=path.rule_ids,
+            boundaries=path.boundaries,
+        )
+        for path in decoded
+    )
     return ComposedSegmentInference(
         log_partition=log_z,
         entropy=max(0.0, log_z - expected_log_weight),
         identity_mass=identity_mass,
         latent_mass=1.0 - identity_mass,
         expected_lexical_tokens=sum(lexical_counts.values()),
+        expected_piece_tokens=expected_piece_tokens,
+        piece_segmentation_entropy=piece_segmentation_entropy,
+        expected_whole_form_uses=expected_whole_form_uses,
+        expected_singleton_path_uses=expected_singleton_path_uses,
+        expected_multi_piece_uses=expected_multi_piece_uses,
         lexical_expected_counts=dict(lexical_counts),
         piece_expected_counts=dict(piece_counts),
         rule_usage=dict(rule_usage),
         boundary_posteriors=boundaries,
+        top_analyses=analyses,
+        top_analysis_mass=sum(item.probability for item in analyses),
+        piece_occurrence_support={
+            piece: len(occurrences)
+            for piece, occurrences in piece_occurrences.items()
+        },
         total_posterior_mass=posterior_mass,
         counters=engine.counter_delta(before),
     )

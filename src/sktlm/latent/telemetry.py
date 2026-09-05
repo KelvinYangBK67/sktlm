@@ -12,6 +12,7 @@ from typing import Any
 class RuntimeTelemetry:
     timings: Counter[str] = field(default_factory=Counter)
     counters: Counter[str] = field(default_factory=Counter)
+    gauges: dict[str, int | float] = field(default_factory=dict)
 
     @staticmethod
     def now() -> float:
@@ -26,8 +27,12 @@ class RuntimeTelemetry:
     def increment(self, label: str, value: int = 1) -> None:
         self.counters[label] += value
 
+    def maximum(self, label: str, value: int | float) -> None:
+        self.gauges[label] = max(value, self.gauges.get(label, value))
+
     def payload(self) -> dict[str, Any]:
         return {
             "timings_seconds": dict(sorted(self.timings.items())),
             "counters": dict(sorted(self.counters.items())),
+            "gauges": dict(sorted(self.gauges.items())),
         }

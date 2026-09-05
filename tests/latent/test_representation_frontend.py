@@ -14,7 +14,7 @@ from sktlm.latent.frontend import (
     parse_surface,
 )
 from sktlm.latent.phonology import parse_iast_form
-from sktlm.latent.training import TrainingConfig
+from sktlm.latent.training import S1M1_MODEL, TrainingConfig
 from sktlm.representations.devanagari import transliterate_iast_to_devanagari
 from sktlm.representations.spacing import apply_spacing
 
@@ -115,4 +115,14 @@ def test_selectors_reject_unsupported_values_and_cli_defaults_remain_iast_surfac
     with pytest.raises(ValueError, match="unsupported formal condition"):
         TrainingConfig(condition="unknown")
     args = build_arg_parser().parse_args([])
-    assert (args.script, args.condition) == ("iast", "surface_word")
+    assert (args.model, args.script, args.condition) == (
+        S1M1_MODEL,
+        "iast",
+        "surface_word",
+    )
+
+
+def test_s1m2_config_fields_do_not_change_frozen_s1m1_identity() -> None:
+    payload = TrainingConfig().payload()
+    assert "model" not in payload
+    assert not any(key.startswith("piece_") for key in payload)
