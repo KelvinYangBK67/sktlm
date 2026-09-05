@@ -22,6 +22,7 @@ continuous representative/stress workloads: FROZEN
 continuous detailed profiling telemetry: IMPLEMENTED / VALIDATED
 paired fixed cheap profile: COMPLETE
 probe script-neutral workload identity: PASS
+optimization 1 transient span-form reuse: ACCEPTED
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -45,11 +46,12 @@ copied, deleted, tracked, staged, restored, checked out, or force-added.
 
 ## Next task: measure the frozen continuous workloads
 
-Optimization 1 now retains the already-validated `PhonologicalForm` in each
-transient lazy span; the focused suite passes (`82 passed`). Re-run the same
-fixed paired probe only after this clean committed optimization checkpoint.
-Accept it only if scientific outputs remain equivalent and the measured object
-churn/time improves. Use
+Implement optimization 2 as a transient per-form-evaluation table of the exact
+legal piece transitions, reusing each already-scored piece across inner
+forward/backward/posterior/singleton/top-k loops without persisting a P0 lattice.
+Preserve loop order, counters with clearly engineering-only interpretation, and
+all scientific outputs. Run focused equivalence tests, then the same paired
+probe from a clean commit. Use
 only the frozen representative/stress lists for later timing, and detach either
 full workload if plausibly longer than five minutes. Do not rerun the static
 scan or launch full-M0.
@@ -58,5 +60,6 @@ scan or launch full-M0.
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
 CONTINUOUS_SCRIPT_NEUTRAL_PROBE=PASS
 S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
-S1M2_OPTIMIZATION_1=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
+S1M2_OPTIMIZATION_1=ACCEPTED
+S1M2_OPTIMIZATION_2=READY_TO_IMPLEMENT
 ```

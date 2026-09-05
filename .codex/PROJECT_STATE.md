@@ -1372,6 +1372,26 @@ S1M2_OPTIMIZATION_1=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 55. Continuous optimization 1 accepted (2026-09-05)
+
+At candidate SHA `d4e48735cefb9d25a057c40c1b12e811cc1afa32`, the fixed
+paired cProfile probe retains all seven canonical scientific artifacts
+byte-identically within each frontend. Wall time improved by 47.3% for
+M0-prime IAST and 50.3% for M0 Devanagari; training inference improved about
+57% and inspection inference about 38--41%.
+
+The targeted mechanism improved directly: total calls fell 45.1%, form
+initialization count fell 49.4%, initialization time fell 75.9%, and the former
+lazy-span word-property hotspot disappeared. Optimization 1 is accepted. The
+next measured target is transient reuse of exact piece transitions within one
+per-form cache-miss evaluation; it must not persist P0 lattices.
+
+```text
+S1M2_OPTIMIZATION_1=ACCEPTED
+S1M2_OPTIMIZATION_2=READY_TO_IMPLEMENT
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 49. Continuous benchmark selection rule frozen (2026-09-05)
 
 Before observing any S1M2 continuous timing, the static selection algorithm

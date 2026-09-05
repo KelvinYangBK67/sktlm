@@ -251,3 +251,31 @@ scientific divergence.
 ```text
 S1M2_OPTIMIZATION_1=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
 ```
+
+### Optimization 1 result: accepted
+
+The exact fixed paired probe at candidate SHA
+`d4e48735cefb9d25a057c40c1b12e811cc1afa32` preserves all seven canonical
+scientific artifacts byte-for-byte within each frontend. Profiled wall time
+fell from 19.088 to 10.054 seconds for M0-prime IAST (`47.3%`) and from 18.629
+to 9.252 seconds for M0 Devanagari (`50.3%`). Training inference improved
+`57.8%`/`57.1%`; inspection inference improved `37.6%`/`41.0%`.
+
+The measured mechanism also moved: profiled calls fell from 25.55 million to
+14.03 million (`45.1%`), `PhonologicalForm` initializations fell `49.4%`, their
+cumulative cost fell `75.9%`, and the `LazyLexicalSpan.word` hotspot vanished.
+Process memory and artifact size remained effectively unchanged on this tiny
+serial probe. The compact evidence is
+`evidence/s1m2_continuous_optimization_1_v1.json`.
+
+The largest remaining exact-inference cost is now per-form piece evaluation,
+where the same legal `(start, end, piece, prior, score)` transitions are rebuilt
+for forward, backward, posterior, singleton, and inspection top-k passes within
+one cache-miss evaluation. The next candidate is a transient per-evaluation
+transition table; it must preserve loop order, legal support, path scores, and
+all marginals, and it must not persist per-form lattices.
+
+```text
+S1M2_OPTIMIZATION_1=ACCEPTED
+S1M2_OPTIMIZATION_2=TRANSIENT_PIECE_TRANSITION_REUSE_READY
+```

@@ -1,0 +1,78 @@
+{
+  "schema_version": "sktlm-s1m2-continuous-optimization-evidence/v1",
+  "optimization_id": "transient_lazy_span_form_reuse",
+  "status": "ACCEPTED",
+  "baseline_git_sha": "95f6029cc2e0e05852305cf7d4f511c064d60789",
+  "candidate_git_sha": "d4e48735cefb9d25a057c40c1b12e811cc1afa32",
+  "workload": {
+    "id": "representative_probe",
+    "document_list_sha256": "7bf936025ce28c43cdae0407d532c461b50726a28275fa40062a8a6889296ed3",
+    "documents": 3,
+    "max_lines_per_document": 2,
+    "passes": 1,
+    "workers": 1,
+    "inspection_enabled": true,
+    "cprofile_enabled": true
+  },
+  "equivalence": {
+    "iast_canonical_artifacts_byte_identical": 7,
+    "devanagari_canonical_artifacts_byte_identical": 7,
+    "canonical_artifacts": [
+      "iteration_metrics.json",
+      "piece_inventory.tsv",
+      "lexical_diagnostics.tsv",
+      "analyses.jsonl",
+      "boundary_posteriors.jsonl",
+      "rule_usage.tsv",
+      "summary.json"
+    ],
+    "focused_pieces_latent_tests": "82 passed"
+  },
+  "cells": [
+    {
+      "cell_id": "m0_prime_iast_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_prime_iast_95f6029_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_prime_iast_d4e4873_a01",
+      "candidate_benchmark_metrics_sha256": "c6036fc6b5e5260e937bb8b40d7ef6294531622b9c21c23a540a546ee446c741",
+      "candidate_profile_sha256": "30e4512cf5cd68596f3dd47f2d0662080a2ffe22c56453878d0c1db6acdfc8a1",
+      "baseline_wall_seconds": 19.087854999990668,
+      "candidate_wall_seconds": 10.054426200018497,
+      "wall_improvement_percent": 47.326,
+      "baseline_training_inference_seconds": 3.9018120999389794,
+      "candidate_training_inference_seconds": 1.6456568000139669,
+      "training_inference_improvement_percent": 57.823,
+      "baseline_inspection_inference_seconds": 12.610992399975657,
+      "candidate_inspection_inference_seconds": 7.863464799942449,
+      "inspection_inference_improvement_percent": 37.646
+    },
+    {
+      "cell_id": "m0_devanagari_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_devanagari_95f6029_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_devanagari_d4e4873_a01",
+      "candidate_benchmark_metrics_sha256": "414d49c65e0c46e2a6f517185a582f445da49c92bea11dcba10ee9da1aa7e253",
+      "candidate_profile_sha256": "c6731cba0dda1b5071eb1103923be53a0658fbbc76345ebd5cb71fad0c5ccccc",
+      "baseline_wall_seconds": 18.629407399974298,
+      "candidate_wall_seconds": 9.251514100003988,
+      "wall_improvement_percent": 50.339,
+      "baseline_training_inference_seconds": 3.801191000005929,
+      "candidate_training_inference_seconds": 1.6302315999637358,
+      "training_inference_improvement_percent": 57.113,
+      "baseline_inspection_inference_seconds": 12.056852100009564,
+      "candidate_inspection_inference_seconds": 7.108454399975017,
+      "inspection_inference_improvement_percent": 41.042
+    }
+  ],
+  "mechanism": {
+    "baseline_profiled_function_calls": 25553328,
+    "candidate_profiled_function_calls": 14028134,
+    "function_call_improvement_percent": 45.103,
+    "baseline_phonological_form_initializations": 391082,
+    "candidate_phonological_form_initializations": 198005,
+    "initialization_count_improvement_percent": 49.370,
+    "baseline_initialization_cumulative_seconds": 7.001,
+    "candidate_initialization_cumulative_seconds": 1.687,
+    "initialization_time_improvement_percent": 75.903,
+    "lazy_span_word_hotspot_remaining": false
+  },
+  "semantic_reason": "The form was already constructed for unchanged span legality validation. Retaining it only in the transient iterator result changes object reuse, not legal support, weights, ordering, marginals, caching bounds, or persistent candidate materialization."
+}
