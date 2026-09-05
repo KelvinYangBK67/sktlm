@@ -1354,6 +1354,26 @@ S1M2_TRAINER_INTEGRATION=READY_TO_START
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 60. Continuous optimization 5 accepted (2026-09-05)
+
+Candidate SHA `1c27eb02b0dd5db8d6fbc23d2707ee14fa0b8b82` delays piece-form
+construction until an actual miss in the unchanged bounded score LRU. All
+seven canonical probe artifacts are byte-identical to optimization 4 in both
+frontends, the focused pieces/latent suite passes (`83 passed`), and cache
+counters/gauges remain identical. Profiled wall time improved `20.5%`/`21.5%`,
+with piece-transition construction `57--64%` faster.
+
+The next exact candidate reuses the immutable inner piece-path key now rebuilt
+135,550 times by inspection sorts. It remains bounded by the existing inner
+top-K state and cannot affect exact marginal inference.
+
+```text
+S1M2_OPTIMIZATION_5=ACCEPTED
+S1M2_OPTIMIZATION_6=INNER_PATH_KEY_REUSE_READY
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 59. Continuous optimization 4 accepted (2026-09-05)
 
 Candidate SHA `942007c231a14c73caa6441176c66cc7cec3ff32` stores the existing

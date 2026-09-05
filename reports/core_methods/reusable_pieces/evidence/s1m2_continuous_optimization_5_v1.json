@@ -1,0 +1,83 @@
+{
+  "schema_version": "sktlm-s1m2-continuous-optimization-evidence/v1",
+  "optimization_id": "lazy_piece_form_construction",
+  "status": "ACCEPTED",
+  "baseline_git_sha": "942007c231a14c73caa6441176c66cc7cec3ff32",
+  "candidate_git_sha": "1c27eb02b0dd5db8d6fbc23d2707ee14fa0b8b82",
+  "workload": {
+    "id": "representative_probe",
+    "document_list_sha256": "7bf936025ce28c43cdae0407d532c461b50726a28275fa40062a8a6889296ed3",
+    "documents": 3,
+    "max_lines_per_document": 2,
+    "passes": 1,
+    "workers": 1,
+    "inspection_enabled": true,
+    "cprofile_enabled": true
+  },
+  "equivalence": {
+    "iast_canonical_artifacts_byte_identical": 7,
+    "devanagari_canonical_artifacts_byte_identical": 7,
+    "canonical_artifacts": [
+      "iteration_metrics.json",
+      "piece_inventory.tsv",
+      "lexical_diagnostics.tsv",
+      "analyses.jsonl",
+      "boundary_posteriors.jsonl",
+      "rule_usage.tsv",
+      "summary.json"
+    ],
+    "focused_pieces_latent_tests": "83 passed",
+    "piece_score_cache_counters_identical": true,
+    "piece_score_cache_gauges_identical": true
+  },
+  "cells": [
+    {
+      "cell_id": "m0_prime_iast_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_prime_iast_942007c_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_prime_iast_1c27eb0_a01",
+      "candidate_benchmark_metrics_sha256": "bf33e11d5081048bd063552307d1430e0ad479666868120a87728584f39d1320",
+      "candidate_profile_sha256": "729cad80590cd3e79da448f398293f07eeb343813494f2dfc3dc44c3a04356b3",
+      "baseline_wall_seconds": 2.720524900010787,
+      "candidate_wall_seconds": 2.163408899999922,
+      "wall_improvement_percent": 20.478,
+      "baseline_training_inference_seconds": 0.8496384000172839,
+      "candidate_training_inference_seconds": 0.5938353999808896,
+      "training_inference_improvement_percent": 30.107,
+      "baseline_inspection_inference_seconds": 1.4532284000015352,
+      "candidate_inspection_inference_seconds": 1.268742500047665,
+      "inspection_inference_improvement_percent": 12.695,
+      "training_transition_build_improvement_percent": 64.398,
+      "inspection_transition_build_improvement_percent": 57.026
+    },
+    {
+      "cell_id": "m0_devanagari_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_devanagari_942007c_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_devanagari_1c27eb0_a01",
+      "candidate_benchmark_metrics_sha256": "c2079491889bae4973f4fbeb4900eec936bb44dc8750ab9c3d8dbb916fe065e0",
+      "candidate_profile_sha256": "f2d9748e6904aa135344b6fde11f8a7d1575e3ecc1f851c1d9dcdb475e3053fd",
+      "baseline_wall_seconds": 2.7401594999828376,
+      "candidate_wall_seconds": 2.151151199999731,
+      "wall_improvement_percent": 21.495,
+      "baseline_training_inference_seconds": 0.8727584000153001,
+      "candidate_training_inference_seconds": 0.6780547999951523,
+      "training_inference_improvement_percent": 22.309,
+      "baseline_inspection_inference_seconds": 1.5568344999337569,
+      "candidate_inspection_inference_seconds": 1.1619915000046603,
+      "inspection_inference_improvement_percent": 25.362,
+      "training_transition_build_improvement_percent": 60.041,
+      "inspection_transition_build_improvement_percent": 60.575
+    }
+  ],
+  "mechanism": {
+    "baseline_profiled_function_calls": 8378498,
+    "candidate_profiled_function_calls": 6808832,
+    "function_call_improvement_percent": 18.735,
+    "baseline_phonological_form_initializations": 63806,
+    "candidate_phonological_form_initializations": 15614,
+    "initialization_count_improvement_percent": 75.529,
+    "piece_score_calls_per_phase": 25135,
+    "piece_score_cache_misses_per_phase": 1039
+  },
+  "boundedness": "The existing entry- and byte-bounded OrderedDict is unchanged in capacity and LRU order. Its immutable symbol-tuple key and cached form share the tuple object; no new cache or corpus-proportional state is introduced.",
+  "semantic_reason": "Every legal piece is already an immutable slice of a validated lexical form. Tuple equality is exactly PhonologicalForm equality for these pieces. On a miss the same form validation and scorer call occur; on a hit the identical cached form and score are returned. Legal support, score calls, cache ordering, counters, sizes, transitions, and scientific outputs are unchanged."
+}

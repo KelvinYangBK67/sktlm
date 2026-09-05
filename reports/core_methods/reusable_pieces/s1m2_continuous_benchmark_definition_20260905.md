@@ -385,3 +385,32 @@ piece identities must remain identical.
 S1M2_OPTIMIZATION_4=ACCEPTED
 S1M2_OPTIMIZATION_5=LAZY_PIECE_FORM_CONSTRUCTION_READY
 ```
+
+### Optimization 5 result: accepted
+
+At candidate SHA `1c27eb02b0dd5db8d6fbc23d2707ee14fa0b8b82`, the existing
+bounded piece-score LRU is keyed by the immutable phoneme tuple available
+before form construction. A miss constructs and validates the same
+`PhonologicalForm`, invokes the same scorer, and stores the form with its score;
+a hit returns both. LRU access order, logical byte accounting, entry bounds,
+and all score/cache counters are unchanged.
+
+The pieces/latent suite passes (`83 passed`), and all seven canonical artifacts
+remain byte-identical to optimization 4 for both frontends. Profiled wall time
+improved `20.5%` for M0-prime IAST and `21.5%` for M0 Devanagari. Training
+inference improved `30.1%`/`22.3%`, inspection improved `12.7%`/`25.4%`, and
+piece-transition construction improved `57--64%`. `PhonologicalForm`
+initializations fell from 63,806 to 15,614 while cache calls and misses stayed
+at 25,135 and 1,039 per phase. The compact acceptance envelope is
+`evidence/s1m2_continuous_optimization_5_v1.json`.
+
+The largest remaining inspection-specific allocation is the inner top-K sort
+key: 135,550 calls reconstruct nested piece-key tuples for paths that already
+carry those pieces. The next small candidate extends an immutable piece-key
+tuple alongside each bounded inner inspection path and sorts on it directly,
+without changing path generation, score/tie ordering, or top-K bounds.
+
+```text
+S1M2_OPTIMIZATION_5=ACCEPTED
+S1M2_OPTIMIZATION_6=INNER_PATH_KEY_REUSE_READY
+```
