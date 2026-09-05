@@ -1354,6 +1354,31 @@ S1M2_TRAINER_INTEGRATION=READY_TO_START
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 49. Continuous benchmark selection rule frozen (2026-09-05)
+
+Before observing any S1M2 continuous timing, the static selection algorithm
+was frozen in `configs/benchmarks/s1m2_continuous_selection.json` and
+`src/sktlm/latent/continuous_structure.py`. It reads exactly validated
+M0-prime IAST `continuous` and frozen M0 Devanagari `continuous`, and requires
+matched document membership plus per-document phoneme and ordered span-length
+identity.
+
+Selection is model- and runtime-free. Two stress documents are ranked by
+maximum punctuation-free continuous span, then squared-span proxy and
+phonemes. After removing them, representative documents are the nearest
+distinct 25th/50th/75th percentile rows under squared-span proxy, maximum
+span, phonemes, and relative-path tie break. The scanner also emits full
+static totals needed for character-, document-, and span-weighted projections.
+
+The selector's 26 focused static/frontend/M0-prime tests pass. The full
+240-document/two-frontend scan has not yet run and is treated as a detached
+workload. It is not model training and gives no full-M0 authority.
+
+```text
+CONTINUOUS_BENCHMARK_SELECTION_RULE=FROZEN
+CONTINUOUS_STATIC_SCAN=READY_TO_LAUNCH
+```
+
 ## 48. S1M2 streaming trainer integration complete (2026-09-05)
 
 The existing full-corpus-capable trainer now supports

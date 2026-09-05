@@ -1,0 +1,25 @@
+{
+  "schema_version": "sktlm-s1m2-continuous-selection/v1",
+  "require_clean_git": true,
+  "inputs": [
+    {
+      "cell_id": "m0_prime_iast_continuous",
+      "manifest": "artifacts/m0_prime/m0_prime_iast_continuous_v1/manifest.csv",
+      "manifest_sha256": "3a8cbb3359ce8cce2a7d551281a8faf50b9fed33f9b8d4bce3425d28237ae922",
+      "script": "iast_m0_prime",
+      "condition": "continuous"
+    },
+    {
+      "cell_id": "m0_devanagari_continuous",
+      "manifest": "data/manifests/representations.csv",
+      "manifest_sha256": "c04124b2bc4909750ebedc4e7ec939df3c18edecf1598345ab3f662a21fbc520",
+      "script": "devanagari",
+      "condition": "continuous"
+    }
+  ],
+  "selection": {
+    "basis_cell": "m0_devanagari_continuous",
+    "representative_percentiles": [25, 50, 75],
+    "stress_documents": 2
+  }
+}
