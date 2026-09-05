@@ -326,3 +326,33 @@ piece length and top-k. Lazy-token top-k is not changed in this candidate.
 S1M2_OPTIMIZATION_2=ACCEPTED
 S1M2_OPTIMIZATION_3=INNER_TOP_K_BATCHING_READY
 ```
+
+### Optimization 3 result: accepted
+
+At candidate SHA `e4ed01671a7c0ec027db46372680f5c6b90b176f`, each inner
+piece-path destination is sorted and truncated only when all of its incoming
+paths have arrived, immediately before that position is consumed. Since every
+transition moves right, this is the same top-K union with the unchanged score
+and piece-key tie order. Temporary paths remain bounded by
+`(max_piece_length + 1) * inspection_top_k` per position, including the
+whole-form edge. Exact forward/backward inference is untouched.
+
+A direct P0 comparison passes for ordered paths, log weights, and posterior
+probabilities; the pieces/latent suite passes (`83 passed`). All seven
+canonical scientific artifacts remain byte-identical to optimization 2 in
+both frontends. Profiled wall time improved another `10.5%` for M0-prime IAST
+and `9.4%` for M0 Devanagari; inspection inference improved `14.6%`/`17.2%`,
+and inner piece top-K time improved `32.3%`/`34.3%`. List-sort calls fell from
+26,234 to 5,725 (`78.2%`). The compact acceptance envelope is
+`evidence/s1m2_continuous_optimization_3_v1.json`.
+
+The largest remaining avoidable inspection hotspot is now repeated creation
+of the same deterministic nested tie key for surviving `_ComposedPath`
+objects during 1,078 lazy/outer trims. The next small candidate stores that
+inspection-only immutable key on each transient path and extends it alongside
+the path, retaining the identical ordering and existing top-K bounds.
+
+```text
+S1M2_OPTIMIZATION_3=ACCEPTED
+S1M2_OPTIMIZATION_4=COMPOSED_PATH_TIE_KEY_REUSE_READY
+```

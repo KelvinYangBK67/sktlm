@@ -1,0 +1,76 @@
+{
+  "schema_version": "sktlm-s1m2-continuous-optimization-evidence/v1",
+  "optimization_id": "batched_inner_piece_top_k",
+  "status": "ACCEPTED",
+  "baseline_git_sha": "407904ac8ed8196c7b676b7deab8b707a6f85e8d",
+  "candidate_git_sha": "e4ed01671a7c0ec027db46372680f5c6b90b176f",
+  "workload": {
+    "id": "representative_probe",
+    "document_list_sha256": "7bf936025ce28c43cdae0407d532c461b50726a28275fa40062a8a6889296ed3",
+    "documents": 3,
+    "max_lines_per_document": 2,
+    "passes": 1,
+    "workers": 1,
+    "inspection_enabled": true,
+    "cprofile_enabled": true
+  },
+  "equivalence": {
+    "iast_canonical_artifacts_byte_identical": 7,
+    "devanagari_canonical_artifacts_byte_identical": 7,
+    "canonical_artifacts": [
+      "iteration_metrics.json",
+      "piece_inventory.tsv",
+      "lexical_diagnostics.tsv",
+      "analyses.jsonl",
+      "boundary_posteriors.jsonl",
+      "rule_usage.tsv",
+      "summary.json"
+    ],
+    "focused_pieces_latent_tests": "83 passed",
+    "ordered_inner_top_k_p0_equivalence": "PASS"
+  },
+  "cells": [
+    {
+      "cell_id": "m0_prime_iast_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_prime_iast_407904a_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_prime_iast_e4ed016_a01",
+      "candidate_benchmark_metrics_sha256": "9dde756e5e3571f2110775c7786223a13d97a9124cbaac3e68aeb024de7ea905",
+      "candidate_profile_sha256": "aabfbe787557e6e9b17574d3879edd115de3d9e2506cab780c4d9b7e8c637811",
+      "baseline_wall_seconds": 4.081509399984498,
+      "candidate_wall_seconds": 3.650974899996072,
+      "wall_improvement_percent": 10.548,
+      "baseline_inspection_inference_seconds": 2.6358127999701537,
+      "candidate_inspection_inference_seconds": 2.2509962000185624,
+      "inspection_inference_improvement_percent": 14.600,
+      "baseline_inner_piece_top_k_seconds": 0.6108063000719994,
+      "candidate_inner_piece_top_k_seconds": 0.4136982001073193,
+      "inner_piece_top_k_improvement_percent": 32.270
+    },
+    {
+      "cell_id": "m0_devanagari_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_devanagari_407904a_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_devanagari_e4ed016_a01",
+      "candidate_benchmark_metrics_sha256": "ced45c1e30a03181527678e76d8421a548b1ad7e7bd3ee5f4d283054407ce67f",
+      "candidate_profile_sha256": "edc40b31657329d1ef878e0d12db3e6676a01568e6b806a9250e59a48ce258a9",
+      "baseline_wall_seconds": 3.8238919000141323,
+      "candidate_wall_seconds": 3.464808799995808,
+      "wall_improvement_percent": 9.391,
+      "baseline_inspection_inference_seconds": 2.440385999972932,
+      "candidate_inspection_inference_seconds": 2.0212767999619246,
+      "inspection_inference_improvement_percent": 17.174,
+      "baseline_inner_piece_top_k_seconds": 0.5982588999322616,
+      "candidate_inner_piece_top_k_seconds": 0.3931474000273738,
+      "inner_piece_top_k_improvement_percent": 34.285
+    }
+  ],
+  "mechanism": {
+    "baseline_profiled_function_calls": 10440838,
+    "candidate_profiled_function_calls": 9367513,
+    "function_call_improvement_percent": 10.280,
+    "baseline_list_sort_calls": 26234,
+    "candidate_list_sort_calls": 5725,
+    "list_sort_call_improvement_percent": 78.176
+  },
+  "boundedness": "Before one destination is consumed it receives at most inspection_top_k paths from each of the fixed max_piece_length predecessors, plus the single whole-form predecessor when applicable. The transient bound is therefore (max_piece_length + 1) * inspection_top_k per position and is independent of corpus size.",
+  "semantic_reason": "All piece transitions move to a later position, so every incoming candidate is present before a destination is consumed. Sorting and truncating once with the unchanged score and deterministic piece-key tie order returns exactly the same top-K union; exact partition and marginals do not use this inspection-only path table."
+}

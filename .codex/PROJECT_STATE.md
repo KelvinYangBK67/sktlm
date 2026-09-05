@@ -1594,3 +1594,25 @@ RESUME_EQUIVALENCE=PASS
 S1M2_CONTINUOUS_PROFILING=READY_TO_START
 FULL_M0_PROCESS_RUNNING=NO
 ```
+
+## 58. Continuous optimization 3 accepted (2026-09-05)
+
+Candidate SHA `e4ed01671a7c0ec027db46372680f5c6b90b176f` batches inner
+piece-path sort/truncate once per destination after all incoming transitions
+arrive. The unchanged deterministic ordering matches P0 ordered top paths,
+weights, and probabilities. Exact partition and marginals are untouched, and
+temporary work is bounded by fixed maximum piece length and inspection top-K.
+
+The focused pieces/latent suite passes (`83 passed`), and all seven canonical
+probe artifacts are byte-identical to optimization 2 for both continuous
+frontends. Profiled wall time improved `10.5%`/`9.4%`, inner piece top-K time
+improved `32.3%`/`34.3%`, and list-sort calls fell `78.2%`. The next measured
+inspection hotspot is repeated `_ComposedPath` nested tie-key construction;
+immutable transient key reuse is ready as optimization 4.
+
+```text
+S1M2_OPTIMIZATION_3=ACCEPTED
+S1M2_OPTIMIZATION_4=COMPOSED_PATH_TIE_KEY_REUSE_READY
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```

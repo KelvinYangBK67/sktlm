@@ -15,7 +15,7 @@ S1M2 P1c exact composed inference: COMPLETE
 P1c/P0 and lazy/materialized equivalence gates: PASS
 S1M2 streaming trainer integration: COMPLETE
 resume and serial/parallel scientific equivalence: PASS
-continuous profiling/benchmark freeze: READY TO START
+continuous profiling/benchmark freeze: IN PROGRESS
 continuous benchmark selection rule: FROZEN
 continuous static corpus scan: COMPLETE / VALIDATED
 continuous representative/stress workloads: FROZEN
@@ -23,7 +23,8 @@ continuous detailed profiling telemetry: IMPLEMENTED / VALIDATED
 paired fixed cheap profile: COMPLETE
 probe script-neutral workload identity: PASS
 optimization 1 transient span-form reuse: ACCEPTED
-optimization 2 transient piece-transition reuse: IMPLEMENTED / EQUIVALENT
+optimization 2 transient piece-transition reuse: ACCEPTED
+optimization 3 inner piece top-K batching: ACCEPTED
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -45,17 +46,16 @@ Do not rerun frozen S1M1 work or M0-prime generation/validation. `notes/**`
 remains strictly local/read-only and must never be modified, created, moved,
 copied, deleted, tracked, staged, restored, checked out, or force-added.
 
-## Next task: measure the frozen continuous workloads
+## Next task: continue measured exact continuous optimization
 
-Optimization 2 is accepted with byte-identical science and another 59% paired
-probe wall-time reduction. Implement optimization 3 by accumulating all inner
-piece-path candidates for a destination position and applying the unchanged
-sort/tie/truncate exactly once before that position is consumed. Keep temporary
-work bounded by fixed piece length and top-k. Run focused equivalence and then
-the same paired probe from a clean SHA. Use
-only the frozen representative/stress lists for later timing, and detach either
-full workload if plausibly longer than five minutes. Do not rerun the static
-scan or launch full-M0.
+Optimization 3 is accepted with P0 ordered-top-path equivalence, byte-identical
+science, and another 10.5%/9.4% paired-probe wall-time reduction. Implement
+optimization 4 by storing the existing deterministic nested sort/tie key on
+each transient inspection-only `_ComposedPath` and extending it with the path.
+Do not change top-K limits or ordering. Run focused equivalence and then the
+same paired probe from a clean SHA. Use only the frozen representative/stress
+lists for later timing, and detach either full workload if plausibly longer
+than five minutes. Do not rerun the static scan or launch full-M0.
 
 ```text
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
@@ -63,5 +63,6 @@ CONTINUOUS_SCRIPT_NEUTRAL_PROBE=PASS
 S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 S1M2_OPTIMIZATION_1=ACCEPTED
 S1M2_OPTIMIZATION_2=ACCEPTED
-S1M2_OPTIMIZATION_3=READY_TO_IMPLEMENT
+S1M2_OPTIMIZATION_3=ACCEPTED
+S1M2_OPTIMIZATION_4=READY_TO_IMPLEMENT
 ```
