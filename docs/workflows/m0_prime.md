@@ -93,3 +93,13 @@ M0-prime IAST:  continuous (script id iast_m0_prime)
 The original M0 IAST `continuous` cell remains
 `NA_SCIENTIFICALLY_EXCLUDED` and is never silently replaced in historical M0
 analysis. Consumers opt into the M0-prime manifest explicitly.
+
+## Formal result
+
+The formal 240-document derivation and validation completed successfully on
+2026-09-05 at Git commit
+`e7f5b7d8e57b81868c97000b3058347160030df2`. Validation status is `VALID` and
+the output manifest SHA-256 is
+`3a8cbb3359ce8cce2a7d551281a8faf50b9fed33f9b8d4bce3425d28237ae922`.
+See `reports/core_methods/latent_lexicon/m0_prime_formal_checkpoint_20260905.md`
+for exact totals, provenance, and compact checksum identities.

@@ -13,7 +13,7 @@ selective archival: COMPLETE
 deletion gate: READY (classification only; no deletion authorized or done)
 S1M1: FROZEN
 M0-prime implementation/config/cheap validation: COMPLETE
-M0-prime formal generation/validation: NOT LAUNCHED
+M0-prime formal generation/validation: VALID
 S1M2 P1c: NOT STARTED
 ```
 
@@ -25,21 +25,16 @@ checked out, or force-added.
 
 ## Next task
 
-Commit and push the prepared generic/public-facing and M0-prime changes on
-`main`. From that clean committed worktree, launch exactly one genuinely
-detached Windows job that runs these exact commands sequentially:
+Commit and push the tracked M0-prime formal checkpoint on `main`. Then build a
+clean S1M2 branch from updated `main` and preserve the existing P0 and P1a/P1b
+work by cherry-picking commits `f95bc5f` and `3d4c512`. Do not check out or
+carry forward the old branch's historically tracked `notes/reviewer/*` files;
+the two S1M2 commits themselves do not touch `notes/**`.
 
-```powershell
-python -m sktlm.representations.m0_prime generate --config configs/representations/m0_prime_iast_continuous.json
-python -m sktlm.representations.m0_prime validate --config configs/representations/m0_prime_iast_continuous.json
-```
-
-The second command may run only if generation succeeds. Record the task name,
-command, log, expected output paths, and terminal result under ignored
-`artifacts/m0_prime/`; immediately after scheduling it, return without polling.
-On a later invocation, inspect the completion evidence once. If successful,
-validate and freeze formal hashes/provenance, then synchronize S1M2 P0/P1a/P1b
-onto the updated common state without implementing P1c.
+Resolve durable state and `pyproject.toml` against current `main`, run the
+focused P0/P1a/P1b and M0-prime interface tests, audit the untyped exact-
+concatenation/no-morphology contract, and push the synchronized branch. Do not
+implement P1c and do not launch an S1M2 full-corpus experiment.
 
 The exact stop condition remains:
 

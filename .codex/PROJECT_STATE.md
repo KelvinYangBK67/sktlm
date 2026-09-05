@@ -1241,3 +1241,32 @@ real-corpus check preserved phoneme identity while observing every declared
 contrast. The formal full-data output has not yet been generated or validated.
 Its exact generation and validation commands are documented in the workflow;
 they must run sequentially once in the authorized detached Windows job.
+
+## 44. M0-prime formal generation and validation (2026-09-05)
+
+The one-shot detached task `sktlm-m0-prime-iast-continuous-v1` ran the exact
+documented generation command followed by validation at clean implementation
+commit `e7f5b7d8e57b81868c97000b3058347160030df2`. It started at 02:00 local time
+and finished at 02:22; both command exit codes and the Task Scheduler result
+were zero. The job was not duplicated.
+
+The formal result is `VALID` for all 240 documents. The output contains
+64,932,981 bytes, 51,409,280 characters, 2,107,648 lines, and 46,255,133
+script-neutral phonemes. It observes 276,978 lexical `/ai/`, 116,388 lexical
+`/au/`, 25,078 separate `a+i`, 23,397 separate `a+u`, 1,558,270 lexical
+aspirates, and 423 plain consonant+`h` sequences. Source/output phoneme
+identity, membership, document/split identity, every source/output hash,
+deterministic regeneration, line/whitespace preservation, and all declared
+contrasts passed.
+
+The formal manifest SHA-256 is
+`3a8cbb3359ce8cce2a7d551281a8faf50b9fed33f9b8d4bce3425d28237ae922`;
+config SHA-256 is
+`648a0f68f3ad4dfcb057ca06b93d960a1cb1105844667c54144d28c7c9860478`;
+implementation-file SHA-256 is
+`9e3eb0705aac2c0f5164d79f7129188f289ba7e9e115094581ab6bcf62b33406`.
+All four entries in the compact `SHA256SUMS` passed an independent post-run
+check. Generated text and execution artifacts remain ignored; the tracked
+formal checkpoint records the permanent interface/provenance. M0-prime is
+complete and validated. S1M2 synchronization/readiness is next; P1c has not
+started.
