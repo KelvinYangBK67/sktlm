@@ -1354,6 +1354,27 @@ S1M2_TRAINER_INTEGRATION=READY_TO_START
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 59. Continuous optimization 4 accepted (2026-09-05)
+
+Candidate SHA `942007c231a14c73caa6441176c66cc7cec3ff32` stores the existing
+deterministic composed-path tie key on each bounded transient inspection path.
+All seven canonical probe artifacts are byte-identical to optimization 3 for
+both frontends, and the focused pieces/latent suite passes (`83 passed`).
+Profiled wall time improved `25.5%`/`20.9%`; lazy-token top-K improved
+`78.3%`/`71.3%`.
+
+The next measured target is constructing 25,135 piece forms before bounded
+cache lookup when only 1,039 keys miss. Optimization 5 will key that same LRU
+by the immutable symbol tuple and construct a form only on misses, without
+changing cache bounds, ordering, scoring, legal support, or emitted identities.
+
+```text
+S1M2_OPTIMIZATION_4=ACCEPTED
+S1M2_OPTIMIZATION_5=LAZY_PIECE_FORM_CONSTRUCTION_READY
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 54. Continuous optimization 1 implemented and equivalence-validated (2026-09-05)
 
 The first measured candidate retains the `PhonologicalForm` that

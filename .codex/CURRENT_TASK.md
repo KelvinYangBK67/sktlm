@@ -25,6 +25,7 @@ probe script-neutral workload identity: PASS
 optimization 1 transient span-form reuse: ACCEPTED
 optimization 2 transient piece-transition reuse: ACCEPTED
 optimization 3 inner piece top-K batching: ACCEPTED
+optimization 4 composed-path tie-key reuse: ACCEPTED
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -48,14 +49,16 @@ copied, deleted, tracked, staged, restored, checked out, or force-added.
 
 ## Next task: continue measured exact continuous optimization
 
-Optimization 3 is accepted with P0 ordered-top-path equivalence, byte-identical
-science, and another 10.5%/9.4% paired-probe wall-time reduction. Implement
-optimization 4 by storing the existing deterministic nested sort/tie key on
-each transient inspection-only `_ComposedPath` and extending it with the path.
-Do not change top-K limits or ordering. Run focused equivalence and then the
-same paired probe from a clean SHA. Use only the frozen representative/stress
-lists for later timing, and detach either full workload if plausibly longer
-than five minutes. Do not rerun the static scan or launch full-M0.
+Optimization 4 is accepted with byte-identical science and another 25.5%/20.9%
+paired-probe wall-time reduction. Implement optimization 5 by keying the same
+bounded piece-score LRU with the immutable symbol tuple available before form
+construction. Construct and validate `PhonologicalForm` only on a cache miss,
+and return the cached form and score on a hit. Preserve LRU order, entry/byte
+bounds, counters, scores, and emitted identities. Run focused equivalence and
+then the same paired probe from a clean SHA. Use only the frozen
+representative/stress lists for later timing, and detach either full workload
+if plausibly longer than five minutes. Do not rerun the static scan or launch
+full-M0.
 
 ```text
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
@@ -64,5 +67,6 @@ S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 S1M2_OPTIMIZATION_1=ACCEPTED
 S1M2_OPTIMIZATION_2=ACCEPTED
 S1M2_OPTIMIZATION_3=ACCEPTED
-S1M2_OPTIMIZATION_4=READY_TO_IMPLEMENT
+S1M2_OPTIMIZATION_4=ACCEPTED
+S1M2_OPTIMIZATION_5=READY_TO_IMPLEMENT
 ```

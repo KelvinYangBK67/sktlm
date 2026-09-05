@@ -356,3 +356,32 @@ the path, retaining the identical ordering and existing top-K bounds.
 S1M2_OPTIMIZATION_3=ACCEPTED
 S1M2_OPTIMIZATION_4=COMPOSED_PATH_TIE_KEY_REUSE_READY
 ```
+
+### Optimization 4 result: accepted
+
+At candidate SHA `942007c231a14c73caa6441176c66cc7cec3ff32`, every bounded
+inspection-only `_ComposedPath` stores the exact lexical-key, nested piece-key,
+and rule-ID tuple that repeated trims previously reconstructed. New paths
+extend this immutable key alongside the corresponding scientific path; the
+score and stable deterministic tie order are unchanged. No key survives the
+existing bounded top-K path state.
+
+The pieces/latent suite passes (`83 passed`), and all seven canonical artifacts
+remain byte-identical to optimization 3 in both frontends. Profiled wall time
+improved `25.5%` for M0-prime IAST and `20.9%` for M0 Devanagari; inspection
+inference improved `35.4%`/`23.0%`, and lazy-token top-K improved
+`78.3%`/`71.3%`. The same 1,078 trim calls now use 0.018 cumulative profiled
+seconds instead of 0.547 on the IAST probe. The compact acceptance envelope is
+`evidence/s1m2_continuous_optimization_4_v1.json`.
+
+The remaining profile constructs a `PhonologicalForm` before every one of
+25,135 piece-score cache lookups even though only 1,039 are misses. The next
+small candidate keys the same bounded LRU by the already available immutable
+phoneme tuple and constructs a form only on a miss, returning the cached form
+on hits. Cache order, byte/entry bounds, scores, legal transitions, and emitted
+piece identities must remain identical.
+
+```text
+S1M2_OPTIMIZATION_4=ACCEPTED
+S1M2_OPTIMIZATION_5=LAZY_PIECE_FORM_CONSTRUCTION_READY
+```

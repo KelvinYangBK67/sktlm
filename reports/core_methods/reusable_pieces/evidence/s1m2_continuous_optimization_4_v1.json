@@ -1,0 +1,76 @@
+{
+  "schema_version": "sktlm-s1m2-continuous-optimization-evidence/v1",
+  "optimization_id": "composed_path_tie_key_reuse",
+  "status": "ACCEPTED",
+  "baseline_git_sha": "e4ed01671a7c0ec027db46372680f5c6b90b176f",
+  "candidate_git_sha": "942007c231a14c73caa6441176c66cc7cec3ff32",
+  "workload": {
+    "id": "representative_probe",
+    "document_list_sha256": "7bf936025ce28c43cdae0407d532c461b50726a28275fa40062a8a6889296ed3",
+    "documents": 3,
+    "max_lines_per_document": 2,
+    "passes": 1,
+    "workers": 1,
+    "inspection_enabled": true,
+    "cprofile_enabled": true
+  },
+  "equivalence": {
+    "iast_canonical_artifacts_byte_identical": 7,
+    "devanagari_canonical_artifacts_byte_identical": 7,
+    "canonical_artifacts": [
+      "iteration_metrics.json",
+      "piece_inventory.tsv",
+      "lexical_diagnostics.tsv",
+      "analyses.jsonl",
+      "boundary_posteriors.jsonl",
+      "rule_usage.tsv",
+      "summary.json"
+    ],
+    "focused_pieces_latent_tests": "83 passed"
+  },
+  "cells": [
+    {
+      "cell_id": "m0_prime_iast_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_prime_iast_e4ed016_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_prime_iast_942007c_a01",
+      "candidate_benchmark_metrics_sha256": "11146346b1f04a3b91e279b4354456cb553421d12f03af7fd790d546053fbd14",
+      "candidate_profile_sha256": "1a8fd61165b3b6ba6248458b9a9e451f540d70cad1887f9fc07b41885b846bf5",
+      "baseline_wall_seconds": 3.650974899996072,
+      "candidate_wall_seconds": 2.720524900010787,
+      "wall_improvement_percent": 25.485,
+      "baseline_inspection_inference_seconds": 2.2509962000185624,
+      "candidate_inspection_inference_seconds": 1.4532284000015352,
+      "inspection_inference_improvement_percent": 35.441,
+      "baseline_lazy_token_top_k_seconds": 0.7593345000059344,
+      "candidate_lazy_token_top_k_seconds": 0.16506410005968064,
+      "lazy_token_top_k_improvement_percent": 78.262
+    },
+    {
+      "cell_id": "m0_devanagari_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_devanagari_e4ed016_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_devanagari_942007c_a01",
+      "candidate_benchmark_metrics_sha256": "0b90490637bd28c5ba7a09a5834b20c829f8f3f751dda62a6dd94820131ff954",
+      "candidate_profile_sha256": "e27b33816c794dea57cf3dd5ef75541448c1177cff1a17686d79c87cfbfca9b7",
+      "baseline_wall_seconds": 3.464808799995808,
+      "candidate_wall_seconds": 2.7401594999828376,
+      "wall_improvement_percent": 20.915,
+      "baseline_inspection_inference_seconds": 2.0212767999619246,
+      "candidate_inspection_inference_seconds": 1.5568344999337569,
+      "inspection_inference_improvement_percent": 22.978,
+      "baseline_lazy_token_top_k_seconds": 0.6656893999315798,
+      "candidate_lazy_token_top_k_seconds": 0.19079689995851368,
+      "lazy_token_top_k_improvement_percent": 71.338
+    }
+  ],
+  "mechanism": {
+    "baseline_profiled_function_calls": 9367513,
+    "candidate_profiled_function_calls": 8378498,
+    "function_call_improvement_percent": 10.558,
+    "baseline_composed_trim_calls": 1078,
+    "candidate_composed_trim_calls": 1078,
+    "baseline_composed_trim_cumulative_seconds": 0.547,
+    "candidate_composed_trim_cumulative_seconds": 0.018
+  },
+  "boundedness": "The cached key is stored only on already bounded inspection _ComposedPath objects and is discarded with those paths. It does not enter scientific inference or any pass-local corpus cache.",
+  "semantic_reason": "The immutable key is exactly the tuple previously reconstructed by every sort: lexical form keys, nested piece keys, and rule IDs. Extending those tuples alongside the corresponding path produces the identical stable sort key and leaves score ordering, tie ordering, path support, and top-K limits unchanged."
+}
