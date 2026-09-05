@@ -17,7 +17,9 @@ S1M2 streaming trainer integration: COMPLETE
 resume and serial/parallel scientific equivalence: PASS
 continuous profiling/benchmark freeze: READY TO START
 continuous benchmark selection rule: FROZEN
-continuous static corpus scan: READY TO LAUNCH DETACHED
+continuous static corpus scan: COMPLETE / VALIDATED
+continuous representative/stress workloads: FROZEN
+continuous detailed profiling telemetry: READY TO IMPLEMENT
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -41,14 +43,14 @@ copied, deleted, tracked, staged, restored, checked out, or force-added.
 
 ## Next task: continuous profiling and benchmark freeze
 
-Launch the one-time static structure scan from the clean selection-definition
-checkpoint using a durable detached runner. It must scan both continuous
-frontends, validate their per-document phoneme/span identity, and emit the
-fixed representative/stress lists plus full-corpus projection totals. Do not
-poll after launch. On the next resume, inspect it once; if complete, validate
-and promote the compact lists/summary, then extend missing continuous-specific
-telemetry before any serious optimization. Do not launch full-M0.
+Extend low-overhead S1M2 telemetry for fixed length/work histograms,
+candidate-build subphases, composed-DP subphases, bounded queue/reducer stalls,
+and storage/resource gauges. Keep it engineering-only. Use the frozen
+representative and stress lists for all subsequent timing work. Run focused
+tests and a cheap fixed benchmark only after telemetry is exactness-neutral;
+detach anything plausibly exceeding five minutes. Do not rerun the static scan
+or launch full-M0.
 
 ```text
-CONTINUOUS_STATIC_SCAN=READY_TO_LAUNCH_DETACHED
+S1M2_CONTINUOUS_PROFILING=READY_TO_IMPLEMENT
 ```

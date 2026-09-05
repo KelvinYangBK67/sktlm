@@ -1,0 +1,82 @@
+{
+  "schema_version": "sktlm-s1m2-continuous-structure-evidence/v1",
+  "status": "VALID",
+  "run_id": "s1m2_continuous_structure_v1_attempt01",
+  "task_name": "sktlm-s1m2-continuous-structure-v1-a01",
+  "attempt": 1,
+  "git_sha": "16c67d33a44d8cf651a795aa89a193490116af23",
+  "config_sha256": "a7f91f1e54398b932aa00c2f2662199dbcc6859d7411783ae1b92e6ab0954f62",
+  "structure_sha256": "03ebdf71afc80f82492d9d36cc593ab50c380fd3b0b57689862ea8e98c7b39f8",
+  "representative_list_sha256": "7bf936025ce28c43cdae0407d532c461b50726a28275fa40062a8a6889296ed3",
+  "stress_list_sha256": "904e105eddc45cff3e63c171ad016c056628f1040bc37c881850cb8ad2a988d9",
+  "stdout_sha256": "2ac3c1a8de29144332a9de80d792104b399c933314805212e47b30a1071d1966",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "elapsed_to_atomic_output_seconds": 881.3568808,
+  "external_wrapper": {
+    "scheduler_last_result": 3221225786,
+    "state_file": "RUNNING_STALE",
+    "assessment": "child output complete and valid; wrapper terminated before final state replacement; no rerun"
+  },
+  "input_manifests": {
+    "m0_prime_iast_continuous": "3a8cbb3359ce8cce2a7d551281a8faf50b9fed33f9b8d4bce3425d28237ae922",
+    "m0_devanagari_continuous": "c04124b2bc4909750ebedc4e7ec939df3c18edecf1598345ab3f662a21fbc520"
+  },
+  "cross_frontend_structure_identity": "PASS",
+  "shared_structure": {
+    "documents": 240,
+    "lines": 2107648,
+    "phonemes": 46255133,
+    "continuous_spans": 1261507,
+    "span_phoneme_sum": 46255133,
+    "span_squared_phonemes": 2285952803,
+    "document_max_span_distribution": {
+      "count": 240,
+      "p50": 101,
+      "p90": 501,
+      "p95": 822,
+      "p99": 1500,
+      "max": 2634
+    }
+  },
+  "cell_presentation_totals": {
+    "m0_prime_iast_continuous": {
+      "bytes": 64932981,
+      "written_characters": 51409280,
+      "punctuation_cues": 1181086
+    },
+    "m0_devanagari_continuous": {
+      "bytes": 134379881,
+      "written_characters": 46338169,
+      "punctuation_cues": 858703
+    }
+  },
+  "representative": {
+    "documents": [
+      "6_sastra/7_ayur/bhavpr_u.txt",
+      "3_purana/bhagp/bhp_11u.txt",
+      "2_epic/mbh/mbh_09_u.txt"
+    ],
+    "phonemes": 456891,
+    "continuous_spans": 12306,
+    "span_squared_phonemes": 17336773,
+    "maximum_span": 85
+  },
+  "stress": {
+    "documents": [
+      "1_veda/5_vedang/2_grhya/jaimigsu.txt",
+      "1_veda/5_vedang/2_grhya/kauthgsu.txt"
+    ],
+    "phonemes": 62748,
+    "continuous_spans": 241,
+    "span_squared_phonemes": 51185640,
+    "maximum_span": 2634
+  },
+  "projection_bases": [
+    "written_characters",
+    "documents",
+    "phonemes",
+    "continuous_spans",
+    "span_squared_phonemes"
+  ],
+  "full_output_location": "artifacts/s1m2_structure/s1m2_continuous_structure_v1_attempt01/structure.json"
+}

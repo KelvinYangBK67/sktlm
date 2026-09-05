@@ -5,7 +5,7 @@ Date: 2026-09-05
 ```text
 S1M2_TRAINER_INTEGRATION=COMPLETE
 CONTINUOUS_BENCHMARK_SELECTION_RULE=FROZEN
-CONTINUOUS_STATIC_SCAN=READY_TO_LAUNCH
+CONTINUOUS_STATIC_SCAN=COMPLETE_VALIDATED
 ```
 
 This checkpoint freezes workload selection before any S1M2 continuous timing
@@ -75,4 +75,56 @@ Git/config identity. It is a static scan, not an S1M2 training run.
 ```text
 FULL_M0_PROCESS_RUNNING=NO
 FULL_M0_PROCESS_COMPLETED=NO
+```
+
+## Completed static scan
+
+The detached attempt
+`sktlm-s1m2-continuous-structure-v1-a01` completed its Python computation at
+Git SHA `16c67d33a44d8cf651a795aa89a193490116af23`. The output envelope is
+`VALID`; `structure.json` has SHA-256
+`03ebdf71afc80f82492d9d36cc593ab50c380fd3b0b57689862ea8e98c7b39f8`.
+Both frontend cells have identical ordered nonempty span lengths and phoneme
+counts for every document.
+
+Shared full-corpus structure is 240 documents, 2,107,648 lines, 46,255,133
+phonemes, 1,261,507 nonempty continuous spans, and 2,285,952,803 summed
+squared-span phonemes. Across document maxima, p50/p90/p95/p99 are
+101/501/822/1,500 phonemes and the maximum is 2,634. M0-prime IAST and M0
+Devanagari differ in orthographic bytes/characters and raw consecutive
+punctuation-cue counts, but not in the nonempty inference span sequence; the
+latter is the relevant frontend structural workload.
+
+The frozen representative workload is:
+
+```text
+6_sastra/7_ayur/bhavpr_u.txt
+3_purana/bhagp/bhp_11u.txt
+2_epic/mbh/mbh_09_u.txt
+```
+
+It contains 456,891 phonemes, 12,306 spans, 17,336,773 squared-span phonemes,
+and maximum span 85. The frozen stress workload is:
+
+```text
+1_veda/5_vedang/2_grhya/jaimigsu.txt
+1_veda/5_vedang/2_grhya/kauthgsu.txt
+```
+
+It contains 62,748 phonemes, 241 spans, 51,185,640 squared-span phonemes, and
+maximum span 2,634. The lists are now tracked under `configs/benchmarks/`; the
+compact evidence envelope is
+`reports/core_methods/reusable_pieces/evidence/s1m2_continuous_structure_v1.json`.
+
+The child completed atomically with an empty stderr and a `COMPLETE` stdout,
+but Task Scheduler later recorded control-break result `3221225786` and the
+wrapper was terminated before replacing its `RUNNING` state file. The output
+completion/hash/identity checks pass and no child remains, so this is a wrapper
+teardown anomaly, not a computation failure. The stale state and a separate
+reconciliation record are preserved; the scan must not be rerun.
+
+```text
+CONTINUOUS_STATIC_SCAN=COMPLETE_VALIDATED
+CONTINUOUS_BENCHMARK_WORKLOADS=FROZEN
+S1M2_CONTINUOUS_PROFILING=READY_TO_IMPLEMENT
 ```

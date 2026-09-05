@@ -1379,6 +1379,35 @@ CONTINUOUS_BENCHMARK_SELECTION_RULE=FROZEN
 CONTINUOUS_STATIC_SCAN=READY_TO_LAUNCH
 ```
 
+## 50. Continuous static scan complete and workloads frozen (2026-09-05)
+
+Detached attempt `s1m2_continuous_structure_v1_attempt01` completed the paired
+M0-prime IAST/M0 Devanagari structural scan at
+`16c67d33a44d8cf651a795aa89a193490116af23`. The full output SHA-256 is
+`03ebdf71afc80f82492d9d36cc593ab50c380fd3b0b57689862ea8e98c7b39f8`.
+All 240 documents match exactly in frontend phoneme count and ordered nonempty
+continuous-span lengths. The shared substrate has 46,255,133 phonemes,
+1,261,507 spans, squared-span proxy 2,285,952,803, and document-maximum span
+p50/p90/p95/p99/max 101/501/822/1,500/2,634.
+
+The tracked representative list contains the fixed non-stress 25th/50th/75th
+percentile structural ranks (456,891 phonemes; max span 85). The stress list
+contains the fixed top two longest-span documents (62,748 phonemes; max span
+2,634). Compact evidence is in
+`reports/core_methods/reusable_pieces/evidence/s1m2_continuous_structure_v1.json`.
+
+The child output is complete and valid. Task Scheduler reported a later
+control-break and left the wrapper state stale at `RUNNING` after the child had
+atomically written `complete.json`; empty stderr, complete stdout, hashes, and
+identities establish completion. The wrapper anomaly is preserved and the
+static scan must not be rerun. No S1M2 model benchmark or full-M0 run started.
+
+```text
+CONTINUOUS_STATIC_SCAN=COMPLETE_VALIDATED
+CONTINUOUS_BENCHMARK_WORKLOADS=FROZEN
+S1M2_CONTINUOUS_PROFILING=READY_TO_IMPLEMENT
+```
+
 ## 48. S1M2 streaming trainer integration complete (2026-09-05)
 
 The existing full-corpus-capable trainer now supports

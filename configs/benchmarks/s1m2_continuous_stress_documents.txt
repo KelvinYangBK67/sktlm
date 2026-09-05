@@ -1,0 +1,3 @@
+# S1M2 continuous long-span stress workload
+1_veda/5_vedang/2_grhya/jaimigsu.txt
+1_veda/5_vedang/2_grhya/kauthgsu.txt
