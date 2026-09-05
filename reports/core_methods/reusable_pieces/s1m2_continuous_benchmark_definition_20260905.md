@@ -279,3 +279,24 @@ all marginals, and it must not persist per-form lattices.
 S1M2_OPTIMIZATION_1=ACCEPTED
 S1M2_OPTIMIZATION_2=TRANSIENT_PIECE_TRANSITION_REUSE_READY
 ```
+
+### Optimization 2 candidate: transient piece-transition reuse
+
+One `evaluate_form` cache miss now constructs each legal piece transition once
+as `(end, piece, prior, score)` in start-position order. Inner forward,
+backward, posterior, singleton-path, and inspection top-k loops traverse that
+same iterator-local table in their original order. The table is discarded when
+the form evaluation completes; only the existing bounded compact
+`FormPieceEvaluation` may enter the pass-local LRU. This is not a P0 lattice,
+does not persist candidates, and remains linear in form length times the fixed
+piece-length bound plus the required whole-form transition.
+
+The focused P0/P1c, trainer, frontend, and cache suites pass (`82 passed`). A
+cache-counter assertion was updated to reflect that repeated within-form
+piece-score cache calls are intentionally eliminated: total calls still equal
+hits plus misses, and all entry/byte bounds remain enforced. The candidate now
+requires the same committed paired probe before acceptance.
+
+```text
+S1M2_OPTIMIZATION_2=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
+```

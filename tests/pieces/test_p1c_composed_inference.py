@@ -109,8 +109,10 @@ def test_shared_piece_and_form_caches_are_bounded_and_counted() -> None:
     assert counters.form_cache_misses == 3
     assert counters.form_cache_hits == 1
     assert counters.form_cache_evictions >= 1
-    assert counters.piece_score_cache_hits > 0
     assert counters.piece_score_cache_misses > 0
+    assert counters.piece_score_calls == (
+        counters.piece_score_cache_hits + counters.piece_score_cache_misses
+    )
     assert counters.store_lookups == scorer.store_lookups
 
 
@@ -235,6 +237,7 @@ def _compare_outer(surface: str, *, script: str = "iast") -> None:
     assert composed.counters.composed_transition_count > 0
     assert composed.timings.piece_composition_seconds > 0.0
     assert composed.timings.inner_piece_evaluation_seconds > 0.0
+    assert composed.timings.inner_piece_transition_build_seconds > 0.0
     assert composed.timings.inner_piece_forward_seconds > 0.0
     assert composed.timings.inner_piece_backward_seconds > 0.0
     assert composed.timings.inner_piece_posterior_seconds > 0.0

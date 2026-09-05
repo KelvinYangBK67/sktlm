@@ -97,6 +97,7 @@ class ComposedInferenceTimings:
     """Nested engineering-only phase timings for exact composed inference."""
 
     inner_piece_evaluation_seconds: float = 0.0
+    inner_piece_transition_build_seconds: float = 0.0
     inner_piece_forward_seconds: float = 0.0
     inner_piece_backward_seconds: float = 0.0
     inner_piece_posterior_seconds: float = 0.0
@@ -408,8 +409,12 @@ class ComposedPieceInference:
         prior_alpha[0] = 0.0
         alpha[0] = 0.0
         transition_count = 0
-        started = time.perf_counter()
+        transition_started = time.perf_counter()
+        transitions_by_start: list[
+            tuple[tuple[int, PhonologicalForm, float, float], ...]
+        ] = []
         for start in range(length):
+            transitions: list[tuple[int, PhonologicalForm, float, float]] = []
             for end in _piece_ends(
                 length,
                 start,
@@ -418,7 +423,15 @@ class ComposedPieceInference:
                 transition_count += 1
                 prior = _raw_prior_score(start, end, rho=self.model_config.rho)
                 piece = PhonologicalForm(form.symbols[start:end])
-                score = prior + self._piece_score(piece)
+                transitions.append(
+                    (end, piece, prior, prior + self._piece_score(piece))
+                )
+            transitions_by_start.append(tuple(transitions))
+        self.add_timing("inner_piece_transition_build_seconds", transition_started)
+
+        started = time.perf_counter()
+        for start in range(length):
+            for end, _piece, prior, score in transitions_by_start[start]:
                 prior_alpha[end] = logaddexp(
                     prior_alpha[end], prior_alpha[start] + prior
                 )
@@ -434,15 +447,7 @@ class ComposedPieceInference:
         beta[-1] = 0.0
         started = time.perf_counter()
         for start in range(length - 1, -1, -1):
-            for end in _piece_ends(
-                length,
-                start,
-                self.model_config.max_piece_length,
-            ):
-                piece = PhonologicalForm(form.symbols[start:end])
-                score = _raw_prior_score(
-                    start, end, rho=self.model_config.rho
-                ) + self._piece_score(piece)
+            for end, _piece, _prior, score in transitions_by_start[start]:
                 beta[start] = logaddexp(beta[start], score + beta[end])
         self.add_timing("inner_piece_backward_seconds", started)
 
@@ -451,15 +456,7 @@ class ComposedPieceInference:
         expected_raw_score = 0.0
         whole_form_mass = 0.0
         for start in range(length):
-            for end in _piece_ends(
-                length,
-                start,
-                self.model_config.max_piece_length,
-            ):
-                piece = PhonologicalForm(form.symbols[start:end])
-                score = _raw_prior_score(
-                    start, end, rho=self.model_config.rho
-                ) + self._piece_score(piece)
+            for end, piece, _prior, score in transitions_by_start[start]:
                 posterior = math.exp(alpha[start] + score + beta[end] - raw_log_z)
                 expected_counts[piece] += posterior
                 expected_raw_score += posterior * score
@@ -467,9 +464,7 @@ class ComposedPieceInference:
                     whole_form_mass = math.exp(score - raw_log_z)
 
         singleton_score = sum(
-            _raw_prior_score(start, start + 1, rho=self.model_config.rho)
-            + self._piece_score(PhonologicalForm(form.symbols[start : start + 1]))
-            for start in range(length)
+            transitions_by_start[start][0][3] for start in range(length)
         )
         singleton_path_mass = math.exp(singleton_score - raw_log_z)
         self.add_timing("inner_piece_posterior_seconds", started)
@@ -481,15 +476,7 @@ class ComposedPieceInference:
             ]
             paths[0] = [(0.0, ())]
             for start in range(length):
-                for end in _piece_ends(
-                    length,
-                    start,
-                    self.model_config.max_piece_length,
-                ):
-                    piece = PhonologicalForm(form.symbols[start:end])
-                    score = _raw_prior_score(
-                        start, end, rho=self.model_config.rho
-                    ) + self._piece_score(piece)
+                for end, piece, _prior, score in transitions_by_start[start]:
                     candidates = paths[end]
                     candidates.extend(
                         (prefix_score + score, prefix_pieces + (piece,))

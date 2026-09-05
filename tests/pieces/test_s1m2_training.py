@@ -141,6 +141,10 @@ def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(
     assert result.runtime["timings_seconds"]["training_grammar_match_seconds"] >= 0.0
     assert result.runtime["timings_seconds"]["training_window_filter_seconds"] >= 0.0
     assert result.runtime["timings_seconds"]["training_piece_composition_seconds"] > 0.0
+    assert (
+        result.runtime["timings_seconds"]["training_inner_piece_transition_build_seconds"]
+        > 0.0
+    )
     assert result.runtime["timings_seconds"]["training_outer_forward_seconds"] > 0.0
     assert result.runtime["timings_seconds"]["inspection_outer_top_k_seconds"] > 0.0
     assert result.runtime["gauges"]["sqlite_database_bytes"] > 0

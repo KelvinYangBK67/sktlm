@@ -1392,6 +1392,25 @@ S1M2_OPTIMIZATION_2=READY_TO_IMPLEMENT
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 56. Continuous optimization 2 implemented and equivalence-validated (2026-09-05)
+
+Each per-form cache-miss evaluation now builds its exact legal piece
+transitions once in original start/end order and reuses them across inner
+forward, backward, posterior, singleton, and optional top-k passes. The
+iterator-local table is discarded before return; it is neither a P0 lattice nor
+a persistent candidate cache, and its size remains linear in form length times
+the fixed piece bound plus the whole-form transition.
+
+The complete pieces/latent suite passes (`82 passed`). Piece-score calls now
+correctly satisfy `calls = hits + misses` without requiring within-form cache
+hits. Scientific outputs and candidate support remain under the existing oracle
+and trainer gates. A clean-SHA fixed paired probe is required for acceptance.
+
+```text
+S1M2_OPTIMIZATION_2=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 49. Continuous benchmark selection rule frozen (2026-09-05)
 
 Before observing any S1M2 continuous timing, the static selection algorithm
