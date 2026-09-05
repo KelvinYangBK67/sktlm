@@ -182,6 +182,11 @@ class _ComposedPath:
     piece_segmentations: tuple[tuple[PhonologicalForm, ...], ...]
     rule_ids: tuple[str, ...]
     boundaries: tuple[LexicalBoundary, ...]
+    tie_key: tuple[
+        tuple[str, ...],
+        tuple[tuple[str, ...], ...],
+        tuple[str, ...],
+    ]
 
 
 @dataclass(frozen=True, slots=True)
@@ -255,17 +260,7 @@ def _trim_composed_paths(
     paths: list[_ComposedPath],
     limit: int,
 ) -> list[_ComposedPath]:
-    paths.sort(
-        key=lambda path: (
-            -path.score,
-            tuple(word.key for word in path.words),
-            tuple(
-                tuple(piece.key for piece in segmentation)
-                for segmentation in path.piece_segmentations
-            ),
-            path.rule_ids,
-        )
-    )
+    paths.sort(key=lambda path: (-path.score, *path.tie_key))
     return paths[:limit]
 
 
@@ -656,7 +651,7 @@ def _evaluate_lazy_token(
     if engine.inspection_top_k is not None:
         started = time.perf_counter()
         paths: list[list[_ComposedPath]] = [[] for _ in range(node_count)]
-        paths[0] = [_ComposedPath(0.0, (), (), (), ())]
+        paths[0] = [_ComposedPath(0.0, (), (), (), (), ((), (), ()))]
         for start in range(node_count - 1):
             if not paths[start]:
                 continue
@@ -664,8 +659,15 @@ def _evaluate_lazy_token(
                 engine.record_lazy_span(hypothesis=False)
                 evaluation = engine.evaluate_form(span.word)
                 candidates = paths[span.end]
+                keyed_segmentations = tuple(
+                    (
+                        segmentation,
+                        tuple(piece.key for piece in segmentation.pieces),
+                    )
+                    for segmentation in evaluation.top_segmentations
+                )
                 for prefix in paths[start]:
-                    for segmentation in evaluation.top_segmentations:
+                    for segmentation, segmentation_key in keyed_segmentations:
                         candidates.append(
                             _ComposedPath(
                                 score=prefix.score + segmentation.log_weight,
@@ -682,6 +684,11 @@ def _evaluate_lazy_token(
                                         if span.boundary is not None
                                         else ()
                                     )
+                                ),
+                                tie_key=(
+                                    prefix.tie_key[0] + (span.word.key,),
+                                    prefix.tie_key[1] + (segmentation_key,),
+                                    prefix.tie_key[2] + span.rule_ids,
                                 ),
                             )
                         )
@@ -730,6 +737,11 @@ def _evaluate_factor(
                 piece_segmentations=(segmentation.pieces,),
                 rule_ids=(),
                 boundaries=(),
+                tie_key=(
+                    (factor.merged_word.key,),
+                    (tuple(piece.key for piece in segmentation.pieces),),
+                    (),
+                ),
             )
             for segmentation in evaluation.top_segmentations
         )
@@ -847,7 +859,7 @@ def _outer_top_paths(
     states: list[dict[str, list[_ComposedPath]]] = [
         {} for _ in range(len(graph.segment.tokens) + 1)
     ]
-    states[0]["START"] = [_ComposedPath(0.0, (), (), (), ())]
+    states[0]["START"] = [_ComposedPath(0.0, (), (), (), (), ((), (), ()))]
     by_start: dict[int, list[_FactorSummary]] = defaultdict(list)
     for evaluation in evaluations:
         by_start[evaluation.factor.start_token].append(evaluation)
@@ -892,6 +904,15 @@ def _outer_top_paths(
                                 prefix.boundaries
                                 + local.boundaries
                                 + visible_boundary
+                            ),
+                            tie_key=(
+                                prefix.tie_key[0] + local.tie_key[0],
+                                prefix.tie_key[1] + local.tie_key[1],
+                                (
+                                    prefix.tie_key[2]
+                                    + local.tie_key[2]
+                                    + outer_rules
+                                ),
                             ),
                         )
                     )
