@@ -7,11 +7,13 @@ while an exact inference traversal requests them.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Iterator
 
 from sktlm.latent.candidates import (
     BoundaryOption,
+    CandidateBuildProfile,
     CandidateConfig,
     CandidateGraph,
     InternalBoundaryNode,
@@ -154,6 +156,7 @@ def build_lazy_token_lattice(
     outgoing: BoundaryOption,
     *,
     max_internal_matches: int,
+    profile: CandidateBuildProfile | None = None,
 ) -> LazyTokenLattice | None:
     nodes, overflowed, raw_matches, retained_matches = _internal_nodes(
         token,
@@ -161,6 +164,7 @@ def build_lazy_token_lattice(
         incoming,
         outgoing,
         max_internal_matches,
+        profile,
     )
     if not nodes:
         return None
@@ -173,7 +177,11 @@ def build_lazy_token_lattice(
         raw_internal_matches=raw_matches,
         retained_internal_matches=retained_matches,
     )
-    if next(lattice.iter_spans_from(0), None) is None:
+    started = time.perf_counter() if profile is not None else 0.0
+    valid = next(lattice.iter_spans_from(0), None) is not None
+    if profile is not None:
+        profile.lattice_validation_seconds += time.perf_counter() - started
+    if not valid:
         return None
     return lattice
 
@@ -182,6 +190,8 @@ def build_lazy_candidate_graph(
     segment: ObservedSegment,
     grammar: StructuredSandhiGrammar,
     config: CandidateConfig = CandidateConfig(),
+    *,
+    profile: CandidateBuildProfile | None = None,
 ) -> LazyCandidateGraph:
     """Build the production-only node graph without materialized lexical edges."""
 
@@ -192,6 +202,7 @@ def build_lazy_candidate_graph(
     end = BoundaryOption("END", 0, 0, (), (), (), False, True)
     boundaries: list[tuple[BoundaryOption, ...]] = [(start,)]
     for index in range(1, token_count):
+        started = time.perf_counter() if profile is not None else 0.0
         boundaries.append(
             _visible_boundary_options(
                 segment.tokens[index - 1],
@@ -200,19 +211,25 @@ def build_lazy_candidate_graph(
                 index,
             )
         )
+        if profile is not None:
+            profile.visible_boundary_seconds += time.perf_counter() - started
     boundaries.append((end,))
 
     factors: list[LazySegmentFactor] = []
     overflowed_tokens: set[int] = set()
+    factor_started = time.perf_counter() if profile is not None else 0.0
     for index, token in enumerate(segment.tokens):
         for incoming in boundaries[index]:
             for outgoing in boundaries[index + 1]:
+                if profile is not None:
+                    profile.factor_combinations_attempted += 1
                 lattice = build_lazy_token_lattice(
                     token,
                     grammar,
                     incoming,
                     outgoing,
                     max_internal_matches=config.max_internal_matches,
+                    profile=profile,
                 )
                 if lattice is None:
                     continue
@@ -234,6 +251,8 @@ def build_lazy_candidate_graph(
             continue
         for incoming in boundaries[index]:
             for outgoing in boundaries[index + 2]:
+                if profile is not None:
+                    profile.factor_combinations_attempted += 1
                 word = _merged_word(
                     token,
                     segment.tokens[index + 1],
@@ -263,6 +282,8 @@ def build_lazy_candidate_graph(
             factor.factor_id,
         )
     )
+    if profile is not None:
+        profile.factor_construction_seconds += time.perf_counter() - factor_started
     return LazyCandidateGraph(
         segment=segment,
         boundary_options=tuple(boundaries),

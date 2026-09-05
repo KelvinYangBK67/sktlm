@@ -10,6 +10,7 @@ objects or persistent lexical-edge rows.
 from __future__ import annotations
 
 import math
+import time
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
 
@@ -91,6 +92,27 @@ class ComposedInferenceCounters:
     form_cache_estimated_bytes: int = 0
 
 
+@dataclass(frozen=True, slots=True)
+class ComposedInferenceTimings:
+    """Nested engineering-only phase timings for exact composed inference."""
+
+    inner_piece_evaluation_seconds: float = 0.0
+    inner_piece_forward_seconds: float = 0.0
+    inner_piece_backward_seconds: float = 0.0
+    inner_piece_posterior_seconds: float = 0.0
+    inner_piece_top_k_seconds: float = 0.0
+    lazy_token_forward_seconds: float = 0.0
+    lazy_token_backward_seconds: float = 0.0
+    lazy_token_posterior_seconds: float = 0.0
+    lazy_token_top_k_seconds: float = 0.0
+    piece_composition_seconds: float = 0.0
+    outer_forward_seconds: float = 0.0
+    outer_backward_seconds: float = 0.0
+    outer_posterior_seconds: float = 0.0
+    outer_identity_seconds: float = 0.0
+    outer_top_k_seconds: float = 0.0
+
+
 _EVENT_COUNTERS = (
     "lazy_span_traversals",
     "candidate_span_hypotheses",
@@ -110,6 +132,8 @@ _EVENT_COUNTERS = (
     "form_cache_oversize",
     "store_lookups",
 )
+
+_TIMING_COUNTERS = tuple(ComposedInferenceTimings.__dataclass_fields__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +159,7 @@ class ComposedSegmentInference:
     piece_occurrence_support: dict[PhonologicalForm, int]
     total_posterior_mass: float
     counters: ComposedInferenceCounters
+    timings: ComposedInferenceTimings
 
 
 @dataclass(frozen=True, slots=True)
@@ -273,6 +298,7 @@ class ComposedPieceInference:
         ] = OrderedDict()
         self._form_bytes = 0
         self._events: dict[str, int] = defaultdict(int)
+        self._timings: dict[str, float] = defaultdict(float)
         self._initial_store_lookups = int(getattr(scorer, "store_lookups", 0))
 
     def _store_lookups(self) -> int:
@@ -316,6 +342,28 @@ class ComposedPieceInference:
         )
         return ComposedInferenceCounters(**payload)
 
+    def timing_snapshot(self) -> ComposedInferenceTimings:
+        return ComposedInferenceTimings(
+            **{name: self._timings[name] for name in _TIMING_COUNTERS}
+        )
+
+    def timing_delta(
+        self,
+        before: ComposedInferenceTimings,
+    ) -> ComposedInferenceTimings:
+        after = self.timing_snapshot()
+        return ComposedInferenceTimings(
+            **{
+                name: getattr(after, name) - getattr(before, name)
+                for name in _TIMING_COUNTERS
+            }
+        )
+
+    def add_timing(self, name: str, started: float) -> None:
+        if name not in _TIMING_COUNTERS:
+            raise ValueError(f"unknown composed timing: {name}")
+        self._timings[name] += time.perf_counter() - started
+
     def _piece_score(self, piece: PhonologicalForm) -> float:
         self._events["piece_score_calls"] += 1
         cached = self._piece_scores.get(piece)
@@ -353,12 +401,14 @@ class ComposedPieceInference:
         self._events["form_cache_misses"] += 1
 
         length = len(form.symbols)
+        evaluation_started = time.perf_counter()
         self._events["composed_state_count"] += length + 1
         prior_alpha = [-math.inf] * (length + 1)
         alpha = [-math.inf] * (length + 1)
         prior_alpha[0] = 0.0
         alpha[0] = 0.0
         transition_count = 0
+        started = time.perf_counter()
         for start in range(length):
             for end in _piece_ends(
                 length,
@@ -373,6 +423,7 @@ class ComposedPieceInference:
                     prior_alpha[end], prior_alpha[start] + prior
                 )
                 alpha[end] = logaddexp(alpha[end], alpha[start] + score)
+        self.add_timing("inner_piece_forward_seconds", started)
         self._events["composed_transition_count"] += transition_count
         prior_log_z = prior_alpha[-1]
         raw_log_z = alpha[-1]
@@ -381,6 +432,7 @@ class ComposedPieceInference:
 
         beta = [-math.inf] * (length + 1)
         beta[-1] = 0.0
+        started = time.perf_counter()
         for start in range(length - 1, -1, -1):
             for end in _piece_ends(
                 length,
@@ -392,7 +444,9 @@ class ComposedPieceInference:
                     start, end, rho=self.model_config.rho
                 ) + self._piece_score(piece)
                 beta[start] = logaddexp(beta[start], score + beta[end])
+        self.add_timing("inner_piece_backward_seconds", started)
 
+        started = time.perf_counter()
         expected_counts: dict[PhonologicalForm, float] = defaultdict(float)
         expected_raw_score = 0.0
         whole_form_mass = 0.0
@@ -418,8 +472,10 @@ class ComposedPieceInference:
             for start in range(length)
         )
         singleton_path_mass = math.exp(singleton_score - raw_log_z)
+        self.add_timing("inner_piece_posterior_seconds", started)
         top_segmentations: tuple[PieceSegmentation, ...] = ()
         if self.inspection_top_k is not None:
+            started = time.perf_counter()
             paths: list[list[tuple[float, tuple[PhonologicalForm, ...]]]] = [
                 [] for _ in range(length + 1)
             ]
@@ -454,6 +510,7 @@ class ComposedPieceInference:
                 )
                 for score, pieces in paths[-1]
             )
+            self.add_timing("inner_piece_top_k_seconds", started)
         evaluation = FormPieceEvaluation(
             form=form,
             prior_log_normalizer=prior_log_z,
@@ -467,6 +524,7 @@ class ComposedPieceInference:
             multi_piece_mass=max(0.0, 1.0 - whole_form_mass),
             top_segmentations=top_segmentations,
         )
+        self.add_timing("inner_piece_evaluation_seconds", evaluation_started)
 
         size = _estimated_evaluation_bytes(evaluation)
         if size > self.cache_config.form_bytes:
@@ -509,6 +567,7 @@ def _evaluate_lazy_token(
     node_count = len(lattice.nodes)
     alpha = [-math.inf] * node_count
     alpha[0] = 0.0
+    started = time.perf_counter()
     for start in range(node_count - 1):
         if alpha[start] == -math.inf:
             continue
@@ -518,12 +577,14 @@ def _evaluate_lazy_token(
             alpha[span.end] = logaddexp(
                 alpha[span.end], alpha[start] + evaluation.log_score
             )
+    engine.add_timing("lazy_token_forward_seconds", started)
     log_z = alpha[-1]
     if log_z == -math.inf:
         raise ValueError("Lazy token lattice has no complete lexical analysis.")
 
     beta = [-math.inf] * node_count
     beta[-1] = 0.0
+    started = time.perf_counter()
     for start in range(node_count - 2, -1, -1):
         for span in lattice.iter_spans_from(start):
             engine.record_lazy_span(hypothesis=False)
@@ -531,6 +592,7 @@ def _evaluate_lazy_token(
             beta[start] = logaddexp(
                 beta[start], evaluation.log_score + beta[span.end]
             )
+    engine.add_timing("lazy_token_backward_seconds", started)
 
     lexical_counts: dict[PhonologicalForm, float] = defaultdict(float)
     piece_counts: dict[PhonologicalForm, float] = defaultdict(float)
@@ -546,6 +608,7 @@ def _evaluate_lazy_token(
     expected_whole_form_uses = 0.0
     expected_singleton_path_uses = 0.0
     expected_multi_piece_uses = 0.0
+    started = time.perf_counter()
     for start in range(node_count - 1):
         for span in lattice.iter_spans_from(start):
             engine.record_lazy_span(hypothesis=False)
@@ -585,9 +648,11 @@ def _evaluate_lazy_token(
     if identity is not None:
         engine.record_lazy_span(hypothesis=False)
         identity_log_score = engine.evaluate_form(identity.word).log_score
+    engine.add_timing("lazy_token_posterior_seconds", started)
 
     top_paths: tuple[_ComposedPath, ...] = ()
     if engine.inspection_top_k is not None:
+        started = time.perf_counter()
         paths: list[list[_ComposedPath]] = [[] for _ in range(node_count)]
         paths[0] = [_ComposedPath(0.0, (), (), (), ())]
         for start in range(node_count - 1):
@@ -623,6 +688,7 @@ def _evaluate_lazy_token(
                     engine.inspection_top_k,
                 )
         top_paths = tuple(paths[-1])
+        engine.add_timing("lazy_token_top_k_seconds", started)
     return _TokenSummary(
         log_partition=log_z,
         expected_log_weight=expected_log_weight,
@@ -857,7 +923,9 @@ def infer_composed_segment(
     if support_epsilon < 0.0:
         raise ValueError("support_epsilon must be >= 0")
     before = engine.counter_snapshot()
+    timing_before = engine.timing_snapshot()
     engine.record_graph(graph)
+    started = time.perf_counter()
     evaluations = tuple(
         _evaluate_factor(
             factor,
@@ -866,11 +934,16 @@ def infer_composed_segment(
         )
         for factor in graph.factors
     )
+    engine.add_timing("piece_composition_seconds", started)
+    started = time.perf_counter()
     forward = _outer_forward(graph, evaluations)
+    engine.add_timing("outer_forward_seconds", started)
     log_z = forward[-1].get("END", -math.inf)
     if log_z == -math.inf:
         raise ValueError("Lazy candidate graph has no complete analysis.")
+    started = time.perf_counter()
     backward = _outer_backward(graph, evaluations)
+    engine.add_timing("outer_backward_seconds", started)
 
     lexical_counts: dict[PhonologicalForm, float] = defaultdict(float)
     piece_counts: dict[PhonologicalForm, float] = defaultdict(float)
@@ -884,6 +957,7 @@ def infer_composed_segment(
     expected_whole_form_uses = 0.0
     expected_singleton_path_uses = 0.0
     expected_multi_piece_uses = 0.0
+    started = time.perf_counter()
     for evaluation in evaluations:
         factor = evaluation.factor
         prefix = forward[factor.start_token].get(factor.incoming.key, -math.inf)
@@ -931,7 +1005,9 @@ def infer_composed_segment(
             )
             for rule_id in factor.outgoing.rule_ids:
                 rule_usage[rule_id] += factor_mass / len(factor.outgoing.rule_ids)
+    engine.add_timing("outer_posterior_seconds", started)
 
+    started = time.perf_counter()
     identity_forward = _outer_forward(graph, evaluations, identity_only=True)
     identity_log_z = identity_forward[-1].get("END", -math.inf)
     identity_mass = (
@@ -942,6 +1018,7 @@ def infer_composed_segment(
     posterior_mass = math.exp(
         forward[0]["START"] + backward[0]["START"] - log_z
     )
+    engine.add_timing("outer_identity_seconds", started)
     boundaries = tuple(
         BoundaryPosterior(
             boundary_id=boundary_id,
@@ -952,6 +1029,9 @@ def infer_composed_segment(
         )
         for boundary_id, probability in sorted(boundary_mass.items())
     )
+    top_k_started = (
+        time.perf_counter() if engine.inspection_top_k is not None else 0.0
+    )
     decoded = (
         ()
         if engine.inspection_top_k is None
@@ -961,6 +1041,8 @@ def infer_composed_segment(
             top_k=engine.inspection_top_k,
         )
     )
+    if engine.inspection_top_k is not None:
+        engine.add_timing("outer_top_k_seconds", top_k_started)
     analyses = tuple(
         ComposedAnalysisPosterior(
             words=path.words,
@@ -995,4 +1077,5 @@ def infer_composed_segment(
         },
         total_posterior_mass=posterior_mass,
         counters=engine.counter_delta(before),
+        timings=engine.timing_delta(timing_before),
     )

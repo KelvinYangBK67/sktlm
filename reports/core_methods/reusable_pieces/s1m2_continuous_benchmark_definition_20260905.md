@@ -128,3 +128,42 @@ CONTINUOUS_STATIC_SCAN=COMPLETE_VALIDATED
 CONTINUOUS_BENCHMARK_WORKLOADS=FROZEN
 S1M2_CONTINUOUS_PROFILING=READY_TO_IMPLEMENT
 ```
+
+## Detailed engineering telemetry checkpoint
+
+The S1M2 production path now emits bounded engineering-only telemetry before
+any model timing has been used to select an optimization. Fixed power-of-two
+histograms retain counts, totals, maxima, and p50/p90/p95/p99 bucket upper
+bounds without storing per-segment observations. They cover written length,
+phoneme length, token/span length, boundary/factor/match/node work, overflow,
+and lazy-span hypotheses.
+
+Candidate construction reports visible-boundary, grammar-match, match-window,
+node construction, lattice-validation, and total factor-construction timings,
+plus raw/retained match and factor-combination counters. Exact composed
+inference reports nested inner piece forward/backward/posterior/top-k,
+lazy-token forward/backward/posterior/top-k, factor composition, and outer
+forward/backward/posterior/identity/top-k timings. These timers are diagnostic
+subphase clocks and may overlap their enclosing phase totals; they never enter
+candidate membership, scores, ordering, expected counts, or parameter updates.
+
+Parallel execution now reports the fixed `2 * workers` pending-shard limit,
+observed queue occupancy, completed-but-canonically-blocked shards, reducer
+stall time, and pending-shard bytes. SQLite database/WAL/shared-memory growth
+and the near-final artifact footprint are recorded as high-water gauges.
+Production-like Linux runs will continue to use the established external
+one-second process-tree sampler for simultaneous worker RSS, CPU, and I/O.
+
+Telemetry-on candidate graphs are structurally identical to telemetry-off
+graphs. P1c oracle/outer equivalence, trainer resume behavior, and serial versus
+two-worker scientific byte identity remain covered. The focused pieces/latent
+suite passes (`80 passed`), and `git diff --check` passes. No model benchmark
+has yet been run from this checkpoint, so continuous profiling is not declared
+complete.
+
+```text
+S1M2_CONTINUOUS_TELEMETRY=IMPLEMENTED_VALIDATED
+S1M2_CONTINUOUS_CHEAP_PROFILE=READY_TO_RUN
+FULL_M0_PROCESS_RUNNING=NO
+FULL_M0_PROCESS_COMPLETED=NO
+```

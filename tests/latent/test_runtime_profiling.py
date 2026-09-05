@@ -17,6 +17,28 @@ from sktlm.latent.profiling import (
     profile_m1_runtime,
 )
 from sktlm.latent.training import EXPECTED_FREEZE_ID
+from sktlm.latent.telemetry import RuntimeTelemetry
+
+
+def test_runtime_histograms_are_fixed_bounded_and_mergeable() -> None:
+    first = RuntimeTelemetry()
+    for value in (0, 1, 2, 3, 9, 1 << 30):
+        first.observe("span", value)
+    payload = first.payload()
+
+    assert payload["histograms"]["span"]["count"] == 6
+    assert payload["histograms"]["span"]["total"] == (1 << 30) + 15
+    assert payload["histograms"]["span"]["max"] == 1 << 30
+    assert len(payload["histograms"]["span"]["buckets"]) <= 26
+    assert payload["histograms"]["span"]["buckets"]["overflow"] == 1
+
+    merged = RuntimeTelemetry()
+    merged.merge_payload(payload)
+    merged.merge_payload(payload)
+    result = merged.payload()["histograms"]["span"]
+    assert result["count"] == 12
+    assert result["total"] == 2 * ((1 << 30) + 15)
+    assert result["max"] == 1 << 30
 
 
 def test_profiling_on_and_off_have_identical_inference_fingerprints() -> None:

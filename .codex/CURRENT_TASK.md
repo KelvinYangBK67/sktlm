@@ -19,7 +19,7 @@ continuous profiling/benchmark freeze: READY TO START
 continuous benchmark selection rule: FROZEN
 continuous static corpus scan: COMPLETE / VALIDATED
 continuous representative/stress workloads: FROZEN
-continuous detailed profiling telemetry: READY TO IMPLEMENT
+continuous detailed profiling telemetry: IMPLEMENTED / VALIDATED
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -41,16 +41,16 @@ Do not rerun frozen S1M1 work or M0-prime generation/validation. `notes/**`
 remains strictly local/read-only and must never be modified, created, moved,
 copied, deleted, tracked, staged, restored, checked out, or force-added.
 
-## Next task: continuous profiling and benchmark freeze
+## Next task: measure the frozen continuous workloads
 
-Extend low-overhead S1M2 telemetry for fixed length/work histograms,
-candidate-build subphases, composed-DP subphases, bounded queue/reducer stalls,
-and storage/resource gauges. Keep it engineering-only. Use the frozen
-representative and stress lists for all subsequent timing work. Run focused
-tests and a cheap fixed benchmark only after telemetry is exactness-neutral;
-detach anything plausibly exceeding five minutes. Do not rerun the static scan
-or launch full-M0.
+Extend the benchmark runner with an explicit S1M2 continuous contract, then run
+one fixed cheap profile from the committed telemetry checkpoint. Use only the
+frozen representative/stress document lists for subsequent representative and
+stress timing. Detach either workload if plausibly longer than five minutes.
+Profile both M0-prime IAST and M0 Devanagari frontends before accepting any
+optimization. Do not rerun the static scan or launch full-M0.
 
 ```text
-S1M2_CONTINUOUS_PROFILING=READY_TO_IMPLEMENT
+S1M2_CONTINUOUS_TELEMETRY=IMPLEMENTED_VALIDATED
+S1M2_CONTINUOUS_CHEAP_PROFILE=READY_TO_RUN
 ```

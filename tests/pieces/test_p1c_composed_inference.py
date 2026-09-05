@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from sktlm.latent.candidates import CandidateBuildProfile
 from sktlm.latent.frontend import iter_observed_segments, parse_surface
 from sktlm.latent.grammar import StructuredSandhiGrammar
 from sktlm.latent.inference import infer_segment
@@ -113,6 +114,20 @@ def test_shared_piece_and_form_caches_are_bounded_and_counted() -> None:
     assert counters.store_lookups == scorer.store_lookups
 
 
+def test_candidate_build_profiling_does_not_change_lazy_graph() -> None:
+    grammar = StructuredSandhiGrammar.from_default_inventory()
+    segment = next(iter_observed_segments("devo'pi api ca"))
+    plain = build_lazy_candidate_graph(segment, grammar)
+    profile = CandidateBuildProfile()
+    observed = build_lazy_candidate_graph(segment, grammar, profile=profile)
+
+    assert observed == plain
+    assert profile.internal_match_calls > 0
+    assert profile.unfiltered_internal_matches > 0
+    assert profile.factor_combinations_attempted >= len(observed.factors)
+    assert profile.factor_construction_seconds >= profile.grammar_match_seconds
+
+
 def test_inspection_top_paths_are_bounded_and_keep_exact_concatenation() -> None:
     grammar = StructuredSandhiGrammar.from_default_inventory()
     segment = next(iter_observed_segments("devo'pi"))
@@ -213,6 +228,21 @@ def _compare_outer(surface: str, *, script: str = "iast") -> None:
     )
     assert composed.counters.composed_state_count > 0
     assert composed.counters.composed_transition_count > 0
+    assert composed.timings.piece_composition_seconds > 0.0
+    assert composed.timings.inner_piece_evaluation_seconds > 0.0
+    assert composed.timings.inner_piece_forward_seconds > 0.0
+    assert composed.timings.inner_piece_backward_seconds > 0.0
+    assert composed.timings.inner_piece_posterior_seconds > 0.0
+    assert composed.timings.lazy_token_forward_seconds > 0.0
+    assert composed.timings.lazy_token_backward_seconds > 0.0
+    assert composed.timings.lazy_token_posterior_seconds > 0.0
+    assert composed.timings.outer_forward_seconds > 0.0
+    assert composed.timings.outer_backward_seconds > 0.0
+    assert composed.timings.outer_posterior_seconds > 0.0
+    assert composed.timings.outer_identity_seconds > 0.0
+    assert composed.timings.inner_piece_top_k_seconds == 0.0
+    assert composed.timings.lazy_token_top_k_seconds == 0.0
+    assert composed.timings.outer_top_k_seconds == 0.0
 
 
 @pytest.mark.parametrize(

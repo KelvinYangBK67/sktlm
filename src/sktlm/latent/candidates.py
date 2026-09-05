@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import time
 from dataclasses import dataclass
 
 from sktlm.latent.frontend import ObservedSegment, ObservedToken, SurfaceUnit
@@ -47,6 +48,21 @@ class InternalBoundaryNode:
     source_end: int
     is_start: bool = False
     is_end: bool = False
+
+
+@dataclass(slots=True)
+class CandidateBuildProfile:
+    """Engineering-only candidate construction counters and nested timings."""
+
+    visible_boundary_seconds: float = 0.0
+    grammar_match_seconds: float = 0.0
+    window_filter_seconds: float = 0.0
+    node_construction_seconds: float = 0.0
+    lattice_validation_seconds: float = 0.0
+    factor_construction_seconds: float = 0.0
+    internal_match_calls: int = 0
+    unfiltered_internal_matches: int = 0
+    factor_combinations_attempted: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,21 +286,37 @@ def _internal_nodes(
     incoming: BoundaryOption,
     outgoing: BoundaryOption,
     max_internal_matches: int,
+    profile: CandidateBuildProfile | None = None,
 ) -> tuple[tuple[InternalBoundaryNode, ...], bool, int, int]:
     prefix_end = incoming.right_consumed
     suffix_start = len(token.units) - outgoing.left_consumed
     if prefix_end > suffix_start:
         return (), False, 0, 0
-    matches = [
-        match
-        for match in grammar.iter_internal_matches(token.units)
-        if match.start >= prefix_end and match.end <= suffix_start
-    ]
+    if profile is None:
+        matches = [
+            match
+            for match in grammar.iter_internal_matches(token.units)
+            if match.start >= prefix_end and match.end <= suffix_start
+        ]
+    else:
+        profile.internal_match_calls += 1
+        started = time.perf_counter()
+        unfiltered = tuple(grammar.iter_internal_matches(token.units))
+        profile.grammar_match_seconds += time.perf_counter() - started
+        profile.unfiltered_internal_matches += len(unfiltered)
+        started = time.perf_counter()
+        matches = [
+            match
+            for match in unfiltered
+            if match.start >= prefix_end and match.end <= suffix_start
+        ]
+        profile.window_filter_seconds += time.perf_counter() - started
     raw_match_count = len(matches)
     overflowed = raw_match_count > max_internal_matches
     if overflowed:
         matches = []
     retained_match_count = len(matches)
+    started = time.perf_counter() if profile is not None else 0.0
     start = InternalBoundaryNode(
         surface_start=prefix_end,
         surface_end=prefix_end,
@@ -324,6 +356,8 @@ def _internal_nodes(
             node.rule_ids,
         )
     )
+    if profile is not None:
+        profile.node_construction_seconds += time.perf_counter() - started
     return (
         (start, *internal, end),
         overflowed,

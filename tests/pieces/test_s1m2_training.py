@@ -134,6 +134,18 @@ def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(
         result.runtime["gauges"]["training_form_cache_estimated_bytes"]
         <= 256 * 1024 * 1024
     )
+    histograms = result.runtime["histograms"]
+    assert histograms["training_segment_phonemes"]["count"] > 0
+    assert histograms["training_token_phonemes"]["max"] > 0
+    assert histograms["training_raw_internal_matches_per_segment"]["count"] > 0
+    assert result.runtime["timings_seconds"]["training_grammar_match_seconds"] >= 0.0
+    assert result.runtime["timings_seconds"]["training_window_filter_seconds"] >= 0.0
+    assert result.runtime["timings_seconds"]["training_piece_composition_seconds"] > 0.0
+    assert result.runtime["timings_seconds"]["training_outer_forward_seconds"] > 0.0
+    assert result.runtime["timings_seconds"]["inspection_outer_top_k_seconds"] > 0.0
+    assert result.runtime["gauges"]["sqlite_database_bytes"] > 0
+    assert result.runtime["gauges"]["sqlite_total_bytes"] > 0
+    assert result.runtime["gauges"]["artifact_bytes_before_timing_metrics"] > 0
 
     summary = json.loads((result.run_dir / "summary.json").read_text("utf-8"))
     assert summary["complexity"]["active_piece_types"] > 0
@@ -244,9 +256,19 @@ def test_s1m2_parallel_and_serial_scientific_outputs_match(tmp_path: Path) -> No
         _config(tmp_path, manifest, "serial", workers=1),
         repo_root=Path("."),
     ).run_dir
-    parallel = run_training(
+    parallel_result = run_training(
         _config(tmp_path, manifest, "parallel", workers=2),
         repo_root=Path("."),
-    ).run_dir
+    )
+    parallel = parallel_result.run_dir
 
     _assert_same_science(serial, parallel)
+    runtime = parallel_result.runtime
+    assert runtime["gauges"]["training_pending_shard_limit"] == 4
+    assert runtime["gauges"]["training_pending_shards"] <= 4
+    assert runtime["gauges"]["inspection_pending_shard_limit"] == 4
+    assert runtime["gauges"]["inspection_pending_shards"] <= 4
+    assert runtime["gauges"]["training_pending_shard_bytes"] > 0
+    assert runtime["gauges"]["inspection_pending_shard_bytes"] > 0
+    assert runtime["timings_seconds"]["training_reducer_stall"] >= 0.0
+    assert runtime["timings_seconds"]["inspection_reducer_stall"] >= 0.0

@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Iterable, Iterator
 
 from sktlm.latent.candidates import (
+    CandidateBuildProfile,
     CandidateConfig,
     build_candidate_graph,
     candidate_graph_fingerprint,
@@ -53,6 +54,7 @@ from sktlm.pieces.composed import (
     ComposedAnalysisPosterior,
     ComposedCacheConfig,
     ComposedInferenceCounters,
+    ComposedInferenceTimings,
     ComposedPieceInference,
     ComposedSegmentInference,
     infer_composed_segment,
@@ -407,6 +409,7 @@ def _record_composed_telemetry(
     counters: ComposedInferenceCounters,
     *,
     phase: str,
+    timings: ComposedInferenceTimings | None = None,
 ) -> None:
     gauges = {
         "piece_score_cache_entries",
@@ -420,6 +423,93 @@ def _record_composed_telemetry(
             telemetry.maximum(label, int(value))
         else:
             telemetry.increment(label, int(value))
+    if timings is not None:
+        _record_composed_timings(telemetry, timings, phase=phase)
+
+
+def _record_composed_timings(
+    telemetry: RuntimeTelemetry,
+    timings: ComposedInferenceTimings,
+    *,
+    phase: str,
+) -> None:
+    for name, value in asdict(timings).items():
+        telemetry.add_seconds(f"{phase}_{name}", float(value))
+
+
+def _existing_path_bytes(paths: Iterable[Path]) -> int:
+    return sum(path.stat().st_size for path in paths if path.is_file())
+
+
+def _record_store_storage(
+    telemetry: RuntimeTelemetry,
+    database_path: Path,
+) -> None:
+    paths = {
+        "sqlite_database_bytes": database_path,
+        "sqlite_wal_bytes": Path(f"{database_path}-wal"),
+        "sqlite_shm_bytes": Path(f"{database_path}-shm"),
+    }
+    total = 0
+    for label, path in paths.items():
+        size = path.stat().st_size if path.is_file() else 0
+        telemetry.maximum(label, size)
+        total += size
+    telemetry.maximum("sqlite_total_bytes", total)
+
+
+def _observe_segment_telemetry(
+    telemetry: RuntimeTelemetry,
+    segment: ObservedSegment,
+    config: TrainingConfig,
+    *,
+    phase: str,
+) -> None:
+    phonemes = sum(len(token.phonemes) for token in segment.tokens)
+    telemetry.observe(f"{phase}_segment_written_characters", len(segment.written))
+    telemetry.observe(f"{phase}_segment_phonemes", phonemes)
+    telemetry.observe(f"{phase}_observed_tokens", len(segment.tokens))
+    if config.condition == "continuous":
+        telemetry.observe(f"{phase}_continuous_span_phonemes", phonemes)
+    for token in segment.tokens:
+        telemetry.observe(f"{phase}_token_written_characters", len(token.written))
+        telemetry.observe(f"{phase}_token_phonemes", len(token.phonemes))
+
+
+def _record_candidate_telemetry(
+    telemetry: RuntimeTelemetry,
+    profile: CandidateBuildProfile,
+    statistics: dict[str, int],
+    *,
+    phase: str,
+) -> None:
+    for name in (
+        "visible_boundary_seconds",
+        "grammar_match_seconds",
+        "window_filter_seconds",
+        "node_construction_seconds",
+        "lattice_validation_seconds",
+        "factor_construction_seconds",
+    ):
+        telemetry.add_seconds(f"{phase}_{name}", float(getattr(profile, name)))
+    for name in (
+        "internal_match_calls",
+        "unfiltered_internal_matches",
+        "factor_combinations_attempted",
+    ):
+        telemetry.increment(f"{phase}_{name}", int(getattr(profile, name)))
+    for name in (
+        "boundary_options",
+        "factors",
+        "merged_factors",
+        "token_lattices",
+        "raw_internal_matches",
+        "retained_internal_matches",
+        "lattice_nodes",
+        "lexical_span_hypotheses",
+        "overflowed_tokens",
+    ):
+        telemetry.observe(f"{phase}_{name}_per_segment", int(statistics[name]))
 
 
 def _canonical_json(value: Any) -> str:
@@ -660,6 +750,12 @@ def _profiled_document_segments(
             telemetry.elapsed(f'{phase}_frontend_io', started)
             return
         telemetry.elapsed(f'{phase}_frontend_io', started)
+        _observe_segment_telemetry(
+            telemetry,
+            item[2],
+            config,
+            phase=phase,
+        )
         yield item
 
 
@@ -864,6 +960,7 @@ def _write_training_shard(
         if config.model == S1M2_MODEL
         else None
     )
+    engineering = RuntimeTelemetry()
 
     def flush(handle: Any) -> None:
         nonlocal row_count
@@ -900,26 +997,42 @@ def _write_training_shard(
                 break
             frontend_seconds += time.perf_counter() - started
             seen_lines.add(line_number)
-            started = time.perf_counter()
-            graph = (
-                build_candidate_graph(
-                    segment,
-                    _WORKER_GRAMMAR,
-                    config.candidate_config,
-                )
-                if config.model == S1M1_MODEL
-                else build_lazy_candidate_graph(
-                    segment,
-                    _WORKER_GRAMMAR,
-                    config.candidate_config,
-                )
+            _observe_segment_telemetry(
+                engineering,
+                segment,
+                config,
+                phase="training",
             )
+            started = time.perf_counter()
+            candidate_profile = (
+                CandidateBuildProfile() if config.model == S1M2_MODEL else None
+            )
+            if config.model == S1M1_MODEL:
+                graph = build_candidate_graph(
+                    segment,
+                    _WORKER_GRAMMAR,
+                    config.candidate_config,
+                )
+            else:
+                graph = build_lazy_candidate_graph(
+                    segment,
+                    _WORKER_GRAMMAR,
+                    config.candidate_config,
+                    profile=candidate_profile,
+                )
             candidate_seconds += time.perf_counter() - started
             candidate_counts = (
                 candidate_graph_statistics(graph)
                 if config.model == S1M1_MODEL
                 else lazy_candidate_graph_statistics(graph)
             )
+            if candidate_profile is not None:
+                _record_candidate_telemetry(
+                    engineering,
+                    candidate_profile,
+                    candidate_counts,
+                    phase="training",
+                )
             started = time.perf_counter()
             if config.model == S1M1_MODEL:
                 inference = infer_training_segment(
@@ -934,6 +1047,11 @@ def _write_training_shard(
                     _WORKER_PIECE_ENGINE,
                     whitespace_merge_penalty=config.whitespace_merge_penalty,
                     support_epsilon=config.piece_support_epsilon,
+                )
+                _record_composed_timings(
+                    engineering,
+                    inference.timings,
+                    phase="training",
                 )
             inference_seconds += time.perf_counter() - started
             started = time.perf_counter()
@@ -1002,6 +1120,7 @@ def _write_training_shard(
                 if piece_counters_before is not None
                 else {}
             ),
+            "engineering_telemetry": engineering.payload(),
         },
     }
     _write_json(marker_path, payload)
@@ -1125,6 +1244,7 @@ def _apply_training_shard(
         if buffered_pieces:
             store.add_document_piece_counts(buffered_pieces)
         store.commit_document(next_checkpoint)
+        _record_store_storage(telemetry, store.path)
     except BaseException:
         store.rollback_document()
         raise
@@ -1154,6 +1274,8 @@ def _apply_training_shard(
             ComposedInferenceCounters(**runtime['composed_counters']),
             phase='training',
         )
+    if runtime.get("engineering_telemetry"):
+        telemetry.merge_payload(runtime["engineering_telemetry"])
     _timed_checkpoint(run_dir, checkpoint, telemetry)
     shard_path.unlink()
     marker_path.unlink()
@@ -1183,6 +1305,7 @@ def _parallel_training_documents(
         initargs=(pass_index, store.path, config, vocabulary),
     ) as executor:
         max_pending = config.workers * 2
+        telemetry.maximum("training_pending_shard_limit", max_pending)
         pending: dict[int, Future[dict[str, Any]] | dict[str, Any]] = {}
         next_submit = start_document
 
@@ -1211,11 +1334,45 @@ def _parallel_training_documents(
                         signature,
                     )
                 next_submit += 1
+            telemetry.maximum("training_pending_shards", len(pending))
 
         fill_pending()
         for document_index in range(start_document, len(documents)):
+            telemetry.observe("training_pending_shards_per_reduction", len(pending))
             item = pending.pop(document_index)
-            payload = item.result() if isinstance(item, Future) else item
+            if isinstance(item, Future):
+                ready = item.done()
+                wait_started = telemetry.now()
+                payload = item.result()
+                telemetry.add_seconds(
+                    "training_reducer_stall",
+                    0.0 if ready else time.perf_counter() - wait_started,
+                )
+            else:
+                payload = item
+                telemetry.add_seconds("training_reducer_stall", 0.0)
+            completed_but_blocked = sum(
+                1
+                for pending_item in pending.values()
+                if not isinstance(pending_item, Future) or pending_item.done()
+            )
+            telemetry.observe(
+                "training_completed_but_blocked_shards_per_reduction",
+                completed_but_blocked,
+            )
+            telemetry.maximum(
+                "training_completed_but_blocked_shards",
+                completed_but_blocked,
+            )
+            pending_paths: list[Path] = []
+            for pending_index in (document_index, *pending):
+                pending_paths.extend(
+                    _training_shard_paths(run_dir, pass_index, pending_index)
+                )
+            telemetry.maximum(
+                "training_pending_shard_bytes",
+                _existing_path_bytes(pending_paths),
+            )
             metrics = _apply_training_shard(
                 payload=payload,
                 store=store,
@@ -1328,19 +1485,37 @@ def _training_pass(
             ):
                 seen_lines.add(line_number)
                 started = telemetry.now()
-                graph = (
-                    build_candidate_graph(segment, grammar, config.candidate_config)
-                    if config.model == S1M1_MODEL
-                    else build_lazy_candidate_graph(
-                        segment, grammar, config.candidate_config
-                    )
+                candidate_profile = (
+                    CandidateBuildProfile()
+                    if config.model == S1M2_MODEL
+                    else None
                 )
+                if config.model == S1M1_MODEL:
+                    graph = build_candidate_graph(
+                        segment,
+                        grammar,
+                        config.candidate_config,
+                    )
+                else:
+                    graph = build_lazy_candidate_graph(
+                        segment,
+                        grammar,
+                        config.candidate_config,
+                        profile=candidate_profile,
+                    )
                 telemetry.elapsed('training_candidate_generation', started)
                 candidate_counts = (
                     candidate_graph_statistics(graph)
                     if config.model == S1M1_MODEL
                     else lazy_candidate_graph_statistics(graph)
                 )
+                if candidate_profile is not None:
+                    _record_candidate_telemetry(
+                        telemetry,
+                        candidate_profile,
+                        candidate_counts,
+                        phase="training",
+                    )
                 started = telemetry.now()
                 if config.model == S1M1_MODEL:
                     assert scorer is not None
@@ -1362,6 +1537,7 @@ def _training_pass(
                         telemetry,
                         inference.counters,
                         phase="training",
+                        timings=inference.timings,
                     )
                 telemetry.elapsed('training_inference', started)
                 started = telemetry.now()
@@ -1417,6 +1593,7 @@ def _training_pass(
                 "active_metrics": asdict(next_metrics),
             }
             store.commit_document(next_checkpoint)
+            _record_store_storage(telemetry, store.path)
         except BaseException:
             store.rollback_document()
             raise
@@ -1669,6 +1846,7 @@ def _write_inspection_shard(
         if config.model == S1M2_MODEL
         else None
     )
+    engineering = RuntimeTelemetry()
 
     def flush_counts(handle: Any) -> None:
         nonlocal count_rows
@@ -1711,26 +1889,42 @@ def _write_inspection_shard(
                 break
             frontend_seconds += time.perf_counter() - started
             seen_lines.add(line_number)
-            started = time.perf_counter()
-            graph = (
-                build_candidate_graph(
-                    segment,
-                    _WORKER_GRAMMAR,
-                    config.candidate_config,
-                )
-                if config.model == S1M1_MODEL
-                else build_lazy_candidate_graph(
-                    segment,
-                    _WORKER_GRAMMAR,
-                    config.candidate_config,
-                )
+            _observe_segment_telemetry(
+                engineering,
+                segment,
+                config,
+                phase="inspection",
             )
+            started = time.perf_counter()
+            candidate_profile = (
+                CandidateBuildProfile() if config.model == S1M2_MODEL else None
+            )
+            if config.model == S1M1_MODEL:
+                graph = build_candidate_graph(
+                    segment,
+                    _WORKER_GRAMMAR,
+                    config.candidate_config,
+                )
+            else:
+                graph = build_lazy_candidate_graph(
+                    segment,
+                    _WORKER_GRAMMAR,
+                    config.candidate_config,
+                    profile=candidate_profile,
+                )
             candidate_seconds += time.perf_counter() - started
             candidate_values = (
                 candidate_graph_statistics(graph)
                 if config.model == S1M1_MODEL
                 else lazy_candidate_graph_statistics(graph)
             )
+            if candidate_profile is not None:
+                _record_candidate_telemetry(
+                    engineering,
+                    candidate_profile,
+                    candidate_values,
+                    phase="inspection",
+                )
             started = time.perf_counter()
             if config.model == S1M1_MODEL:
                 inference = infer_segment(
@@ -1746,6 +1940,11 @@ def _write_inspection_shard(
                     _WORKER_PIECE_ENGINE,
                     whitespace_merge_penalty=config.whitespace_merge_penalty,
                     support_epsilon=config.piece_support_epsilon,
+                )
+                _record_composed_timings(
+                    engineering,
+                    inference.timings,
+                    phase="inspection",
                 )
             inference_seconds += time.perf_counter() - started
             started = time.perf_counter()
@@ -1980,6 +2179,7 @@ def _write_inspection_shard(
                 if piece_counters_before is not None
                 else {}
             ),
+            "engineering_telemetry": engineering.payload(),
         },
     }
     _write_json(paths["marker"], payload)
@@ -2200,6 +2400,9 @@ def _apply_inspection_shard(
             ComposedInferenceCounters(**runtime["composed_counters"]),
             phase="inspection",
         )
+    if runtime.get("engineering_telemetry"):
+        telemetry.merge_payload(runtime["engineering_telemetry"])
+    _record_store_storage(telemetry, store.path)
 
 
 def _finalize_inspection(
@@ -2347,6 +2550,7 @@ def _parallel_inspection_pass(
         initargs=(store.path, config, vocabulary),
     ) as executor:
         max_pending = config.workers * 2
+        telemetry.maximum("inspection_pending_shard_limit", max_pending)
         pending: dict[int, Future[dict[str, Any]] | dict[str, Any]] = {}
         next_submit = 0
 
@@ -2373,11 +2577,45 @@ def _parallel_inspection_pass(
                         signature,
                     )
                 next_submit += 1
+            telemetry.maximum("inspection_pending_shards", len(pending))
 
         fill_pending()
         for document_index in range(len(documents)):
+            telemetry.observe("inspection_pending_shards_per_reduction", len(pending))
             item = pending.pop(document_index)
-            payload = item.result() if isinstance(item, Future) else item
+            if isinstance(item, Future):
+                ready = item.done()
+                wait_started = telemetry.now()
+                payload = item.result()
+                telemetry.add_seconds(
+                    "inspection_reducer_stall",
+                    0.0 if ready else time.perf_counter() - wait_started,
+                )
+            else:
+                payload = item
+                telemetry.add_seconds("inspection_reducer_stall", 0.0)
+            completed_but_blocked = sum(
+                1
+                for pending_item in pending.values()
+                if not isinstance(pending_item, Future) or pending_item.done()
+            )
+            telemetry.observe(
+                "inspection_completed_but_blocked_shards_per_reduction",
+                completed_but_blocked,
+            )
+            telemetry.maximum(
+                "inspection_completed_but_blocked_shards",
+                completed_but_blocked,
+            )
+            pending_paths: list[Path] = []
+            for pending_index in (document_index, *pending):
+                pending_paths.extend(
+                    _inspection_shard_paths(run_dir, pending_index).values()
+                )
+            telemetry.maximum(
+                "inspection_pending_shard_bytes",
+                _existing_path_bytes(pending_paths),
+            )
             _apply_inspection_shard(
                 payload=payload,
                 store=store,
@@ -2492,19 +2730,37 @@ def _inspection_pass(
             ):
                 seen_lines.add(line_number)
                 started = telemetry.now()
-                graph = (
-                    build_candidate_graph(segment, grammar, config.candidate_config)
-                    if config.model == S1M1_MODEL
-                    else build_lazy_candidate_graph(
-                        segment, grammar, config.candidate_config
-                    )
+                candidate_profile = (
+                    CandidateBuildProfile()
+                    if config.model == S1M2_MODEL
+                    else None
                 )
+                if config.model == S1M1_MODEL:
+                    graph = build_candidate_graph(
+                        segment,
+                        grammar,
+                        config.candidate_config,
+                    )
+                else:
+                    graph = build_lazy_candidate_graph(
+                        segment,
+                        grammar,
+                        config.candidate_config,
+                        profile=candidate_profile,
+                    )
                 telemetry.elapsed('inspection_candidate_generation', started)
                 candidate_counts = (
                     candidate_graph_statistics(graph)
                     if config.model == S1M1_MODEL
                     else lazy_candidate_graph_statistics(graph)
                 )
+                if candidate_profile is not None:
+                    _record_candidate_telemetry(
+                        telemetry,
+                        candidate_profile,
+                        candidate_counts,
+                        phase="inspection",
+                    )
                 started = telemetry.now()
                 if config.model == S1M1_MODEL:
                     assert scorer is not None
@@ -2527,6 +2783,7 @@ def _inspection_pass(
                         telemetry,
                         inference.counters,
                         phase="inspection",
+                        timings=inference.timings,
                     )
                 telemetry.elapsed('inspection_inference', started)
                 started = telemetry.now()
@@ -3173,6 +3430,11 @@ def run_training(
             config=config,
             run_dir=run_dir,
             telemetry=telemetry,
+        )
+        _record_store_storage(telemetry, store.path)
+        telemetry.maximum(
+            "artifact_bytes_before_timing_metrics",
+            _existing_path_bytes(run_dir.rglob("*")),
         )
         runtime = store.runtime_payload()
         runtime['grammar_cache'] = grammar.cache_statistics()

@@ -1408,6 +1408,34 @@ CONTINUOUS_BENCHMARK_WORKLOADS=FROZEN
 S1M2_CONTINUOUS_PROFILING=READY_TO_IMPLEMENT
 ```
 
+## 51. S1M2 continuous detailed telemetry implemented (2026-09-05)
+
+Before observing any S1M2 continuous model timing, the production path gained
+bounded engineering-only histograms and subphase clocks. Fixed power-of-two
+histograms summarize written/phoneme/token/span sizes and candidate work;
+candidate profiling separates grammar matching, factor-window filtering, node
+and lattice construction; composed inference separates inner piece, lazy-token,
+factor-composition, and outer exact-DP phases. Nested timings may overlap their
+enclosing totals and cannot feed scientific decisions.
+
+Parallel training and inspection now expose the fixed `2 * workers` pending
+limit, queue occupancy, completed-but-canonically-blocked shards, reducer stall,
+and pending-shard bytes. SQLite database/WAL/shared-memory and near-final
+artifact sizes have explicit high-water gauges. Production cloud profiling
+will continue to obtain simultaneous process-tree RSS/CPU/I/O from the existing
+Linux metrics wrapper.
+
+Telemetry-on lazy graphs equal telemetry-off graphs, and the existing exact
+inference and serial/parallel scientific equivalence tests remain green. The
+focused pieces/latent suite passes (`80 passed`) and `git diff --check` passes.
+No S1M2 model benchmark or full-M0 run has started.
+
+```text
+S1M2_CONTINUOUS_TELEMETRY=IMPLEMENTED_VALIDATED
+S1M2_CONTINUOUS_CHEAP_PROFILE=READY_TO_RUN
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 48. S1M2 streaming trainer integration complete (2026-09-05)
 
 The existing full-corpus-capable trainer now supports
