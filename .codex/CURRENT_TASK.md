@@ -6,47 +6,46 @@ Branch: `exp/s1m2-reusable-pieces`.
 
 ```text
 S1M1: FROZEN
-direct association-level evidence: YES (weighting-qualified)
-selective archival/deletion gate: COMPLETE / READY (no deletion performed)
+researcher-authorized S1M1 regenerable-file cleanup: COMPLETE (12/12 absent)
 M0-prime formal substrate: COMPLETE / VALID
 S1M2 P0 reference oracle: COMPLETE
 S1M2 P1a production scoring: COMPLETE
 S1M2 P1b lazy candidates: COMPLETE
-S1M2 P1c: READY TO START
+S1M2 P1c exact composed inference: COMPLETE
+P1c/P0 and lazy/materialized equivalence gates: PASS
+S1M2 streaming trainer integration: READY TO START
 ```
 
-The branch is synchronized onto updated `main`, contains no tracked
-`notes/**`, inherits the validated corrected six-cell M0/M0-prime substrate,
-and passes the focused integration and full repository suites. No P1c code or
-full-corpus S1M2 run has started.
+P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
+scores, composed with P1b lazy spans. It creates neither per-form P0 lattice
+objects nor persistent lexical-edge rows. Its form and piece-score caches have
+explicit entry and estimated-byte bounds. The focused pieces/latent suite
+passes (`70 passed`) and the P1c full-repository gate passes (`627 passed, 2
+warnings`). No full-corpus S1M2 run has started.
 
-Do not rerun S1M1 heavy work or M0-prime generation/validation. Do not delete
-artifacts. `notes/**` may be read/searched when useful but must never be
-modified, moved, copied, deleted, tracked, staged, committed, restored,
-checked out, or force-added.
+The historical deletion-readiness manifest remains provenance for the 12
+files classified `SAFE_TO_DELETE_REGENERABLE`. A read-only path check now finds
+all 12 absent after the separately researcher-authorized manual cleanup. Do
+not recreate them, rerun their hashes, or delete anything else.
 
-## Next task: P1c only
+Do not rerun frozen S1M1 work or M0-prime generation/validation. `notes/**`
+remains strictly local/read-only and must never be modified, created, moved,
+copied, deleted, tracked, staged, restored, checked out, or force-added.
 
-Implement exact shared/composed piece inference over the existing lazy spans.
-Keep P0 unchanged as the numerical oracle. Do not build an independent P0
-piece lattice for every lexical form and do not introduce a beam or early hard
-decoding.
+## Next task: streaming trainer integration
 
-Required tiny equivalence gates:
+Integrate the P1c engine into the existing full-corpus-capable streaming
+trainer. Preserve streaming documents, bounded memory, deterministic canonical
+reduction, SQLite durability, checkpoint/resume, and crash-safe document
+transactions. Piece parameters must be authoritative for scoring; lexical
+counts remain diagnostics.
 
-1. per-form prior normalizer, log score, and expected piece counts versus P0;
-2. lazy versus materialized outer partition and lexical expected counts;
-3. composed expected piece counts;
-4. identity/latent mass, expected lexical tokens, boundary posteriors, rule
-   usage, and total posterior mass;
-5. deterministic traversal/state/transition and scoring/cache/store counters,
-   with explicitly bounded pass-local cache state.
-
-Reusable pieces remain untyped and must concatenate exactly to the
-grammar-licensed lexical form. Do not add morphology/gold resources, a learned
-internal rewrite, a Sanskrit-specific suffix inventory, or a reward for using
-sandhi. Full trainer integration and corpus execution remain later work.
+Implement fixed active piece state within each pass, expected piece and
+occurrence-support accumulation, between-pass activation, durable piece state,
+resume identity validation, required S1M2 artifacts, and tiny uninterrupted
+versus resumed equivalence. Run only cheap bounded work inline; detach any
+workload plausibly exceeding five minutes. Do not launch full-M0.
 
 ```text
-S1M2 P1c READY TO START
+S1M2_TRAINER_INTEGRATION=READY_TO_START
 ```

@@ -1,7 +1,7 @@
 # PROJECT_STATE.md
 
 Last major handoff: 2026-08-30
-Primary implementation branch: `exp/m0-core-methods`
+Primary implementation branch: `exp/s1m2-reusable-pieces`
 
 This file records durable project state. It is not a task prompt.
 
@@ -1302,4 +1302,54 @@ shared/composed inference over lazy spans with P0/materialized oracle gates:
 
 ```text
 S1M2 P1c READY TO START
+```
+
+## 46. Authorized S1M1 cleanup reconciliation (2026-09-05)
+
+After the frozen deletion-readiness checkpoint, the researcher separately
+authorized and manually performed cleanup of exactly the 12 files classified
+`SAFE_TO_DELETE_REGENERABLE` in
+`reports/core_methods/latent_lexicon/s1m1_deletion_readiness_20260903.json`.
+A cheap read-only `Test-Path -LiteralPath` check over that existing manifest now
+finds 0 present and 12 absent. No large artifact was rehashed, no source was
+recreated, and no additional deletion was performed by repository tooling or
+Codex. Historical checkpoint statements that no deletion had occurred describe
+the state at checkpoint creation; this section records the later authorized
+physical state and supersedes them for current-state purposes.
+
+## 47. S1M2 P1c exact composed inference complete (2026-09-05)
+
+The P1c production kernel is implemented in
+`src/sktlm/pieces/composed.py`. It evaluates the complete P0 legal piece
+support with direct position forward/backward DP, without constructing P0
+`PieceLattice` objects. It composes those exact per-form partitions and
+conditional piece counts with P1b lazy lexical spans, token DP, and outer
+factor DP. It returns lexical and piece expected counts, identity/latent mass,
+expected lexical tokens, boundary posteriors, rule usage, joint entropy, and
+total posterior mass.
+
+Piece scores and per-form results are shared within one immutable scoring pass
+through LRU caches with independent finite entry and conservative
+estimated-byte limits. Oversize entries are evaluated without retention. The
+engine exposes lazy-span, factor/node, composed-state/transition, piece-score,
+form-cache, store-lookup, eviction, oversize, entry, and byte-estimate counters.
+Changing cache bounds cannot change support, scoring, ordering, or posterior
+semantics; a new engine is required after every between-pass parameter update.
+
+Tiny tests cover identity-only, alternative segmentations, whole-form versus
+singleton competition, cross-form reuse, sandhi/avagraha ambiguity, visible
+space, joined and no-space spans, M0-prime diphthong/hiatus and aspirate/C+h
+contrasts, and matched Devanagari phonology. Direct form results match P0 and
+complete lazy results match the materialized outer/P0 comparator at the
+declared `rtol=1e-10`, `atol=1e-12` convention. The focused pieces/latent suite
+passed (`70 passed`); the repository suite passed (`627 passed, 2 warnings`).
+
+```text
+S1M2_P1C=COMPLETE
+P1C_P0_TINY_EQUIVALENCE=PASS
+LAZY_MATERIALIZED_OUTER_EQUIVALENCE=PASS
+EXPECTED_PIECE_COUNT_EQUIVALENCE=PASS
+BOUNDARY_RULE_MASS_EQUIVALENCE=PASS
+S1M2_TRAINER_INTEGRATION=READY_TO_START
+FULL_M0_PROCESS_RUNNING=NO
 ```
