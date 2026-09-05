@@ -1411,6 +1411,25 @@ S1M2_OPTIMIZATION_2=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 57. Continuous optimization 2 accepted (2026-09-05)
+
+Candidate SHA `407904ac8ed8196c7b676b7deab8b707a6f85e8d` preserves all
+seven canonical scientific artifacts byte-for-byte against optimization 1 in
+both continuous frontends. Profiled wall time improved another 59.4%/58.7%,
+form initialization count fell 67.8%, and piece-score calls now occur once per
+unchanged legal composed transition.
+
+Optimization 2 is accepted. The remaining probe inspection profile is dominated
+by top-k sorting/key allocation. Optimization 3 will batch the unchanged inner
+piece-path sort/truncate once per destination position, with fixed piece-length
+and top-k bounds and identical ordering.
+
+```text
+S1M2_OPTIMIZATION_2=ACCEPTED
+S1M2_OPTIMIZATION_3=READY_TO_IMPLEMENT
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 49. Continuous benchmark selection rule frozen (2026-09-05)
 
 Before observing any S1M2 continuous timing, the static selection algorithm

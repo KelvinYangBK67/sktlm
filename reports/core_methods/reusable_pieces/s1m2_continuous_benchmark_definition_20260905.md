@@ -300,3 +300,29 @@ requires the same committed paired probe before acceptance.
 ```text
 S1M2_OPTIMIZATION_2=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
 ```
+
+#### Optimization 2 result: accepted
+
+At candidate SHA `407904ac8ed8196c7b676b7deab8b707a6f85e8d`, all seven
+canonical scientific artifacts remain byte-identical to optimization 1 in both
+frontends. Profiled wall time fell another `59.4%` for M0-prime IAST and `58.7%`
+for M0 Devanagari. Training inference improved `44.5%`/`46.1%`; inspection
+inference improved `66.5%`/`65.7%`.
+
+The profiled call count fell `25.6%`, form initializations fell `67.8%`, and
+piece-score calls fell from 79,667 to 25,135 in training and from 104,802 to
+25,135 in inspection. Those final counts equal the unchanged composed legal
+transition count. The compact acceptance envelope is
+`evidence/s1m2_continuous_optimization_2_v1.json`.
+
+The remaining inspection profile is dominated by repeated sort/key allocation
+in bounded top-k. The next smallest candidate batches the inner piece-path
+sort/truncate once per destination position rather than once after every
+incoming transition. Top-k of a union is unchanged by this scheduling, tie keys
+remain identical, and the temporary candidates remain bounded by the fixed
+piece length and top-k. Lazy-token top-k is not changed in this candidate.
+
+```text
+S1M2_OPTIMIZATION_2=ACCEPTED
+S1M2_OPTIMIZATION_3=INNER_TOP_K_BATCHING_READY
+```

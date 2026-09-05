@@ -1,0 +1,80 @@
+{
+  "schema_version": "sktlm-s1m2-continuous-optimization-evidence/v1",
+  "optimization_id": "transient_piece_transition_reuse",
+  "status": "ACCEPTED",
+  "baseline_git_sha": "d4e48735cefb9d25a057c40c1b12e811cc1afa32",
+  "candidate_git_sha": "407904ac8ed8196c7b676b7deab8b707a6f85e8d",
+  "workload": {
+    "id": "representative_probe",
+    "document_list_sha256": "7bf936025ce28c43cdae0407d532c461b50726a28275fa40062a8a6889296ed3",
+    "documents": 3,
+    "max_lines_per_document": 2,
+    "passes": 1,
+    "workers": 1,
+    "inspection_enabled": true,
+    "cprofile_enabled": true
+  },
+  "equivalence": {
+    "iast_canonical_artifacts_byte_identical": 7,
+    "devanagari_canonical_artifacts_byte_identical": 7,
+    "canonical_artifacts": [
+      "iteration_metrics.json",
+      "piece_inventory.tsv",
+      "lexical_diagnostics.tsv",
+      "analyses.jsonl",
+      "boundary_posteriors.jsonl",
+      "rule_usage.tsv",
+      "summary.json"
+    ],
+    "focused_pieces_latent_tests": "82 passed"
+  },
+  "cells": [
+    {
+      "cell_id": "m0_prime_iast_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_prime_iast_d4e4873_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_prime_iast_407904a_a01",
+      "candidate_benchmark_metrics_sha256": "3d354c2b1cbb75c170371f9b53b4d0af13be740064ff071a0776bb4ce2c0bc8d",
+      "candidate_profile_sha256": "1f5a32ba0f977de63c10a7fa3aa11fa297a4d6c54fa7dc27a9a759c215a849eb",
+      "baseline_wall_seconds": 10.054426200018497,
+      "candidate_wall_seconds": 4.081509399984498,
+      "wall_improvement_percent": 59.406,
+      "baseline_training_inference_seconds": 1.6456568000139669,
+      "candidate_training_inference_seconds": 0.9138386000122409,
+      "training_inference_improvement_percent": 44.470,
+      "baseline_inspection_inference_seconds": 7.863464799942449,
+      "candidate_inspection_inference_seconds": 2.6358127999701537,
+      "inspection_inference_improvement_percent": 66.480
+    },
+    {
+      "cell_id": "m0_devanagari_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_devanagari_d4e4873_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_devanagari_407904a_a01",
+      "candidate_benchmark_metrics_sha256": "6baecf78cfb7fe1602051930a9b2648cacf904ede78158bac6aa64de0b5ba660",
+      "candidate_profile_sha256": "52bcc5d6619832da9bfbcf1c4b2555b8fe5baf2bf44f5a255e7239706eefe3a6",
+      "baseline_wall_seconds": 9.251514100003988,
+      "candidate_wall_seconds": 3.8238919000141323,
+      "wall_improvement_percent": 58.667,
+      "baseline_training_inference_seconds": 1.6302315999637358,
+      "candidate_training_inference_seconds": 0.8784674999478739,
+      "training_inference_improvement_percent": 46.114,
+      "baseline_inspection_inference_seconds": 7.108454399975017,
+      "candidate_inspection_inference_seconds": 2.440385999972932,
+      "inspection_inference_improvement_percent": 65.669
+    }
+  ],
+  "mechanism": {
+    "baseline_profiled_function_calls": 14028134,
+    "candidate_profiled_function_calls": 10440838,
+    "function_call_improvement_percent": 25.572,
+    "baseline_phonological_form_initializations": 198005,
+    "candidate_phonological_form_initializations": 63806,
+    "initialization_count_improvement_percent": 67.776,
+    "baseline_training_piece_score_calls": 79667,
+    "candidate_training_piece_score_calls": 25135,
+    "training_piece_score_call_improvement_percent": 68.450,
+    "baseline_inspection_piece_score_calls": 104802,
+    "candidate_inspection_piece_score_calls": 25135,
+    "inspection_piece_score_call_improvement_percent": 76.017
+  },
+  "semantic_reason": "The table enumerates the unchanged legal start/end transitions once in the same order inside a single form evaluation, reusing identical prior and fixed-pass scores across exact DP passes. It is discarded before return and never becomes a persistent per-form P0 lattice."
+}

@@ -47,11 +47,12 @@ copied, deleted, tracked, staged, restored, checked out, or force-added.
 
 ## Next task: measure the frozen continuous workloads
 
-Optimization 2 now reuses each exact legal piece transition across the inner
-forward/backward/posterior/singleton/top-k loops within one form evaluation;
-the table is not persisted and the focused suite passes (`82 passed`). Run the
-same paired probe from its clean committed SHA. Accept only with byte-identical
-scientific outputs and a direct reduction in form construction/score work. Use
+Optimization 2 is accepted with byte-identical science and another 59% paired
+probe wall-time reduction. Implement optimization 3 by accumulating all inner
+piece-path candidates for a destination position and applying the unchanged
+sort/tie/truncate exactly once before that position is consumed. Keep temporary
+work bounded by fixed piece length and top-k. Run focused equivalence and then
+the same paired probe from a clean SHA. Use
 only the frozen representative/stress lists for later timing, and detach either
 full workload if plausibly longer than five minutes. Do not rerun the static
 scan or launch full-M0.
@@ -61,5 +62,6 @@ S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
 CONTINUOUS_SCRIPT_NEUTRAL_PROBE=PASS
 S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 S1M2_OPTIMIZATION_1=ACCEPTED
-S1M2_OPTIMIZATION_2=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
+S1M2_OPTIMIZATION_2=ACCEPTED
+S1M2_OPTIMIZATION_3=READY_TO_IMPLEMENT
 ```
