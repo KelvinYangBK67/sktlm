@@ -192,3 +192,40 @@ from a clean committed checkpoint.
 S1M2_CONTINUOUS_BENCHMARK_CONTRACT=FROZEN
 S1M2_CONTINUOUS_CHEAP_PROFILE=READY_TO_RUN
 ```
+
+## Fixed paired probe baseline
+
+At clean Git SHA `95f6029cc2e0e05852305cf7d4f511c064d60789`, both fixed
+six-line/one-pass probes completed with final inspection under `cProfile`:
+
+| cell | wall | CPU | training inference | inspection inference |
+|---|---:|---:|---:|---:|
+| M0-prime IAST continuous | 19.088 s | 15.344 s | 3.902 s | 12.611 s |
+| M0 Devanagari continuous | 18.629 s | 15.156 s | 3.801 s | 12.057 s |
+
+The two frontends produced identical 91 training phonemes, five segments,
+1,073 candidate span hypotheses, 4,626 composed states, and 25,135 composed
+transitions. Piece inventory, lexical diagnostics, and rule-usage artifacts
+are byte-identical. Training/inspection summaries differ only in expected
+written-character counts (92 IAST versus 75 Devanagari). This rules out a
+script-specific residual in the exact composed workload on the probe.
+
+The IAST profile records 25.55 million calls. `LazyLexicalSpan.word` accounts
+for 193,077 calls and 5.643 cumulative seconds, while `PhonologicalForm`
+initialization accounts for 391,082 calls and 7.001 cumulative seconds. The
+lazy lattice already constructs and validates a form when creating each
+transient span, then discards it and reconstructs it repeatedly during exact
+traversals. Candidate generation is only about two milliseconds. The first
+optimization experiment is therefore reuse of that already-validated transient
+form, with graph and posterior equivalence required.
+
+The compact evidence envelope is
+`evidence/s1m2_continuous_probe_baseline_v1.json`. Because the probe reads only
+six lines and `cProfile` inflates Python-heavy work, its wall times are not a
+full-M0 projection and do not satisfy the representative/stress gate.
+
+```text
+S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
+CONTINUOUS_SCRIPT_NEUTRAL_PROBE=PASS
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+```

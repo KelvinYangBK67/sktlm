@@ -1,0 +1,72 @@
+{
+  "schema_version": "sktlm-s1m2-continuous-probe-evidence/v1",
+  "status": "VALID_BASELINE_NOT_FOR_PROJECTION",
+  "git_sha": "95f6029cc2e0e05852305cf7d4f511c064d60789",
+  "workload": {
+    "id": "representative_probe",
+    "document_list_sha256": "7bf936025ce28c43cdae0407d532c461b50726a28275fa40062a8a6889296ed3",
+    "documents": 3,
+    "max_lines_per_document": 2,
+    "passes": 1,
+    "workers": 1,
+    "inspection_enabled": true,
+    "cprofile_enabled": true
+  },
+  "shared_scientific_work": {
+    "training_phonemes": 91,
+    "training_segments": 5,
+    "training_candidate_span_hypotheses": 1073,
+    "training_composed_states": 4626,
+    "training_composed_transitions": 25135,
+    "inspection_candidate_span_hypotheses": 1073,
+    "inspection_composed_states": 4626,
+    "inspection_composed_transitions": 25135,
+    "piece_inventory_sha256": "a2e1fcf5d622a036fbd4a2f285b77e81906bc530f84417c0fd93536e4397fe3c",
+    "lexical_diagnostics_sha256": "923ace69eb6b0a6523574d45f0ccfa7c5487854431e9ce408ec9465686fcc48e",
+    "rule_usage_sha256": "2a55819be1c8ceec40bf91dc82379ae504b0ae37b4248713d141dba36938b58e",
+    "summary_difference": "written character count only (IAST 92, Devanagari 75)"
+  },
+  "cells": [
+    {
+      "cell_id": "m0_prime_iast_continuous",
+      "run_id": "s1m2_continuous_probe_m0_prime_iast_95f6029_a01",
+      "manifest_sha256": "3a8cbb3359ce8cce2a7d551281a8faf50b9fed33f9b8d4bce3425d28237ae922",
+      "config_signature": "e8dbb46dbd6908ee55441c80f813e799f22d0f9e9139949ec8e4ae5358f3966f",
+      "benchmark_metrics_sha256": "16c082332b843c8d58f63652ea27dfc60ee7b26a7e23a6936cecb8e2d9082dfe",
+      "profile_sha256": "3cde5708b2775a41fd2b7b12e52632d6967ce557b062307b6d8f5c1b0ba02f10",
+      "wall_seconds": 19.087854999990668,
+      "cpu_seconds": 15.34375,
+      "training_inference_seconds": 3.9018120999389794,
+      "inspection_inference_seconds": 12.610992399975657,
+      "peak_main_process_rss_bytes": 49922048,
+      "artifact_bytes": 611461
+    },
+    {
+      "cell_id": "m0_devanagari_continuous",
+      "run_id": "s1m2_continuous_probe_m0_devanagari_95f6029_a01",
+      "manifest_sha256": "c04124b2bc4909750ebedc4e7ec939df3c18edecf1598345ab3f662a21fbc520",
+      "config_signature": "d6d99259c16a9fb289ebff6826b91bf2603d632fb7049045761ef5e86409db55",
+      "benchmark_metrics_sha256": "6a6e00af06f991a8cbfdb84bb104866f967b68d87f4e05217befe46dad3e473a",
+      "profile_sha256": "fd90593cf33a3a6f1859db21f0b560115639017554429a8428df4002b4345c1e",
+      "wall_seconds": 18.629407399974298,
+      "cpu_seconds": 15.15625,
+      "training_inference_seconds": 3.801191000005929,
+      "inspection_inference_seconds": 12.056852100009564,
+      "peak_main_process_rss_bytes": 49639424,
+      "artifact_bytes": 628218
+    }
+  ],
+  "profile_mechanism": {
+    "profiled_function_calls": 25553328,
+    "lazy_span_word_calls": 193077,
+    "lazy_span_word_cumulative_seconds": 5.643,
+    "phonological_form_post_init_calls": 391082,
+    "phonological_form_post_init_cumulative_seconds": 7.001,
+    "interpretation": "A LazyTokenLattice span constructs a PhonologicalForm to validate it, discards that object, and LazyLexicalSpan.word reconstructs it repeatedly during exact forward/backward/posterior/top-k traversals. Reusing the already-validated transient span form is the first optimization target."
+  },
+  "caveats": [
+    "This is a fixed six-line diagnostic probe, not the frozen representative or stress workload.",
+    "cProfile substantially inflates Python-heavy wall time, so these wall times must not project full-M0 runtime.",
+    "peak_main_process_rss_bytes excludes simultaneous child processes; cloud measurements use the existing process-tree wrapper."
+  ]
+}

@@ -20,6 +20,8 @@ continuous benchmark selection rule: FROZEN
 continuous static corpus scan: COMPLETE / VALIDATED
 continuous representative/stress workloads: FROZEN
 continuous detailed profiling telemetry: IMPLEMENTED / VALIDATED
+paired fixed cheap profile: COMPLETE
+probe script-neutral workload identity: PASS
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -43,14 +45,17 @@ copied, deleted, tracked, staged, restored, checked out, or force-added.
 
 ## Next task: measure the frozen continuous workloads
 
-Extend the benchmark runner with an explicit S1M2 continuous contract, then run
-one fixed cheap profile from the committed telemetry checkpoint. Use only the
-frozen representative/stress document lists for subsequent representative and
-stress timing. Detach either workload if plausibly longer than five minutes.
-Profile both M0-prime IAST and M0 Devanagari frontends before accepting any
-optimization. Do not rerun the static scan or launch full-M0.
+Implement and equivalence-test the measured first optimization: retain the
+already-validated `PhonologicalForm` in each transient lazy span instead of
+reconstructing it on every access. Re-run the same fixed paired probe only
+after a clean committed optimization checkpoint. Accept it only if scientific
+outputs remain equivalent and the measured object churn/time improves. Use
+only the frozen representative/stress lists for later timing, and detach either
+full workload if plausibly longer than five minutes. Do not rerun the static
+scan or launch full-M0.
 
 ```text
-S1M2_CONTINUOUS_TELEMETRY=IMPLEMENTED_VALIDATED
-S1M2_CONTINUOUS_CHEAP_PROFILE=READY_TO_RUN
+S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
+CONTINUOUS_SCRIPT_NEUTRAL_PROBE=PASS
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 ```

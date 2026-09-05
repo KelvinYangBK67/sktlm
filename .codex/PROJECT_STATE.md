@@ -1436,6 +1436,30 @@ S1M2_CONTINUOUS_CHEAP_PROFILE=READY_TO_RUN
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 53. Paired continuous probe baseline complete (2026-09-05)
+
+At Git SHA `95f6029cc2e0e05852305cf7d4f511c064d60789`, the fixed
+three-document/two-line, one-pass plus inspection probes completed under
+`cProfile` for M0-prime IAST continuous and M0 Devanagari continuous. Wall
+times were 19.088 and 18.629 seconds. These values are diagnostic only and
+cannot project full-M0.
+
+Both frontends produced identical phoneme/segment, lazy-span, composed-state,
+and composed-transition work. Piece inventory, lexical diagnostics, and rule
+usage are byte-identical; summaries differ only by written-character count.
+The profile identifies repeated transient `PhonologicalForm` reconstruction as
+the dominant first target: `LazyLexicalSpan.word` was called 193,077 times for
+5.643 cumulative seconds, and form initialization used 7.001 cumulative
+seconds. Candidate generation was negligible. The baseline compact envelope is
+tracked under reusable-piece evidence; raw runs remain ignored.
+
+```text
+S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
+CONTINUOUS_SCRIPT_NEUTRAL_PROBE=PASS
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 52. S1M2 continuous runtime benchmark contract frozen (2026-09-05)
 
 The tracked runtime contract binds six benchmark IDs (probe, representative,
