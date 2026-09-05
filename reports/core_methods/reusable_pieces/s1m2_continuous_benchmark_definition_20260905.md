@@ -414,3 +414,31 @@ without changing path generation, score/tie ordering, or top-K bounds.
 S1M2_OPTIMIZATION_5=ACCEPTED
 S1M2_OPTIMIZATION_6=INNER_PATH_KEY_REUSE_READY
 ```
+
+### Optimization 6 result: accepted
+
+At candidate SHA `25fbeedc2afb84b868d35624ba5303310dcc574f`, bounded inner
+inspection paths carry the immutable tuple of their piece keys. Appending the
+next piece key produces exactly the tuple previously regenerated during sort;
+score order, tie order, path generation, and the existing
+`(max_piece_length + 1) * inspection_top_k` bound are unchanged. Exact
+marginals never consume this path state.
+
+The P0 ordered-top-path test and full pieces/latent suite pass (`83 passed`).
+All seven canonical artifacts remain byte-identical to optimization 5 in both
+frontends. Inner piece top-K improved `61.1%`/`60.7%`, inspection inference
+improved `18.4%`/`15.3%`, and profiled wall time improved `7.2%`/`11.9%`.
+The compact acceptance envelope is
+`evidence/s1m2_continuous_optimization_6_v1.json`.
+
+The IAST profile now spends 0.219 cumulative seconds in repeated generated
+dataclass hashing, with 7,521 form evaluations but only 364 form-cache misses.
+The next small candidate keys the existing bounded form-evaluation LRU by the
+already cached canonical `form.key` string. This avoids tuple/enum hashing on
+hits while preserving equality, LRU order, cache bounds, and returned
+evaluations; no global representation or multiprocessing hash behavior changes.
+
+```text
+S1M2_OPTIMIZATION_6=ACCEPTED
+S1M2_OPTIMIZATION_7=FORM_CACHE_CANONICAL_KEY_READY
+```

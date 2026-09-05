@@ -1354,6 +1354,25 @@ S1M2_TRAINER_INTEGRATION=READY_TO_START
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 61. Continuous optimization 6 accepted (2026-09-05)
+
+Candidate SHA `25fbeedc2afb84b868d35624ba5303310dcc574f` reuses immutable
+piece-key tuples in the bounded inner inspection top-K. P0 ordered paths and
+the focused pieces/latent suite pass (`83 passed`), and all seven canonical
+artifacts remain byte-identical to optimization 5 for both frontends. Inner
+top-K improved about `61%`; profiled wall time improved `7.2%`/`11.9%`.
+
+The next measured exact candidate keys the existing bounded form-evaluation
+LRU by `form.key` rather than repeatedly hashing its phoneme tuple. This is
+local to P1c and avoids unsafe changes to global or cross-process form hashing.
+
+```text
+S1M2_OPTIMIZATION_6=ACCEPTED
+S1M2_OPTIMIZATION_7=FORM_CACHE_CANONICAL_KEY_READY
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 60. Continuous optimization 5 accepted (2026-09-05)
 
 Candidate SHA `1c27eb02b0dd5db8d6fbc23d2707ee14fa0b8b82` delays piece-form

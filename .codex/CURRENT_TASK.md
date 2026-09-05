@@ -27,6 +27,7 @@ optimization 2 transient piece-transition reuse: ACCEPTED
 optimization 3 inner piece top-K batching: ACCEPTED
 optimization 4 composed-path tie-key reuse: ACCEPTED
 optimization 5 lazy piece-form construction: ACCEPTED
+optimization 6 inner piece-path key reuse: ACCEPTED
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -50,14 +51,14 @@ copied, deleted, tracked, staged, restored, checked out, or force-added.
 
 ## Next task: continue measured exact continuous optimization
 
-Optimization 5 is accepted with byte-identical science and another 20.5%/21.5%
-paired-probe wall-time reduction. Implement optimization 6 by carrying the
-immutable tuple of piece keys alongside every bounded inner inspection path
-and sorting on that cached tuple. Preserve path generation, score/tie order,
-and the current top-K/memory bounds. Run focused equivalence and then the same
-paired probe from a clean SHA. Use only the frozen representative/stress lists
-for later timing, and detach either full workload if plausibly longer than
-five minutes. Do not rerun the static scan or launch full-M0.
+Optimization 6 is accepted with byte-identical science and a 61% inner-top-K
+reduction. Implement optimization 7 by keying the same bounded form-evaluation
+LRU with `form.key` rather than `PhonologicalForm`. Preserve form equality,
+LRU order, entry/byte bounds, counters, and returned evaluations. Do not alter
+global form hashing. Run focused equivalence and then the same paired probe
+from a clean SHA. Use only the frozen representative/stress lists for later
+timing, and detach either full workload if plausibly longer than five minutes.
+Do not rerun the static scan or launch full-M0.
 
 ```text
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
@@ -68,5 +69,6 @@ S1M2_OPTIMIZATION_2=ACCEPTED
 S1M2_OPTIMIZATION_3=ACCEPTED
 S1M2_OPTIMIZATION_4=ACCEPTED
 S1M2_OPTIMIZATION_5=ACCEPTED
-S1M2_OPTIMIZATION_6=READY_TO_IMPLEMENT
+S1M2_OPTIMIZATION_6=ACCEPTED
+S1M2_OPTIMIZATION_7=READY_TO_IMPLEMENT
 ```

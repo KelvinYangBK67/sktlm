@@ -1,0 +1,77 @@
+{
+  "schema_version": "sktlm-s1m2-continuous-optimization-evidence/v1",
+  "optimization_id": "inner_path_key_reuse",
+  "status": "ACCEPTED",
+  "baseline_git_sha": "1c27eb02b0dd5db8d6fbc23d2707ee14fa0b8b82",
+  "candidate_git_sha": "25fbeedc2afb84b868d35624ba5303310dcc574f",
+  "workload": {
+    "id": "representative_probe",
+    "document_list_sha256": "7bf936025ce28c43cdae0407d532c461b50726a28275fa40062a8a6889296ed3",
+    "documents": 3,
+    "max_lines_per_document": 2,
+    "passes": 1,
+    "workers": 1,
+    "inspection_enabled": true,
+    "cprofile_enabled": true
+  },
+  "equivalence": {
+    "iast_canonical_artifacts_byte_identical": 7,
+    "devanagari_canonical_artifacts_byte_identical": 7,
+    "canonical_artifacts": [
+      "iteration_metrics.json",
+      "piece_inventory.tsv",
+      "lexical_diagnostics.tsv",
+      "analyses.jsonl",
+      "boundary_posteriors.jsonl",
+      "rule_usage.tsv",
+      "summary.json"
+    ],
+    "focused_pieces_latent_tests": "83 passed",
+    "ordered_inner_top_k_p0_equivalence": "PASS"
+  },
+  "cells": [
+    {
+      "cell_id": "m0_prime_iast_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_prime_iast_1c27eb0_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_prime_iast_25fbeed_a01",
+      "candidate_benchmark_metrics_sha256": "8aa715113ac8a0ae920fa97a91070c3027d4c1290aa4c4da54e9e38e12e7ae9b",
+      "candidate_profile_sha256": "186ddbcfc468ae0dc48f8837d9aca7fcd0edc46d5d500d6055a18298769f86b1",
+      "baseline_wall_seconds": 2.163408899999922,
+      "candidate_wall_seconds": 2.007638000010047,
+      "wall_improvement_percent": 7.200,
+      "baseline_inspection_inference_seconds": 1.268742500047665,
+      "candidate_inspection_inference_seconds": 1.0356749999918975,
+      "inspection_inference_improvement_percent": 18.370,
+      "baseline_inner_piece_top_k_seconds": 0.3847669003298506,
+      "candidate_inner_piece_top_k_seconds": 0.1497870001476258,
+      "inner_piece_top_k_improvement_percent": 61.071
+    },
+    {
+      "cell_id": "m0_devanagari_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_devanagari_1c27eb0_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_devanagari_25fbeed_a01",
+      "candidate_benchmark_metrics_sha256": "c17d2145f34cd358605ef4e0b4e81fd174f97a33aca91882b3d8e5f424968ed7",
+      "candidate_profile_sha256": "a2d2ea1f60e2a23840a4522d250c4193d78f61f2153683c8580b23396925a284",
+      "baseline_wall_seconds": 2.151151199999731,
+      "candidate_wall_seconds": 1.8961655000166502,
+      "wall_improvement_percent": 11.853,
+      "baseline_inspection_inference_seconds": 1.1619915000046603,
+      "candidate_inspection_inference_seconds": 0.9839401000353973,
+      "inspection_inference_improvement_percent": 15.323,
+      "baseline_inner_piece_top_k_seconds": 0.37042240035953,
+      "candidate_inner_piece_top_k_seconds": 0.14548080042004585,
+      "inner_piece_top_k_improvement_percent": 60.726
+    }
+  ],
+  "mechanism": {
+    "baseline_profiled_function_calls": 6808832,
+    "candidate_profiled_function_calls": 5735308,
+    "function_call_improvement_percent": 15.767,
+    "baseline_inner_sort_key_calls": 135550,
+    "candidate_inner_sort_key_calls": 135550,
+    "baseline_inner_sort_key_cumulative_seconds": 0.251,
+    "candidate_inner_sort_key_cumulative_seconds": 0.014
+  },
+  "boundedness": "The immutable piece-key tuple is stored only beside each already bounded inner inspection path. The same (max_piece_length + 1) * inspection_top_k per-position temporary bound remains in force.",
+  "semantic_reason": "Appending piece.key to a prefix key produces exactly the tuple previously regenerated from the same ordered pieces at sort time. The score and deterministic key comparison are identical, and exact partition/marginal inference does not consume inspection paths."
+}
