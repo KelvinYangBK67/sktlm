@@ -470,10 +470,16 @@ class ComposedPieceInference:
         top_segmentations: tuple[PieceSegmentation, ...] = ()
         if self.inspection_top_k is not None:
             started = time.perf_counter()
-            paths: list[list[tuple[float, tuple[PhonologicalForm, ...]]]] = [
-                [] for _ in range(length + 1)
-            ]
-            paths[0] = [(0.0, ())]
+            paths: list[
+                list[
+                    tuple[
+                        float,
+                        tuple[PhonologicalForm, ...],
+                        tuple[str, ...],
+                    ]
+                ]
+            ] = [[] for _ in range(length + 1)]
+            paths[0] = [(0.0, (), ())]
             for start in range(length):
                 # Every transition moves right, so all paths into ``start``
                 # are present before it is consumed.  Trim once here instead
@@ -481,27 +487,21 @@ class ComposedPieceInference:
                 # same exact top-K.  Before trimming, a position has at most
                 # (max_piece_length + 1) * K paths (including the whole-form
                 # edge), independent of corpus size.
-                candidates = paths[start]
-                candidates.sort(
-                    key=lambda item: (
-                        -item[0],
-                        tuple(piece.key for piece in item[1]),
-                    )
-                )
-                del candidates[self.inspection_top_k :]
+                prefixes = paths[start]
+                prefixes.sort(key=lambda item: (-item[0], item[2]))
+                del prefixes[self.inspection_top_k :]
                 for end, piece, _prior, score in transitions_by_start[start]:
                     candidates = paths[end]
                     candidates.extend(
-                        (prefix_score + score, prefix_pieces + (piece,))
-                        for prefix_score, prefix_pieces in paths[start]
+                        (
+                            prefix_score + score,
+                            prefix_pieces + (piece,),
+                            prefix_keys + (piece.key,),
+                        )
+                        for prefix_score, prefix_pieces, prefix_keys in prefixes
                     )
             candidates = paths[-1]
-            candidates.sort(
-                key=lambda item: (
-                    -item[0],
-                    tuple(piece.key for piece in item[1]),
-                )
-            )
+            candidates.sort(key=lambda item: (-item[0], item[2]))
             del candidates[self.inspection_top_k :]
             top_segmentations = tuple(
                 PieceSegmentation(
@@ -509,7 +509,7 @@ class ComposedPieceInference:
                     log_weight=score - prior_log_z,
                     probability=math.exp(score - raw_log_z),
                 )
-                for score, pieces in paths[-1]
+                for score, pieces, _piece_keys in paths[-1]
             )
             self.add_timing("inner_piece_top_k_seconds", started)
         evaluation = FormPieceEvaluation(
