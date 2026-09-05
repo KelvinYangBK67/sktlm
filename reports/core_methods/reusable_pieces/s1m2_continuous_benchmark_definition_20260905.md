@@ -229,3 +229,25 @@ S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
 CONTINUOUS_SCRIPT_NEUTRAL_PROBE=PASS
 S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 ```
+
+## Optimization 1 candidate: transient form reuse
+
+The measured first candidate changes only the transient `LazyLexicalSpan`
+representation. `LazyTokenLattice.span()` already constructs a
+`PhonologicalForm` to apply the unchanged vowel legality check; the span now
+retains that validated object for the lifetime of the current iterator result.
+Exact traversals therefore reuse `span.word` within that result instead of
+reconstructing it on every access. No span is stored in the candidate graph or
+across a traversal, so P1b still does not materialize persistent lexical edges
+or all span rows.
+
+The P0/P1c equivalence and trainer scientific byte-equivalence gates remain
+green, a focused identity test proves repeated access returns the retained
+object, and the complete pieces/latent suite passes (`82 passed`). The candidate
+is committed for an exact-code paired probe; it is not accepted as a performance
+optimization until that measurement improves the identified mechanism without
+scientific divergence.
+
+```text
+S1M2_OPTIMIZATION_1=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
+```

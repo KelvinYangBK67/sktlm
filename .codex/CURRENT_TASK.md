@@ -45,11 +45,11 @@ copied, deleted, tracked, staged, restored, checked out, or force-added.
 
 ## Next task: measure the frozen continuous workloads
 
-Implement and equivalence-test the measured first optimization: retain the
-already-validated `PhonologicalForm` in each transient lazy span instead of
-reconstructing it on every access. Re-run the same fixed paired probe only
-after a clean committed optimization checkpoint. Accept it only if scientific
-outputs remain equivalent and the measured object churn/time improves. Use
+Optimization 1 now retains the already-validated `PhonologicalForm` in each
+transient lazy span; the focused suite passes (`82 passed`). Re-run the same
+fixed paired probe only after this clean committed optimization checkpoint.
+Accept it only if scientific outputs remain equivalent and the measured object
+churn/time improves. Use
 only the frozen representative/stress lists for later timing, and detach either
 full workload if plausibly longer than five minutes. Do not rerun the static
 scan or launch full-M0.
@@ -58,4 +58,5 @@ scan or launch full-M0.
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
 CONTINUOUS_SCRIPT_NEUTRAL_PROBE=PASS
 S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+S1M2_OPTIMIZATION_1=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
 ```

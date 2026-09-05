@@ -34,18 +34,18 @@ from sktlm.latent.phonology import Phoneme, PhonologicalForm
 
 @dataclass(frozen=True, slots=True)
 class LazyLexicalSpan:
-    """One transient legal span; its form is not stored in the graph."""
+    """One transient legal span; its validated form dies with the traversal."""
 
     start: int
     end: int
-    symbols: tuple[Phoneme, ...]
+    word: PhonologicalForm
     boundary: LexicalBoundary | None
     rule_ids: tuple[str, ...]
     identity_edge: bool
 
     @property
-    def word(self) -> PhonologicalForm:
-        return PhonologicalForm(self.symbols)
+    def symbols(self) -> tuple[Phoneme, ...]:
+        return self.word.symbols
 
     def materialize(self) -> LexicalEdge:
         return LexicalEdge(
@@ -106,7 +106,7 @@ class LazyTokenLattice:
         return LazyLexicalSpan(
             start=left_index,
             end=right_index,
-            symbols=symbols,
+            word=word,
             boundary=boundary,
             rule_ids=right.rule_ids if not right.is_end else (),
             identity_edge=identity_edge,

@@ -127,6 +127,11 @@ def test_candidate_build_profiling_does_not_change_lazy_graph() -> None:
     assert profile.factor_combinations_attempted >= len(observed.factors)
     assert profile.factor_construction_seconds >= profile.grammar_match_seconds
 
+    first_factor = next(factor for factor in observed.factors if factor.lattice)
+    first_span = next(first_factor.lattice.iter_spans())
+    assert first_span.word is first_span.word
+    assert first_span.symbols == first_span.word.symbols
+
 
 def test_inspection_top_paths_are_bounded_and_keep_exact_concatenation() -> None:
     grammar = StructuredSandhiGrammar.from_default_inventory()

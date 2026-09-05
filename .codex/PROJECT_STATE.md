@@ -1354,6 +1354,24 @@ S1M2_TRAINER_INTEGRATION=READY_TO_START
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 54. Continuous optimization 1 implemented and equivalence-validated (2026-09-05)
+
+The first measured candidate retains the `PhonologicalForm` that
+`LazyTokenLattice.span()` already constructs for legality validation inside the
+transient `LazyLexicalSpan`. Repeated accesses during that one exact traversal
+no longer reconstruct the same form. Spans remain iterator-local and are not
+stored in the graph or across traversals, so legal support and P1b's
+non-materialization contract are unchanged.
+
+P0/P1c and trainer scientific equivalence tests remain green; the complete
+pieces/latent suite passes (`82 passed`). The candidate requires the same fixed
+paired probe from its own clean Git identity before acceptance.
+
+```text
+S1M2_OPTIMIZATION_1=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 49. Continuous benchmark selection rule frozen (2026-09-05)
 
 Before observing any S1M2 continuous timing, the static selection algorithm
