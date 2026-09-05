@@ -1,0 +1,72 @@
+{
+  "schema_version": "sktlm-s1m2-continuous-optimization-evidence/v1",
+  "optimization_id": "form_cache_canonical_key",
+  "status": "ACCEPTED_SMALL",
+  "baseline_git_sha": "25fbeedc2afb84b868d35624ba5303310dcc574f",
+  "candidate_git_sha": "29c08a242bc4c4f65b39ddeebeb210c4bc45ccf3",
+  "workload": {
+    "id": "representative_probe",
+    "document_list_sha256": "7bf936025ce28c43cdae0407d532c461b50726a28275fa40062a8a6889296ed3",
+    "documents": 3,
+    "max_lines_per_document": 2,
+    "passes": 1,
+    "workers": 1,
+    "inspection_enabled": true,
+    "cprofile_enabled": true
+  },
+  "equivalence": {
+    "iast_canonical_artifacts_byte_identical": 7,
+    "devanagari_canonical_artifacts_byte_identical": 7,
+    "canonical_artifacts": [
+      "iteration_metrics.json",
+      "piece_inventory.tsv",
+      "lexical_diagnostics.tsv",
+      "analyses.jsonl",
+      "boundary_posteriors.jsonl",
+      "rule_usage.tsv",
+      "summary.json"
+    ],
+    "focused_pieces_latent_tests": "83 passed",
+    "equal_distinct_form_object_cache_hit": "PASS"
+  },
+  "cells": [
+    {
+      "cell_id": "m0_prime_iast_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_prime_iast_25fbeed_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_prime_iast_29c08a2_a01",
+      "candidate_benchmark_metrics_sha256": "d425eb5660c6e2f2ae8dda89e34665ce7470188dc71f794bc778cb499221a663",
+      "candidate_profile_sha256": "bd5cb44c6206241f92135c42f7842cdb206bf8d7d47a062bfb914123924311b5",
+      "baseline_wall_seconds": 2.007638000010047,
+      "candidate_wall_seconds": 1.9291398000204936,
+      "wall_improvement_percent": 3.910,
+      "baseline_training_inference_seconds": 0.6595239999587648,
+      "candidate_training_inference_seconds": 0.5885894000530243,
+      "baseline_inspection_inference_seconds": 1.0356749999918975,
+      "candidate_inspection_inference_seconds": 0.9540109999943525
+    },
+    {
+      "cell_id": "m0_devanagari_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_devanagari_25fbeed_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_devanagari_29c08a2_a01",
+      "candidate_benchmark_metrics_sha256": "deece14c36182f1c44e25e644a15cb455c0c8988252fc908c1f3b58962c92d7a",
+      "candidate_profile_sha256": "3294a4428c6777d476052515633aed50739fb2fffc2a0b40267671668e94acce",
+      "baseline_wall_seconds": 1.8961655000166502,
+      "candidate_wall_seconds": 1.8759489000076428,
+      "wall_improvement_percent": 1.066,
+      "baseline_training_inference_seconds": 0.6163270999677479,
+      "candidate_training_inference_seconds": 0.6067171000177041,
+      "baseline_inspection_inference_seconds": 0.9839401000353973,
+      "candidate_inspection_inference_seconds": 0.9636843999905977
+    }
+  ],
+  "mechanism": {
+    "baseline_profiled_function_calls": 5735308,
+    "candidate_profiled_function_calls": 5699159,
+    "baseline_generated_hash_calls": 803438,
+    "candidate_generated_hash_calls": 788396,
+    "baseline_generated_hash_cumulative_seconds": 0.219,
+    "candidate_generated_hash_cumulative_seconds": 0.190
+  },
+  "boundedness": "Only the key type of the existing entry- and byte-bounded form-evaluation LRU changes. No additional cache or state is introduced.",
+  "semantic_reason": "PhonologicalForm.key is a canonical injective serialization of the same immutable symbol tuple used by form equality. The cache returns the same FormPieceEvaluation, preserves access and eviction order, and does not modify global form hashing or cross-process objects."
+}

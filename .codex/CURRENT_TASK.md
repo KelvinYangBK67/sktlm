@@ -28,6 +28,7 @@ optimization 3 inner piece top-K batching: ACCEPTED
 optimization 4 composed-path tie-key reuse: ACCEPTED
 optimization 5 lazy piece-form construction: ACCEPTED
 optimization 6 inner piece-path key reuse: ACCEPTED
+optimization 7 canonical form-cache key: ACCEPTED (small)
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -49,16 +50,16 @@ Do not rerun frozen S1M1 work or M0-prime generation/validation. `notes/**`
 remains strictly local/read-only and must never be modified, created, moved,
 copied, deleted, tracked, staged, restored, checked out, or force-added.
 
-## Next task: continue measured exact continuous optimization
+## Next task: detached frozen representative measurement
 
-Optimization 6 is accepted with byte-identical science and a 61% inner-top-K
-reduction. Implement optimization 7 by keying the same bounded form-evaluation
-LRU with `form.key` rather than `PhonologicalForm`. Preserve form equality,
-LRU order, entry/byte bounds, counters, and returned evaluations. Do not alter
-global form hashing. Run focused equivalence and then the same paired probe
-from a clean SHA. Use only the frozen representative/stress lists for later
-timing, and detach either full workload if plausibly longer than five minutes.
-Do not rerun the static scan or launch full-M0.
+Optimization 7 is accepted with byte-identical science and a small 3.9%/1.1%
+paired-probe wall reduction. Launch exactly one durable detached local attempt
+that runs the frozen full representative workload sequentially for M0-prime
+IAST continuous and M0 Devanagari continuous at four workers, one pass plus
+final inspection, without `cProfile`. Record exact Git/config/input/run IDs,
+logs, completion evidence, and overwrite refusal. Return immediately after
+launch. Do not launch the stress workload concurrently, rerun the static scan,
+or launch full-M0.
 
 ```text
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
@@ -70,5 +71,6 @@ S1M2_OPTIMIZATION_3=ACCEPTED
 S1M2_OPTIMIZATION_4=ACCEPTED
 S1M2_OPTIMIZATION_5=ACCEPTED
 S1M2_OPTIMIZATION_6=ACCEPTED
-S1M2_OPTIMIZATION_7=READY_TO_IMPLEMENT
+S1M2_OPTIMIZATION_7=ACCEPTED_SMALL
+S1M2_CONTINUOUS_REPRESENTATIVE_LOCAL=READY_TO_LAUNCH_DETACHED
 ```

@@ -1354,6 +1354,26 @@ S1M2_TRAINER_INTEGRATION=READY_TO_START
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 62. Continuous optimization 7 accepted; representative gate next (2026-09-05)
+
+Candidate SHA `29c08a242bc4c4f65b39ddeebeb210c4bc45ccf3` keys the existing
+bounded form-evaluation LRU by canonical `form.key`. The pieces/latent suite
+passes (`83 passed`), all seven canonical artifacts remain byte-identical to
+optimization 6 in both frontends, and profiled probe wall time improves
+`3.9%`/`1.1%`. This small optimization closes the obvious cheap allocation
+loop; exact span/form DP is now the dominant measured work.
+
+The next gate is one detached paired local representative run at four workers
+using the frozen document list. It is diagnostic and cannot satisfy the later
+production-cloud representative/stress gate by itself.
+
+```text
+S1M2_OPTIMIZATION_7=ACCEPTED_SMALL
+S1M2_CONTINUOUS_REPRESENTATIVE_LOCAL=READY_TO_LAUNCH_DETACHED
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 61. Continuous optimization 6 accepted (2026-09-05)
 
 Candidate SHA `25fbeedc2afb84b868d35624ba5303310dcc574f` reuses immutable

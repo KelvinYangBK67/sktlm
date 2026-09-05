@@ -442,3 +442,32 @@ evaluations; no global representation or multiprocessing hash behavior changes.
 S1M2_OPTIMIZATION_6=ACCEPTED
 S1M2_OPTIMIZATION_7=FORM_CACHE_CANONICAL_KEY_READY
 ```
+
+### Optimization 7 result: accepted (small)
+
+At candidate SHA `29c08a242bc4c4f65b39ddeebeb210c4bc45ccf3`, the existing
+bounded form-evaluation LRU uses the canonical cached `form.key` string instead
+of hashing the full phoneme tuple on every access. Canonical keys are injective
+over form symbols; cache access/eviction order, size accounting, and returned
+evaluations remain unchanged. A focused test uses a distinct but equal form
+object to exercise the hit path.
+
+The pieces/latent suite passes (`83 passed`), and all seven canonical artifacts
+remain byte-identical to optimization 6 in both frontends. Profiled wall time
+improved `3.9%` for M0-prime IAST and `1.1%` for M0 Devanagari. Generated hash
+cost fell from 0.219 to 0.190 cumulative profiled seconds. This is accepted as
+a small exact simplification, not evidence for a new scaling regime. The compact
+envelope is `evidence/s1m2_continuous_optimization_7_v1.json`.
+
+The cheap profile is now dominated by actual lazy-span traversal and exact
+form/outer dynamic programming rather than a single avoidable allocation
+hotspot. The next fixed gate is a detached local measurement of the frozen
+representative workload at the established local four-worker setting, with
+both continuous frontends run sequentially under one unique attempt. This is
+diagnostic evidence only; production readiness still requires cloud w4/w8 and
+the frozen stress workload.
+
+```text
+S1M2_OPTIMIZATION_7=ACCEPTED_SMALL
+S1M2_CONTINUOUS_REPRESENTATIVE_LOCAL=READY_TO_LAUNCH_DETACHED
+```
