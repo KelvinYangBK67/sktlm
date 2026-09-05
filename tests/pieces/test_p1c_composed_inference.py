@@ -81,6 +81,43 @@ def test_direct_form_dp_matches_p0_without_piece_lattice(text: str) -> None:
     assert composed.multi_piece_mass == pytest.approx(1.0 - composed.whole_form_mass)
 
 
+def test_batched_inner_top_k_matches_p0_order_and_weights() -> None:
+    form = parse_iast_form("dakaniyat")
+    config = PieceModelConfig(max_piece_length=3, rho=0.37)
+    top_k = 5
+    reference = evaluate_piece_lattice(
+        build_piece_lattice(form, max_piece_length=config.max_piece_length),
+        _TableScorer(),
+        rho=config.rho,
+        top_k=top_k,
+    )
+    engine = ComposedPieceInference(
+        _TableScorer(),
+        model_config=config,
+        inspection_top_k=top_k,
+    )
+
+    composed = engine.evaluate_form(form)
+
+    assert tuple(
+        tuple(piece.key for piece in item.pieces)
+        for item in composed.top_segmentations
+    ) == tuple(
+        tuple(piece.key for piece in item.pieces)
+        for item in reference.top_segmentations
+    )
+    assert tuple(item.log_weight for item in composed.top_segmentations) == pytest.approx(
+        tuple(item.log_weight for item in reference.top_segmentations),
+        rel=1e-10,
+        abs=1e-12,
+    )
+    assert tuple(item.probability for item in composed.top_segmentations) == pytest.approx(
+        tuple(item.probability for item in reference.top_segmentations),
+        rel=1e-10,
+        abs=1e-12,
+    )
+
+
 def test_shared_piece_and_form_caches_are_bounded_and_counted() -> None:
     cache = ComposedCacheConfig(
         piece_score_entries=3,

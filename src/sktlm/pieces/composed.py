@@ -476,19 +476,34 @@ class ComposedPieceInference:
             ]
             paths[0] = [(0.0, ())]
             for start in range(length):
+                # Every transition moves right, so all paths into ``start``
+                # are present before it is consumed.  Trim once here instead
+                # of after every incoming edge; the unchanged key keeps the
+                # same exact top-K.  Before trimming, a position has at most
+                # (max_piece_length + 1) * K paths (including the whole-form
+                # edge), independent of corpus size.
+                candidates = paths[start]
+                candidates.sort(
+                    key=lambda item: (
+                        -item[0],
+                        tuple(piece.key for piece in item[1]),
+                    )
+                )
+                del candidates[self.inspection_top_k :]
                 for end, piece, _prior, score in transitions_by_start[start]:
                     candidates = paths[end]
                     candidates.extend(
                         (prefix_score + score, prefix_pieces + (piece,))
                         for prefix_score, prefix_pieces in paths[start]
                     )
-                    candidates.sort(
-                        key=lambda item: (
-                            -item[0],
-                            tuple(piece.key for piece in item[1]),
-                        )
-                    )
-                    del candidates[self.inspection_top_k :]
+            candidates = paths[-1]
+            candidates.sort(
+                key=lambda item: (
+                    -item[0],
+                    tuple(piece.key for piece in item[1]),
+                )
+            )
+            del candidates[self.inspection_top_k :]
             top_segmentations = tuple(
                 PieceSegmentation(
                     pieces=pieces,
