@@ -136,7 +136,7 @@ def test_shared_piece_and_form_caches_are_bounded_and_counted() -> None:
     )
     for form in forms:
         engine.evaluate_form(form)
-    engine.evaluate_form(forms[-1])
+    engine.evaluate_form(PhonologicalForm(forms[-1].symbols))
     counters = engine.counter_snapshot()
 
     assert counters.form_cache_entries <= cache.form_entries

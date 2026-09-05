@@ -290,7 +290,7 @@ class ComposedPieceInference:
         ] = OrderedDict()
         self._piece_score_bytes = 0
         self._forms: OrderedDict[
-            PhonologicalForm, tuple[FormPieceEvaluation, int]
+            str, tuple[FormPieceEvaluation, int]
         ] = OrderedDict()
         self._form_bytes = 0
         self._events: dict[str, int] = defaultdict(int)
@@ -393,10 +393,11 @@ class ComposedPieceInference:
     def evaluate_form(self, form: PhonologicalForm) -> FormPieceEvaluation:
         """Evaluate the complete P0 support directly, with no P0 lattice."""
 
-        cached = self._forms.get(form)
+        form_key = form.key
+        cached = self._forms.get(form_key)
         if cached is not None:
             self._events["form_cache_hits"] += 1
-            self._forms.move_to_end(form)
+            self._forms.move_to_end(form_key)
             return cached[0]
         self._events["form_cache_misses"] += 1
 
@@ -535,12 +536,12 @@ class ComposedPieceInference:
             len(self._forms) >= self.cache_config.form_entries
             or self._form_bytes + size > self.cache_config.form_bytes
         ):
-            _old_form, (_old_evaluation, old_size) = self._forms.popitem(
+            _old_form_key, (_old_evaluation, old_size) = self._forms.popitem(
                 last=False
             )
             self._form_bytes -= old_size
             self._events["form_cache_evictions"] += 1
-        self._forms[form] = (evaluation, size)
+        self._forms[form_key] = (evaluation, size)
         self._form_bytes += size
         return evaluation
 
