@@ -1436,6 +1436,27 @@ S1M2_CONTINUOUS_CHEAP_PROFILE=READY_TO_RUN
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 52. S1M2 continuous runtime benchmark contract frozen (2026-09-05)
+
+The tracked runtime contract binds six benchmark IDs (probe, representative,
+and stress for each valid continuous frontend) to the S1M2 model, exact
+manifest path/hash, frozen document-list path/hash, frontend, condition, and
+line bound. Probe IDs read the first two lines of every representative-list
+document; representative and stress IDs read the complete frozen workloads.
+
+The runner fails closed on hashes and excludes ordinary `iast`, so the invalid
+original M0 IAST-continuous cell cannot be benchmarked accidentally. It records
+the resolved contract in `benchmark_metrics.json`. Two contract tests pass,
+including a deliberately invalid manifest hash; the current targeted telemetry,
+trainer, and contract run passes (`9 passed`). No timing result has yet been
+observed from the fixed probe.
+
+```text
+S1M2_CONTINUOUS_BENCHMARK_CONTRACT=FROZEN
+S1M2_CONTINUOUS_CHEAP_PROFILE=READY_TO_RUN
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 48. S1M2 streaming trainer integration complete (2026-09-05)
 
 The existing full-corpus-capable trainer now supports

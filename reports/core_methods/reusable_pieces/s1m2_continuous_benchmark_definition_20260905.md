@@ -167,3 +167,28 @@ S1M2_CONTINUOUS_CHEAP_PROFILE=READY_TO_RUN
 FULL_M0_PROCESS_RUNNING=NO
 FULL_M0_PROCESS_COMPLETED=NO
 ```
+
+## Runtime benchmark contract
+
+`configs/benchmarks/s1m2_continuous_runtime.json` now binds every continuous
+probe, representative, and stress benchmark ID to its exact model, manifest
+path/hash, frontend, condition, frozen document-list path/hash, and optional
+line bound. The two probe IDs use the frozen representative list but read only
+the first two lines per document; they are the fixed cheap profiling workload,
+not a projection sample. Representative and stress IDs have no line bound.
+
+The runner rejects a manifest or list hash mismatch, any model other than
+`reusable_pieces_v1`, any non-continuous condition, and every frontend except
+`iast_m0_prime` or `devanagari`. It therefore has no route to the scientifically
+excluded original M0 IAST-continuous cell. Benchmark output records the resolved
+contract together with model/frontend/workload identities. S1M1 `smoke` and
+`medium` names retain their legacy behavior.
+
+Contract tests pass, including fail-closed hash behavior (`2 passed`; included
+in the latest targeted run of `9 passed`). The fixed probes are ready to run
+from a clean committed checkpoint.
+
+```text
+S1M2_CONTINUOUS_BENCHMARK_CONTRACT=FROZEN
+S1M2_CONTINUOUS_CHEAP_PROFILE=READY_TO_RUN
+```

@@ -1,0 +1,71 @@
+{
+  "schema_version": "sktlm-s1m2-continuous-runtime/v1",
+  "benchmarks": {
+    "s1m2_continuous_probe_m0_prime_iast": {
+      "model": "reusable_pieces_v1",
+      "manifest": "artifacts/m0_prime/m0_prime_iast_continuous_v1/manifest.csv",
+      "manifest_sha256": "3a8cbb3359ce8cce2a7d551281a8faf50b9fed33f9b8d4bce3425d28237ae922",
+      "script": "iast_m0_prime",
+      "condition": "continuous",
+      "document_list": "configs/benchmarks/s1m2_continuous_representative_documents.txt",
+      "document_list_sha256": "7bf936025ce28c43cdae0407d532c461b50726a28275fa40062a8a6889296ed3",
+      "max_lines_per_document": 2,
+      "workload": "representative_probe"
+    },
+    "s1m2_continuous_probe_m0_devanagari": {
+      "model": "reusable_pieces_v1",
+      "manifest": "data/manifests/representations.csv",
+      "manifest_sha256": "c04124b2bc4909750ebedc4e7ec939df3c18edecf1598345ab3f662a21fbc520",
+      "script": "devanagari",
+      "condition": "continuous",
+      "document_list": "configs/benchmarks/s1m2_continuous_representative_documents.txt",
+      "document_list_sha256": "7bf936025ce28c43cdae0407d532c461b50726a28275fa40062a8a6889296ed3",
+      "max_lines_per_document": 2,
+      "workload": "representative_probe"
+    },
+    "s1m2_continuous_representative_m0_prime_iast": {
+      "model": "reusable_pieces_v1",
+      "manifest": "artifacts/m0_prime/m0_prime_iast_continuous_v1/manifest.csv",
+      "manifest_sha256": "3a8cbb3359ce8cce2a7d551281a8faf50b9fed33f9b8d4bce3425d28237ae922",
+      "script": "iast_m0_prime",
+      "condition": "continuous",
+      "document_list": "configs/benchmarks/s1m2_continuous_representative_documents.txt",
+      "document_list_sha256": "7bf936025ce28c43cdae0407d532c461b50726a28275fa40062a8a6889296ed3",
+      "max_lines_per_document": null,
+      "workload": "representative"
+    },
+    "s1m2_continuous_representative_m0_devanagari": {
+      "model": "reusable_pieces_v1",
+      "manifest": "data/manifests/representations.csv",
+      "manifest_sha256": "c04124b2bc4909750ebedc4e7ec939df3c18edecf1598345ab3f662a21fbc520",
+      "script": "devanagari",
+      "condition": "continuous",
+      "document_list": "configs/benchmarks/s1m2_continuous_representative_documents.txt",
+      "document_list_sha256": "7bf936025ce28c43cdae0407d532c461b50726a28275fa40062a8a6889296ed3",
+      "max_lines_per_document": null,
+      "workload": "representative"
+    },
+    "s1m2_continuous_stress_m0_prime_iast": {
+      "model": "reusable_pieces_v1",
+      "manifest": "artifacts/m0_prime/m0_prime_iast_continuous_v1/manifest.csv",
+      "manifest_sha256": "3a8cbb3359ce8cce2a7d551281a8faf50b9fed33f9b8d4bce3425d28237ae922",
+      "script": "iast_m0_prime",
+      "condition": "continuous",
+      "document_list": "configs/benchmarks/s1m2_continuous_stress_documents.txt",
+      "document_list_sha256": "904e105eddc45cff3e63c171ad016c056628f1040bc37c881850cb8ad2a988d9",
+      "max_lines_per_document": null,
+      "workload": "stress"
+    },
+    "s1m2_continuous_stress_m0_devanagari": {
+      "model": "reusable_pieces_v1",
+      "manifest": "data/manifests/representations.csv",
+      "manifest_sha256": "c04124b2bc4909750ebedc4e7ec939df3c18edecf1598345ab3f662a21fbc520",
+      "script": "devanagari",
+      "condition": "continuous",
+      "document_list": "configs/benchmarks/s1m2_continuous_stress_documents.txt",
+      "document_list_sha256": "904e105eddc45cff3e63c171ad016c056628f1040bc37c881850cb8ad2a988d9",
+      "max_lines_per_document": null,
+      "workload": "stress"
+    }
+  }
+}

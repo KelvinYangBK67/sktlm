@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import cProfile
+import hashlib
 import json
 import os
 import platform
@@ -11,17 +12,109 @@ import pstats
 import sqlite3
 import sys
 import time
+from dataclasses import asdict, dataclass
 from importlib import metadata
 from pathlib import Path
 from typing import Any
 
-from sktlm.latent.training import TrainingConfig, run_training
+from sktlm.latent.training import S1M1_MODEL, S1M2_MODEL, TrainingConfig, run_training
 
 
-BENCHMARK_LISTS = {
+LEGACY_BENCHMARK_LISTS = {
     "smoke": Path("configs/benchmarks/latent_smoke_documents.txt"),
     "medium": Path("configs/benchmarks/latent_medium_documents.txt"),
 }
+S1M2_BENCHMARK_CONFIG = Path("configs/benchmarks/s1m2_continuous_runtime.json")
+
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkSpec:
+    model: str
+    manifest: Path
+    script: str
+    condition: str
+    document_list: Path
+    workload: str
+    max_lines_per_document: int | None = None
+    manifest_sha256: str | None = None
+    document_list_sha256: str | None = None
+
+    def payload(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["manifest"] = self.manifest.as_posix()
+        payload["document_list"] = self.document_list.as_posix()
+        return payload
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _checked_file(repo_root: Path, path: Path, expected_sha256: str) -> None:
+    resolved = path if path.is_absolute() else repo_root / path
+    if not resolved.is_file():
+        raise FileNotFoundError(resolved)
+    actual = _sha256(resolved)
+    if actual != expected_sha256:
+        raise RuntimeError(
+            f"Benchmark input SHA-256 mismatch for {path}: "
+            f"expected {expected_sha256}, got {actual}"
+        )
+
+
+def _load_benchmark_spec(benchmark: str, repo_root: Path) -> BenchmarkSpec:
+    if benchmark in LEGACY_BENCHMARK_LISTS:
+        return BenchmarkSpec(
+            model=S1M1_MODEL,
+            manifest=Path("data/manifests/representations.csv"),
+            script="iast",
+            condition="surface_word",
+            document_list=LEGACY_BENCHMARK_LISTS[benchmark],
+            workload=benchmark,
+        )
+
+    contract_path = (
+        S1M2_BENCHMARK_CONFIG
+        if S1M2_BENCHMARK_CONFIG.is_absolute()
+        else repo_root / S1M2_BENCHMARK_CONFIG
+    )
+    raw = json.loads(contract_path.read_text(encoding="utf-8"))
+    if raw.get("schema_version") != "sktlm-s1m2-continuous-runtime/v1":
+        raise ValueError("Unsupported S1M2 continuous benchmark schema.")
+    try:
+        item = raw["benchmarks"][benchmark]
+    except KeyError as error:
+        raise ValueError(f"unknown benchmark: {benchmark}") from error
+    spec = BenchmarkSpec(
+        model=str(item["model"]),
+        manifest=Path(item["manifest"]),
+        manifest_sha256=str(item["manifest_sha256"]),
+        script=str(item["script"]),
+        condition=str(item["condition"]),
+        document_list=Path(item["document_list"]),
+        document_list_sha256=str(item["document_list_sha256"]),
+        max_lines_per_document=(
+            None
+            if item.get("max_lines_per_document") is None
+            else int(item["max_lines_per_document"])
+        ),
+        workload=str(item["workload"]),
+    )
+    if spec.model != S1M2_MODEL or spec.condition != "continuous":
+        raise ValueError("S1M2 continuous benchmarks require the exact S1M2 model.")
+    if spec.script not in {"iast_m0_prime", "devanagari"}:
+        raise ValueError("Invalid S1M2 continuous frontend in benchmark contract.")
+    if spec.max_lines_per_document is not None and spec.max_lines_per_document < 1:
+        raise ValueError("max_lines_per_document must be positive when present.")
+    assert spec.manifest_sha256 is not None
+    assert spec.document_list_sha256 is not None
+    _checked_file(repo_root, spec.manifest, spec.manifest_sha256)
+    _checked_file(repo_root, spec.document_list, spec.document_list_sha256)
+    return spec
 
 
 def _package_version(name: str) -> str:
@@ -109,15 +202,19 @@ def run_benchmark(
     profile: bool,
     repo_root: Path,
 ) -> dict[str, Any]:
-    document_list = BENCHMARK_LISTS[benchmark]
+    spec = _load_benchmark_spec(benchmark, repo_root)
     config = TrainingConfig(
-        manifest=Path("data/manifests/representations.csv"),
-        document_list=document_list,
+        manifest=spec.manifest,
+        document_list=spec.document_list,
         output_root=output_root,
         run_id=run_id,
+        model=spec.model,
+        script=spec.script,
+        condition=spec.condition,
         passes=passes,
         workers=workers,
-        equivalence_diagnostics=True,
+        max_lines_per_document=spec.max_lines_per_document,
+        equivalence_diagnostics=spec.model == S1M1_MODEL,
     )
     profiler = cProfile.Profile() if profile else None
     wall_start = time.perf_counter()
@@ -146,7 +243,14 @@ def run_benchmark(
         'runtime': result.runtime,
         "schema_version": 1,
         "benchmark": benchmark,
-        "document_list": document_list.as_posix(),
+        "benchmark_contract": spec.payload(),
+        "document_list": spec.document_list.as_posix(),
+        "manifest": spec.manifest.as_posix(),
+        "model": spec.model,
+        "script": spec.script,
+        "condition": spec.condition,
+        "workload": spec.workload,
+        "max_lines_per_document": spec.max_lines_per_document,
         "passes": passes,
         "workers": workers,
         "wall_seconds": wall_seconds,
@@ -184,7 +288,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run a deterministic exact latent-lexicon performance benchmark."
     )
-    parser.add_argument("--benchmark", choices=tuple(BENCHMARK_LISTS), required=True)
+    parser.add_argument(
+        "--benchmark",
+        required=True,
+        help="legacy smoke/medium or an ID in the S1M2 runtime contract",
+    )
     parser.add_argument("--run-id", required=True)
     parser.add_argument(
         "--output-root",
