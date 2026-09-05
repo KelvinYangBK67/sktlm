@@ -2,41 +2,50 @@
 
 ## Current status
 
-S1M1 is scientifically and archivally frozen. Its freeze commit is on
-`exp/s1m1-core-methods` and has been fast-forwarded into `main`.
+Branch: `exp/s1m2-reusable-pieces`.
 
 ```text
-formal four-cell/two-N/A analysis: VALID
-association microanalysis: VALID / SHA256 VERIFIED
-direct association-level evidence: YES (weighting-qualified)
-selective archival: COMPLETE
-deletion gate: READY (classification only; no deletion authorized or done)
 S1M1: FROZEN
-M0-prime implementation/config/cheap validation: COMPLETE
-M0-prime formal generation/validation: VALID
-S1M2 P1c: NOT STARTED
+direct association-level evidence: YES (weighting-qualified)
+selective archival/deletion gate: COMPLETE / READY (no deletion performed)
+M0-prime formal substrate: COMPLETE / VALID
+S1M2 P0 reference oracle: COMPLETE
+S1M2 P1a production scoring: COMPLETE
+S1M2 P1b lazy candidates: COMPLETE
+S1M2 P1c: READY TO START
 ```
 
-Do not rerun any S1M1 learner, formal aggregation, 91 GB source inventory,
-raw SQLite identity hash, compact export, or association scan. Do not delete
-any artifact. `notes/**` may be read/searched when useful but must never be
+The branch is synchronized onto updated `main`, contains no tracked
+`notes/**`, inherits the validated corrected six-cell M0/M0-prime substrate,
+and passes the focused integration and full repository suites. No P1c code or
+full-corpus S1M2 run has started.
+
+Do not rerun S1M1 heavy work or M0-prime generation/validation. Do not delete
+artifacts. `notes/**` may be read/searched when useful but must never be
 modified, moved, copied, deleted, tracked, staged, committed, restored,
 checked out, or force-added.
 
-## Next task
+## Next task: P1c only
 
-Commit and push the tracked M0-prime formal checkpoint on `main`. Then build a
-clean S1M2 branch from updated `main` and preserve the existing P0 and P1a/P1b
-work by cherry-picking commits `f95bc5f` and `3d4c512`. Do not check out or
-carry forward the old branch's historically tracked `notes/reviewer/*` files;
-the two S1M2 commits themselves do not touch `notes/**`.
+Implement exact shared/composed piece inference over the existing lazy spans.
+Keep P0 unchanged as the numerical oracle. Do not build an independent P0
+piece lattice for every lexical form and do not introduce a beam or early hard
+decoding.
 
-Resolve durable state and `pyproject.toml` against current `main`, run the
-focused P0/P1a/P1b and M0-prime interface tests, audit the untyped exact-
-concatenation/no-morphology contract, and push the synchronized branch. Do not
-implement P1c and do not launch an S1M2 full-corpus experiment.
+Required tiny equivalence gates:
 
-The exact stop condition remains:
+1. per-form prior normalizer, log score, and expected piece counts versus P0;
+2. lazy versus materialized outer partition and lexical expected counts;
+3. composed expected piece counts;
+4. identity/latent mass, expected lexical tokens, boundary posteriors, rule
+   usage, and total posterior mass;
+5. deterministic traversal/state/transition and scoring/cache/store counters,
+   with explicitly bounded pass-local cache state.
+
+Reusable pieces remain untyped and must concatenate exactly to the
+grammar-licensed lexical form. Do not add morphology/gold resources, a learned
+internal rewrite, a Sanskrit-specific suffix inventory, or a reward for using
+sandhi. Full trainer integration and corpus execution remain later work.
 
 ```text
 S1M2 P1c READY TO START

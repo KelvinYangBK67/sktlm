@@ -1270,3 +1270,36 @@ check. Generated text and execution artifacts remain ignored; the tracked
 formal checkpoint records the permanent interface/provenance. M0-prime is
 complete and validated. S1M2 synchronization/readiness is next; P1c has not
 started.
+
+## 45. S1M2 synchronized and P1c-ready (2026-09-05)
+
+S1M2 was rebuilt from updated `main` at
+`bf3396e630f7b28ff3172bd765979e2f64c351bf`. The original P0 commit
+`f95bc5f1bb92ce4beb899b13fa5a83070852d734` was replayed as `c976bdf`; the
+original P1a/P1b commit `3d4c5127c74201fa22af5fbf1673faa4096aa456`
+was replayed as `3ba3d80`. Their implementation/report content was preserved,
+while their obsolete durable-state snapshots were resolved against current
+S1M1/M0-prime state.
+
+The old S1M2 base tracked `notes/reviewer/*`, but neither replayed commit
+touches notes. The synchronized tree and `main...HEAD` delta contain no tracked
+`notes/**`; no note was modified, copied, staged, restored, or checked out.
+
+P0 provides the unchanged exact reference piece lattice, prior normalization,
+forward/backward expected counts, and outer-to-inner count composition. P1a
+provides normalized countable-base-measure scoring for active and unseen pieces
+with fixed within-pass state. P1b provides lazy M1-equivalent lexical spans
+without persistent lexical-edge tuples. All pieces remain untyped and
+script-neutral; all paths concatenate exactly to the grammar-licensed lexical
+form. No morphology/gold resource, internal rewrite, sandhi-use reward, or
+change to the fixed external grammar was introduced.
+
+The synchronized branch inherits S1M1 freeze and the validated six-cell
+M0/M0-prime substrate. Focused pieces/profiler/M0-prime integration tests passed
+(`48 passed`), and the complete repository suite passed (`616 passed`, four
+existing warnings). P1c is not implemented. The exact next boundary is exact
+shared/composed inference over lazy spans with P0/materialized oracle gates:
+
+```text
+S1M2 P1c READY TO START
+```
