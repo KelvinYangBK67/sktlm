@@ -2064,3 +2064,26 @@ CONTINUOUS_RUNTIME_TARGET=NOT_READY
 PRODUCTION_STORAGE_GATE=NOT_READY
 FULL_M0_PROCESS_RUNNING=NO
 ```
+
+## 73. Shared piece-entropy stabilization accepted by cheap gate (2026-09-06)
+
+At SHA `9edfd7fac3157d1eab2d205216c50bd8710f049f`, both fixed continuous
+probes pass all seven artifacts against optimization 12. Each comparison covers
+10,252 numeric values with maximum absolute/relative differences
+`1.60e-13`/`9.37e-15`. Shared states/transitions remain 855/5,454, paired wall
+times show no total regression, and piece inventory, lexical diagnostics, and
+rule usage remain byte-identical across frontends.
+
+The pre-correction factorized representative artifacts cannot validate the new
+entropy calculation. One new paired detached representative run is required at
+the accepted stable code SHA, with unchanged frozen workloads and w4 settings.
+This supersedes another comparator-only retry; stress, cloud, and full-M0 remain
+unstarted.
+
+```text
+S1M2_SHARED_ENTROPY_STABILITY=ACCEPTED_CHEAP_EQUIVALENCE_PASS
+S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=STABLE_RERUN_READY_TO_LAUNCH_DETACHED
+CONTINUOUS_RUNTIME_TARGET=NOT_READY
+PRODUCTION_STORAGE_GATE=NOT_READY
+FULL_M0_PROCESS_RUNNING=NO
+```

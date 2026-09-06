@@ -1,0 +1,65 @@
+{
+  "schema_version": "sktlm-s1m2-shared-entropy-stability/v1",
+  "candidate_git_sha": "9edfd7fac3157d1eab2d205216c50bd8710f049f",
+  "reference_git_sha": "b0ed64869d1976e51aa841603dec6e5d63cc9a43",
+  "mechanism": "Carry conditional expected raw score on the bounded shared prefix DAG and aggregate conditional piece entropy per lexical form before outer posterior weighting.",
+  "scientific_contract": {
+    "candidate_membership_changed": false,
+    "path_weights_changed": false,
+    "partition_changed": false,
+    "expected_count_equations_changed": false,
+    "top_k_support_changed": false,
+    "per_form_p0_lattices_created": false,
+    "rtol": 1e-10,
+    "atol": 1e-12
+  },
+  "tests": {
+    "tests_pieces": "40 passed",
+    "tests_latent": "54 passed",
+    "artifact_comparator": "3 passed"
+  },
+  "probe_comparisons": [
+    {
+      "cell": "m0_prime_iast_continuous",
+      "reference_run_id": "s1m2_continuous_probe_m0_prime_iast_b0ed648_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_prime_iast_9edfd7f_a01",
+      "status": "PASS",
+      "numeric_values": 10252,
+      "max_absolute_difference": 1.5987211554602254e-13,
+      "max_relative_difference": 9.373569591726264e-15,
+      "reference_wall_seconds": 0.9236758000042755,
+      "candidate_wall_seconds": 0.9193859999941196,
+      "training_composed_states": 855,
+      "training_composed_transitions": 5454
+    },
+    {
+      "cell": "m0_devanagari_continuous",
+      "reference_run_id": "s1m2_continuous_probe_m0_devanagari_b0ed648_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_devanagari_9edfd7f_a01",
+      "status": "PASS",
+      "numeric_values": 10252,
+      "max_absolute_difference": 1.5987211554602254e-13,
+      "max_relative_difference": 9.373569591726264e-15,
+      "reference_wall_seconds": 0.9146375000127591,
+      "candidate_wall_seconds": 0.8950216000084765,
+      "training_composed_states": 855,
+      "training_composed_transitions": 5454
+    }
+  ],
+  "cross_frontend_script_neutral_hashes": [
+    {
+      "artifact": "piece_inventory.tsv",
+      "sha256": "d9f6d23a7e6e6007e4f1bdffd2119be54071a2f59177fca33623d430d217a542"
+    },
+    {
+      "artifact": "lexical_diagnostics.tsv",
+      "sha256": "4a5bc93954ad351bfcaa1daa2c020f8e1313d88435b450757b537eeaba687acf"
+    },
+    {
+      "artifact": "rule_usage.tsv",
+      "sha256": "2324621c528ecc20868e06424ef2eb98e74c2281f6cbc03554fb73d661df53c2"
+    }
+  ],
+  "decision": "ACCEPTED_NUMERICAL_STABILITY",
+  "next_gate": "Run one new detached paired representative at the stabilized code SHA, then audit it against the optimization-7 reference."
+}
