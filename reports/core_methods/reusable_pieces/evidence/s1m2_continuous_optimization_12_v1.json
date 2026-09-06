@@ -1,0 +1,72 @@
+{
+  "schema_version": "sktlm-s1m2-continuous-optimization-evidence/v1",
+  "optimization_id": "exact_bounded_cartesian_top_k_merge",
+  "status": "ACCEPTED",
+  "baseline_git_sha": "b19df311e3ca15cba40d9a2c29b993434ebb1d19",
+  "candidate_git_sha": "b0ed64869d1976e51aa841603dec6e5d63cc9a43",
+  "workload": {
+    "id": "representative_probe",
+    "document_list_sha256": "7bf936025ce28c43cdae0407d532c461b50726a28275fa40062a8a6889296ed3",
+    "documents": 3,
+    "max_lines_per_document": 2,
+    "passes": 1,
+    "workers": 1,
+    "inspection_enabled": true,
+    "cprofile_enabled": true
+  },
+  "equivalence": {
+    "status": "PASS",
+    "comparator": "scripts/analysis/compare_s1m2_artifacts.py",
+    "numeric_values_compared_per_frontend": 10252,
+    "iast_max_absolute_difference": 0.0,
+    "iast_max_relative_difference": 0.0,
+    "devanagari_max_absolute_difference": 0.0,
+    "devanagari_max_relative_difference": 0.0,
+    "top_lexical_and_piece_path_order": "PASS",
+    "focused_pieces_latent_tests": "90 passed"
+  },
+  "cells": [
+    {
+      "cell_id": "m0_prime_iast_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_prime_iast_b19df31_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_prime_iast_b0ed648_a01",
+      "candidate_benchmark_metrics_sha256": "638e6f41e8da3d8206fb054ab565cd05bc5ea0e85765282733e9111ce432c705",
+      "candidate_profile_sha256": "63635f192c986e7a610b3d1b4741ac2b705002723b905eb1d3c602bec49eee93",
+      "baseline_wall_seconds": 0.9241359999869019,
+      "candidate_wall_seconds": 0.9236758000042755,
+      "wall_improvement_percent": 0.050,
+      "baseline_inspection_inference_seconds": 0.40308710001409054,
+      "candidate_inspection_inference_seconds": 0.38173109997296706,
+      "inspection_inference_improvement_percent": 5.298,
+      "baseline_lazy_token_top_k_seconds": 0.1546188999491278,
+      "candidate_lazy_token_top_k_seconds": 0.06579289995715953,
+      "lazy_token_top_k_improvement_percent": 57.448,
+      "baseline_profile_function_calls": 2093657,
+      "candidate_profile_function_calls": 2010426,
+      "function_call_reduction_percent": 3.975
+    },
+    {
+      "cell_id": "m0_devanagari_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_devanagari_b19df31_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_devanagari_b0ed648_a01",
+      "candidate_benchmark_metrics_sha256": "6b6121e2e472bf7314f04ae5d6a82e40b7a4b1c46a97a7f87efb7381f2bb013a",
+      "candidate_profile_sha256": "c84bab86f9a1f3e1b8e3589ff22b7ff07c0b985f042467be8e6698525b1b97ac",
+      "baseline_wall_seconds": 0.8180753999913577,
+      "candidate_wall_seconds": 0.9146375000127591,
+      "wall_improvement_percent": -11.804,
+      "baseline_inspection_inference_seconds": 0.36313179999706335,
+      "candidate_inspection_inference_seconds": 0.30512199996155687,
+      "inspection_inference_improvement_percent": 15.975,
+      "baseline_lazy_token_top_k_seconds": 0.12884549997397698,
+      "candidate_lazy_token_top_k_seconds": 0.06766110003809445,
+      "lazy_token_top_k_improvement_percent": 47.487,
+      "baseline_profile_function_calls": 2094397,
+      "candidate_profile_function_calls": 2011166,
+      "function_call_reduction_percent": 3.974
+    }
+  ],
+  "boundedness": "For each span the heap retains at most K row heads and constructs at most roughly 2K extensions, all under the pre-existing inspection_top_k. It replaces transient K-squared materialization and adds no pass- or corpus-lived state.",
+  "semantic_reason": "Each fixed-prefix row is ordered by the same additive score and full tie key as the former stable sort. Heap keys include prefix and segmentation indices, preserving former prefix-major stability when complete scientific keys tie. This affects bounded presentation only.",
+  "timing_interpretation": "The target phase improves 47-57% and inspection inference improves 5-16% in both frontends. Opposing total-wall results are subsecond probe noise and are not used as the acceptance basis.",
+  "next_gate": "The cumulative exact structural changes since the frozen representative run now materially change the measured regime; one new detached representative attempt is justified after the acceptance checkpoint."
+}

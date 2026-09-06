@@ -619,6 +619,34 @@ S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+### Optimization 12 result: accepted
+
+Candidate SHA `b0ed64869d1976e51aa841603dec6e5d63cc9a43` compares exactly
+against optimization 10 across seven artifacts and 10,252 numeric values for
+each frontend. Lazy-token top-K falls from `0.1546` to `0.0658` seconds for
+M0-prime IAST (`57.4%`) and from `0.1288` to `0.0677` seconds for M0
+Devanagari (`47.5%`). Inspection inference improves `5.3%`/`16.0%`; profiled
+function calls fall `4.0%` in both cells.
+
+The IAST total wall is flat (`0.05%` improvement), while Devanagari total wall
+regresses `11.8%`; these opposing subsecond totals are host noise and are not
+the acceptance basis. The exact bounded target phase improves clearly in both
+frontends. Evidence is
+`evidence/s1m2_continuous_optimization_12_v1.json`.
+
+The cumulative shared factorization after the frozen optimization-7
+representative now changes both training and inspection structurally. A single
+new detached run of the already-frozen paired representative workload is
+scientifically justified to establish the new runtime/storage regime. It does
+not authorize stress, cloud scaling, or any formal full-M0 run.
+
+```text
+S1M2_OPTIMIZATION_12=ACCEPTED
+S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=READY_TO_LAUNCH_DETACHED
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ### Optimization 8 result: accepted for training marginals
 
 At clean candidate SHA `2dad1b342042eb1ec9b282c3fd0d1798b363557e`,

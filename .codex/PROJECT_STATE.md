@@ -1400,6 +1400,32 @@ S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 73. Exact bounded Cartesian top-K merge accepted (2026-09-06)
+
+At candidate SHA `b0ed64869d1976e51aa841603dec6e5d63cc9a43`, the fixed paired
+probe preserves all seven canonical artifacts exactly against optimization 10:
+10,252 numeric values per frontend have zero difference. Lazy-token top-K
+improves `57.4%` for M0-prime IAST and `47.5%` for M0 Devanagari; inspection
+inference improves `5.3%`/`16.0%`, and total profiled calls fall `4.0%`.
+
+Subsecond total-wall changes disagree (`+0.05%` improvement and `11.8%`
+regression), so they are treated as noise. Acceptance rests on exactness,
+strict finite bounds, and the reproduced targeted-phase reduction. Compact
+evidence is `s1m2_continuous_optimization_12_v1.json`.
+
+The cumulative factorization since the frozen optimization-7 representative
+is now material: both training and inspection use the shared prefix route,
+with `81.5%` fewer states and `78.3%` fewer transitions/score calls on the
+fixed probe. Exactly one new detached paired representative attempt is now
+justified. Stress, cloud scaling, and formal full-M0 remain forbidden.
+
+```text
+S1M2_OPTIMIZATION_12=ACCEPTED
+S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=READY_TO_LAUNCH_DETACHED
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 62. Continuous optimization 7 accepted; representative gate next (2026-09-05)
 
 Candidate SHA `29c08a242bc4c4f65b39ddeebeb210c4bc45ccf3` keys the existing

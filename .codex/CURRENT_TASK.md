@@ -37,7 +37,7 @@ optimization 8 shared token-local form-prefix DP: ACCEPTED (training marginals)
 optimization 9 shared inspection marginals/top-K: ACCEPTED
 optimization 10 shared bounded piece-prefix top-K: ACCEPTED
 optimization 11 token-local lexical-form interning: REJECTED / REVERTED
-optimization 12 exact bounded Cartesian top-K merge: IMPLEMENTED / EQUIVALENT
+optimization 12 exact bounded Cartesian top-K merge: ACCEPTED
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -75,7 +75,7 @@ for transient output, so storage is also not ready. The benchmark must not be
 rerun. The stress and cloud scaling gates are deferred because they would only
 measure the already-decisive bad structural regime.
 
-## Next task: fixed cheap probe for optimization 12
+## Next task: detached representative rerun for the new structural regime
 
 The fixed probe accepts optimization 8: training states fall 81.5%, transitions
 and score calls 78.3%, training inference 70.3%/73.2%, and complete wall
@@ -104,17 +104,21 @@ bounded outer composed-path selection or direct shared-prefix construction.
 Require focused equivalence plus the fixed cheap probe. Do not rerun
 representative, stress, cloud, or full-M0 until the regime materially changes.
 
-Optimization 12 replaces presentation-only materialization of every `K x K`
-prefix/segmentation path extension with an exact k-way merge over the already
-sorted segmentation rows. It constructs at most the bounded row heads plus K
-winning extensions per span, and uses prefix/segmentation indices to preserve
-the former stable nested-loop order when full keys tie. Posterior support and
-all exact marginals are untouched. Shared/legacy tests now cover both sandhi
-ambiguity and a longer continuous-like form; the pieces/latent suite passes
-(`90 passed`). Commit and push the candidate, then run the fixed paired probe
-exactly once and compare canonical artifacts, composed-path construction/sort
-counts, lazy-token top-K, inspection inference, and wall time against
-optimization 10. Do not run representative, stress, cloud, or full-M0.
+Optimization 12 is accepted at `b0ed64869d1976e51aa841603dec6e5d63cc9a43`.
+Both frontends preserve all seven artifacts exactly (`10,252` values each,
+zero difference). Lazy-token top-K improves `57.4%`/`47.5%`, inspection
+inference improves `5.3%`/`16.0%`, and profiled calls fall `4.0%`. Opposing
+subsecond total-wall changes are recorded as noise, not evidence against the
+reproduced target-phase result.
+
+Optimizations 8--12 have now materially changed the structural regime since
+the frozen representative attempt at optimization 7: shared states fall
+`81.5%`, transitions/score calls fall `78.3%`, and both training and inspection
+use the factorized path. Prepare and launch exactly one new detached paired
+representative attempt from a clean pushed acceptance SHA using the frozen
+workload and the existing durable Scheduled Task convention. Record command,
+SHA, inputs, run IDs, logs, and refusal of overwrite, then return
+`WAITING_EXTERNAL`. Do not run stress, cloud, or full-M0.
 
 ```text
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
@@ -137,5 +141,6 @@ S1M2_OPTIMIZATION_8=ACCEPTED_TRAINING_ONLY
 S1M2_OPTIMIZATION_9=ACCEPTED
 S1M2_OPTIMIZATION_10=ACCEPTED
 S1M2_OPTIMIZATION_11=REJECTED_REVERTED
-S1M2_OPTIMIZATION_12=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
+S1M2_OPTIMIZATION_12=ACCEPTED
+S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=READY_TO_LAUNCH_DETACHED
 ```
