@@ -2040,6 +2040,30 @@ PRODUCTION_STORAGE_GATE=NOT_READY
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 75. S1M2 local optimization 13 accepted (2026-09-06)
+
+Opt13 moves parallel inspection count, piece, surface, and context shard rows
+from four text streams into one ordered append-only SQLite database per
+document. Canonical document reduction and JSONL ordering are unchanged. The
+parent attaches each shard and executes one transaction in SQLite, avoiding
+central Python parsing and `PhonologicalForm` reconstruction; legacy text
+shards remain readable for crash-resume compatibility.
+
+The focused pieces/latent suite passes (`93 passed`). The one-shot bounded
+400,000-row reducer measurement is exactly table-equivalent and improves from
+11.885 to 5.429 seconds (`54.3%`), while shard bytes fall `11.4%`. The single
+fixed Devanagari probe passes all seven canonical artifacts with zero numeric
+difference across 10,252 values and improves total wall `2.2%`. No
+representative or longer workload was run. Compact evidence is
+`evidence/s1m2_local_optimization_13_v1.json`.
+
+```text
+S1M2_OPTIMIZATION_13=ACCEPTED
+S1M2_OPTIMIZATION_14=READY
+S1M2_LOCAL_OPTIMIZATION_ROUNDS_REMAINING=1
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 72. Factorized representative audit manually reconciled (2026-09-06)
 
 The factorized representative audit is scientifically closed from the

@@ -1,0 +1,58 @@
+{
+  "schema_version": "sktlm-s1m2-local-optimization-evidence/v1",
+  "optimization": "Opt13",
+  "status": "ACCEPTED",
+  "baseline_git_sha": "ee14f181f19bbc316b4dcf78cb974b54f8ee430d",
+  "measured_candidate_git_sha": "424f217ec8bcea94b6cd553e7ef100c5e1d8ac6a",
+  "measured_candidate_tree_sha": "9c325369301668deb43143ad286c98bfea1a6606",
+  "target": "parallel inspection shard aggregation and central reducer",
+  "implementation": {
+    "aggregate_format": "ordered_sqlite_v1",
+    "description": "Workers write ordered append-only aggregate tables; the canonical reducer attaches each shard and merges it in one SQLite transaction without central Python row materialization.",
+    "ordering": "Document reduction remains canonical; JSONL concatenation remains line- and order-sensitive; aggregate row_number preserves the former within-shard accumulation order.",
+    "legacy_resume": "Schema-v1 TSV inspection shards remain readable.",
+    "scientific_semantics_changed": false
+  },
+  "focused_exactness": {
+    "command": ".venv\\Scripts\\python.exe -m pytest tests/pieces tests/latent -q",
+    "result": "93 passed in 18.72s",
+    "serial_parallel_byte_identity": "PASS",
+    "inspection_crash_resume": "PASS"
+  },
+  "targeted_bounded_measurement": {
+    "command": ".venv\\Scripts\\python.exe scripts/analysis/benchmark_s1m2_inspection_reducer.py --rows 100000 --batch-size 5000",
+    "runs": 1,
+    "rows_per_table": 100000,
+    "total_rows": 400000,
+    "legacy_seconds": 11.885150599991903,
+    "candidate_seconds": 5.429059499991126,
+    "improvement_percent": 54.320650341655536,
+    "exact_table_equivalence": true,
+    "table_digest": "f63a919c3b15e5ab04e552419c740ce6ea2d83550b490eb76c6230d39e30c6e9",
+    "legacy_tsv_bytes": 17390183,
+    "aggregate_shard_bytes": 15400960,
+    "shard_byte_change_percent": -11.439919303957655
+  },
+  "fixed_devanagari_probe": {
+    "command": ".venv\\Scripts\\python.exe -m sktlm.latent.benchmark --benchmark s1m2_continuous_probe_m0_devanagari --run-id s1m2_continuous_probe_m0_devanagari_opt13_424f217_a01 --output-root artifacts/s1m2_benchmarks --passes 1 --workers 1 --profile",
+    "runs": 1,
+    "reference_run_id": "s1m2_continuous_probe_m0_devanagari_b0ed648_a01",
+    "candidate_run_id": "s1m2_continuous_probe_m0_devanagari_opt13_424f217_a01",
+    "reference_wall_seconds": 0.9146375000127591,
+    "candidate_wall_seconds": 0.8946804000006523,
+    "wall_improvement_percent": 2.182,
+    "benchmark_metrics_sha256": "13e216a3f57a4dd6fce849d4eca096cbeada9af123ce3022f0eed383f8772f27",
+    "profile_sha256": "9a598f9ff2ffd96315d992b9ce1607f558369105e815ddd264722c64ae4b0c31",
+    "comparator": {
+      "status": "PASS",
+      "rtol": 1e-10,
+      "atol": 1e-12,
+      "numeric_values": 10252,
+      "max_absolute_difference": 0.0,
+      "max_relative_difference": 0.0
+    }
+  },
+  "acceptance_reason": "The targeted reducer improves 54.3%, exact table and canonical artifact equivalence pass, the fixed cheap total wall does not regress, and bounded shard bytes decrease 11.4%.",
+  "representative_rerun": "NOT_RUN_NOT_REQUIRED",
+  "external_command_required": false
+}

@@ -1768,7 +1768,17 @@ class _InspectionAggregate:
     serial: int = 0
 
 
+_INSPECTION_STREAM_SHARD_KINDS = (
+    "analyses",
+    "boundaries",
+    "reductions",
+)
+_INSPECTION_AGGREGATE_FORMAT = "ordered_sqlite_v1"
 _INSPECTION_SHARD_KINDS = (
+    *_INSPECTION_STREAM_SHARD_KINDS,
+    "aggregates",
+)
+_LEGACY_INSPECTION_SHARD_KINDS = (
     "analyses",
     "boundaries",
     "counts",
@@ -1788,6 +1798,7 @@ def _inspection_shard_paths(
     return {
         "analyses": root / f"{stem}.analyses.jsonl",
         "boundaries": root / f"{stem}.boundaries.jsonl",
+        "aggregates": root / f"{stem}.aggregates.sqlite",
         "counts": root / f"{stem}.counts.tsv",
         "pieces": root / f"{stem}.pieces.tsv",
         "surfaces": root / f"{stem}.surfaces.tsv",
@@ -1863,33 +1874,116 @@ def _write_inspection_shard(
         else None
     )
     engineering = RuntimeTelemetry()
+    aggregate_row_numbers = {
+        "counts": 0,
+        "pieces": 0,
+        "surfaces": 0,
+        "contexts": 0,
+    }
+    surface_rows_buffer: list[tuple[str, str, float]] = []
+    context_rows_buffer: list[tuple[str, str, float]] = []
+    shard_database_seconds = 0.0
 
-    def flush_counts(handle: Any) -> None:
-        nonlocal count_rows
+    aggregate_temporary = temporary["aggregates"]
+    if aggregate_temporary.exists():
+        aggregate_temporary.unlink()
+    aggregate_connection = sqlite3.connect(aggregate_temporary)
+    aggregate_connection.execute("PRAGMA journal_mode=OFF")
+    aggregate_connection.execute("PRAGMA synchronous=OFF")
+    aggregate_connection.execute("PRAGMA temp_store=MEMORY")
+    aggregate_connection.executescript(
+        "CREATE TABLE count_rows ("
+        "row_number INTEGER PRIMARY KEY, form_key TEXT NOT NULL, "
+        "expected_count REAL NOT NULL);"
+        "CREATE TABLE piece_rows ("
+        "row_number INTEGER PRIMARY KEY, form_key TEXT NOT NULL, "
+        "expected_count REAL NOT NULL, occurrence_support INTEGER NOT NULL);"
+        "CREATE TABLE surface_rows ("
+        "row_number INTEGER PRIMARY KEY, form_key TEXT NOT NULL, "
+        "surface TEXT NOT NULL, expected_mass REAL NOT NULL);"
+        "CREATE TABLE context_rows ("
+        "row_number INTEGER PRIMARY KEY, form_key TEXT NOT NULL, "
+        "context TEXT NOT NULL, expected_mass REAL NOT NULL);"
+    )
+
+    def flush_counts() -> None:
+        nonlocal count_rows, shard_database_seconds
         if not counts:
             return
+        started = time.perf_counter()
+        rows = []
         for form, value in sorted(counts.items(), key=lambda item: item[0].key):
-            handle.write(f"{form.key}\t{float(value).hex()}\n")
-            count_rows += 1
+            aggregate_row_numbers["counts"] += 1
+            rows.append(
+                (aggregate_row_numbers["counts"], form.key, float(value))
+            )
+        aggregate_connection.executemany(
+            "INSERT INTO count_rows VALUES (?, ?, ?)",
+            rows,
+        )
+        count_rows += len(rows)
         counts.clear()
+        shard_database_seconds += time.perf_counter() - started
 
-    def flush_pieces(handle: Any) -> None:
-        nonlocal piece_rows
+    def flush_pieces() -> None:
+        nonlocal piece_rows, shard_database_seconds
         if not piece_counts:
             return
+        started = time.perf_counter()
+        rows = []
         for piece, value in sorted(
             piece_counts.items(), key=lambda item: item[0].key
         ):
-            handle.write(
-                f"{piece.key}\t{float(value).hex()}\t{piece_support[piece]}\n"
+            aggregate_row_numbers["pieces"] += 1
+            rows.append(
+                (
+                    aggregate_row_numbers["pieces"],
+                    piece.key,
+                    float(value),
+                    int(piece_support[piece]),
+                )
             )
-            piece_rows += 1
+        aggregate_connection.executemany(
+            "INSERT INTO piece_rows VALUES (?, ?, ?, ?)",
+            rows,
+        )
+        piece_rows += len(rows)
         piece_counts.clear()
         piece_support.clear()
+        shard_database_seconds += time.perf_counter() - started
+
+    def flush_usage_rows() -> None:
+        nonlocal shard_database_seconds
+        if not surface_rows_buffer and not context_rows_buffer:
+            return
+        started = time.perf_counter()
+        surface_rows = []
+        for key, surface, mass in surface_rows_buffer:
+            aggregate_row_numbers["surfaces"] += 1
+            surface_rows.append(
+                (aggregate_row_numbers["surfaces"], key, surface, float(mass))
+            )
+        context_rows = []
+        for key, context, mass in context_rows_buffer:
+            aggregate_row_numbers["contexts"] += 1
+            context_rows.append(
+                (aggregate_row_numbers["contexts"], key, context, float(mass))
+            )
+        aggregate_connection.executemany(
+            "INSERT INTO surface_rows VALUES (?, ?, ?, ?)",
+            surface_rows,
+        )
+        aggregate_connection.executemany(
+            "INSERT INTO context_rows VALUES (?, ?, ?, ?)",
+            context_rows,
+        )
+        surface_rows_buffer.clear()
+        context_rows_buffer.clear()
+        shard_database_seconds += time.perf_counter() - started
 
     handles: dict[str, Any] = {}
     try:
-        for kind in _INSPECTION_SHARD_KINDS:
+        for kind in _INSPECTION_STREAM_SHARD_KINDS:
             handles[kind] = temporary[kind].open(
                 "w",
                 encoding="utf-8",
@@ -2115,9 +2209,8 @@ def _write_inspection_shard(
             )
             for form, mass in inference_lexical_counts.items():
                 if mass >= config.usage_posterior_threshold:
-                    surface = json.dumps(segment.written, ensure_ascii=False)
-                    handles["surfaces"].write(
-                        f"{form.key}\t{surface}\t{float(mass).hex()}\n"
+                    surface_rows_buffer.append(
+                        (form.key, segment.written, float(mass))
                     )
                     surface_rows += 1
             for analysis in inference.top_analyses:
@@ -2134,26 +2227,32 @@ def _write_inspection_shard(
                         if word_index + 1 < len(analysis.words)
                         else "<EOS>"
                     )
-                    context = json.dumps(f"{left}>{right}", ensure_ascii=False)
-                    handles["contexts"].write(
-                        f"{word.key}\t{context}\t{float(analysis.probability).hex()}\n"
+                    context_rows_buffer.append(
+                        (word.key, f"{left}>{right}", float(analysis.probability))
                     )
                     context_rows += 1
             if len(counts) + len(piece_counts) >= config.flush_types:
-                flush_counts(handles["counts"])
-                flush_pieces(handles["pieces"])
-        flush_counts(handles["counts"])
-        flush_pieces(handles["pieces"])
+                flush_counts()
+                flush_pieces()
+            if len(surface_rows_buffer) + len(context_rows_buffer) >= config.flush_types:
+                flush_usage_rows()
+        flush_counts()
+        flush_pieces()
+        flush_usage_rows()
         for handle in handles.values():
             handle.flush()
             os.fsync(handle.fileno())
     finally:
         for handle in handles.values():
             handle.close()
-    for kind in _INSPECTION_SHARD_KINDS:
+        aggregate_connection.commit()
+        aggregate_connection.close()
+    for kind in _INSPECTION_STREAM_SHARD_KINDS:
         _replace_file(temporary[kind], paths[kind])
+    _replace_file(aggregate_temporary, paths["aggregates"])
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "aggregate_format": _INSPECTION_AGGREGATE_FORMAT,
         "config_signature": config_signature,
         "document_index": document_index,
         "relative_path": document.relative_path,
@@ -2174,6 +2273,7 @@ def _write_inspection_shard(
             "inspection_count_aggregation": aggregation_seconds,
             "inspection_frontend_io": frontend_seconds,
             "inspection_serialization": serialization_seconds,
+            "inspection_worker_shard_database": shard_database_seconds,
             "inspection_worker_document_total": time.perf_counter() - wall_started,
             "inspection_worker_cpu": time.process_time() - cpu_started,
             "lexical_score_calls": (
@@ -2220,7 +2320,12 @@ def _load_inspection_shard(
     )
     if not expected:
         raise RuntimeError(f"Stale or mismatched inspection shard: {marker_path}")
-    for kind in _INSPECTION_SHARD_KINDS:
+    shard_kinds = (
+        _INSPECTION_SHARD_KINDS
+        if payload.get("aggregate_format") == _INSPECTION_AGGREGATE_FORMAT
+        else _LEGACY_INSPECTION_SHARD_KINDS
+    )
+    for kind in shard_kinds:
         if not paths[kind].is_file():
             raise RuntimeError(f"Inspection shard file is missing: {paths[kind]}")
         if payload["sha256"].get(kind) != _file_sha256(paths[kind]):
@@ -2239,6 +2344,7 @@ def _apply_inspection_shard(
     aggregate: _InspectionAggregate,
     telemetry: RuntimeTelemetry,
 ) -> None:
+    reducer_started = telemetry.now()
     document_index = int(payload["document_index"])
     paths = _inspection_shard_paths(run_dir, document_index)
     with paths["analyses"].open("rb") as source:
@@ -2246,58 +2352,69 @@ def _apply_inspection_shard(
     with paths["boundaries"].open("rb") as source:
         shutil.copyfileobj(source, boundaries_handle, length=1024 * 1024)
 
-    buffered_counts: list[tuple[PhonologicalForm, float]] = []
-    with paths["counts"].open(encoding="utf-8") as handle:
-        for line in handle:
-            key, value = line.rstrip("\n").split("\t", 1)
-            buffered_counts.append(
-                (PhonologicalForm.from_key(key), float.fromhex(value))
-            )
-            if len(buffered_counts) >= config.flush_types:
-                store.add_counts(buffered_counts, table="inspection_counts")
-                buffered_counts.clear()
-    if buffered_counts:
-        store.add_counts(buffered_counts, table="inspection_counts")
-
-    if config.model == S1M2_MODEL:
-        buffered_piece_counts: list[
-            tuple[PhonologicalForm, float, int]
-        ] = []
-        with paths["pieces"].open(encoding="utf-8") as handle:
+    if payload.get("aggregate_format") == _INSPECTION_AGGREGATE_FORMAT:
+        merge_started = telemetry.now()
+        store.merge_inspection_shard(
+            paths["aggregates"],
+            row_counts={
+                key: int(value) for key, value in payload["rows"].items()
+                if key in {"counts", "pieces", "surfaces", "contexts"}
+            },
+        )
+        telemetry.elapsed("inspection_reducer_database_merge", merge_started)
+    else:
+        buffered_counts: list[tuple[PhonologicalForm, float]] = []
+        with paths["counts"].open(encoding="utf-8") as handle:
             for line in handle:
-                key, value, support = line.rstrip("\n").split("\t", 2)
-                buffered_piece_counts.append(
-                    (
-                        PhonologicalForm.from_key(key),
-                        float.fromhex(value),
-                        int(support),
+                key, value = line.rstrip("\n").split("\t", 1)
+                buffered_counts.append(
+                    (PhonologicalForm.from_key(key), float.fromhex(value))
+                )
+                if len(buffered_counts) >= config.flush_types:
+                    store.add_counts(buffered_counts, table="inspection_counts")
+                    buffered_counts.clear()
+        if buffered_counts:
+            store.add_counts(buffered_counts, table="inspection_counts")
+
+        if config.model == S1M2_MODEL:
+            buffered_piece_counts: list[
+                tuple[PhonologicalForm, float, int]
+            ] = []
+            with paths["pieces"].open(encoding="utf-8") as handle:
+                for line in handle:
+                    key, value, support = line.rstrip("\n").split("\t", 2)
+                    buffered_piece_counts.append(
+                        (
+                            PhonologicalForm.from_key(key),
+                            float.fromhex(value),
+                            int(support),
+                        )
                     )
-                )
-                if len(buffered_piece_counts) >= config.flush_types:
-                    store.add_inspection_piece_counts(buffered_piece_counts)
-                    buffered_piece_counts.clear()
-        if buffered_piece_counts:
-            store.add_inspection_piece_counts(buffered_piece_counts)
+                    if len(buffered_piece_counts) >= config.flush_types:
+                        store.add_inspection_piece_counts(buffered_piece_counts)
+                        buffered_piece_counts.clear()
+            if buffered_piece_counts:
+                store.add_inspection_piece_counts(buffered_piece_counts)
 
-    for kind in ("surfaces", "contexts"):
-        buffered_usage: list[tuple[str, str, float]] = []
-        with paths[kind].open(encoding="utf-8") as handle:
-            for line in handle:
-                key, encoded_value, mass = line.rstrip("\n").split("\t", 2)
-                buffered_usage.append(
-                    (key, str(json.loads(encoded_value)), float.fromhex(mass))
-                )
-                if len(buffered_usage) >= config.flush_types:
-                    if kind == "surfaces":
-                        store.add_usage(surfaces=buffered_usage)
-                    else:
-                        store.add_usage(contexts=buffered_usage)
-                    buffered_usage.clear()
-        if buffered_usage:
-            if kind == "surfaces":
-                store.add_usage(surfaces=buffered_usage)
-            else:
-                store.add_usage(contexts=buffered_usage)
+        for kind in ("surfaces", "contexts"):
+            buffered_usage: list[tuple[str, str, float]] = []
+            with paths[kind].open(encoding="utf-8") as handle:
+                for line in handle:
+                    key, encoded_value, mass = line.rstrip("\n").split("\t", 2)
+                    buffered_usage.append(
+                        (key, str(json.loads(encoded_value)), float.fromhex(mass))
+                    )
+                    if len(buffered_usage) >= config.flush_types:
+                        if kind == "surfaces":
+                            store.add_usage(surfaces=buffered_usage)
+                        else:
+                            store.add_usage(contexts=buffered_usage)
+                        buffered_usage.clear()
+            if buffered_usage:
+                if kind == "surfaces":
+                    store.add_usage(surfaces=buffered_usage)
+                else:
+                    store.add_usage(contexts=buffered_usage)
 
     with paths["reductions"].open(encoding="utf-8") as handle:
         for line in handle:
@@ -2399,8 +2516,10 @@ def _apply_inspection_shard(
         "inspection_serialization",
         "inspection_worker_document_total",
         "inspection_worker_cpu",
+        "inspection_worker_shard_database",
     ):
-        telemetry.add_seconds(label, float(runtime[label]))
+        if label in runtime:
+            telemetry.add_seconds(label, float(runtime[label]))
     telemetry.increment(
         "inspection_worker_lexical_score_calls",
         int(runtime["lexical_score_calls"]),
@@ -2419,6 +2538,7 @@ def _apply_inspection_shard(
     if runtime.get("engineering_telemetry"):
         telemetry.merge_payload(runtime["engineering_telemetry"])
     _record_store_storage(telemetry, store.path)
+    telemetry.elapsed("inspection_reducer_apply", reducer_started)
 
 
 def _finalize_inspection(

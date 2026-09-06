@@ -877,6 +877,63 @@ class LexiconStore:
         )
         self.connection.commit()
 
+    def merge_inspection_shard(
+        self,
+        path: Path,
+        *,
+        row_counts: dict[str, int],
+    ) -> None:
+        """Merge one ordered worker aggregate without Python row materialization."""
+
+        if self.connection.in_transaction:
+            raise RuntimeError("Cannot attach an inspection shard in a transaction.")
+        alias = "inspection_shard"
+        self.connection.execute(f"ATTACH DATABASE ? AS {alias}", (str(path),))
+        started = time.perf_counter()
+        try:
+            with self.connection:
+                self.connection.execute(
+                    f"INSERT INTO inspection_counts(form_key, expected_count) "
+                    f"SELECT form_key, expected_count FROM {alias}.count_rows "
+                    "WHERE expected_count > 0.0 ORDER BY row_number "
+                    "ON CONFLICT(form_key) DO UPDATE SET expected_count = "
+                    "expected_count + excluded.expected_count"
+                )
+                if self.has_table("inspection_piece_counts"):
+                    self.connection.execute(
+                        "INSERT INTO inspection_piece_counts("
+                        "form_key, expected_count, occurrence_support) "
+                        f"SELECT form_key, expected_count, occurrence_support "
+                        f"FROM {alias}.piece_rows WHERE expected_count > 0.0 "
+                        "ORDER BY row_number "
+                        "ON CONFLICT(form_key) DO UPDATE SET expected_count = "
+                        "expected_count + excluded.expected_count, "
+                        "occurrence_support = occurrence_support + "
+                        "excluded.occurrence_support"
+                    )
+                self.connection.execute(
+                    "INSERT INTO surface_usage(form_key, surface, expected_mass) "
+                    f"SELECT form_key, surface, expected_mass "
+                    f"FROM {alias}.surface_rows WHERE 1 ORDER BY row_number "
+                    "ON CONFLICT(form_key, surface) DO UPDATE SET "
+                    "expected_mass = expected_mass + excluded.expected_mass"
+                )
+                self.connection.execute(
+                    "INSERT INTO context_usage(form_key, context, expected_mass) "
+                    f"SELECT form_key, context, expected_mass "
+                    f"FROM {alias}.context_rows WHERE 1 ORDER BY row_number "
+                    "ON CONFLICT(form_key, context) DO UPDATE SET "
+                    "expected_mass = expected_mass + excluded.expected_mass"
+                )
+        finally:
+            self.connection.execute(f"DETACH DATABASE {alias}")
+        self.telemetry.elapsed("sqlite_inspection_shard_merge", started)
+        self.telemetry.increment("sqlite_inspection_shard_merge_calls")
+        self.telemetry.increment(
+            "sqlite_inspection_shard_merge_rows",
+            sum(int(value) for value in row_counts.values()),
+        )
+
     def export_lexicon(self, path: Path, *, usage_threshold: float) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         query = """

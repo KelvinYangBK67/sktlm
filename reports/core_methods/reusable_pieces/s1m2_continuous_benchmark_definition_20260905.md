@@ -938,3 +938,25 @@ CONTINUOUS_RUNTIME_TARGET=NOT_READY
 PRODUCTION_STORAGE_GATE=NOT_READY
 FULL_M0_PROCESS_RUNNING=NO
 ```
+
+### Local optimization 13: ordered inspection-shard reduction
+
+Opt13 is accepted at measured implementation commit `424f217`. Parallel
+inspection workers now write one ordered append-only aggregate SQLite shard;
+the parent retains strict canonical document/JSONL order and merges each shard
+in one SQLite transaction without materializing rows as Python forms/tuples.
+Legacy TSV shards remain readable for interrupted-run compatibility.
+
+The focused pieces/latent suite passes (`93 passed`). One bounded 400,000-row
+measurement preserves the four destination tables exactly and improves the
+target reducer from 11.885 to 5.429 seconds (`54.3%`); aggregate shard bytes
+are `11.4%` lower than the replaced TSV payload. The one allowed fixed
+Devanagari probe preserves all seven canonical artifacts exactly (10,252
+numeric values, zero difference) and improves wall time from 0.915 to 0.895
+seconds. No representative or longer workload was rerun. Canonical evidence
+is `evidence/s1m2_local_optimization_13_v1.json`.
+
+```text
+S1M2_OPTIMIZATION_13=ACCEPTED
+S1M2_OPTIMIZATION_14=READY
+```

@@ -40,6 +40,8 @@ optimization 11 token-local lexical-form interning: REJECTED / REVERTED
 optimization 12 exact bounded Cartesian top-K merge: ACCEPTED
 factorized local representative benchmark: COMPLETE / RECONCILED
 bounded streaming artifact comparator: SCHEMA-TYPED KEYED DISK-BACKED / FOCUSED PASS
+optimization 13 ordered SQLite inspection-shard reduction: ACCEPTED
+optimization 14 artifact/storage architecture: READY
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -173,6 +175,25 @@ not be rerun merely to obtain a green strict-wrapper exit code. Continue only
 with a genuinely structural exact optimization candidate or proceed to the
 VM scaling/readiness gate when the local optimization stopping rule is met.
 
+## Opt13 accepted; Opt14 is the only remaining round
+
+Opt13 replaces the parallel inspection reducer's four aggregate TSV shard
+streams with one ordered append-only SQLite shard per document. The parent
+retains canonical document and JSONL order but performs one in-engine SQL merge
+instead of parsing millions of rows into central Python objects. Legacy
+schema-v1 TSV shards remain readable for interrupted-run compatibility.
+
+The focused pieces/latent suite passes (`93 passed`), including inspection
+crash/resume and serial/parallel byte identity. A single 400,000-row bounded
+reducer measurement is exactly table-equivalent and improves 11.885 to 5.429
+seconds (`54.3%`); its shard is `11.4%` smaller. The single fixed Devanagari
+probe preserves all seven canonical artifacts exactly (`10,252` values, zero
+difference) and improves wall time `2.2%`, so training and cheap total wall do
+not regress. Evidence is `evidence/s1m2_local_optimization_13_v1.json`.
+
+Proceed only to Opt14 storage/artifact architecture. Do not run another local
+optimization, representative, stress, VM, cloud, or full-M0 workload.
+
 ```text
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
 CONTINUOUS_SCRIPT_NEUTRAL_PROBE=PASS
@@ -200,4 +221,6 @@ S1M2_BOUNDED_ARTIFACT_COMPARATOR=SCHEMA_TYPED_KEYED_DISK_BACKED_FOCUSED_PASS
 S1M2_FACTORIZED_REPRESENTATIVE_SCIENTIFIC_EQUIVALENCE=PASS_WITH_BOUNDED_PRESENTATION_CAVEATS
 S1M2_REPRESENTATIVE_RERUN=FORBIDDEN_WITHOUT_NEW_CONTRADICTORY_EVIDENCE
 S1M2_REPRESENTATIVE_AUDIT_RERUN=NOT_REQUIRED
+S1M2_OPTIMIZATION_13=ACCEPTED
+S1M2_OPTIMIZATION_14=READY
 ```
