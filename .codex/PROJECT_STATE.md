@@ -2039,28 +2039,3 @@ CONTINUOUS_RUNTIME_TARGET=NOT_READY
 PRODUCTION_STORAGE_GATE=NOT_READY
 FULL_M0_PROCESS_RUNNING=NO
 ```
-
-## 72. Shared piece-entropy numerical stabilization implemented (2026-09-06)
-
-Factorized representative audit attempt 03 used SHA
-`2fea66aba9dc569759ac786c11eecf40c6ad654d` and failed after its IAST keyed TSV
-phase at JSONL record 16. The old/factorized piece segmentation entropies differ
-by `2.24e-12` absolute and approximately `2.94e-10` relative, narrowly outside
-the frozen comparator gate. This is a numerical-stability issue: the shared
-route subtracted large token-wide aggregates to recover a small entropy.
-
-The shared prefix DP now carries conditional expected raw score and computes
-entropy per form before outer posterior weighting, matching the stable legacy
-decomposition while retaining shared exact support and bounded state. No
-per-form P0 lattice is introduced. Pieces and latent suites pass (`40` and `54`
-tests). A fixed cheap paired probe against optimization 12 is required before
-another large audit. Attempt 03 is preserved with its copied internal
-`attempt: 2` provenance error; it ran no training or inference.
-
-```text
-S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=COMPLETE_AUDIT_PAUSED_FOR_NUMERIC_STABILITY
-S1M2_SHARED_ENTROPY_STABILITY=IMPLEMENTED_FOCUSED_SUITES_PASS
-CONTINUOUS_RUNTIME_TARGET=NOT_READY
-PRODUCTION_STORAGE_GATE=NOT_READY
-FULL_M0_PROCESS_RUNNING=NO
-```

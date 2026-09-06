@@ -273,7 +273,6 @@ class _SharedPrefixNode:
     transitions: tuple[_SharedPieceTransition, ...] = ()
     prior_alpha: float = -math.inf
     alpha: float = -math.inf
-    expected_raw_score: float = 0.0
     singleton_score: float = -math.inf
     top_paths: tuple[_SharedInnerPath, ...] = ()
 
@@ -284,7 +283,6 @@ class _SharedFormScore:
     node: int
     prior_log_normalizer: float
     raw_log_partition: float
-    expected_raw_score: float
     log_score: float
     whole_piece: PhonologicalForm
     whole_raw_score: float
@@ -811,18 +809,6 @@ class ComposedPieceInference:
                 )
             node.prior_alpha = prior_alpha
             node.alpha = alpha
-            node.expected_raw_score = math.fsum(
-                math.exp(
-                    nodes[transition.source].alpha
-                    + transition.raw_score
-                    - alpha
-                )
-                * (
-                    nodes[transition.source].expected_raw_score
-                    + transition.raw_score
-                )
-                for transition in node.transitions
-            )
             singleton = node.transitions[-1]
             assert singleton.source == node.parent
             node.singleton_score = (
@@ -841,11 +827,6 @@ class ComposedPieceInference:
                 whole_raw = whole_prior + piece_score
                 prior_log_z = logaddexp(whole_prior, node.prior_alpha)
                 raw_log_z = logaddexp(whole_raw, node.alpha)
-                expected_raw_score = (
-                    math.exp(whole_raw - raw_log_z) * whole_raw
-                    + math.exp(node.alpha - raw_log_z)
-                    * node.expected_raw_score
-                )
                 transition_count += 1
             else:
                 whole = next(
@@ -857,7 +838,6 @@ class ComposedPieceInference:
                 whole_raw = whole.raw_score
                 prior_log_z = node.prior_alpha
                 raw_log_z = node.alpha
-                expected_raw_score = node.expected_raw_score
             if prior_log_z == -math.inf or raw_log_z == -math.inf:
                 raise ValueError("Lexical form has no complete piece segmentation.")
             scores[form.key] = _SharedFormScore(
@@ -865,7 +845,6 @@ class ComposedPieceInference:
                 node=node_index,
                 prior_log_normalizer=prior_log_z,
                 raw_log_partition=raw_log_z,
-                expected_raw_score=expected_raw_score,
                 log_score=raw_log_z - prior_log_z,
                 whole_piece=whole_piece,
                 whole_raw_score=whole_raw,
@@ -911,12 +890,13 @@ class ComposedPieceInference:
         self,
         batch: _SharedFormBatch,
         endpoint_masses: dict[str, float],
-    ) -> dict[PhonologicalForm, float]:
+    ) -> tuple[dict[PhonologicalForm, float], float]:
         """Reverse one shared DAG for posterior-weighted exact piece counts."""
 
         started = time.perf_counter()
         log_adjoint = [-math.inf] * len(batch.nodes)
         piece_counts: dict[PhonologicalForm, float] = defaultdict(float)
+        expected_raw_score = 0.0
         max_piece_length = self.model_config.max_piece_length
         for form_key, mass in endpoint_masses.items():
             if mass <= 0.0:
@@ -930,6 +910,7 @@ class ComposedPieceInference:
             if len(score.form.symbols) > max_piece_length:
                 contribution = math.exp(seed + score.whole_raw_score)
                 piece_counts[score.whole_piece] += contribution
+                expected_raw_score += contribution * score.whole_raw_score
 
         for node_index in range(len(batch.nodes) - 1, 0, -1):
             adjoint = log_adjoint[node_index]
@@ -942,13 +923,14 @@ class ComposedPieceInference:
                     adjoint + source.alpha + transition.raw_score
                 )
                 piece_counts[transition.piece] += contribution
+                expected_raw_score += contribution * transition.raw_score
                 log_adjoint[transition.source] = logaddexp(
                     log_adjoint[transition.source],
                     adjoint + transition.raw_score,
                 )
         self.add_timing("inner_piece_backward_seconds", started)
         self.add_timing("inner_piece_posterior_seconds", started)
-        return dict(piece_counts)
+        return dict(piece_counts), expected_raw_score
 
     def _shared_legal_pieces(
         self,
@@ -1233,8 +1215,8 @@ def _evaluate_lazy_token_shared(
     rule_usage: dict[str, float] = defaultdict(float)
     endpoint_masses: dict[str, float] = defaultdict(float)
     form_occurrences: dict[str, set[str]] = defaultdict(set)
-    expected_log_weight = 0.0
-    piece_segmentation_entropy = 0.0
+    expected_prior_log_z = 0.0
+    mass_weighted_raw_log_z = 0.0
     expected_whole_form_uses = 0.0
     expected_singleton_path_uses = 0.0
     expected_multi_piece_uses = 0.0
@@ -1250,13 +1232,8 @@ def _evaluate_lazy_token_shared(
             )
             lexical_counts[span.word] += mass
             endpoint_masses[span.word.key] += mass
-            expected_log_weight += mass * (
-                score.expected_raw_score - score.prior_log_normalizer
-            )
-            piece_segmentation_entropy += mass * max(
-                0.0,
-                score.raw_log_partition - score.expected_raw_score,
-            )
+            expected_prior_log_z += mass * score.prior_log_normalizer
+            mass_weighted_raw_log_z += mass * score.raw_log_partition
             whole_mass = math.exp(
                 score.whole_raw_score - score.raw_log_partition
             )
@@ -1277,9 +1254,8 @@ def _evaluate_lazy_token_shared(
             for rule_id in span.rule_ids:
                 rule_usage[rule_id] += mass / len(span.rule_ids)
 
-    piece_counts = engine._aggregate_shared_piece_marginals(
-        batch,
-        endpoint_masses,
+    piece_counts, expected_raw_score = (
+        engine._aggregate_shared_piece_marginals(batch, endpoint_masses)
     )
     piece_occurrences: dict[
         PhonologicalForm, dict[str, float]
@@ -1345,10 +1321,13 @@ def _evaluate_lazy_token_shared(
         engine.add_timing("lazy_token_top_k_seconds", started)
     return _TokenSummary(
         log_partition=log_z,
-        expected_log_weight=expected_log_weight,
+        expected_log_weight=expected_raw_score - expected_prior_log_z,
         identity_log_score=identity_log_score,
         expected_piece_tokens=sum(piece_counts.values()),
-        piece_segmentation_entropy=piece_segmentation_entropy,
+        piece_segmentation_entropy=max(
+            0.0,
+            mass_weighted_raw_log_z - expected_raw_score,
+        ),
         expected_whole_form_uses=expected_whole_form_uses,
         expected_singleton_path_uses=expected_singleton_path_uses,
         expected_multi_piece_uses=expected_multi_piece_uses,

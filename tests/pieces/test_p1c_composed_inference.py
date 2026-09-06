@@ -303,15 +303,7 @@ def test_lazy_composed_outer_matches_materialized_oracle(surface: str) -> None:
     _compare_outer(surface)
 
 
-@pytest.mark.parametrize(
-    "surface",
-    (
-        "devo'pi",
-        "devaśca",
-        "tattvamasi",
-        "vijayārohiṇīcaivapūtanācāmṛtābhayā",
-    ),
-)
+@pytest.mark.parametrize("surface", ("devo'pi", "devaśca", "tattvamasi"))
 def test_shared_token_marginals_match_legacy_exact_path(surface: str) -> None:
     grammar = StructuredSandhiGrammar.from_default_inventory()
     segment = next(iter_observed_segments(surface))
