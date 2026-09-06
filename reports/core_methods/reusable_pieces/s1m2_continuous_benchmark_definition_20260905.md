@@ -627,3 +627,34 @@ S1M2_OPTIMIZATION_9=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
 S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 FULL_M0_PROCESS_RUNNING=NO
 ```
+
+### Optimization 9 result: accepted
+
+At clean candidate SHA `fc2b66babd0c77f1984679bedd01c965b1c79c32`,
+the fixed probe passes the reusable seven-artifact semantic comparator against
+optimization 8. Each frontend again compares 10,252 numeric values; maximum
+absolute/relative differences are `1.6697754290362354e-13` and
+`1.5066699193640377e-14`, inside the frozen tolerance. Top lexical and nested
+piece path order, rules, boundaries, and occurrence support match.
+
+Inspection states fall from 4,626 to 855 (`81.5%`), transitions and piece-score
+calls fall from 25,135 to 5,454 (`78.3%`), and inspection inference improves
+`54.1%` in both frontends. Complete probe wall improves another `40.7%` for
+M0-prime IAST and `35.5%` for M0 Devanagari. No finite-cap fallback occurs.
+The compact envelope is
+`evidence/s1m2_continuous_optimization_9_v1.json`; future gates use
+`scripts/analysis/compare_s1m2_artifacts.py` for the same deterministic
+structural/numeric comparison.
+
+The largest remaining shared-inspection hotspot constructs the same bounded
+piece prefix paths independently for every form endpoint. Optimization 10 will
+carry bounded normal-piece top paths on shared prefix states, then add the
+required long whole-form competitor only at each endpoint. A piece-reference
+bound must account for every shared state and preserve exact P0 ordering.
+
+```text
+S1M2_OPTIMIZATION_9=ACCEPTED
+S1M2_OPTIMIZATION_10=SHARED_PREFIX_TOP_K_READY
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```

@@ -1,0 +1,77 @@
+{
+  "schema_version": "sktlm-s1m2-continuous-optimization-evidence/v1",
+  "optimization_id": "shared_inspection_marginals_and_piece_top_k",
+  "status": "ACCEPTED",
+  "baseline_git_sha": "2dad1b342042eb1ec9b282c3fd0d1798b363557e",
+  "candidate_git_sha": "fc2b66babd0c77f1984679bedd01c965b1c79c32",
+  "workload": {
+    "id": "representative_probe",
+    "document_list_sha256": "7bf936025ce28c43cdae0407d532c461b50726a28275fa40062a8a6889296ed3",
+    "documents": 3,
+    "max_lines_per_document": 2,
+    "passes": 1,
+    "workers": 1,
+    "inspection_enabled": true,
+    "cprofile_enabled": true
+  },
+  "equivalence": {
+    "status": "PASS",
+    "comparator": "scripts/analysis/compare_s1m2_artifacts.py",
+    "comparison": "seven canonical artifacts parsed structurally with numeric rtol=1e-10 and atol=1e-12; engineering-only lazy_span_traversals excluded",
+    "numeric_values_compared_per_frontend": 10252,
+    "iast_max_absolute_difference": 1.6697754290362354e-13,
+    "iast_max_relative_difference": 1.5066699193640377e-14,
+    "devanagari_max_absolute_difference": 1.6697754290362354e-13,
+    "devanagari_max_relative_difference": 1.5066699193640377e-14,
+    "top_lexical_and_piece_path_order": "PASS",
+    "piece_occurrence_support_identity": "PASS",
+    "focused_pieces_latent_tests": "89 passed",
+    "serial_parallel_scientific_byte_identity": "PASS",
+    "prefix_and_top_k_bound_fallbacks": "PASS"
+  },
+  "cells": [
+    {
+      "cell_id": "m0_prime_iast_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_prime_iast_2dad1b3_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_prime_iast_fc2b66b_a01",
+      "candidate_benchmark_metrics_sha256": "20d3b1c6ee48eaf49cb8616bd57a4d02418b03598c915b3cf4651633a97e4998",
+      "candidate_profile_sha256": "fb275cdc6a11d805833767f7f59a8f3ec43ea2806c9472c5268d026baf9ff602",
+      "baseline_wall_seconds": 1.5620295000262558,
+      "candidate_wall_seconds": 0.926490100013325,
+      "wall_improvement_percent": 40.687,
+      "baseline_inspection_inference_seconds": 0.9540109999943525,
+      "candidate_inspection_inference_seconds": 0.43778609999571927,
+      "inspection_inference_improvement_percent": 54.111
+    },
+    {
+      "cell_id": "m0_devanagari_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_devanagari_2dad1b3_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_devanagari_fc2b66b_a01",
+      "candidate_benchmark_metrics_sha256": "930caa71b55b3fcb33354033e90c2dc48cc4a8dbcf026aab3438b874bbac99d6",
+      "candidate_profile_sha256": "9d64f7fdbf4e827d744fda2b83c23eb378b86f471e06051eb0bd7a2507e2875a",
+      "baseline_wall_seconds": 1.5320154000073671,
+      "candidate_wall_seconds": 0.9888274999975692,
+      "wall_improvement_percent": 35.456,
+      "baseline_inspection_inference_seconds": 0.9636843999905977,
+      "candidate_inspection_inference_seconds": 0.442563099990366,
+      "inspection_inference_improvement_percent": 54.076
+    }
+  ],
+  "mechanism": {
+    "baseline_inspection_composed_states": 4626,
+    "candidate_inspection_composed_states": 855,
+    "state_reduction_percent": 81.518,
+    "baseline_inspection_composed_transitions": 25135,
+    "candidate_inspection_composed_transitions": 5454,
+    "transition_reduction_percent": 78.301,
+    "baseline_inspection_piece_score_calls": 25135,
+    "candidate_inspection_piece_score_calls": 5454,
+    "piece_score_call_reduction_percent": 78.301,
+    "candidate_shared_prefix_nodes": 855,
+    "candidate_shared_form_endpoints": 366,
+    "candidate_shared_batch_fallbacks": 0
+  },
+  "boundedness": "The accepted 262144-prefix-node cap remains. Inspection additionally refuses shared execution above 4194304 top-K piece references per token and uses the prior exact implementation. Both structures die with the token summary.",
+  "semantic_reason": "Inspection exact marginals are the accepted optimization-8 reverse adjoint. Per-form top-K traverses the same scored transitions in the same endpoint/source and deterministic piece-key order; it changes neither exact inference support nor the bounded presentation support.",
+  "next_profile": "Current cheap-profile costs are led by bounded per-endpoint piece top-K, transient span/form construction, and structural support enumeration. Representative timing remains stale until further exact work changes the regime enough to justify rerun."
+}

@@ -34,7 +34,7 @@ representative cross-frontend script-neutral identity: PASS
 continuous runtime target: NOT READY
 production storage gate: NOT READY
 optimization 8 shared token-local form-prefix DP: ACCEPTED (training marginals)
-optimization 9 shared inspection marginals/top-K: IMPLEMENTED / EQUIVALENT
+optimization 9 shared inspection marginals/top-K: ACCEPTED
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -43,7 +43,7 @@ state authoritative, updates it transactionally between passes, retains
 lexical counts as diagnostics, and exports the required exact scientific and
 bounded inspection artifacts. Document-interruption resume and one/two-worker
 scientific outputs are byte-identical. The focused pieces/latent suite passes
-(`83 passed`) and the trainer full-repository gate passes (`633 passed, 2
+(`89 passed`) and the trainer full-repository gate passes (`633 passed, 2
 warnings`). No full-corpus S1M2 run has started.
 
 The historical deletion-readiness manifest remains provenance for the 12
@@ -72,21 +72,21 @@ for transient output, so storage is also not ready. The benchmark must not be
 rerun. The stress and cloud scaling gates are deferred because they would only
 measure the already-decisive bad structural regime.
 
-## Next task: fixed cheap probe for optimization 9
+## Next task: share bounded piece top-K across prefix states
 
 The fixed probe accepts optimization 8: training states fall 81.5%, transitions
 and score calls 78.3%, training inference 70.3%/73.2%, and complete wall
 19.0%/18.3%. All seven artifacts pass semantic comparison, with maximum
 absolute/relative differences `7.11e-14`/`2.84e-14`.
 
-Optimization 9 extends the bounded shared prefix DAG to inspection marginals
-and reconstructs the unchanged per-form piece top-K from already-scored shared
-transitions. Both exact fallback caps pass, and the pieces/latent suite passes
-(`89 passed`). Commit and push the coherent candidate, then run the fixed
-paired two-line, one-worker, one-pass plus inspection probe exactly once from
-that clean SHA. Compare all scientific artifacts, shared work counters,
-inspection inference, and wall time against optimization 8. Do not rerun the
-representative, stress, cloud, or full-M0 workloads.
+The optimization-9 fixed probe passes canonical artifact equivalence and cuts
+inspection inference 54.1% plus full probe wall 40.7%/35.5%. Replace its
+per-endpoint bounded piece top-K recurrence with one top-K state per shared
+phonological prefix, excluding long whole-form edges from prefixes and adding
+each only at its exact endpoint. Make the finite inspection bound account for
+the total shared-state piece references, add focused P0/legacy path-order and
+fallback tests, then run the fixed paired probe from a clean SHA. Do not rerun
+the representative, stress, cloud, or full-M0 workloads.
 
 ```text
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
@@ -106,5 +106,6 @@ PRODUCTION_STORAGE_GATE=NOT_READY
 S1M2_CONTINUOUS_STRESS=DEFERRED_PENDING_STRUCTURAL_OPTIMIZATION
 S1M2_CONTINUOUS_STRUCTURAL_FACTORIZATION=IN_PROGRESS
 S1M2_OPTIMIZATION_8=ACCEPTED_TRAINING_ONLY
-S1M2_OPTIMIZATION_9=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
+S1M2_OPTIMIZATION_9=ACCEPTED
+S1M2_OPTIMIZATION_10=SHARED_PREFIX_TOP_K_READY
 ```

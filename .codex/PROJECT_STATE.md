@@ -1489,6 +1489,28 @@ S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 67. Shared inspection marginal/top-K reuse accepted (2026-09-06)
+
+The optimization-9 paired probe at
+`fc2b66babd0c77f1984679bedd01c965b1c79c32` passes the canonical semantic
+comparator against optimization 8. Top lexical/piece path order and support
+match; 10,252 numeric values per frontend remain within the frozen tolerance,
+with maximum absolute/relative differences `1.67e-13`/`1.51e-14`.
+
+Inspection states fall 81.5%, transitions and score calls 78.3%, and inspection
+inference improves 54.1% in both frontends. Complete probe wall improves a
+further 40.7%/35.5%; no cap fallback occurs. Optimization 9 is accepted. The
+remaining per-endpoint bounded piece top-K should next be shared across prefix
+states with a corrected total piece-reference cap. Evidence is
+`reports/core_methods/reusable_pieces/evidence/s1m2_continuous_optimization_9_v1.json`.
+
+```text
+S1M2_OPTIMIZATION_9=ACCEPTED
+S1M2_OPTIMIZATION_10=SHARED_PREFIX_TOP_K_READY
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 61. Continuous optimization 6 accepted (2026-09-05)
 
 Candidate SHA `25fbeedc2afb84b868d35624ba5303310dcc574f` reuses immutable
