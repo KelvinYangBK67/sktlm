@@ -931,34 +931,3 @@ CONTINUOUS_RUNTIME_TARGET=NOT_READY
 PRODUCTION_STORAGE_GATE=NOT_READY
 FULL_M0_PROCESS_RUNNING=NO
 ```
-
-### Shared piece-entropy stabilization: cheap gate accepted
-
-At clean pushed SHA `9edfd7fac3157d1eab2d205216c50bd8710f049f`, the unchanged
-paired continuous probes pass the seven-artifact comparator against optimization
-12. Both comparisons cover 10,252 numeric values; maximum absolute and relative
-differences are `1.5987211554602254e-13` and `9.373569591726264e-15`, comfortably
-inside the frozen contract. Training shared states/transitions remain exactly
-855/5,454 for each frontend, and the three script-neutral outputs remain
-byte-identical across frontends.
-
-IAST wall changes from 0.924 to 0.919 seconds and Devanagari from 0.915 to
-0.895 seconds. Subsecond phase timings remain noisy, but there is no measured
-total-wall regression. The correction is accepted for numerical stability, not
-claimed as a performance optimization. Compact evidence is
-`evidence/s1m2_shared_entropy_stability_v1.json`.
-
-The earlier factorized representative outputs embed the pre-correction entropy
-calculation. Therefore another comparator-only attempt would deterministically
-repeat the attempt-03 failure. One new detached paired representative at the
-stable code SHA is justified; benchmark selection, inputs, scientific config,
-worker count, and all support semantics remain unchanged. Stress, cloud, and
-full-M0 remain forbidden at this gate.
-
-```text
-S1M2_SHARED_ENTROPY_STABILITY=ACCEPTED_CHEAP_EQUIVALENCE_PASS
-S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=STABLE_RERUN_READY_TO_LAUNCH_DETACHED
-CONTINUOUS_RUNTIME_TARGET=NOT_READY
-PRODUCTION_STORAGE_GATE=NOT_READY
-FULL_M0_PROCESS_RUNNING=NO
-```
