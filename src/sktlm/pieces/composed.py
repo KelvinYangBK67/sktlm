@@ -9,6 +9,7 @@ objects or persistent lexical-edge rows.
 
 from __future__ import annotations
 
+import heapq
 import math
 import time
 from collections import OrderedDict, defaultdict
@@ -328,6 +329,96 @@ def _trim_composed_paths(
 ) -> list[_ComposedPath]:
     paths.sort(key=lambda path: (-path.score, *path.tie_key))
     return paths[:limit]
+
+
+def _extend_token_path(
+    prefix: _ComposedPath,
+    span: LazyLexicalSpan,
+    segmentation: PieceSegmentation,
+    segmentation_key: tuple[str, ...],
+) -> _ComposedPath:
+    return _ComposedPath(
+        score=prefix.score + segmentation.log_weight,
+        words=prefix.words + (span.word,),
+        piece_segmentations=(
+            prefix.piece_segmentations + (segmentation.pieces,)
+        ),
+        rule_ids=prefix.rule_ids + span.rule_ids,
+        boundaries=(
+            prefix.boundaries
+            + ((span.boundary,) if span.boundary is not None else ())
+        ),
+        tie_key=(
+            prefix.tie_key[0] + (span.word.key,),
+            prefix.tie_key[1] + (segmentation_key,),
+            prefix.tie_key[2] + span.rule_ids,
+        ),
+    )
+
+
+def _top_token_path_extensions(
+    prefixes: list[_ComposedPath],
+    span: LazyLexicalSpan,
+    segmentations: tuple[
+        tuple[PieceSegmentation, tuple[str, ...]], ...
+    ],
+    limit: int,
+) -> list[_ComposedPath]:
+    """Return the exact top-K Cartesian extensions without building K^2 rows.
+
+    Each fixed-prefix row is already ordered by the same score/piece-key order
+    as ``_trim_composed_paths``.  A heap merge therefore visits only row heads
+    that can enter the global top-K.  Prefix/segmentation indices reproduce
+    the former stable nested-loop order when complete keys tie.
+    """
+
+    if not prefixes or not segmentations:
+        return []
+    heap: list[
+        tuple[
+            tuple[object, ...],
+            int,
+            int,
+            _ComposedPath,
+        ]
+    ] = []
+    first_segmentation, first_key = segmentations[0]
+    for prefix_index, prefix in enumerate(prefixes):
+        path = _extend_token_path(
+            prefix,
+            span,
+            first_segmentation,
+            first_key,
+        )
+        heapq.heappush(
+            heap,
+            ((-path.score, *path.tie_key), prefix_index, 0, path),
+        )
+
+    result: list[_ComposedPath] = []
+    while heap and len(result) < limit:
+        _key, prefix_index, segmentation_index, path = heapq.heappop(heap)
+        result.append(path)
+        next_index = segmentation_index + 1
+        if next_index >= len(segmentations):
+            continue
+        segmentation, segmentation_key = segmentations[next_index]
+        next_path = _extend_token_path(
+            prefixes[prefix_index],
+            span,
+            segmentation,
+            segmentation_key,
+        )
+        heapq.heappush(
+            heap,
+            (
+                (-next_path.score, *next_path.tie_key),
+                prefix_index,
+                next_index,
+                next_path,
+            ),
+        )
+    return result
 
 
 class ComposedPieceInference:
@@ -1187,54 +1278,41 @@ def _evaluate_lazy_token_shared(
     top_paths: tuple[_ComposedPath, ...] = ()
     if engine.inspection_top_k is not None:
         started = time.perf_counter()
-        top_segmentations: dict[str, tuple[PieceSegmentation, ...]] = {}
+        top_segmentations: dict[
+            str,
+            tuple[tuple[PieceSegmentation, tuple[str, ...]], ...],
+        ] = {}
         paths: list[list[_ComposedPath]] = [[] for _ in range(node_count)]
         paths[0] = [_ComposedPath(0.0, (), (), (), (), ((), (), ()))]
         for start, spans in enumerate(spans_by_start):
             if not paths[start]:
                 continue
             for span in spans:
-                segmentations = top_segmentations.get(span.word.key)
-                if segmentations is None:
+                keyed_segmentations = top_segmentations.get(span.word.key)
+                if keyed_segmentations is None:
                     segmentations = engine._shared_top_segmentations(
                         batch,
                         batch.forms[span.word.key],
                     )
-                    top_segmentations[span.word.key] = segmentations
-                candidates = paths[span.end]
-                keyed_segmentations = tuple(
-                    (
-                        segmentation,
-                        tuple(piece.key for piece in segmentation.pieces),
-                    )
-                    for segmentation in segmentations
-                )
-                for prefix in paths[start]:
-                    for segmentation, segmentation_key in keyed_segmentations:
-                        candidates.append(
-                            _ComposedPath(
-                                score=prefix.score + segmentation.log_weight,
-                                words=prefix.words + (span.word,),
-                                piece_segmentations=(
-                                    prefix.piece_segmentations
-                                    + (segmentation.pieces,)
-                                ),
-                                rule_ids=prefix.rule_ids + span.rule_ids,
-                                boundaries=(
-                                    prefix.boundaries
-                                    + (
-                                        (span.boundary,)
-                                        if span.boundary is not None
-                                        else ()
-                                    )
-                                ),
-                                tie_key=(
-                                    prefix.tie_key[0] + (span.word.key,),
-                                    prefix.tie_key[1] + (segmentation_key,),
-                                    prefix.tie_key[2] + span.rule_ids,
-                                ),
-                            )
+                    keyed_segmentations = tuple(
+                        (
+                            segmentation,
+                            tuple(
+                                piece.key for piece in segmentation.pieces
+                            ),
                         )
+                        for segmentation in segmentations
+                    )
+                    top_segmentations[span.word.key] = keyed_segmentations
+                candidates = paths[span.end]
+                candidates.extend(
+                    _top_token_path_extensions(
+                        paths[start],
+                        span,
+                        keyed_segmentations,
+                        engine.inspection_top_k,
+                    )
+                )
                 paths[span.end] = _trim_composed_paths(
                     candidates,
                     engine.inspection_top_k,

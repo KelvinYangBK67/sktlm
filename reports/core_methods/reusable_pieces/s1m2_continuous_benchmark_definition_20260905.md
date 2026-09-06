@@ -594,6 +594,31 @@ S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+### Optimization 12 candidate: exact bounded Cartesian top-K merge
+
+Within shared inspection only, a lexical span previously extended every one
+of at most K retained lexical prefixes by every one of at most K retained
+piece segmentations, materialized the K-squared `_ComposedPath` objects, and
+then sorted/truncated them. For a fixed prefix, the segmentation row is already
+ordered by the same additive score and full piece-key tie order. The candidate
+therefore heap-merges those rows and visits only row heads that can enter the
+global top K.
+
+At most K heap rows and approximately 2K constructed extensions are retained
+per span. Prefix/segmentation indices preserve Python's former stable
+prefix-major order when scientific keys tie. This changes no exact inference
+support or posterior computation; it is solely a bounded top-K presentation
+factorization. Shared/legacy path tests cover sandhi ambiguity and a longer
+continuous-like form, and all pieces/latent tests pass (`90 passed`). The fixed
+paired probe must show identical canonical artifacts plus reduced path/sort or
+lazy-token top-K work before acceptance.
+
+```text
+S1M2_OPTIMIZATION_12=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ### Optimization 8 result: accepted for training marginals
 
 At clean candidate SHA `2dad1b342042eb1ec9b282c3fd0d1798b363557e`,

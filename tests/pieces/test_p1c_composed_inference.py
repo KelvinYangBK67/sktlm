@@ -399,9 +399,10 @@ def test_shared_token_prefix_bound_falls_back_to_legacy_path() -> None:
     assert result.counters.form_cache_misses > 0
 
 
-def test_shared_inspection_paths_match_legacy_exact_path() -> None:
+@pytest.mark.parametrize("surface", ("devo'pi", "tattvamasi"))
+def test_shared_inspection_paths_match_legacy_exact_path(surface: str) -> None:
     grammar = StructuredSandhiGrammar.from_default_inventory()
-    segment = next(iter_observed_segments("devo'pi"))
+    segment = next(iter_observed_segments(surface))
     graph = build_lazy_candidate_graph(segment, grammar)
     config = PieceModelConfig(max_piece_length=3, rho=0.41)
 

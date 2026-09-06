@@ -1377,6 +1377,29 @@ CONTINUOUS_RUNTIME_TARGET=NOT_READY
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 72. Exact bounded Cartesian top-K merge implemented (2026-09-06)
+
+Optimization 12 changes only bounded inspection presentation. For one lexical
+span, the prior code materialized all `K x K` combinations of retained lexical
+prefixes and retained piece segmentations before trimming to K. The candidate
+treats each fixed-prefix segmentation row as already ordered under the exact
+same score and full scientific tie key, then performs a heap k-way merge.
+
+It retains at most K row heads and constructs at most K winning/next
+extensions per span instead of K squared candidates. Prefix and segmentation
+indices reproduce the former stable prefix-major order for identical full
+keys. Exact partitions, expected counts, boundaries, rules, and complete
+inference support are not involved. Shared/legacy top-path comparison now
+covers both sandhi ambiguity and a longer continuous-like form. The complete
+pieces/latent suite passes (`90 passed`). A fixed paired clean-SHA probe is
+required before acceptance.
+
+```text
+S1M2_OPTIMIZATION_12=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 62. Continuous optimization 7 accepted; representative gate next (2026-09-05)
 
 Candidate SHA `29c08a242bc4c4f65b39ddeebeb210c4bc45ccf3` keys the existing
