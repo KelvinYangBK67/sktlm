@@ -1,0 +1,81 @@
+{
+  "schema_version": "sktlm-s1m2-continuous-optimization-evidence/v1",
+  "optimization_id": "shared_bounded_piece_prefix_top_k",
+  "status": "ACCEPTED",
+  "baseline_git_sha": "fc2b66babd0c77f1984679bedd01c965b1c79c32",
+  "candidate_git_sha": "b19df311e3ca15cba40d9a2c29b993434ebb1d19",
+  "workload": {
+    "id": "representative_probe",
+    "document_list_sha256": "7bf936025ce28c43cdae0407d532c461b50726a28275fa40062a8a6889296ed3",
+    "documents": 3,
+    "max_lines_per_document": 2,
+    "passes": 1,
+    "workers": 1,
+    "inspection_enabled": true,
+    "cprofile_enabled": true
+  },
+  "equivalence": {
+    "status": "PASS",
+    "comparator": "scripts/analysis/compare_s1m2_artifacts.py",
+    "comparison": "seven canonical artifacts parsed structurally with numeric rtol=1e-10 and atol=1e-12; engineering-only lazy_span_traversals excluded",
+    "numeric_values_compared_per_frontend": 10252,
+    "iast_max_absolute_difference": 0.0,
+    "iast_max_relative_difference": 0.0,
+    "devanagari_max_absolute_difference": 0.0,
+    "devanagari_max_relative_difference": 0.0,
+    "top_lexical_and_piece_path_order": "PASS",
+    "piece_occurrence_support_identity": "PASS",
+    "focused_pieces_latent_tests": "89 passed",
+    "prefix_node_and_top_k_reference_bound_fallbacks": "PASS"
+  },
+  "cells": [
+    {
+      "cell_id": "m0_prime_iast_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_prime_iast_fc2b66b_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_prime_iast_b19df31_a01",
+      "candidate_benchmark_metrics_sha256": "3dbe5b19db87ccc7a0667cc53a9af51a96b5b71937d51faec8a94d1d4e6ff09b",
+      "candidate_profile_sha256": "1e15c21dbe94fda5354c4cfb048534b59c00cb9dd414eeb6bd7d7acee739a4d7",
+      "baseline_wall_seconds": 0.926490100013325,
+      "candidate_wall_seconds": 0.9241359999869019,
+      "wall_improvement_percent": 0.254,
+      "baseline_inspection_inference_seconds": 0.43778609999571927,
+      "candidate_inspection_inference_seconds": 0.40308710001409054,
+      "inspection_inference_improvement_percent": 7.926,
+      "baseline_inner_piece_top_k_seconds": 0.1455457997508347,
+      "candidate_inner_piece_top_k_seconds": 0.062211099750129506,
+      "inner_piece_top_k_improvement_percent": 57.257,
+      "baseline_lazy_token_top_k_seconds": 0.2667327999952249,
+      "candidate_lazy_token_top_k_seconds": 0.1546188999491278,
+      "lazy_token_top_k_improvement_percent": 42.032
+    },
+    {
+      "cell_id": "m0_devanagari_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_devanagari_fc2b66b_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_devanagari_b19df31_a01",
+      "candidate_benchmark_metrics_sha256": "6e88e8a91e6e830e2d00e2dcfe32ff6d03331640c8c263166e7a0735d2a2486b",
+      "candidate_profile_sha256": "6fc792408d8e645412a73e4eddf14b86b0e352ed5ca08cd9f291114e5a243083",
+      "baseline_wall_seconds": 0.9888274999975692,
+      "candidate_wall_seconds": 0.8180753999913577,
+      "wall_improvement_percent": 17.268,
+      "baseline_inspection_inference_seconds": 0.442563099990366,
+      "candidate_inspection_inference_seconds": 0.36313179999706335,
+      "inspection_inference_improvement_percent": 17.948,
+      "baseline_inner_piece_top_k_seconds": 0.1467442004941404,
+      "candidate_inner_piece_top_k_seconds": 0.0615954004751984,
+      "inner_piece_top_k_improvement_percent": 58.025,
+      "baseline_lazy_token_top_k_seconds": 0.268978599953698,
+      "candidate_lazy_token_top_k_seconds": 0.12884549997397698,
+      "lazy_token_top_k_improvement_percent": 52.098
+    }
+  ],
+  "mechanism": {
+    "candidate_shared_top_k_states": 855,
+    "candidate_shared_top_k_paths": 5906,
+    "candidate_shared_batch_fallbacks": 0,
+    "targeted_inner_piece_top_k_improvement_range_percent": [57.257, 58.025]
+  },
+  "boundedness": "Normal-piece top paths are bounded by inspection_top_k times the sum of shared-prefix depths, under the configured 4194304 piece-reference cap. Long whole-form paths are endpoint-local. Exceeding either shared bound selects the prior exact implementation before shared score calls.",
+  "semantic_reason": "The shared recurrence performs the same destination-wise union and score/piece-key ordering as P0 once per prefix state. Endpoint-local long whole-form insertion preserves whole-form competition without allowing a whole form to prefix a longer analysis.",
+  "timing_interpretation": "The targeted phase improves materially in both frontends. The 0.254% IAST total-wall difference is below useful probe precision; Devanagari total wall improves 17.268%. Acceptance rests on exact equivalence, boundedness, and the reproduced 57-58% targeted-phase reduction, not on the noisy IAST wall total.",
+  "next_profile": "The shared evaluator is now led by shared-batch construction, transient lazy span/form construction, and bounded outer composed-path selection. Representative timing remains stale until another exact structural change justifies rerun."
+}

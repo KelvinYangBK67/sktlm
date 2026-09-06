@@ -682,3 +682,33 @@ S1M2_OPTIMIZATION_10=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
 S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 FULL_M0_PROCESS_RUNNING=NO
 ```
+
+### Optimization 10 result: accepted
+
+Candidate SHA `b19df311e3ca15cba40d9a2c29b993434ebb1d19` passes the
+tracked canonical-artifact comparator against optimization 9 for both
+frontends. Each comparison covers seven artifacts and 10,252 numeric values;
+maximum absolute and relative differences are both zero. Shared inspection
+retains 855 prefix states and 5,906 bounded prefix paths, with no fallback.
+
+The intended inner piece top-K phase falls from `0.1455` to `0.0622` seconds
+for M0-prime IAST (`57.3%`) and from `0.1467` to `0.0616` seconds for M0
+Devanagari (`58.0%`). Enclosing lazy-token top-K improves `42.0%`/`52.1%`.
+Devanagari total wall improves `17.3%`; IAST total wall changes only `0.25%`,
+below useful probe precision, although IAST inspection inference improves
+`7.9%`. Optimization 10 is accepted for its exactness, boundedness, and clear
+targeted-phase improvement. The compact envelope is
+`evidence/s1m2_continuous_optimization_10_v1.json`.
+
+The current profile is led by construction inside the shared evaluator:
+shared-form-batch building and transient lazy span/form objects, then bounded
+outer composed-path selection. These are the next exact structural targets.
+The expensive representative benchmark remains stale-but-decisive evidence
+for the pre-optimization regime and is not yet eligible for rerun.
+
+```text
+S1M2_OPTIMIZATION_10=ACCEPTED
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+CONTINUOUS_RUNTIME_TARGET=NOT_READY
+FULL_M0_PROCESS_RUNNING=NO
+```

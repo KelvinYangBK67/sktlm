@@ -35,7 +35,7 @@ continuous runtime target: NOT READY
 production storage gate: NOT READY
 optimization 8 shared token-local form-prefix DP: ACCEPTED (training marginals)
 optimization 9 shared inspection marginals/top-K: ACCEPTED
-optimization 10 shared bounded piece-prefix top-K: IMPLEMENTED / EQUIVALENT
+optimization 10 shared bounded piece-prefix top-K: ACCEPTED
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -73,21 +73,27 @@ for transient output, so storage is also not ready. The benchmark must not be
 rerun. The stress and cloud scaling gates are deferred because they would only
 measure the already-decisive bad structural regime.
 
-## Next task: fixed cheap probe for optimization 10
+## Next task: continue measured exact structural optimization
 
 The fixed probe accepts optimization 8: training states fall 81.5%, transitions
 and score calls 78.3%, training inference 70.3%/73.2%, and complete wall
 19.0%/18.3%. All seven artifacts pass semantic comparison, with maximum
 absolute/relative differences `7.11e-14`/`2.84e-14`.
 
-Optimization 10 shares bounded normal-piece top paths across phonological
-prefix states, while adding each long whole-form competitor only at its exact
-endpoint. The corrected finite cap bounds all shared-state piece references;
-P0/legacy order and fallback tests pass. Commit and push the coherent
-candidate, then run the fixed paired two-line, one-worker, one-pass plus
-inspection probe exactly once from that clean SHA. Compare canonical artifacts,
-inner/lazy top-K timings, retained shared states/paths, and wall time against
-optimization 9. Do not rerun representative, stress, cloud, or full-M0.
+Optimization 10 is accepted at candidate SHA `b19df311e3ca15cba40d9a2c29b993434ebb1d19`.
+All seven canonical artifacts compare exactly against optimization 9 for both
+frontends (`10,252` numeric values each; zero numeric difference). The targeted
+inner piece top-K phase improves `57.3%`/`58.0%`, lazy-token top-K improves
+`42.0%`/`52.1%`, and Devanagari wall time improves `17.3%`. IAST total wall is
+flat within cheap-probe precision (`0.25%` improvement), while its inspection
+inference still improves `7.9%`; this noise is recorded rather than promoted
+as a total-wall claim. No shared-bound fallback occurs.
+
+Continue from the current profile's largest remaining exact structural cost:
+shared-batch and transient lazy span/form construction, followed by bounded
+outer composed-path selection. Require focused equivalence plus this same
+fixed cheap probe for any accepted change. Do not rerun representative, stress,
+cloud, or full-M0 until a further exact change materially alters the regime.
 
 ```text
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
@@ -108,5 +114,5 @@ S1M2_CONTINUOUS_STRESS=DEFERRED_PENDING_STRUCTURAL_OPTIMIZATION
 S1M2_CONTINUOUS_STRUCTURAL_FACTORIZATION=IN_PROGRESS
 S1M2_OPTIMIZATION_8=ACCEPTED_TRAINING_ONLY
 S1M2_OPTIMIZATION_9=ACCEPTED
-S1M2_OPTIMIZATION_10=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
+S1M2_OPTIMIZATION_10=ACCEPTED
 ```

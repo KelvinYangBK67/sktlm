@@ -1531,6 +1531,34 @@ S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 69. Shared bounded piece-prefix top-K accepted (2026-09-06)
+
+At candidate SHA `b19df311e3ca15cba40d9a2c29b993434ebb1d19`, both fixed
+continuous probes preserve all seven canonical scientific artifacts exactly
+against optimization 9: `10,252` numeric values per frontend have zero
+absolute and relative difference. The shared recurrence retains 855 bounded
+prefix states and 5,906 bounded top paths, with no cap fallback.
+
+The targeted inner piece top-K phase improves `57.3%`/`58.0%`, and the
+enclosing lazy-token top-K phase improves `42.0%`/`52.1%`. Devanagari total
+wall improves `17.3%`; IAST total wall is flat within probe noise (`0.25%`)
+while its inspection inference improves `7.9%`. Acceptance is based on exact
+equivalence, finite fallback, and the reproduced targeted-phase reduction,
+not on the noisy IAST total-wall value. Compact evidence is tracked in
+`s1m2_continuous_optimization_10_v1.json`.
+
+The representative result remains the valid performance gate for the old
+regime and must not be rerun yet. The next measured exact work addresses
+shared-batch/transient span construction or bounded outer path selection.
+
+```text
+S1M2_OPTIMIZATION_10=ACCEPTED
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+CONTINUOUS_RUNTIME_TARGET=NOT_READY
+PRODUCTION_STORAGE_GATE=NOT_READY
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 61. Continuous optimization 6 accepted (2026-09-05)
 
 Candidate SHA `25fbeedc2afb84b868d35624ba5303310dcc574f` reuses immutable
