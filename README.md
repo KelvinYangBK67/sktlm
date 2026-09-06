@@ -28,6 +28,64 @@ tests whether reusable untyped pieces can improve compositional sharing while
 concatenating exactly to each grammar-licensed lexical form. See the
 [research roadmap](docs/research_roadmap.md) for the full S1–S3 program.
 
+## Research documentation
+
+### Start here
+
+- [Research roadmap](docs/research_roadmap.md) — the research question,
+  Stage/Milestone nomenclature, and S1–S3 program.
+- [Canonical corpus contract](docs/methodology/canonical_corpus.md) — the
+  construction, provenance, and freeze invariants of the shared corpus.
+- [M₀ representation contract](docs/methodology/representations.md) — the six
+  controlled script/spacing representations and the derived M₀′ boundary.
+- [S1M1 final scientific checkpoint](reports/core_methods/latent_lexicon/s1m1_final_checkpoint_20260903.md)
+  — the frozen flat-lexical-identity result.
+- [M₀′ formal substrate checkpoint](reports/core_methods/latent_lexicon/m0_prime_formal_checkpoint_20260905.md)
+  — the completed, validated corrected IAST-continuous representation.
+- [S1M2 continuous benchmark, profiling, and optimization record](reports/core_methods/reusable_pieces/s1m2_continuous_benchmark_definition_20260905.md)
+  — the current tracked development record; S1M2 remains in progress.
+
+### Experimental substrate
+
+- [Corpus construction and provenance](docs/methodology/canonical_corpus.md)
+  defines the formal GRETIL canonical corpus and freeze invariants.
+- [Corpus cleaning workflow](docs/workflows/corpus_cleaning.md) records the
+  ordered, audited path from retained source material to the frozen corpus.
+- [M₀ representation contract](docs/methodology/representations.md) defines
+  the six controlled observation conditions without treating spacing as latent
+  lexical structure.
+
+### Stage 1
+
+#### S1M1 — Flat lexical identities — FROZEN
+
+- Main result: [S1M1 final scientific analysis and freeze](reports/core_methods/latent_lexicon/s1m1_final_checkpoint_20260903.md).
+- Mechanism: [direct association/specialization evidence](reports/core_methods/latent_lexicon/s1m1_final_checkpoint_20260903.md#direct-association-level-evidence-yes)
+  shows how reduced boundary evidence produces many long, low-count, narrowly
+  associated lexical identities, with an explicit weighting qualification.
+- Supporting analysis: the [non-continuous representation checkpoint](reports/core_methods/latent_lexicon/noncontinuous_representation_checkpoint_20260901.md)
+  gives the controlled 2×2 comparison and bounded qualitative illustrations.
+- Detailed historical, calibration, engineering, and provenance records remain
+  in the frozen [latent-lexicon report collection](reports/core_methods/latent_lexicon/README.md).
+
+#### M₀′ — Corrected IAST continuous substrate
+
+- [Formal checkpoint](reports/core_methods/latent_lexicon/m0_prime_formal_checkpoint_20260905.md)
+  records the validated 240-document result and downstream contract.
+- [Construction and validation workflow](docs/workflows/m0_prime.md) explains
+  the deterministic derivation from frozen M₀ Devanagari `continuous`.
+
+#### S1M2 — Reusable untyped pieces — IN PROGRESS
+
+- [P1c exact-inference closure](reports/core_methods/reusable_pieces/s1m2_p1c_closure_20260905.md)
+  records the completed exact shared/composed inference gate.
+- [Trainer integration checkpoint](reports/core_methods/reusable_pieces/s1m2_trainer_integration_20260905.md)
+  records completed streaming, resume, and serial/parallel integration.
+- [Continuous benchmark, profiling, and exact-optimization record](reports/core_methods/reusable_pieces/s1m2_continuous_benchmark_definition_20260905.md)
+  is the current evolving record; it does not claim a final S1M2 result.
+- The compact [S1M2 report index](reports/core_methods/reusable_pieces/README.md)
+  orders the detailed scientific and implementation checkpoints.
+
 The current framework provides:
 
 - a whitelist-only formal GRETIL canonical IAST corpus builder with provenance,
@@ -42,8 +100,8 @@ The current framework provides:
 - script-neutral latent lexical induction with a fixed external-sandhi grammar,
   streaming exact inference, deterministic artifacts, and representation-level
   scientific analysis;
-- an exact reference and partial production engine for reusable, untyped
-  compositional pieces;
+- exact shared/composed inference and a streaming trainer for reusable, untyped
+  compositional pieces, with continuous profiling and optimization in progress;
 - a common tokenizer interface for SentencePiece BPE, SentencePiece Unigram,
   Unicode characters, UTF-8 bytes, and extended grapheme clusters;
 - token span, orthographic-boundary, and explicitly heuristic sandhi-fragment
