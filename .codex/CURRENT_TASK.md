@@ -38,8 +38,9 @@ optimization 9 shared inspection marginals/top-K: ACCEPTED
 optimization 10 shared bounded piece-prefix top-K: ACCEPTED
 optimization 11 token-local lexical-form interning: REJECTED / REVERTED
 optimization 12 exact bounded Cartesian top-K merge: ACCEPTED
-factorized local representative benchmark: COMPLETE / AUDIT ATTEMPT 03 READY
+factorized local representative benchmark: COMPLETE / AUDIT PAUSED FOR NUMERIC STABILITY
 bounded streaming artifact comparator: SCHEMA-TYPED KEYED DISK-BACKED / FOCUSED PASS
+shared piece-entropy numerical stabilization: IMPLEMENTED / FOCUSED SUITES PASS
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -94,7 +95,7 @@ therefore decisively not ready. Artifact/SQLite sizes are scientifically
 unchanged; phoneme scaling still projects 354.1/366.8 GiB transient output and
 147.8/156.5 GiB SQLite. Storage is not ready.
 
-## Next task: detached bounded streaming artifact audit attempt 03
+## Next task: fixed cheap entropy-stability equivalence probe
 
 The fixed probe accepts optimization 8: training states fall 81.5%, transitions
 and score calls 78.3%, training inference 70.3%/73.2%, and complete wall
@@ -157,9 +158,29 @@ Together with the temporary SQLite `WITHOUT ROWID` keyed join, input iteration
 and insertion batches remain bounded, JSONL remains line-streamed and
 order-sensitive, and duplicate/missing identities fail closed. Three focused
 tests cover reordered keyed rows, numeric nonfinite values, and nonfinite-like
-text. Commit and push this refinement, then launch exactly one attempt 03
-against the same frozen artifacts. Do not rerun training, representative,
-stress, cloud, or full-M0.
+text.
+
+A concurrently prepared attempt 03 used the earlier nonfinite-only SHA
+`2fea66aba9dc569759ac786c11eecf40c6ad654d`, not the later schema-typed
+checkpoint. It completed the IAST keyed TSV comparison and then failed on
+`analyses.jsonl[16].piece_posterior.segmentation_entropy`: old
+`0.007619114682708593`, factorized `0.007619114680466055`. The absolute
+difference is `2.24e-12` and the relative difference is about `2.94e-10`, just
+outside the frozen `rtol=1e-10`, `atol=1e-12` gate. Attempt 03 also copied the
+internal `attempt: 2` field despite its distinct attempt-03 task/run identity;
+preserve that provenance error rather than rewriting the failed directory.
+
+The shared DP previously obtained small piece entropy by subtracting two large
+token-wide aggregates, amplifying cross-form cancellation. It now carries each
+shared prefix's conditional expected raw score and computes posterior-weighted
+per-form entropy, matching the stable legacy calculation without rebuilding
+per-form lattices. Exact support, scores, marginals, and top-K support are
+unchanged. Pieces and latent focused suites pass (`40` and `54` tests).
+
+Commit/push the stabilization, run one fixed two-frontend cheap probe against
+optimization 12, and require the seven-artifact comparator at the frozen
+tolerance before any new full representative audit attempt. Do not rerun the
+representative model workload, stress, cloud, or full-M0.
 
 ```text
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
@@ -183,6 +204,7 @@ S1M2_OPTIMIZATION_9=ACCEPTED
 S1M2_OPTIMIZATION_10=ACCEPTED
 S1M2_OPTIMIZATION_11=REJECTED_REVERTED
 S1M2_OPTIMIZATION_12=ACCEPTED
-S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=COMPLETE_AWAITING_STREAMING_AUDIT_ATTEMPT_03
+S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=COMPLETE_AUDIT_PAUSED_FOR_NUMERIC_STABILITY
 S1M2_BOUNDED_ARTIFACT_COMPARATOR=SCHEMA_TYPED_KEYED_DISK_BACKED_FOCUSED_PASS
+S1M2_SHARED_ENTROPY_STABILITY=IMPLEMENTED_FOCUSED_SUITES_PASS
 ```
