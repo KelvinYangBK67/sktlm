@@ -658,3 +658,27 @@ S1M2_OPTIMIZATION_10=SHARED_PREFIX_TOP_K_READY
 S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 FULL_M0_PROCESS_RUNNING=NO
 ```
+
+### Optimization 10 candidate: shared bounded piece-prefix top-K
+
+Every shared prefix node now retains its bounded top piece paths, built once
+from the top paths of its at-most-`max_piece_length` ancestors. This is the
+same destination-wise top-K union used by the P0/legacy recurrence, with the
+same raw score and piece-key tie order. Long whole-form paths are excluded from
+shared prefix state and inserted only when the corresponding complete form
+endpoint is requested, so whole-form memorization cannot become a prefix of a
+longer analysis.
+
+The inspection bound now conservatively checks
+`top_k * sum(shared_prefix_depth)` before any shared score calls. This bounds
+every stored piece reference across every prefix path, rather than only form
+endpoints. Exceeding it retains the exact legacy fallback. Shared/legacy
+top-analysis tests continue to pass, including long whole-form competition and
+both bound fallbacks; the pieces/latent suite passes (`89 passed`). The
+candidate requires the fixed clean-SHA paired probe before acceptance.
+
+```text
+S1M2_OPTIMIZATION_10=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```

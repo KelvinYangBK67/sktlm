@@ -471,6 +471,10 @@ def test_shared_inspection_paths_match_legacy_exact_path() -> None:
         reference.counters.composed_transition_count
     )
     assert observed.counters.form_cache_misses == 0
+    assert observed.counters.shared_top_k_states > 0
+    assert observed.counters.shared_top_k_paths >= (
+        observed.counters.shared_top_k_states
+    )
 
 
 def test_shared_inspection_piece_reference_bound_falls_back() -> None:

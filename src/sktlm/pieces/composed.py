@@ -98,6 +98,8 @@ class ComposedInferenceCounters:
     shared_prefix_nodes: int = 0
     shared_form_endpoints: int = 0
     shared_batch_fallbacks: int = 0
+    shared_top_k_states: int = 0
+    shared_top_k_paths: int = 0
     store_lookups: int = 0
     piece_score_cache_entries: int = 0
     piece_score_cache_estimated_bytes: int = 0
@@ -147,6 +149,8 @@ _EVENT_COUNTERS = (
     "shared_prefix_nodes",
     "shared_form_endpoints",
     "shared_batch_fallbacks",
+    "shared_top_k_states",
+    "shared_top_k_paths",
     "store_lookups",
 )
 
@@ -252,6 +256,13 @@ class _SharedPieceTransition:
     raw_score: float
 
 
+@dataclass(frozen=True, slots=True)
+class _SharedInnerPath:
+    score: float
+    pieces: tuple[PhonologicalForm, ...]
+    piece_keys: tuple[str, ...]
+
+
 @dataclass(slots=True)
 class _SharedPrefixNode:
     parent: int
@@ -262,6 +273,7 @@ class _SharedPrefixNode:
     prior_alpha: float = -math.inf
     alpha: float = -math.inf
     singleton_score: float = -math.inf
+    top_paths: tuple[_SharedInnerPath, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -642,6 +654,13 @@ class ComposedPieceInference:
                 current = child
             endpoints[form.key] = current
 
+        if self.inspection_top_k is not None and (
+            self.inspection_top_k * sum(node.depth for node in nodes)
+            > self.cache_config.shared_top_k_piece_references
+        ):
+            self._events["shared_batch_fallbacks"] += 1
+            return None
+
         transition_started = time.perf_counter()
         transition_count = 0
         max_piece_length = self.model_config.max_piece_length
@@ -744,6 +763,31 @@ class ComposedPieceInference:
             "inner_piece_transition_build_seconds",
             long_whole_started,
         )
+        if self.inspection_top_k is not None:
+            top_k_started = time.perf_counter()
+            nodes[0].top_paths = (_SharedInnerPath(0.0, (), ()),)
+            for node_index in range(1, len(nodes)):
+                candidates: list[_SharedInnerPath] = []
+                for transition in nodes[node_index].transitions:
+                    candidates.extend(
+                        _SharedInnerPath(
+                            score=prefix.score + transition.raw_score,
+                            pieces=prefix.pieces + (transition.piece,),
+                            piece_keys=prefix.piece_keys + (transition.piece.key,),
+                        )
+                        for prefix in nodes[transition.source].top_paths
+                    )
+                candidates.sort(
+                    key=lambda item: (-item.score, item.piece_keys)
+                )
+                nodes[node_index].top_paths = tuple(
+                    candidates[: self.inspection_top_k]
+                )
+            self._events["shared_top_k_states"] += len(nodes)
+            self._events["shared_top_k_paths"] += sum(
+                len(node.top_paths) for node in nodes
+            )
+            self.add_timing("inner_piece_top_k_seconds", top_k_started)
         self._events["composed_state_count"] += len(nodes)
         self._events["composed_transition_count"] += transition_count
         self._events["shared_prefix_nodes"] += len(nodes)
@@ -822,60 +866,24 @@ class ComposedPieceInference:
 
         assert self.inspection_top_k is not None
         started = time.perf_counter()
-        path_reversed: list[int] = []
-        cursor = score.node
-        while cursor:
-            path_reversed.append(cursor)
-            cursor = batch.nodes[cursor].parent
-        path = (0, *reversed(path_reversed))
-        length = len(path) - 1
-        outgoing: list[
-            list[tuple[int, PhonologicalForm, float]]
-        ] = [[] for _ in range(length)]
-        for end in range(1, length + 1):
-            for transition in batch.nodes[path[end]].transitions:
-                start = batch.nodes[transition.source].depth
-                outgoing[start].append(
-                    (end, transition.piece, transition.raw_score)
+        candidates = list(batch.nodes[score.node].top_paths)
+        if len(score.form.symbols) > self.model_config.max_piece_length:
+            candidates.append(
+                _SharedInnerPath(
+                    score=score.whole_raw_score,
+                    pieces=(score.whole_piece,),
+                    piece_keys=(score.whole_piece.key,),
                 )
-        if length > self.model_config.max_piece_length:
-            outgoing[0].append(
-                (length, score.whole_piece, score.whole_raw_score)
             )
-
-        paths: list[
-            list[
-                tuple[
-                    float,
-                    tuple[PhonologicalForm, ...],
-                    tuple[str, ...],
-                ]
-            ]
-        ] = [[] for _ in range(length + 1)]
-        paths[0] = [(0.0, (), ())]
-        for start in range(length):
-            prefixes = paths[start]
-            prefixes.sort(key=lambda item: (-item[0], item[2]))
-            del prefixes[self.inspection_top_k :]
-            for end, piece, raw_score in outgoing[start]:
-                paths[end].extend(
-                    (
-                        prefix_score + raw_score,
-                        prefix_pieces + (piece,),
-                        prefix_keys + (piece.key,),
-                    )
-                    for prefix_score, prefix_pieces, prefix_keys in prefixes
-                )
-        candidates = paths[-1]
-        candidates.sort(key=lambda item: (-item[0], item[2]))
+        candidates.sort(key=lambda item: (-item.score, item.piece_keys))
         del candidates[self.inspection_top_k :]
         result = tuple(
             PieceSegmentation(
-                pieces=pieces,
-                log_weight=raw_score - score.prior_log_normalizer,
-                probability=math.exp(raw_score - score.raw_log_partition),
+                pieces=path.pieces,
+                log_weight=path.score - score.prior_log_normalizer,
+                probability=math.exp(path.score - score.raw_log_partition),
             )
-            for raw_score, pieces, _piece_keys in candidates
+            for path in candidates
         )
         self.add_timing("inner_piece_top_k_seconds", started)
         return result
@@ -1074,12 +1082,6 @@ def _evaluate_lazy_token_shared(
         spans_by_start.append(spans)
         for span in spans:
             unique_forms.setdefault(span.word.key, span.word)
-    if engine.inspection_top_k is not None and sum(
-        engine.inspection_top_k * len(form.symbols)
-        for form in unique_forms.values()
-    ) > engine.cache_config.shared_top_k_piece_references:
-        engine._events["shared_batch_fallbacks"] += 1
-        return None
     batch = engine._build_shared_form_batch(tuple(unique_forms.values()))
     if batch is None:
         return None

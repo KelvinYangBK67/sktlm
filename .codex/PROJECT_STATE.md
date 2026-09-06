@@ -1511,6 +1511,26 @@ S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 68. Shared bounded piece-prefix top-K implemented (2026-09-06)
+
+Optimization 10 computes the bounded normal-piece top paths once per shared
+phonological prefix state, using the same destination-wise union and score/key
+ordering as P0. A long whole-form piece is not stored on prefix state and is
+added only at its exact endpoint. The inspection safety check now bounds
+`top_k * sum(prefix_depth)` across all shared states, a conservative upper
+bound on retained piece references; failure selects the legacy exact path
+before shared score calls.
+
+Shared/legacy nested path order, scores, probabilities, and all exact
+marginals continue to pass, as do both finite fallbacks and the pieces/latent
+suite (`89 passed`). The candidate requires its clean-SHA fixed paired probe.
+
+```text
+S1M2_OPTIMIZATION_10=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 61. Continuous optimization 6 accepted (2026-09-05)
 
 Candidate SHA `25fbeedc2afb84b868d35624ba5303310dcc574f` reuses immutable

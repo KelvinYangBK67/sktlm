@@ -35,6 +35,7 @@ continuous runtime target: NOT READY
 production storage gate: NOT READY
 optimization 8 shared token-local form-prefix DP: ACCEPTED (training marginals)
 optimization 9 shared inspection marginals/top-K: ACCEPTED
+optimization 10 shared bounded piece-prefix top-K: IMPLEMENTED / EQUIVALENT
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -72,21 +73,21 @@ for transient output, so storage is also not ready. The benchmark must not be
 rerun. The stress and cloud scaling gates are deferred because they would only
 measure the already-decisive bad structural regime.
 
-## Next task: share bounded piece top-K across prefix states
+## Next task: fixed cheap probe for optimization 10
 
 The fixed probe accepts optimization 8: training states fall 81.5%, transitions
 and score calls 78.3%, training inference 70.3%/73.2%, and complete wall
 19.0%/18.3%. All seven artifacts pass semantic comparison, with maximum
 absolute/relative differences `7.11e-14`/`2.84e-14`.
 
-The optimization-9 fixed probe passes canonical artifact equivalence and cuts
-inspection inference 54.1% plus full probe wall 40.7%/35.5%. Replace its
-per-endpoint bounded piece top-K recurrence with one top-K state per shared
-phonological prefix, excluding long whole-form edges from prefixes and adding
-each only at its exact endpoint. Make the finite inspection bound account for
-the total shared-state piece references, add focused P0/legacy path-order and
-fallback tests, then run the fixed paired probe from a clean SHA. Do not rerun
-the representative, stress, cloud, or full-M0 workloads.
+Optimization 10 shares bounded normal-piece top paths across phonological
+prefix states, while adding each long whole-form competitor only at its exact
+endpoint. The corrected finite cap bounds all shared-state piece references;
+P0/legacy order and fallback tests pass. Commit and push the coherent
+candidate, then run the fixed paired two-line, one-worker, one-pass plus
+inspection probe exactly once from that clean SHA. Compare canonical artifacts,
+inner/lazy top-K timings, retained shared states/paths, and wall time against
+optimization 9. Do not rerun representative, stress, cloud, or full-M0.
 
 ```text
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
@@ -107,5 +108,5 @@ S1M2_CONTINUOUS_STRESS=DEFERRED_PENDING_STRUCTURAL_OPTIMIZATION
 S1M2_CONTINUOUS_STRUCTURAL_FACTORIZATION=IN_PROGRESS
 S1M2_OPTIMIZATION_8=ACCEPTED_TRAINING_ONLY
 S1M2_OPTIMIZATION_9=ACCEPTED
-S1M2_OPTIMIZATION_10=SHARED_PREFIX_TOP_K_READY
+S1M2_OPTIMIZATION_10=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
 ```
