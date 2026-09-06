@@ -86,6 +86,7 @@ def test_s1m2_configuration_identity_includes_piece_model_and_cache_bounds(
     assert payload["piece_form_cache_bytes"] == 256 * 1024 * 1024
     assert payload["piece_shared_token_marginals"] is True
     assert payload["piece_shared_prefix_nodes"] == 262_144
+    assert payload["piece_shared_top_k_piece_references"] == 4_194_304
 
 
 def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(

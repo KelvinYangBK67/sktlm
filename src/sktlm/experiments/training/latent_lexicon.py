@@ -103,6 +103,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=262_144,
         help="Finite per-token shared-prefix node bound before exact fallback.",
     )
+    parser.add_argument(
+        "--piece-shared-top-k-piece-references",
+        type=int,
+        default=4_194_304,
+        help="Finite per-token shared inspection top-K piece-reference bound.",
+    )
     parser.add_argument("--resume", action="store_true")
     return parser
 
@@ -155,6 +161,9 @@ def main(argv: list[str] | None = None) -> None:
             not args.no_piece_shared_token_marginals
         ),
         piece_shared_prefix_nodes=args.piece_shared_prefix_nodes,
+        piece_shared_top_k_piece_references=(
+            args.piece_shared_top_k_piece_references
+        ),
         resume=args.resume,
     )
     result = run_training(config)

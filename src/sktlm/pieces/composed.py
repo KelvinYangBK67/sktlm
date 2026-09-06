@@ -38,6 +38,7 @@ class ComposedCacheConfig:
     form_bytes: int = 256 * 1024 * 1024
     shared_token_marginals: bool = True
     shared_prefix_nodes: int = 262_144
+    shared_top_k_piece_references: int = 4_194_304
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -46,6 +47,10 @@ class ComposedCacheConfig:
             ("form_entries", self.form_entries),
             ("form_bytes", self.form_bytes),
             ("shared_prefix_nodes", self.shared_prefix_nodes),
+            (
+                "shared_top_k_piece_references",
+                self.shared_top_k_piece_references,
+            ),
         ):
             if value < 1:
                 raise ValueError(f"{name} must be >= 1")
@@ -808,6 +813,73 @@ class ComposedPieceInference:
         pieces.setdefault(score.whole_piece.key, score.whole_piece)
         return tuple(pieces[key] for key in sorted(pieces))
 
+    def _shared_top_segmentations(
+        self,
+        batch: _SharedFormBatch,
+        score: _SharedFormScore,
+    ) -> tuple[PieceSegmentation, ...]:
+        """Derive the unchanged bounded top-K from shared transitions."""
+
+        assert self.inspection_top_k is not None
+        started = time.perf_counter()
+        path_reversed: list[int] = []
+        cursor = score.node
+        while cursor:
+            path_reversed.append(cursor)
+            cursor = batch.nodes[cursor].parent
+        path = (0, *reversed(path_reversed))
+        length = len(path) - 1
+        outgoing: list[
+            list[tuple[int, PhonologicalForm, float]]
+        ] = [[] for _ in range(length)]
+        for end in range(1, length + 1):
+            for transition in batch.nodes[path[end]].transitions:
+                start = batch.nodes[transition.source].depth
+                outgoing[start].append(
+                    (end, transition.piece, transition.raw_score)
+                )
+        if length > self.model_config.max_piece_length:
+            outgoing[0].append(
+                (length, score.whole_piece, score.whole_raw_score)
+            )
+
+        paths: list[
+            list[
+                tuple[
+                    float,
+                    tuple[PhonologicalForm, ...],
+                    tuple[str, ...],
+                ]
+            ]
+        ] = [[] for _ in range(length + 1)]
+        paths[0] = [(0.0, (), ())]
+        for start in range(length):
+            prefixes = paths[start]
+            prefixes.sort(key=lambda item: (-item[0], item[2]))
+            del prefixes[self.inspection_top_k :]
+            for end, piece, raw_score in outgoing[start]:
+                paths[end].extend(
+                    (
+                        prefix_score + raw_score,
+                        prefix_pieces + (piece,),
+                        prefix_keys + (piece.key,),
+                    )
+                    for prefix_score, prefix_pieces, prefix_keys in prefixes
+                )
+        candidates = paths[-1]
+        candidates.sort(key=lambda item: (-item[0], item[2]))
+        del candidates[self.inspection_top_k :]
+        result = tuple(
+            PieceSegmentation(
+                pieces=pieces,
+                log_weight=raw_score - score.prior_log_normalizer,
+                probability=math.exp(raw_score - score.raw_log_partition),
+            )
+            for raw_score, pieces, _piece_keys in candidates
+        )
+        self.add_timing("inner_piece_top_k_seconds", started)
+        return result
+
     def record_graph(self, graph: LazyCandidateGraph) -> None:
         self._events["candidate_factors"] += len(graph.factors)
         self._events["candidate_nodes"] += sum(
@@ -1002,6 +1074,12 @@ def _evaluate_lazy_token_shared(
         spans_by_start.append(spans)
         for span in spans:
             unique_forms.setdefault(span.word.key, span.word)
+    if engine.inspection_top_k is not None and sum(
+        engine.inspection_top_k * len(form.symbols)
+        for form in unique_forms.values()
+    ) > engine.cache_config.shared_top_k_piece_references:
+        engine._events["shared_batch_fallbacks"] += 1
+        return None
     batch = engine._build_shared_form_batch(tuple(unique_forms.values()))
     if batch is None:
         return None
@@ -1103,6 +1181,64 @@ def _evaluate_lazy_token_shared(
     if identity is not None:
         identity_log_score = batch.forms[identity.word.key].log_score
     engine.add_timing("lazy_token_posterior_seconds", started)
+
+    top_paths: tuple[_ComposedPath, ...] = ()
+    if engine.inspection_top_k is not None:
+        started = time.perf_counter()
+        top_segmentations: dict[str, tuple[PieceSegmentation, ...]] = {}
+        paths: list[list[_ComposedPath]] = [[] for _ in range(node_count)]
+        paths[0] = [_ComposedPath(0.0, (), (), (), (), ((), (), ()))]
+        for start, spans in enumerate(spans_by_start):
+            if not paths[start]:
+                continue
+            for span in spans:
+                segmentations = top_segmentations.get(span.word.key)
+                if segmentations is None:
+                    segmentations = engine._shared_top_segmentations(
+                        batch,
+                        batch.forms[span.word.key],
+                    )
+                    top_segmentations[span.word.key] = segmentations
+                candidates = paths[span.end]
+                keyed_segmentations = tuple(
+                    (
+                        segmentation,
+                        tuple(piece.key for piece in segmentation.pieces),
+                    )
+                    for segmentation in segmentations
+                )
+                for prefix in paths[start]:
+                    for segmentation, segmentation_key in keyed_segmentations:
+                        candidates.append(
+                            _ComposedPath(
+                                score=prefix.score + segmentation.log_weight,
+                                words=prefix.words + (span.word,),
+                                piece_segmentations=(
+                                    prefix.piece_segmentations
+                                    + (segmentation.pieces,)
+                                ),
+                                rule_ids=prefix.rule_ids + span.rule_ids,
+                                boundaries=(
+                                    prefix.boundaries
+                                    + (
+                                        (span.boundary,)
+                                        if span.boundary is not None
+                                        else ()
+                                    )
+                                ),
+                                tie_key=(
+                                    prefix.tie_key[0] + (span.word.key,),
+                                    prefix.tie_key[1] + (segmentation_key,),
+                                    prefix.tie_key[2] + span.rule_ids,
+                                ),
+                            )
+                        )
+                paths[span.end] = _trim_composed_paths(
+                    candidates,
+                    engine.inspection_top_k,
+                )
+        top_paths = tuple(paths[-1])
+        engine.add_timing("lazy_token_top_k_seconds", started)
     return _TokenSummary(
         log_partition=log_z,
         expected_log_weight=expected_raw_score - expected_prior_log_z,
@@ -1124,7 +1260,7 @@ def _evaluate_lazy_token_shared(
             piece: dict(occurrences)
             for piece, occurrences in piece_occurrences.items()
         },
-        top_paths=(),
+        top_paths=top_paths,
     )
 
 
@@ -1136,7 +1272,6 @@ def _evaluate_lazy_token(
 ) -> _TokenSummary:
     if (
         engine.cache_config.shared_token_marginals
-        and engine.inspection_top_k is None
         and support_epsilon == 0.0
     ):
         shared = _evaluate_lazy_token_shared(lattice, engine)

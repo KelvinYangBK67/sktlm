@@ -399,6 +399,102 @@ def test_shared_token_prefix_bound_falls_back_to_legacy_path() -> None:
     assert result.counters.form_cache_misses > 0
 
 
+def test_shared_inspection_paths_match_legacy_exact_path() -> None:
+    grammar = StructuredSandhiGrammar.from_default_inventory()
+    segment = next(iter_observed_segments("devo'pi"))
+    graph = build_lazy_candidate_graph(segment, grammar)
+    config = PieceModelConfig(max_piece_length=3, rho=0.41)
+
+    def run(*, shared: bool):
+        return infer_composed_segment(
+            graph,
+            ComposedPieceInference(
+                _production_scorer(),
+                model_config=config,
+                cache_config=ComposedCacheConfig(
+                    shared_token_marginals=shared,
+                ),
+                inspection_top_k=5,
+            ),
+            whitespace_merge_penalty=8.0,
+        )
+
+    observed = run(shared=True)
+    reference = run(shared=False)
+
+    assert observed.log_partition == pytest.approx(
+        reference.log_partition,
+        rel=1e-10,
+        abs=1e-12,
+    )
+    assert observed.lexical_expected_counts == pytest.approx(
+        reference.lexical_expected_counts,
+        rel=1e-10,
+        abs=1e-12,
+    )
+    assert observed.piece_expected_counts == pytest.approx(
+        reference.piece_expected_counts,
+        rel=1e-10,
+        abs=1e-12,
+    )
+    assert observed.piece_occurrence_support == reference.piece_occurrence_support
+    assert len(observed.top_analyses) == len(reference.top_analyses)
+    for actual, expected in zip(observed.top_analyses, reference.top_analyses):
+        assert tuple(form.key for form in actual.words) == tuple(
+            form.key for form in expected.words
+        )
+        assert tuple(
+            tuple(piece.key for piece in segmentation)
+            for segmentation in actual.piece_segmentations
+        ) == tuple(
+            tuple(piece.key for piece in segmentation)
+            for segmentation in expected.piece_segmentations
+        )
+        assert actual.rule_ids == expected.rule_ids
+        assert actual.boundaries == expected.boundaries
+        assert actual.log_score == pytest.approx(
+            expected.log_score,
+            rel=1e-10,
+            abs=1e-12,
+        )
+        assert actual.probability == pytest.approx(
+            expected.probability,
+            rel=1e-10,
+            abs=1e-12,
+        )
+    assert observed.top_analysis_mass == pytest.approx(
+        reference.top_analysis_mass,
+        rel=1e-10,
+        abs=1e-12,
+    )
+    assert observed.counters.composed_transition_count < (
+        reference.counters.composed_transition_count
+    )
+    assert observed.counters.form_cache_misses == 0
+
+
+def test_shared_inspection_piece_reference_bound_falls_back() -> None:
+    grammar = StructuredSandhiGrammar.from_default_inventory()
+    segment = next(iter_observed_segments("devo'pi"))
+    graph = build_lazy_candidate_graph(segment, grammar)
+    result = infer_composed_segment(
+        graph,
+        ComposedPieceInference(
+            _production_scorer(),
+            model_config=PieceModelConfig(max_piece_length=3),
+            cache_config=ComposedCacheConfig(
+                shared_top_k_piece_references=1,
+            ),
+            inspection_top_k=5,
+        ),
+        whitespace_merge_penalty=8.0,
+    )
+
+    assert result.top_analyses
+    assert result.counters.shared_batch_fallbacks > 0
+    assert result.counters.form_cache_misses > 0
+
+
 def test_identity_only_outer_case_matches_materialized_oracle() -> None:
     grammar = StructuredSandhiGrammar(())
     segment = next(iter_observed_segments("rama"))

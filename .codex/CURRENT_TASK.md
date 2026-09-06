@@ -34,6 +34,7 @@ representative cross-frontend script-neutral identity: PASS
 continuous runtime target: NOT READY
 production storage gate: NOT READY
 optimization 8 shared token-local form-prefix DP: ACCEPTED (training marginals)
+optimization 9 shared inspection marginals/top-K: IMPLEMENTED / EQUIVALENT
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -71,19 +72,21 @@ for transient output, so storage is also not ready. The benchmark must not be
 rerun. The stress and cloud scaling gates are deferred because they would only
 measure the already-decisive bad structural regime.
 
-## Next task: shared inspection marginals and top-K transition reuse
+## Next task: fixed cheap probe for optimization 9
 
 The fixed probe accepts optimization 8: training states fall 81.5%, transitions
 and score calls 78.3%, training inference 70.3%/73.2%, and complete wall
 19.0%/18.3%. All seven artifacts pass semantic comparison, with maximum
 absolute/relative differences `7.11e-14`/`2.84e-14`.
 
-Extend the same exact bounded prefix DAG to inspection marginals. Generate the
-unchanged bounded per-form piece top-K from already-scored shared transitions,
-preserving P0 score/tie ordering and endpoint-local whole-form behavior. Add
-focused shared/legacy top-analysis equivalence and finite-bound fallback tests,
-then run the fixed paired cheap probe once from a new clean SHA. Do not rerun
-the representative, stress, cloud, or full-M0 workloads.
+Optimization 9 extends the bounded shared prefix DAG to inspection marginals
+and reconstructs the unchanged per-form piece top-K from already-scored shared
+transitions. Both exact fallback caps pass, and the pieces/latent suite passes
+(`89 passed`). Commit and push the coherent candidate, then run the fixed
+paired two-line, one-worker, one-pass plus inspection probe exactly once from
+that clean SHA. Compare all scientific artifacts, shared work counters,
+inspection inference, and wall time against optimization 8. Do not rerun the
+representative, stress, cloud, or full-M0 workloads.
 
 ```text
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
@@ -103,5 +106,5 @@ PRODUCTION_STORAGE_GATE=NOT_READY
 S1M2_CONTINUOUS_STRESS=DEFERRED_PENDING_STRUCTURAL_OPTIMIZATION
 S1M2_CONTINUOUS_STRUCTURAL_FACTORIZATION=IN_PROGRESS
 S1M2_OPTIMIZATION_8=ACCEPTED_TRAINING_ONLY
-S1M2_OPTIMIZATION_9=SHARED_INSPECTION_MARGINALS_AND_TOP_K_READY
+S1M2_OPTIMIZATION_9=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
 ```

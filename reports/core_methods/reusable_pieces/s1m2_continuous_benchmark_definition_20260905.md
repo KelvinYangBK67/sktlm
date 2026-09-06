@@ -602,3 +602,28 @@ S1M2_OPTIMIZATION_9=SHARED_INSPECTION_MARGINALS_AND_TOP_K_READY
 S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 FULL_M0_PROCESS_RUNNING=NO
 ```
+
+### Optimization 9 candidate: shared inspection marginals and piece top-K
+
+Inspection now uses the same token-local prefix DAG and reverse adjoint as
+training for exact marginals. For presentation only, each distinct lexical
+endpoint reconstructs its outgoing piece transitions from the already-scored
+prefix path and runs the unchanged bounded top-K recurrence. Destination and
+source order, score order, piece-key tie order, normalized log weights, and
+endpoint-local long whole-form transition are identical to the legacy path.
+No piece score or independent form marginal DP is repeated for top-K.
+
+The engineering contract adds a separate cap of 4,194,304 top-K piece
+references per token. The estimated endpoint/path bound is checked before
+shared scoring; exceeding it uses the legacy exact implementation. Focused
+tests compare shared and legacy top lexical analyses, nested piece paths,
+scores, probabilities, rules, boundaries, exact marginals, and support, and
+exercise both prefix-node and top-K-reference fallbacks. The pieces/latent
+suite passes (`89 passed`). A fixed clean-SHA paired probe is required before
+acceptance.
+
+```text
+S1M2_OPTIMIZATION_9=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```

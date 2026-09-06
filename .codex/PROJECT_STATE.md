@@ -1468,6 +1468,27 @@ S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 66. Shared inspection marginals and top-K implemented (2026-09-06)
+
+Optimization 9 routes exact inspection marginals through the accepted shared
+prefix DAG. Bounded per-form piece top-K paths are reconstructed from the
+already-scored shared transitions under the unchanged score and tie ordering;
+long whole-form transitions remain endpoint-only. A config-recorded cap of
+4,194,304 piece references per token is checked before shared scoring and
+falls back to the existing exact implementation when exceeded.
+
+Shared/legacy inspection tests match lexical and piece paths, probabilities,
+scores, rules, boundaries, all exact marginals, and occurrence support. Both
+finite-bound fallbacks pass, as do the complete pieces/latent tests (`89
+passed`). The candidate requires the fixed paired probe at a clean Git SHA
+before performance acceptance.
+
+```text
+S1M2_OPTIMIZATION_9=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 61. Continuous optimization 6 accepted (2026-09-05)
 
 Candidate SHA `25fbeedc2afb84b868d35624ba5303310dcc574f` reuses immutable

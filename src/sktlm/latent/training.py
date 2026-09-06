@@ -123,6 +123,7 @@ class TrainingConfig:
     piece_form_cache_bytes: int = 256 * 1024 * 1024
     piece_shared_token_marginals: bool = True
     piece_shared_prefix_nodes: int = 262_144
+    piece_shared_top_k_piece_references: int = 4_194_304
     resume: bool = False
 
     def __post_init__(self) -> None:
@@ -183,6 +184,9 @@ class TrainingConfig:
             form_bytes=self.piece_form_cache_bytes,
             shared_token_marginals=self.piece_shared_token_marginals,
             shared_prefix_nodes=self.piece_shared_prefix_nodes,
+            shared_top_k_piece_references=(
+                self.piece_shared_top_k_piece_references
+            ),
         )
 
     def payload(self) -> dict[str, Any]:
@@ -217,6 +221,7 @@ class TrainingConfig:
                 "piece_form_cache_bytes",
                 "piece_shared_token_marginals",
                 "piece_shared_prefix_nodes",
+                "piece_shared_top_k_piece_references",
             ):
                 payload.pop(name)
         return payload
@@ -251,6 +256,9 @@ class TrainingConfig:
             form_bytes=self.piece_form_cache_bytes,
             shared_token_marginals=self.piece_shared_token_marginals,
             shared_prefix_nodes=self.piece_shared_prefix_nodes,
+            shared_top_k_piece_references=(
+                self.piece_shared_top_k_piece_references
+            ),
         )
 
 
