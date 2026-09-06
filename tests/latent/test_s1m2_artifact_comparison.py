@@ -85,3 +85,41 @@ def test_streaming_comparator_preserves_tolerance_and_contract(tmp_path: Path) -
     mismatch = _run(reference, candidate)
     assert mismatch.returncode != 0
     assert "identity" in mismatch.stderr
+
+def test_streaming_comparator_preserves_matching_nan(tmp_path: Path) -> None:
+    reference = tmp_path / "reference"
+    candidate = tmp_path / "candidate"
+    _write_fixture(reference, delta=0.0, traversal_count=10)
+    _write_fixture(candidate, delta=0.0, traversal_count=2)
+
+    for name in ("piece_inventory.tsv", "lexical_diagnostics.tsv"):
+        (reference / name).write_text(
+            "identity\tvalue\n"
+            "V_I\tnan\n"
+            "V_AA\t2.0\n",
+            encoding="utf-8",
+        )
+        (candidate / name).write_text(
+            "identity\tvalue\n"
+            "V_AA\t2.0\n"
+            "V_I\tnan\n",
+            encoding="utf-8",
+        )
+
+    result = _run(reference, candidate)
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "PASS"
+
+    (candidate / "piece_inventory.tsv").write_text(
+        "identity\tvalue\n"
+        "V_AA\t2.0\n"
+        "V_I\t0.0\n",
+        encoding="utf-8",
+    )
+
+    mismatch = _run(reference, candidate)
+
+    assert mismatch.returncode != 0
+    assert "nan" in mismatch.stderr.lower()

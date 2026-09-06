@@ -61,6 +61,18 @@ def _compare(
     if isinstance(left, (int, float)) and isinstance(right, (int, float)):
         left_number = float(left)
         right_number = float(right)
+
+        if not math.isfinite(left_number) or not math.isfinite(right_number):
+            same_nonfinite = (
+                (math.isnan(left_number) and math.isnan(right_number))
+                or left_number == right_number
+            )
+            if not same_nonfinite:
+                raise AssertionError(
+                    f"{path}: {left_number!r} != {right_number!r}"
+                )
+            return
+
         if not math.isclose(left_number, right_number, rel_tol=rtol, abs_tol=atol):
             raise AssertionError(
                 f"{path}: {left_number!r} != {right_number!r} "
