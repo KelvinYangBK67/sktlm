@@ -570,3 +570,35 @@ S1M2_OPTIMIZATION_8=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
 S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 FULL_M0_PROCESS_RUNNING=NO
 ```
+
+### Optimization 8 result: accepted for training marginals
+
+At clean candidate SHA `2dad1b342042eb1ec9b282c3fd0d1798b363557e`,
+the fixed paired probe passes semantic comparison against optimization 7 over
+all seven canonical artifacts. Each frontend comparison covers 10,252 numeric
+values; maximum absolute and relative differences are
+`7.105427357601002e-14` and `2.8387775957490983e-14`, well inside the frozen
+`rtol=1e-10`, `atol=1e-12` contract. Piece identities and occurrence support
+are unchanged. The different `lazy_span_traversals` counter is engineering
+evidence, not a scientific value.
+
+The intended structural work falls sharply in both frontends: training states
+fall from 4,626 to 855 (`81.5%`), transitions and piece-score calls from 25,135
+to 5,454 (`78.3%`), and lazy span traversals from 3,224 to 1,073 (`66.7%`).
+Training inference improves `70.3%` for M0-prime IAST and `73.2%` for M0
+Devanagari. End-to-end probe wall improves `19.0%`/`18.3%` despite final
+inspection deliberately remaining on the prior exact path. No shared batch
+hit its finite cap. The compact envelope is
+`evidence/s1m2_continuous_optimization_8_v1.json`.
+
+Optimization 8 is accepted within its stated training-only scope. The next
+exact candidate reuses the same shared prefix DAG for inspection marginals and
+derives bounded per-form top segmentations from its already-scored transitions,
+without changing top-K support or ordering.
+
+```text
+S1M2_OPTIMIZATION_8=ACCEPTED_TRAINING_ONLY
+S1M2_OPTIMIZATION_9=SHARED_INSPECTION_MARGINALS_AND_TOP_K_READY
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```

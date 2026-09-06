@@ -1,0 +1,89 @@
+{
+  "schema_version": "sktlm-s1m2-continuous-optimization-evidence/v1",
+  "optimization_id": "shared_token_form_prefix_marginals",
+  "status": "ACCEPTED_TRAINING_ONLY",
+  "baseline_git_sha": "29c08a242bc4c4f65b39ddeebeb210c4bc45ccf3",
+  "candidate_git_sha": "2dad1b342042eb1ec9b282c3fd0d1798b363557e",
+  "workload": {
+    "id": "representative_probe",
+    "document_list_sha256": "7bf936025ce28c43cdae0407d532c461b50726a28275fa40062a8a6889296ed3",
+    "documents": 3,
+    "max_lines_per_document": 2,
+    "passes": 1,
+    "workers": 1,
+    "inspection_enabled": true,
+    "cprofile_enabled": true
+  },
+  "equivalence": {
+    "status": "PASS",
+    "comparison": "seven canonical artifacts parsed structurally with numeric rtol=1e-10 and atol=1e-12; engineering-only lazy_span_traversals excluded",
+    "canonical_artifacts": [
+      "iteration_metrics.json",
+      "piece_inventory.tsv",
+      "lexical_diagnostics.tsv",
+      "analyses.jsonl",
+      "boundary_posteriors.jsonl",
+      "rule_usage.tsv",
+      "summary.json"
+    ],
+    "numeric_values_compared_per_frontend": 10252,
+    "iast_max_absolute_difference": 7.105427357601002e-14,
+    "iast_max_relative_difference": 2.8387775957490983e-14,
+    "devanagari_max_absolute_difference": 7.105427357601002e-14,
+    "devanagari_max_relative_difference": 2.8387775957490983e-14,
+    "piece_inventory_key_set_identity": "PASS",
+    "piece_occurrence_support_identity": "PASS",
+    "focused_pieces_latent_tests": "87 passed",
+    "serial_parallel_scientific_byte_identity": "PASS",
+    "bounded_fallback_test": "PASS"
+  },
+  "cells": [
+    {
+      "cell_id": "m0_prime_iast_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_prime_iast_29c08a2_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_prime_iast_2dad1b3_a01",
+      "candidate_benchmark_metrics_sha256": "553a020965d56a32c13fc89bd9d8437a4d86305013545d54a78ed528447c930f",
+      "candidate_profile_sha256": "2c57fc44937649db64a1290fb46dc9d9a34a8c5d9b137800bd0e1b7508a071ba",
+      "baseline_wall_seconds": 1.9291398000204936,
+      "candidate_wall_seconds": 1.5620295000262558,
+      "wall_improvement_percent": 19.030,
+      "baseline_training_inference_seconds": 0.5885894000530243,
+      "candidate_training_inference_seconds": 0.17469320000964217,
+      "training_inference_improvement_percent": 70.320
+    },
+    {
+      "cell_id": "m0_devanagari_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_devanagari_29c08a2_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_devanagari_2dad1b3_a01",
+      "candidate_benchmark_metrics_sha256": "7919359db62e47e2276962acdf6389eb095a6819b32c07a193b1a2b66ba7ad4f",
+      "candidate_profile_sha256": "4896c7c35ece7970ff5d901f6b227474f4f2a0592cf9ec97afc06754148669ea",
+      "baseline_wall_seconds": 1.8759489000076428,
+      "candidate_wall_seconds": 1.5320154000073671,
+      "wall_improvement_percent": 18.334,
+      "baseline_training_inference_seconds": 0.6067171000177041,
+      "candidate_training_inference_seconds": 0.16259160000481643,
+      "training_inference_improvement_percent": 73.201
+    }
+  ],
+  "mechanism": {
+    "baseline_training_composed_states": 4626,
+    "candidate_training_composed_states": 855,
+    "state_reduction_percent": 81.518,
+    "baseline_training_composed_transitions": 25135,
+    "candidate_training_composed_transitions": 5454,
+    "transition_reduction_percent": 78.301,
+    "baseline_training_piece_score_calls": 25135,
+    "candidate_training_piece_score_calls": 5454,
+    "piece_score_call_reduction_percent": 78.301,
+    "baseline_training_lazy_span_traversals": 3224,
+    "candidate_training_lazy_span_traversals": 1073,
+    "lazy_span_traversal_reduction_percent": 66.718,
+    "candidate_shared_prefix_nodes": 855,
+    "candidate_shared_form_endpoints": 366,
+    "candidate_shared_batch_fallbacks": 0,
+    "inspection_path": "unchanged legacy exact top-k path"
+  },
+  "boundedness": "The token-local prefix DAG is capped at 262144 nodes and discarded with the token summary. Exceeding the cap falls back before shared scoring. The number of transient span references remains bounded by the unchanged max_internal_matches outer-node contract.",
+  "semantic_reason": "A trie node is an immutable phonological prefix. Bounded-piece forward values are shared only for equal prefixes; the whole-form edge is added only at its exact form endpoint. Reverse-mode accumulation of outer-mass-weighted endpoint log partitions gives the same transition marginals and expected piece counts as summing independent per-form forward/backward evaluations. No candidate, score, or posterior term is removed.",
+  "acceptance_scope": "Training marginals at support_epsilon=0 only. Inspection/top-k and nonzero support thresholds keep the prior exact path pending separate optimization."
+}

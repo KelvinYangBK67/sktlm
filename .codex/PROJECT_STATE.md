@@ -1444,6 +1444,30 @@ S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 65. Shared training marginal DP accepted (2026-09-06)
+
+The optimization-8 fixed paired probe at
+`2dad1b342042eb1ec9b282c3fd0d1798b363557e` passes semantic comparison against
+optimization 7 over all seven canonical artifacts. Each frontend comparison
+checked 10,252 numeric values under `rtol=1e-10`, `atol=1e-12`; the maximum
+absolute/relative differences are `7.11e-14`/`2.84e-14`, and piece identities
+plus occurrence support are unchanged.
+
+Training composed states fall 81.5%, transitions and piece-score calls 78.3%,
+and lazy traversals 66.7%. Training inference improves 70.3%/73.2% and complete
+probe wall improves 19.0%/18.3%, with inspection deliberately unchanged. No
+shared-prefix cap fallback occurred. Optimization 8 is accepted for training
+marginals; inspection shared marginals/top-K transition reuse is the next exact
+candidate. Evidence is
+`reports/core_methods/reusable_pieces/evidence/s1m2_continuous_optimization_8_v1.json`.
+
+```text
+S1M2_OPTIMIZATION_8=ACCEPTED_TRAINING_ONLY
+S1M2_OPTIMIZATION_9=SHARED_INSPECTION_MARGINALS_AND_TOP_K_READY
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 61. Continuous optimization 6 accepted (2026-09-05)
 
 Candidate SHA `25fbeedc2afb84b868d35624ba5303310dcc574f` reuses immutable
