@@ -534,3 +534,39 @@ PRODUCTION_STORAGE_GATE=NOT_READY
 S1M2_CONTINUOUS_STRESS=DEFERRED_PENDING_STRUCTURAL_OPTIMIZATION
 S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 ```
+
+### Optimization 8 candidate: shared token-local form prefix DAG
+
+The representative profile shows that evaluating every lexical form as an
+independent inner DP is the dominant structural error: approximately 1.98
+million form misses expand to approximately 199.68 million inner transitions
+per phase. The optimization-8 candidate instead inserts the distinct legal
+forms of one lazy token into an immutable prefix DAG. Each shared prefix state
+computes its bounded-piece forward value once. After the unchanged lexical
+forward/backward pass supplies exact outer span masses, one reverse adjoint
+pass over that same DAG produces the posterior-weighted expected piece counts
+and score/entropy summaries for all form endpoints together. The special
+whole-form transition remains endpoint-local and therefore cannot become a
+prefix of a longer form.
+
+This route is currently limited to training marginals with
+`support_epsilon=0` and no inspection top-K. Positive occurrence support is
+then exactly structural because every legal transition has finite weight.
+Nonzero support thresholds and inspection use the existing exact path. A
+config-recorded limit of 262,144 prefix nodes applies per token; exceeding it
+falls back before any shared scoring work. The lazy outer graph remains the
+authority, and the shared DAG is discarded with the token summary rather than
+persisting lexical-edge rows or a P0 lattice.
+
+Focused shared/legacy tests compare partitions, entropy, lexical and piece
+expected counts, identity/latent mass, boundary/rule marginals, occurrence
+support, and total posterior mass under the established tolerance. They also
+exercise the finite-bound fallback. The pieces/latent suite passes (`87
+passed`), including serial/parallel and resume gates. The candidate requires
+the fixed paired cheap probe from its clean SHA before acceptance.
+
+```text
+S1M2_OPTIMIZATION_8=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```

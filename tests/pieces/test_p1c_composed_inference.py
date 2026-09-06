@@ -303,6 +303,102 @@ def test_lazy_composed_outer_matches_materialized_oracle(surface: str) -> None:
     _compare_outer(surface)
 
 
+@pytest.mark.parametrize("surface", ("devo'pi", "devaśca", "tattvamasi"))
+def test_shared_token_marginals_match_legacy_exact_path(surface: str) -> None:
+    grammar = StructuredSandhiGrammar.from_default_inventory()
+    segment = next(iter_observed_segments(surface))
+    graph = build_lazy_candidate_graph(segment, grammar)
+    config = PieceModelConfig(max_piece_length=3, rho=0.41)
+
+    def run(*, shared: bool):
+        return infer_composed_segment(
+            graph,
+            ComposedPieceInference(
+                _production_scorer(),
+                model_config=config,
+                cache_config=ComposedCacheConfig(
+                    shared_token_marginals=shared,
+                ),
+            ),
+            whitespace_merge_penalty=8.0,
+        )
+
+    observed = run(shared=True)
+    reference = run(shared=False)
+
+    for name in (
+        "log_partition",
+        "entropy",
+        "identity_mass",
+        "latent_mass",
+        "expected_lexical_tokens",
+        "expected_piece_tokens",
+        "piece_segmentation_entropy",
+        "expected_whole_form_uses",
+        "expected_singleton_path_uses",
+        "expected_multi_piece_uses",
+        "top_analysis_mass",
+        "total_posterior_mass",
+    ):
+        assert getattr(observed, name) == pytest.approx(
+            getattr(reference, name),
+            rel=1e-10,
+            abs=1e-12,
+        )
+    assert observed.lexical_expected_counts == pytest.approx(
+        reference.lexical_expected_counts,
+        rel=1e-10,
+        abs=1e-12,
+    )
+    assert observed.piece_expected_counts == pytest.approx(
+        reference.piece_expected_counts,
+        rel=1e-10,
+        abs=1e-12,
+    )
+    assert observed.rule_usage == pytest.approx(
+        reference.rule_usage,
+        rel=1e-10,
+        abs=1e-12,
+    )
+    assert observed.piece_occurrence_support == reference.piece_occurrence_support
+    assert {
+        item.boundary_id: item.probability
+        for item in observed.boundary_posteriors
+    } == pytest.approx(
+        {
+            item.boundary_id: item.probability
+            for item in reference.boundary_posteriors
+        },
+        rel=1e-10,
+        abs=1e-12,
+    )
+    assert observed.top_analyses == reference.top_analyses == ()
+    assert observed.counters.lazy_span_traversals < (
+        reference.counters.lazy_span_traversals
+    )
+    assert observed.counters.composed_transition_count < (
+        reference.counters.composed_transition_count
+    )
+
+
+def test_shared_token_prefix_bound_falls_back_to_legacy_path() -> None:
+    grammar = StructuredSandhiGrammar.from_default_inventory()
+    segment = next(iter_observed_segments("devaśca"))
+    graph = build_lazy_candidate_graph(segment, grammar)
+    result = infer_composed_segment(
+        graph,
+        ComposedPieceInference(
+            _production_scorer(),
+            model_config=PieceModelConfig(max_piece_length=3),
+            cache_config=ComposedCacheConfig(shared_prefix_nodes=1),
+        ),
+        whitespace_merge_penalty=8.0,
+    )
+
+    assert result.total_posterior_mass == pytest.approx(1.0, abs=1e-12)
+    assert result.counters.form_cache_misses > 0
+
+
 def test_identity_only_outer_case_matches_materialized_oracle() -> None:
     grammar = StructuredSandhiGrammar(())
     segment = next(iter_observed_segments("rama"))

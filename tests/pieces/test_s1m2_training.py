@@ -84,6 +84,8 @@ def test_s1m2_configuration_identity_includes_piece_model_and_cache_bounds(
     assert payload["piece_min_reuse_occurrences"] == 2
     assert payload["piece_score_cache_entries"] == 65_536
     assert payload["piece_form_cache_bytes"] == 256 * 1024 * 1024
+    assert payload["piece_shared_token_marginals"] is True
+    assert payload["piece_shared_prefix_nodes"] == 262_144
 
 
 def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(
@@ -119,6 +121,9 @@ def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(
     assert result.runtime["counters"]["training_composed_state_count"] > 0
     assert result.runtime["counters"]["training_composed_transition_count"] > 0
     assert result.runtime["counters"]["training_piece_score_calls"] > 0
+    assert result.runtime["counters"]["training_shared_prefix_nodes"] > 0
+    assert result.runtime["counters"]["training_shared_form_endpoints"] > 0
+    assert result.runtime["counters"].get("training_shared_batch_fallbacks", 0) == 0
     assert result.runtime["counters"]["training_form_cache_hits"] > 0
     assert result.runtime["counters"]["training_store_lookups"] > 0
     assert (

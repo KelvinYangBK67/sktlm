@@ -121,6 +121,8 @@ class TrainingConfig:
     piece_score_cache_bytes: int = 32 * 1024 * 1024
     piece_form_cache_entries: int = 8_192
     piece_form_cache_bytes: int = 256 * 1024 * 1024
+    piece_shared_token_marginals: bool = True
+    piece_shared_prefix_nodes: int = 262_144
     resume: bool = False
 
     def __post_init__(self) -> None:
@@ -179,6 +181,8 @@ class TrainingConfig:
             piece_score_bytes=self.piece_score_cache_bytes,
             form_entries=self.piece_form_cache_entries,
             form_bytes=self.piece_form_cache_bytes,
+            shared_token_marginals=self.piece_shared_token_marginals,
+            shared_prefix_nodes=self.piece_shared_prefix_nodes,
         )
 
     def payload(self) -> dict[str, Any]:
@@ -211,6 +215,8 @@ class TrainingConfig:
                 "piece_score_cache_bytes",
                 "piece_form_cache_entries",
                 "piece_form_cache_bytes",
+                "piece_shared_token_marginals",
+                "piece_shared_prefix_nodes",
             ):
                 payload.pop(name)
         return payload
@@ -243,6 +249,8 @@ class TrainingConfig:
             piece_score_bytes=self.piece_score_cache_bytes,
             form_entries=self.piece_form_cache_entries,
             form_bytes=self.piece_form_cache_bytes,
+            shared_token_marginals=self.piece_shared_token_marginals,
+            shared_prefix_nodes=self.piece_shared_prefix_nodes,
         )
 
 
@@ -2469,7 +2477,9 @@ def _finalize_inspection(
         **aggregate.metrics.summary(config.passes),
         "mean_top1_posterior": aggregate.top1_sum / denominator,
         "mean_entropy": aggregate.entropy_sum / denominator,
-        "rule_expected_usage_total": sum(aggregate.rule_usage.values()),
+        "rule_expected_usage_total": sum(
+            aggregate.rule_usage[key] for key in sorted(aggregate.rule_usage)
+        ),
         "identity_mass_total": aggregate.metrics.identity_mass_sum,
         "latent_mass_total": aggregate.metrics.latent_mass_sum,
         "complexity": complexity,

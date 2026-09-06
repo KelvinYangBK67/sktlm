@@ -33,6 +33,7 @@ local frozen representative benchmark: COMPLETE / VALIDATED
 representative cross-frontend script-neutral identity: PASS
 continuous runtime target: NOT READY
 production storage gate: NOT READY
+optimization 8 shared token-local form-prefix DP: IMPLEMENTED / EQUIVALENT
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -70,17 +71,17 @@ for transient output, so storage is also not ready. The benchmark must not be
 rerun. The stress and cloud scaling gates are deferred because they would only
 measure the already-decisive bad structural regime.
 
-## Next task: exact structural interval/form factorization
+## Next task: fixed cheap probe for optimization 8
 
-Profile evidence shows about 6.89 million outer spans and 199.68 million inner
-piece transitions per phase, with about 1.95 million form-cache and 3.96
-million piece-score-cache evictions. Inspect the composed inference consumers
-and implement the smallest exact bounded factorization that shares interval
-piece-DP work without changing legal candidate support, equations, posterior
-marginals, expected counts, ordering, or top-K presentation. Add focused
-equivalence tests against the current P1c/P0 path. Do not launch the frozen
-stress workload, cloud scaling, or full-M0 before the structural regime changes
-materially. Compact/versioned storage work remains required after inference.
+Optimization 8 shares token-local form prefixes during training, then uses one
+reverse adjoint pass to aggregate exact posterior-weighted piece counts. The
+route is bounded at 262,144 prefix nodes, falls back exactly, and preserves all
+scientific quantities against the legacy/P0 path under the accepted tolerance.
+The pieces/latent suite passes (`87 passed`). Commit and push the coherent
+candidate, then run the fixed paired two-line, one-worker, one-pass plus
+inspection probe once at that clean SHA. Compare science, shared work counters,
+wall time, and intended transition/cache mechanism against optimization 7.
+Do not launch the representative, stress, cloud, or full-M0 workloads.
 
 ```text
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
@@ -98,5 +99,6 @@ CONTINUOUS_SCRIPT_NEUTRAL_REPRESENTATIVE=PASS
 CONTINUOUS_RUNTIME_TARGET=NOT_READY
 PRODUCTION_STORAGE_GATE=NOT_READY
 S1M2_CONTINUOUS_STRESS=DEFERRED_PENDING_STRUCTURAL_OPTIMIZATION
-S1M2_CONTINUOUS_STRUCTURAL_FACTORIZATION=READY_TO_IMPLEMENT
+S1M2_CONTINUOUS_STRUCTURAL_FACTORIZATION=IMPLEMENTED_AWAITING_PROBE
+S1M2_OPTIMIZATION_8=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
 ```

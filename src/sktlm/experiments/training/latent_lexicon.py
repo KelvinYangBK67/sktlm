@@ -92,6 +92,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--piece-form-cache-bytes", type=int, default=256 * 1024 * 1024
     )
+    parser.add_argument(
+        "--no-piece-shared-token-marginals",
+        action="store_true",
+        help="Disable the bounded exact token-local shared-prefix marginal DP.",
+    )
+    parser.add_argument(
+        "--piece-shared-prefix-nodes",
+        type=int,
+        default=262_144,
+        help="Finite per-token shared-prefix node bound before exact fallback.",
+    )
     parser.add_argument("--resume", action="store_true")
     return parser
 
@@ -140,6 +151,10 @@ def main(argv: list[str] | None = None) -> None:
         piece_score_cache_bytes=args.piece_score_cache_bytes,
         piece_form_cache_entries=args.piece_form_cache_entries,
         piece_form_cache_bytes=args.piece_form_cache_bytes,
+        piece_shared_token_marginals=(
+            not args.no_piece_shared_token_marginals
+        ),
+        piece_shared_prefix_nodes=args.piece_shared_prefix_nodes,
         resume=args.resume,
     )
     result = run_training(config)

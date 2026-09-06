@@ -1418,6 +1418,32 @@ S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 64. Shared token-local form-prefix marginal DP implemented (2026-09-06)
+
+Optimization 8 replaces independent inner-form training marginal DPs with one
+exact token-local prefix DAG. Shared prefixes compute bounded-piece forward
+values once; unchanged outer lexical masses seed a reverse adjoint pass that
+aggregates exact piece counts and scalar marginals over every form endpoint.
+Whole-form transitions remain endpoint-local. The graph is transient, capped
+at 262,144 prefix nodes per token through an explicit engineering config, and
+falls back to the prior exact implementation before shared scoring if the cap
+would be exceeded.
+
+The shared route is enabled only when inspection top-K is absent and
+`piece_support_epsilon=0`; inspection and nonzero-threshold conditions retain
+the existing exact path. At epsilon zero, finite legal transition weights make
+positive occurrence support exactly structural. Shared/legacy tests cover all
+scientific marginals and support, plus the bound fallback. The pieces/latent
+suite passes (`87 passed`), including resume and serial/parallel equivalence.
+The candidate is not performance-accepted until its clean-SHA fixed paired
+probe completes.
+
+```text
+S1M2_OPTIMIZATION_8=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 61. Continuous optimization 6 accepted (2026-09-05)
 
 Candidate SHA `25fbeedc2afb84b868d35624ba5303310dcc574f` reuses immutable

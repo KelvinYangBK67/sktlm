@@ -12,7 +12,7 @@ from __future__ import annotations
 import math
 import time
 from collections import OrderedDict, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sktlm.latent.candidates import LexicalBoundary
 from sktlm.latent.inference import BoundaryPosterior, logaddexp
@@ -36,6 +36,8 @@ class ComposedCacheConfig:
     piece_score_bytes: int = 32 * 1024 * 1024
     form_entries: int = 8_192
     form_bytes: int = 256 * 1024 * 1024
+    shared_token_marginals: bool = True
+    shared_prefix_nodes: int = 262_144
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -43,9 +45,12 @@ class ComposedCacheConfig:
             ("piece_score_bytes", self.piece_score_bytes),
             ("form_entries", self.form_entries),
             ("form_bytes", self.form_bytes),
+            ("shared_prefix_nodes", self.shared_prefix_nodes),
         ):
             if value < 1:
                 raise ValueError(f"{name} must be >= 1")
+        if not isinstance(self.shared_token_marginals, bool):
+            raise TypeError("shared_token_marginals must be bool")
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +90,9 @@ class ComposedInferenceCounters:
     form_cache_misses: int = 0
     form_cache_evictions: int = 0
     form_cache_oversize: int = 0
+    shared_prefix_nodes: int = 0
+    shared_form_endpoints: int = 0
+    shared_batch_fallbacks: int = 0
     store_lookups: int = 0
     piece_score_cache_entries: int = 0
     piece_score_cache_estimated_bytes: int = 0
@@ -131,6 +139,9 @@ _EVENT_COUNTERS = (
     "form_cache_misses",
     "form_cache_evictions",
     "form_cache_oversize",
+    "shared_prefix_nodes",
+    "shared_form_endpoints",
+    "shared_batch_fallbacks",
     "store_lookups",
 )
 
@@ -226,6 +237,44 @@ class _FactorSummary:
     rule_usage: dict[str, float]
     piece_occurrences: dict[PhonologicalForm, dict[str, float]]
     top_paths: tuple[_ComposedPath, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _SharedPieceTransition:
+    source: int
+    piece: PhonologicalForm
+    prior_score: float
+    raw_score: float
+
+
+@dataclass(slots=True)
+class _SharedPrefixNode:
+    parent: int
+    symbol: Phoneme | None
+    depth: int
+    children: dict[Phoneme, int] = field(default_factory=dict)
+    transitions: tuple[_SharedPieceTransition, ...] = ()
+    prior_alpha: float = -math.inf
+    alpha: float = -math.inf
+    singleton_score: float = -math.inf
+
+
+@dataclass(frozen=True, slots=True)
+class _SharedFormScore:
+    form: PhonologicalForm
+    node: int
+    prior_log_normalizer: float
+    raw_log_partition: float
+    log_score: float
+    whole_piece: PhonologicalForm
+    whole_raw_score: float
+    singleton_score: float
+
+
+@dataclass(slots=True)
+class _SharedFormBatch:
+    nodes: list[_SharedPrefixNode]
+    forms: dict[str, _SharedFormScore]
 
 
 def _estimated_form_bytes(form: PhonologicalForm) -> int:
@@ -545,6 +594,220 @@ class ComposedPieceInference:
         self._form_bytes += size
         return evaluation
 
+    def _build_shared_form_batch(
+        self,
+        forms: tuple[PhonologicalForm, ...],
+    ) -> _SharedFormBatch | None:
+        """Build one bounded prefix DAG for exact token-local form scores.
+
+        The DAG shares only immutable phonological prefixes.  It is discarded
+        with the token summary and falls back before score/cache mutation when
+        its explicit engineering node bound would be exceeded.
+        """
+
+        evaluation_started = time.perf_counter()
+        nodes = [
+            _SharedPrefixNode(
+                parent=-1,
+                symbol=None,
+                depth=0,
+                prior_alpha=0.0,
+                alpha=0.0,
+                singleton_score=0.0,
+            )
+        ]
+        endpoints: dict[str, int] = {}
+        for form in forms:
+            current = 0
+            for symbol in form.symbols:
+                child = nodes[current].children.get(symbol)
+                if child is None:
+                    if len(nodes) >= self.cache_config.shared_prefix_nodes:
+                        self._events["shared_batch_fallbacks"] += 1
+                        return None
+                    child = len(nodes)
+                    nodes[current].children[symbol] = child
+                    nodes.append(
+                        _SharedPrefixNode(
+                            parent=current,
+                            symbol=symbol,
+                            depth=nodes[current].depth + 1,
+                        )
+                    )
+                current = child
+            endpoints[form.key] = current
+
+        transition_started = time.perf_counter()
+        transition_count = 0
+        max_piece_length = self.model_config.max_piece_length
+        rho = self.model_config.rho
+        for node_index in range(1, len(nodes)):
+            node = nodes[node_index]
+            cursor = node_index
+            suffix_reversed: list[Phoneme] = []
+            descending: list[_SharedPieceTransition] = []
+            for _piece_length in range(
+                1,
+                min(node.depth, max_piece_length) + 1,
+            ):
+                symbol = nodes[cursor].symbol
+                assert symbol is not None
+                suffix_reversed.append(symbol)
+                source = nodes[cursor].parent
+                piece, piece_score = self._piece_and_score(
+                    tuple(reversed(suffix_reversed))
+                )
+                prior = _raw_prior_score(
+                    nodes[source].depth,
+                    node.depth,
+                    rho=rho,
+                )
+                descending.append(
+                    _SharedPieceTransition(
+                        source=source,
+                        piece=piece,
+                        prior_score=prior,
+                        raw_score=prior + piece_score,
+                    )
+                )
+                cursor = source
+            # Existing per-form DP accumulates contributions by ascending
+            # source position.  Preserve that deterministic order here.
+            node.transitions = tuple(reversed(descending))
+            transition_count += len(node.transitions)
+        self.add_timing("inner_piece_transition_build_seconds", transition_started)
+
+        forward_started = time.perf_counter()
+        for node_index in range(1, len(nodes)):
+            node = nodes[node_index]
+            prior_alpha = -math.inf
+            alpha = -math.inf
+            for transition in node.transitions:
+                source = nodes[transition.source]
+                prior_alpha = logaddexp(
+                    prior_alpha,
+                    source.prior_alpha + transition.prior_score,
+                )
+                alpha = logaddexp(
+                    alpha,
+                    source.alpha + transition.raw_score,
+                )
+            node.prior_alpha = prior_alpha
+            node.alpha = alpha
+            singleton = node.transitions[-1]
+            assert singleton.source == node.parent
+            node.singleton_score = (
+                nodes[node.parent].singleton_score + singleton.raw_score
+            )
+        self.add_timing("inner_piece_forward_seconds", forward_started)
+
+        scores: dict[str, _SharedFormScore] = {}
+        long_whole_started = time.perf_counter()
+        for form in forms:
+            node_index = endpoints[form.key]
+            node = nodes[node_index]
+            if node.depth > max_piece_length:
+                whole_piece, piece_score = self._piece_and_score(form.symbols)
+                whole_prior = _raw_prior_score(0, node.depth, rho=rho)
+                whole_raw = whole_prior + piece_score
+                prior_log_z = logaddexp(whole_prior, node.prior_alpha)
+                raw_log_z = logaddexp(whole_raw, node.alpha)
+                transition_count += 1
+            else:
+                whole = next(
+                    transition
+                    for transition in node.transitions
+                    if transition.source == 0
+                )
+                whole_piece = whole.piece
+                whole_raw = whole.raw_score
+                prior_log_z = node.prior_alpha
+                raw_log_z = node.alpha
+            if prior_log_z == -math.inf or raw_log_z == -math.inf:
+                raise ValueError("Lexical form has no complete piece segmentation.")
+            scores[form.key] = _SharedFormScore(
+                form=form,
+                node=node_index,
+                prior_log_normalizer=prior_log_z,
+                raw_log_partition=raw_log_z,
+                log_score=raw_log_z - prior_log_z,
+                whole_piece=whole_piece,
+                whole_raw_score=whole_raw,
+                singleton_score=node.singleton_score,
+            )
+        self.add_timing(
+            "inner_piece_transition_build_seconds",
+            long_whole_started,
+        )
+        self._events["composed_state_count"] += len(nodes)
+        self._events["composed_transition_count"] += transition_count
+        self._events["shared_prefix_nodes"] += len(nodes)
+        self._events["shared_form_endpoints"] += len(scores)
+        self.add_timing("inner_piece_evaluation_seconds", evaluation_started)
+        return _SharedFormBatch(nodes=nodes, forms=scores)
+
+    def _aggregate_shared_piece_marginals(
+        self,
+        batch: _SharedFormBatch,
+        endpoint_masses: dict[str, float],
+    ) -> tuple[dict[PhonologicalForm, float], float]:
+        """Reverse one shared DAG for posterior-weighted exact piece counts."""
+
+        started = time.perf_counter()
+        log_adjoint = [-math.inf] * len(batch.nodes)
+        piece_counts: dict[PhonologicalForm, float] = defaultdict(float)
+        expected_raw_score = 0.0
+        max_piece_length = self.model_config.max_piece_length
+        for form_key, mass in endpoint_masses.items():
+            if mass <= 0.0:
+                continue
+            score = batch.forms[form_key]
+            seed = math.log(mass) - score.raw_log_partition
+            log_adjoint[score.node] = logaddexp(
+                log_adjoint[score.node],
+                seed,
+            )
+            if len(score.form.symbols) > max_piece_length:
+                contribution = math.exp(seed + score.whole_raw_score)
+                piece_counts[score.whole_piece] += contribution
+                expected_raw_score += contribution * score.whole_raw_score
+
+        for node_index in range(len(batch.nodes) - 1, 0, -1):
+            adjoint = log_adjoint[node_index]
+            if adjoint == -math.inf:
+                continue
+            node = batch.nodes[node_index]
+            for transition in node.transitions:
+                source = batch.nodes[transition.source]
+                contribution = math.exp(
+                    adjoint + source.alpha + transition.raw_score
+                )
+                piece_counts[transition.piece] += contribution
+                expected_raw_score += contribution * transition.raw_score
+                log_adjoint[transition.source] = logaddexp(
+                    log_adjoint[transition.source],
+                    adjoint + transition.raw_score,
+                )
+        self.add_timing("inner_piece_backward_seconds", started)
+        self.add_timing("inner_piece_posterior_seconds", started)
+        return dict(piece_counts), expected_raw_score
+
+    def _shared_legal_pieces(
+        self,
+        batch: _SharedFormBatch,
+        score: _SharedFormScore,
+    ) -> tuple[PhonologicalForm, ...]:
+        """Return deterministic positive-support pieces for one endpoint."""
+
+        pieces: dict[str, PhonologicalForm] = {}
+        cursor = score.node
+        while cursor:
+            for transition in batch.nodes[cursor].transitions:
+                pieces.setdefault(transition.piece.key, transition.piece)
+            cursor = batch.nodes[cursor].parent
+        pieces.setdefault(score.whole_piece.key, score.whole_piece)
+        return tuple(pieces[key] for key in sorted(pieces))
+
     def record_graph(self, graph: LazyCandidateGraph) -> None:
         self._events["candidate_factors"] += len(graph.factors)
         self._events["candidate_nodes"] += sum(
@@ -562,7 +825,7 @@ class ComposedPieceInference:
         self._events["merged_form_traversals"] += 1
 
 
-def _evaluate_lazy_token(
+def _evaluate_lazy_token_legacy(
     lattice: LazyTokenLattice,
     engine: ComposedPieceInference,
 ) -> _TokenSummary:
@@ -725,11 +988,169 @@ def _evaluate_lazy_token(
     )
 
 
+def _evaluate_lazy_token_shared(
+    lattice: LazyTokenLattice,
+    engine: ComposedPieceInference,
+) -> _TokenSummary | None:
+    """Exact training marginals through a bounded token-local prefix DAG."""
+
+    node_count = len(lattice.nodes)
+    spans_by_start: list[tuple[LazyLexicalSpan, ...]] = []
+    unique_forms: dict[str, PhonologicalForm] = {}
+    for start in range(node_count - 1):
+        spans = tuple(lattice.iter_spans_from(start))
+        spans_by_start.append(spans)
+        for span in spans:
+            unique_forms.setdefault(span.word.key, span.word)
+    batch = engine._build_shared_form_batch(tuple(unique_forms.values()))
+    if batch is None:
+        return None
+    for spans in spans_by_start:
+        for _span in spans:
+            engine.record_lazy_span(hypothesis=True)
+
+    alpha = [-math.inf] * node_count
+    alpha[0] = 0.0
+    started = time.perf_counter()
+    for start, spans in enumerate(spans_by_start):
+        if alpha[start] == -math.inf:
+            continue
+        for span in spans:
+            score = batch.forms[span.word.key].log_score
+            alpha[span.end] = logaddexp(
+                alpha[span.end],
+                alpha[start] + score,
+            )
+    engine.add_timing("lazy_token_forward_seconds", started)
+    log_z = alpha[-1]
+    if log_z == -math.inf:
+        raise ValueError("Lazy token lattice has no complete lexical analysis.")
+
+    beta = [-math.inf] * node_count
+    beta[-1] = 0.0
+    started = time.perf_counter()
+    for start in range(node_count - 2, -1, -1):
+        for span in spans_by_start[start]:
+            score = batch.forms[span.word.key].log_score
+            beta[start] = logaddexp(
+                beta[start],
+                score + beta[span.end],
+            )
+    engine.add_timing("lazy_token_backward_seconds", started)
+
+    lexical_counts: dict[PhonologicalForm, float] = defaultdict(float)
+    boundary_mass: dict[str, float] = defaultdict(float)
+    boundary_meta: dict[str, LexicalBoundary] = {}
+    rule_usage: dict[str, float] = defaultdict(float)
+    endpoint_masses: dict[str, float] = defaultdict(float)
+    form_occurrences: dict[str, set[str]] = defaultdict(set)
+    expected_prior_log_z = 0.0
+    mass_weighted_raw_log_z = 0.0
+    expected_whole_form_uses = 0.0
+    expected_singleton_path_uses = 0.0
+    expected_multi_piece_uses = 0.0
+    started = time.perf_counter()
+    for start, spans in enumerate(spans_by_start):
+        for span in spans:
+            score = batch.forms[span.word.key]
+            mass = math.exp(
+                alpha[span.start]
+                + score.log_score
+                + beta[span.end]
+                - log_z
+            )
+            lexical_counts[span.word] += mass
+            endpoint_masses[span.word.key] += mass
+            expected_prior_log_z += mass * score.prior_log_normalizer
+            mass_weighted_raw_log_z += mass * score.raw_log_partition
+            whole_mass = math.exp(
+                score.whole_raw_score - score.raw_log_partition
+            )
+            singleton_mass = math.exp(
+                score.singleton_score - score.raw_log_partition
+            )
+            expected_whole_form_uses += mass * whole_mass
+            expected_singleton_path_uses += mass * singleton_mass
+            expected_multi_piece_uses += mass * (1.0 - whole_mass)
+            if mass > 0.0:
+                form_occurrences[span.word.key].add(
+                    f"{lattice.nodes[span.start].surface_end}:"
+                    f"{lattice.nodes[span.end].surface_start}:{span.word.key}"
+                )
+            if span.boundary is not None:
+                boundary_mass[span.boundary.boundary_id] += mass
+                boundary_meta[span.boundary.boundary_id] = span.boundary
+            for rule_id in span.rule_ids:
+                rule_usage[rule_id] += mass / len(span.rule_ids)
+
+    piece_counts, expected_raw_score = (
+        engine._aggregate_shared_piece_marginals(batch, endpoint_masses)
+    )
+    piece_occurrences: dict[
+        PhonologicalForm, dict[str, float]
+    ] = defaultdict(dict)
+    # The shared route is used only for support_epsilon == 0. Every legal
+    # transition has finite weight, so structural membership is exactly the
+    # positive-posterior support event; the numeric sentinel is never used as
+    # an expected count.
+    for form_key, occurrences in form_occurrences.items():
+        for piece in engine._shared_legal_pieces(batch, batch.forms[form_key]):
+            for occurrence_id in occurrences:
+                piece_occurrences[piece][occurrence_id] = 1.0
+
+    identity = lattice.span(0, node_count - 1)
+    identity_log_score = -math.inf
+    if identity is not None:
+        identity_log_score = batch.forms[identity.word.key].log_score
+    engine.add_timing("lazy_token_posterior_seconds", started)
+    return _TokenSummary(
+        log_partition=log_z,
+        expected_log_weight=expected_raw_score - expected_prior_log_z,
+        identity_log_score=identity_log_score,
+        expected_piece_tokens=sum(piece_counts.values()),
+        piece_segmentation_entropy=max(
+            0.0,
+            mass_weighted_raw_log_z - expected_raw_score,
+        ),
+        expected_whole_form_uses=expected_whole_form_uses,
+        expected_singleton_path_uses=expected_singleton_path_uses,
+        expected_multi_piece_uses=expected_multi_piece_uses,
+        lexical_counts=dict(lexical_counts),
+        piece_counts=piece_counts,
+        boundary_mass=dict(boundary_mass),
+        boundary_meta=boundary_meta,
+        rule_usage=dict(rule_usage),
+        piece_occurrences={
+            piece: dict(occurrences)
+            for piece, occurrences in piece_occurrences.items()
+        },
+        top_paths=(),
+    )
+
+
+def _evaluate_lazy_token(
+    lattice: LazyTokenLattice,
+    engine: ComposedPieceInference,
+    *,
+    support_epsilon: float,
+) -> _TokenSummary:
+    if (
+        engine.cache_config.shared_token_marginals
+        and engine.inspection_top_k is None
+        and support_epsilon == 0.0
+    ):
+        shared = _evaluate_lazy_token_shared(lattice, engine)
+        if shared is not None:
+            return shared
+    return _evaluate_lazy_token_legacy(lattice, engine)
+
+
 def _evaluate_factor(
     factor: LazySegmentFactor,
     engine: ComposedPieceInference,
     *,
     whitespace_merge_penalty: float,
+    support_epsilon: float,
 ) -> _FactorSummary:
     if factor.merged_word is not None:
         engine.record_merged_form()
@@ -776,7 +1197,11 @@ def _evaluate_factor(
             top_paths=top_paths,
         )
     assert factor.lattice is not None
-    token = _evaluate_lazy_token(factor.lattice, engine)
+    token = _evaluate_lazy_token(
+        factor.lattice,
+        engine,
+        support_epsilon=support_epsilon,
+    )
     return _FactorSummary(
         factor=factor,
         log_score=token.log_partition,
@@ -959,6 +1384,7 @@ def infer_composed_segment(
             factor,
             engine,
             whitespace_merge_penalty=whitespace_merge_penalty,
+            support_epsilon=support_epsilon,
         )
         for factor in graph.factors
     )
