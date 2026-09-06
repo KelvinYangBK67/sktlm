@@ -1559,6 +1559,29 @@ PRODUCTION_STORAGE_GATE=NOT_READY
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 70. Token-local lexical-form interning implemented (2026-09-06)
+
+The shared token evaluator already retained every legal span and a separate
+table of its unique lexical forms. Optimization 11 makes span construction use
+that table directly as a phoneme-tuple interner: repeated equal forms across
+distinct node pairs share one immutable `PhonologicalForm`, while every span,
+boundary, rule, and occurrence remains distinct. It also reuses the identity
+span already present in the span table rather than reconstructing it.
+
+This is token-local and discarded with the shared summary; its cardinality is
+exactly the removed unique-form table, so it adds no corpus-lived state or new
+asymptotic retention. Default lazy/P1b traversal remains unchanged. The new
+identity/reuse test, all shared/legacy exact tests, and the complete
+pieces/latent suite pass (`90 passed`). A clean-SHA fixed probe is required
+before acceptance.
+
+```text
+S1M2_OPTIMIZATION_11=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+CONTINUOUS_RUNTIME_TARGET=NOT_READY
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 61. Continuous optimization 6 accepted (2026-09-05)
 
 Candidate SHA `25fbeedc2afb84b868d35624ba5303310dcc574f` reuses immutable

@@ -1076,13 +1076,20 @@ def _evaluate_lazy_token_shared(
 
     node_count = len(lattice.nodes)
     spans_by_start: list[tuple[LazyLexicalSpan, ...]] = []
-    unique_forms: dict[str, PhonologicalForm] = {}
+    # Span construction must recover the form symbols for legality, but the
+    # same lexical form can occur at many node pairs.  Intern those immutable
+    # forms only for this token; this replaces the former unique-form table
+    # rather than adding another retained structure.
+    form_interner: dict[tuple[Phoneme, ...], PhonologicalForm] = {}
     for start in range(node_count - 1):
-        spans = tuple(lattice.iter_spans_from(start))
+        spans = tuple(
+            lattice.iter_spans_from(
+                start,
+                form_interner=form_interner,
+            )
+        )
         spans_by_start.append(spans)
-        for span in spans:
-            unique_forms.setdefault(span.word.key, span.word)
-    batch = engine._build_shared_form_batch(tuple(unique_forms.values()))
+    batch = engine._build_shared_form_batch(tuple(form_interner.values()))
     if batch is None:
         return None
     for spans in spans_by_start:
@@ -1178,7 +1185,14 @@ def _evaluate_lazy_token_shared(
             for occurrence_id in occurrences:
                 piece_occurrences[piece][occurrence_id] = 1.0
 
-    identity = lattice.span(0, node_count - 1)
+    identity = next(
+        (
+            span
+            for span in spans_by_start[0]
+            if span.end == node_count - 1 and span.identity_edge
+        ),
+        None,
+    )
     identity_log_score = -math.inf
     if identity is not None:
         identity_log_score = batch.forms[identity.word.key].log_score

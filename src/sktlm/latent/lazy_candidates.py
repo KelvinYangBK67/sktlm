@@ -68,7 +68,15 @@ class LazyTokenLattice:
     raw_internal_matches: int = 0
     retained_internal_matches: int = 0
 
-    def span(self, left_index: int, right_index: int) -> LazyLexicalSpan | None:
+    def span(
+        self,
+        left_index: int,
+        right_index: int,
+        *,
+        form_interner: dict[
+            tuple[Phoneme, ...], PhonologicalForm
+        ] | None = None,
+    ) -> LazyLexicalSpan | None:
         if not 0 <= left_index < right_index < len(self.nodes):
             raise IndexError("span endpoints must be ordered node indices")
         left, right = self.nodes[left_index], self.nodes[right_index]
@@ -81,9 +89,13 @@ class LazyTokenLattice:
         symbols = left.right_underlying + _phonemes(gap) + right.left_underlying
         if not symbols:
             return None
-        word = PhonologicalForm(symbols)
+        word = None if form_interner is None else form_interner.get(symbols)
+        if word is None:
+            word = PhonologicalForm(symbols)
         if not identity_edge and not word.has_vowel():
             return None
+        if form_interner is not None:
+            form_interner.setdefault(symbols, word)
         boundary = None
         if not right.is_end:
             boundary = LexicalBoundary(
@@ -112,17 +124,37 @@ class LazyTokenLattice:
             identity_edge=identity_edge,
         )
 
-    def iter_spans_from(self, left_index: int) -> Iterator[LazyLexicalSpan]:
+    def iter_spans_from(
+        self,
+        left_index: int,
+        *,
+        form_interner: dict[
+            tuple[Phoneme, ...], PhonologicalForm
+        ] | None = None,
+    ) -> Iterator[LazyLexicalSpan]:
         if not 0 <= left_index < len(self.nodes) - 1:
             return
         for right_index in range(left_index + 1, len(self.nodes)):
-            span = self.span(left_index, right_index)
+            span = self.span(
+                left_index,
+                right_index,
+                form_interner=form_interner,
+            )
             if span is not None:
                 yield span
 
-    def iter_spans(self) -> Iterator[LazyLexicalSpan]:
+    def iter_spans(
+        self,
+        *,
+        form_interner: dict[
+            tuple[Phoneme, ...], PhonologicalForm
+        ] | None = None,
+    ) -> Iterator[LazyLexicalSpan]:
         for left_index in range(len(self.nodes) - 1):
-            yield from self.iter_spans_from(left_index)
+            yield from self.iter_spans_from(
+                left_index,
+                form_interner=form_interner,
+            )
 
 
 @dataclass(frozen=True, slots=True)

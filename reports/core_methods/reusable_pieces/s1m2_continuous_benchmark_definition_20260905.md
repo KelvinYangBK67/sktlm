@@ -712,3 +712,27 @@ S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 CONTINUOUS_RUNTIME_TARGET=NOT_READY
 FULL_M0_PROCESS_RUNNING=NO
 ```
+
+### Optimization 11 candidate: token-local lexical-form interning
+
+The current shared evaluator materializes all legal spans once, then builds a
+separate insertion-ordered table of their unique lexical forms. The candidate
+uses that table as a phoneme-tuple interner during span construction instead:
+distinct span hypotheses remain distinct, while repeated equal immutable forms
+avoid repeated validation and key-string construction. It also selects the
+identity edge from the already-retained span table instead of calling
+`lattice.span()` again.
+
+The interner is discarded with one token summary and has exactly the same
+unique-form cardinality as the table it replaces. Ordinary lazy traversal is
+unchanged unless the caller explicitly supplies the token-local interner.
+Shared/legacy scientific equivalence, the dedicated reuse/identity test, and
+the pieces/latent suite pass (`90 passed`). Acceptance requires exact canonical
+artifact comparison and a measured reduction in form-construction or
+shared-batch/span cost on the fixed paired probe.
+
+```text
+S1M2_OPTIMIZATION_11=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```

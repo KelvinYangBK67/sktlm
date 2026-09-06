@@ -172,6 +172,23 @@ def test_candidate_build_profiling_does_not_change_lazy_graph() -> None:
     assert first_span.symbols == first_span.word.symbols
 
 
+def test_lazy_span_form_interner_is_token_local_and_semantic_only() -> None:
+    grammar = StructuredSandhiGrammar.from_default_inventory()
+    segment = next(iter_observed_segments("devo'pi"))
+    graph = build_lazy_candidate_graph(segment, grammar)
+    saw_reuse = False
+
+    for factor in graph.factors:
+        if factor.lattice is None:
+            continue
+        interner: dict[tuple[Phoneme, ...], PhonologicalForm] = {}
+        spans = tuple(factor.lattice.iter_spans(form_interner=interner))
+        assert all(interner[span.symbols] is span.word for span in spans)
+        saw_reuse = saw_reuse or len(spans) > len(interner)
+
+    assert saw_reuse
+
+
 def test_inspection_top_paths_are_bounded_and_keep_exact_concatenation() -> None:
     grammar = StructuredSandhiGrammar.from_default_inventory()
     segment = next(iter_observed_segments("devo'pi"))
