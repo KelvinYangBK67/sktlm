@@ -36,7 +36,6 @@ production storage gate: NOT READY
 optimization 8 shared token-local form-prefix DP: ACCEPTED (training marginals)
 optimization 9 shared inspection marginals/top-K: ACCEPTED
 optimization 10 shared bounded piece-prefix top-K: ACCEPTED
-optimization 11 token-local lexical-form interning: IMPLEMENTED / EQUIVALENT
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -74,7 +73,7 @@ for transient output, so storage is also not ready. The benchmark must not be
 rerun. The stress and cloud scaling gates are deferred because they would only
 measure the already-decisive bad structural regime.
 
-## Next task: fixed cheap probe for optimization 11
+## Next task: continue measured exact structural optimization
 
 The fixed probe accepts optimization 8: training states fall 81.5%, transitions
 and score calls 78.3%, training inference 70.3%/73.2%, and complete wall
@@ -90,17 +89,11 @@ flat within cheap-probe precision (`0.25%` improvement), while its inspection
 inference still improves `7.9%`; this noise is recorded rather than promoted
 as a total-wall claim. No shared-bound fallback occurs.
 
-Optimization 11 replaces the shared evaluator's separate unique-form table
-with a token-local interner keyed by the already-required phoneme tuple. All
-span positions and evidence remain distinct, but repeated equal lexical forms
-reuse one immutable `PhonologicalForm`; the already-enumerated identity span is
-also reused. The structure dies with the token and has the same unique-form
-cardinality as the removed table. Focused P1c and pieces/latent tests pass (`90
-passed`). Commit and push this coherent candidate, then run the fixed paired
-probe exactly once. Compare all canonical artifacts plus `PhonologicalForm`
-construction counts and shared-batch/span timings against optimization 10.
-Reject it if the measured construction mechanism does not improve. Do not
-rerun representative, stress, cloud, or full-M0 yet.
+Continue from the current profile's largest remaining exact structural cost:
+shared-batch and transient lazy span/form construction, followed by bounded
+outer composed-path selection. Require focused equivalence plus this same
+fixed cheap probe for any accepted change. Do not rerun representative, stress,
+cloud, or full-M0 until a further exact change materially alters the regime.
 
 ```text
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
@@ -122,5 +115,4 @@ S1M2_CONTINUOUS_STRUCTURAL_FACTORIZATION=IN_PROGRESS
 S1M2_OPTIMIZATION_8=ACCEPTED_TRAINING_ONLY
 S1M2_OPTIMIZATION_9=ACCEPTED
 S1M2_OPTIMIZATION_10=ACCEPTED
-S1M2_OPTIMIZATION_11=IMPLEMENTED_EQUIVALENT_AWAITING_FIXED_PROBE
 ```
