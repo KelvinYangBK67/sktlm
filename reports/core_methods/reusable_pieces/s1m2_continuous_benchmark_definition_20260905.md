@@ -647,6 +647,46 @@ S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+### Factorized representative result: complete, artifact audit pending
+
+The detached paired attempt
+`s1m2_continuous_representative_factorized_v2_attempt01` completed at
+`8f694d64d350b1e7e2c882de3556d69bcda2b8db` with exit code zero and empty
+stderr logs. Provenance binds the frozen workload and input manifests, one
+pass, and local Windows w4.
+
+| Cell | One pass + inspection | Change vs opt. 7 | Reconstructed 3-pass pipeline | Central full projection | Conservative projection |
+|---|---:|---:|---:|---:|---:|
+| M0-prime IAST continuous | 1.488 h | -48.4% | 2.299 h | 232.8 h | 303.2 h |
+| M0 Devanagari continuous | 1.308 h | -54.5% | 2.043 h | 206.8 h | 269.4 h |
+
+Each phase retains 6,886,648 exact lexical-span hypotheses but shares them
+through 5,448,470 prefix states and 39,051,167 transitions. The two frontends
+match exactly on these structural counters, no shared cap fallback occurs,
+states fall 83.7%, and transitions fall 80.4% relative to optimization 7.
+The result is a material exact improvement but remains roughly two orders of
+magnitude above the formal runtime target after full-corpus projection.
+
+Scientific output size is unchanged. Final outputs are 2.43/2.52 GB and peak
+transient outputs are 3.76/3.89 GB on the fixed representative workload;
+phoneme scaling gives 354.1/366.8 GiB transient and 147.8/156.5 GiB SQLite per
+cell. Compact storage remains mandatory.
+
+The original comparator materialized complete TSV/JSONL artifacts and is not
+safe for these outputs. It now streams TSV rows and JSONL records under the
+same `rtol=1e-10`, `atol=1e-12` contract and enforces deterministic order. A
+focused fixture and the historical cheap comparisons pass. The full
+same-frontend old-vs-new comparisons will run once as a detached read-only
+audit; the model workload must not be rerun.
+
+```text
+S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=COMPLETE_AWAITING_STREAMING_AUDIT
+S1M2_BOUNDED_ARTIFACT_COMPARATOR=IMPLEMENTED_FOCUSED_PASS
+CONTINUOUS_RUNTIME_TARGET=NOT_READY
+PRODUCTION_STORAGE_GATE=NOT_READY
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ### Optimization 8 result: accepted for training marginals
 
 At clean candidate SHA `2dad1b342042eb1ec9b282c3fd0d1798b363557e`,

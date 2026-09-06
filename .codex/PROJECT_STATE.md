@@ -1426,6 +1426,43 @@ S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 74. Factorized representative complete; bounded audit implemented (2026-09-06)
+
+Detached attempt `s1m2_continuous_representative_factorized_v2_attempt01`
+completed successfully at Git SHA
+`8f694d64d350b1e7e2c882de3556d69bcda2b8db`. Durable state records exit zero,
+both stderr logs are empty, provenance/config/checkpoints bind the expected
+Git SHA, input hashes, one pass, and four workers, and both benchmark metrics
+are present.
+
+M0-prime IAST and M0 Devanagari wall times are 5,358.39 and 4,707.76 seconds
+(1.488/1.308 hours), improving 48.4%/54.5% over the frozen optimization-7
+representative. Both frontends traverse 6,886,648 legal span hypotheses per
+phase, 5,448,470 shared states, and 39,051,167 transitions, with no shared
+fallback. States fall 83.7% and transitions 80.4% relative to the old run.
+
+Reconstructed three-pass-plus-inspection sample times are 2.299/2.043 hours.
+The unchanged static multipliers give central phoneme projections of
+232.8/206.8 hours and conservative squared-span projections of 303.2/269.4
+hours. Runtime remains not ready by a wide margin. Output schemas are unchanged:
+phoneme-scaled transient output remains 354.1/366.8 GiB and SQLite remains
+147.8/156.5 GiB, so storage is not ready.
+
+The artifact comparator now streams large JSONL and TSV inputs in deterministic
+line/row order rather than materializing multi-gigabyte runs. Its focused test
+passes, as do both historical cheap comparisons. A detached old-vs-new
+same-frontend audit is required before promoting this representative result to
+fully validated. No training or benchmark rerun is required.
+
+```text
+S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=COMPLETE_AWAITING_STREAMING_AUDIT
+S1M2_BOUNDED_ARTIFACT_COMPARATOR=IMPLEMENTED_FOCUSED_PASS
+CONTINUOUS_RUNTIME_TARGET=NOT_READY
+PRODUCTION_STORAGE_GATE=NOT_READY
+S1M2_CONTINUOUS_STRESS=DEFERRED_PENDING_STRUCTURAL_OPTIMIZATION
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 62. Continuous optimization 7 accepted; representative gate next (2026-09-05)
 
 Candidate SHA `29c08a242bc4c4f65b39ddeebeb210c4bc45ccf3` keys the existing

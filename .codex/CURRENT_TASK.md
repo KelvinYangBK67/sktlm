@@ -38,6 +38,8 @@ optimization 9 shared inspection marginals/top-K: ACCEPTED
 optimization 10 shared bounded piece-prefix top-K: ACCEPTED
 optimization 11 token-local lexical-form interning: REJECTED / REVERTED
 optimization 12 exact bounded Cartesian top-K merge: ACCEPTED
+factorized local representative benchmark: COMPLETE / AUDIT PENDING
+bounded streaming artifact comparator: IMPLEMENTED / FOCUSED PASS
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -75,7 +77,24 @@ for transient output, so storage is also not ready. The benchmark must not be
 rerun. The stress and cloud scaling gates are deferred because they would only
 measure the already-decisive bad structural regime.
 
-## Next task: detached representative rerun for the new structural regime
+## Factorized representative result
+
+Detached attempt `s1m2_continuous_representative_factorized_v2_attempt01`
+completed at `8f694d64d350b1e7e2c882de3556d69bcda2b8db`, with exit code zero
+and empty stderr logs. One pass plus exact inspection now takes 1.488 hours
+for M0-prime IAST and 1.308 hours for M0 Devanagari, improvements of
+48.4%/54.5% over the frozen optimization-7 representative. Shared states fall
+83.7% and transitions 80.4%, with identical frontend structural counts and no
+shared fallback.
+
+The reconstructed three-pass-plus-inspection samples are 2.299/2.043 hours.
+Full-corpus central phoneme projections remain 232.8/206.8 hours, and
+conservative squared-span projections remain 303.2/269.4 hours. Runtime is
+therefore decisively not ready. Artifact/SQLite sizes are scientifically
+unchanged; phoneme scaling still projects 354.1/366.8 GiB transient output and
+147.8/156.5 GiB SQLite. Storage is not ready.
+
+## Next task: detached bounded streaming artifact audit
 
 The fixed probe accepts optimization 8: training states fall 81.5%, transitions
 and score calls 78.3%, training inference 70.3%/73.2%, and complete wall
@@ -111,14 +130,14 @@ inference improves `5.3%`/`16.0%`, and profiled calls fall `4.0%`. Opposing
 subsecond total-wall changes are recorded as noise, not evidence against the
 reproduced target-phase result.
 
-Optimizations 8--12 have now materially changed the structural regime since
-the frozen representative attempt at optimization 7: shared states fall
-`81.5%`, transitions/score calls fall `78.3%`, and both training and inspection
-use the factorized path. Prepare and launch exactly one new detached paired
-representative attempt from a clean pushed acceptance SHA using the frozen
-workload and the existing durable Scheduled Task convention. Record command,
-SHA, inputs, run IDs, logs, and refusal of overwrite, then return
-`WAITING_EXTERNAL`. Do not run stress, cloud, or full-M0.
+The previous comparator loaded complete large TSV/JSONL artifacts in memory.
+It now compares JSONL line-by-line and TSV row-by-row under the same numerical
+contract and deterministic order; its focused test and both cheap historical
+comparisons pass. Commit and push this bounded audit implementation, then
+launch exactly one detached audit comparing each factorized representative
+cell to its same-frontend optimization-7 reference. Also verify the three
+script-neutral artifacts share hashes across the new frontends. Do not rerun
+training, representative, stress, cloud, or full-M0.
 
 ```text
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
@@ -142,5 +161,6 @@ S1M2_OPTIMIZATION_9=ACCEPTED
 S1M2_OPTIMIZATION_10=ACCEPTED
 S1M2_OPTIMIZATION_11=REJECTED_REVERTED
 S1M2_OPTIMIZATION_12=ACCEPTED
-S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=READY_TO_LAUNCH_DETACHED
+S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=COMPLETE_AWAITING_STREAMING_AUDIT
+S1M2_BOUNDED_ARTIFACT_COMPARATOR=IMPLEMENTED_FOCUSED_PASS
 ```

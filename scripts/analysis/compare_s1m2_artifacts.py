@@ -7,6 +7,7 @@ import csv
 import json
 import math
 from dataclasses import dataclass
+from itertools import zip_longest
 from pathlib import Path
 from typing import Any
 
@@ -38,24 +39,7 @@ def _maybe_float(value: str) -> str | float:
 
 
 def _load(path: Path) -> Any:
-    if path.suffix == ".json":
-        return json.loads(path.read_text(encoding="utf-8"))
-    if path.suffix == ".jsonl":
-        return [
-            json.loads(line)
-            for line in path.read_text(encoding="utf-8").splitlines()
-        ]
-    with path.open(encoding="utf-8", newline="") as handle:
-        rows = [
-            [_maybe_float(value) for value in row]
-            for row in csv.reader(handle, delimiter="\t")
-        ]
-    if not rows:
-        raise ValueError(f"empty TSV artifact: {path}")
-    keyed = {str(row[0]): row[1:] for row in rows[1:]}
-    if len(keyed) != len(rows) - 1:
-        raise ValueError(f"duplicate first-column identity in {path}")
-    return {"header": rows[0], "rows": keyed}
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _compare(
@@ -125,6 +109,128 @@ def _compare(
         raise AssertionError(f"{path}: {left!r} != {right!r}")
 
 
+_MISSING = object()
+
+
+def _compare_jsonl(
+    left_path: Path,
+    right_path: Path,
+    *,
+    name: str,
+    result: Comparison,
+    rtol: float,
+    atol: float,
+) -> None:
+    with (
+        left_path.open(encoding="utf-8") as left_handle,
+        right_path.open(encoding="utf-8") as right_handle,
+    ):
+        for index, (left_line, right_line) in enumerate(
+            zip_longest(left_handle, right_handle, fillvalue=_MISSING)
+        ):
+            if left_line is _MISSING or right_line is _MISSING:
+                raise AssertionError(f"{name}: line counts differ at {index}")
+            _compare(
+                json.loads(left_line),
+                json.loads(right_line),
+                path=f"{name}[{index}]",
+                result=result,
+                rtol=rtol,
+                atol=atol,
+            )
+
+
+def _parse_tsv_row(row: list[str]) -> list[str | float]:
+    if not row:
+        return []
+    return [row[0], *(_maybe_float(value) for value in row[1:])]
+
+
+def _compare_tsv(
+    left_path: Path,
+    right_path: Path,
+    *,
+    name: str,
+    result: Comparison,
+    rtol: float,
+    atol: float,
+) -> None:
+    with (
+        left_path.open(encoding="utf-8", newline="") as left_handle,
+        right_path.open(encoding="utf-8", newline="") as right_handle,
+    ):
+        left_rows = csv.reader(left_handle, delimiter="\t")
+        right_rows = csv.reader(right_handle, delimiter="\t")
+        left_header = next(left_rows, None)
+        right_header = next(right_rows, None)
+        if left_header is None or right_header is None:
+            raise ValueError(f"empty TSV artifact: {left_path} or {right_path}")
+        _compare(
+            left_header,
+            right_header,
+            path=f"{name}.header",
+            result=result,
+            rtol=rtol,
+            atol=atol,
+        )
+        for index, (left_row, right_row) in enumerate(
+            zip_longest(left_rows, right_rows, fillvalue=_MISSING),
+            start=1,
+        ):
+            if left_row is _MISSING or right_row is _MISSING:
+                raise AssertionError(f"{name}: row counts differ at {index}")
+            if not left_row or not right_row:
+                raise AssertionError(f"{name}: empty row at {index}")
+            left_identity = left_row[0]
+            _compare(
+                _parse_tsv_row(left_row),
+                _parse_tsv_row(right_row),
+                path=f"{name}[{left_identity}]",
+                result=result,
+                rtol=rtol,
+                atol=atol,
+            )
+
+
+def _compare_artifact(
+    left_path: Path,
+    right_path: Path,
+    *,
+    name: str,
+    result: Comparison,
+    rtol: float,
+    atol: float,
+) -> None:
+    if left_path.suffix == ".jsonl":
+        _compare_jsonl(
+            left_path,
+            right_path,
+            name=name,
+            result=result,
+            rtol=rtol,
+            atol=atol,
+        )
+        return
+    if left_path.suffix == ".tsv":
+        _compare_tsv(
+            left_path,
+            right_path,
+            name=name,
+            result=result,
+            rtol=rtol,
+            atol=atol,
+        )
+        return
+    _compare(
+        _load(left_path),
+        _load(right_path),
+        path=name,
+        result=result,
+        rtol=rtol,
+        atol=atol,
+    )
+
+
 def compare_artifacts(
     reference: Path,
     candidate: Path,
@@ -134,10 +240,10 @@ def compare_artifacts(
 ) -> dict[str, Any]:
     result = Comparison()
     for name in CANONICAL_ARTIFACTS:
-        _compare(
-            _load(reference / name),
-            _load(candidate / name),
-            path=name,
+        _compare_artifact(
+            reference / name,
+            candidate / name,
+            name=name,
             result=result,
             rtol=rtol,
             atol=atol,
