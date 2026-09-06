@@ -36,6 +36,7 @@ production storage gate: NOT READY
 optimization 8 shared token-local form-prefix DP: ACCEPTED (training marginals)
 optimization 9 shared inspection marginals/top-K: ACCEPTED
 optimization 10 shared bounded piece-prefix top-K: ACCEPTED
+optimization 11 token-local lexical-form interning: REJECTED / REVERTED
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -89,11 +90,18 @@ flat within cheap-probe precision (`0.25%` improvement), while its inspection
 inference still improves `7.9%`; this noise is recorded rather than promoted
 as a total-wall claim. No shared-bound fallback occurs.
 
-Continue from the current profile's largest remaining exact structural cost:
-shared-batch and transient lazy span/form construction, followed by bounded
-outer composed-path selection. Require focused equivalence plus this same
-fixed cheap probe for any accepted change. Do not rerun representative, stress,
-cloud, or full-M0 until a further exact change materially alters the regime.
+Optimization 11 was scientifically exact but failed its performance gate and
+was reverted. It reduced `PhonologicalForm` construction calls by `13.9%`, but
+tuple-key interning made the profiled span path `9.5%`/`27.1%` slower and the
+shared evaluator `4.4%`/`3.7%` slower. Total wall improved `7.7%` in IAST but
+regressed `5.5%` in Devanagari, so the conflicting noisy totals do not override
+the repeated targeted-path regression. Do not repeat this timing or restore
+the interner.
+
+Continue with a different measured exact structural target, preferably
+bounded outer composed-path selection or direct shared-prefix construction.
+Require focused equivalence plus the fixed cheap probe. Do not rerun
+representative, stress, cloud, or full-M0 until the regime materially changes.
 
 ```text
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
@@ -115,4 +123,5 @@ S1M2_CONTINUOUS_STRUCTURAL_FACTORIZATION=IN_PROGRESS
 S1M2_OPTIMIZATION_8=ACCEPTED_TRAINING_ONLY
 S1M2_OPTIMIZATION_9=ACCEPTED
 S1M2_OPTIMIZATION_10=ACCEPTED
+S1M2_OPTIMIZATION_11=REJECTED_REVERTED
 ```

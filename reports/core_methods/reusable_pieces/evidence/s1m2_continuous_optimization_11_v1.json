@@ -1,0 +1,70 @@
+{
+  "schema_version": "sktlm-s1m2-continuous-optimization-evidence/v1",
+  "optimization_id": "token_local_lexical_form_interning",
+  "status": "REJECTED_REVERTED",
+  "baseline_git_sha": "b19df311e3ca15cba40d9a2c29b993434ebb1d19",
+  "candidate_git_sha": "5560f620fadeea3947d90e83a00fbf9be7a567de",
+  "revert_git_sha": "035802a5c8acf24291d5bb045d42d6b1d09072e1",
+  "workload": {
+    "id": "representative_probe",
+    "document_list_sha256": "7bf936025ce28c43cdae0407d532c461b50726a28275fa40062a8a6889296ed3",
+    "documents": 3,
+    "max_lines_per_document": 2,
+    "passes": 1,
+    "workers": 1,
+    "inspection_enabled": true,
+    "cprofile_enabled": true
+  },
+  "equivalence": {
+    "status": "PASS",
+    "comparator": "scripts/analysis/compare_s1m2_artifacts.py",
+    "numeric_values_compared_per_frontend": 10252,
+    "iast_max_absolute_difference": 0.0,
+    "iast_max_relative_difference": 0.0,
+    "devanagari_max_absolute_difference": 0.0,
+    "devanagari_max_relative_difference": 0.0,
+    "focused_pieces_latent_tests": "90 passed"
+  },
+  "cells": [
+    {
+      "cell_id": "m0_prime_iast_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_prime_iast_b19df31_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_prime_iast_5560f62_a01",
+      "candidate_benchmark_metrics_sha256": "66b126892b90657d22005b0ce1d96c3190988aaa2cc75788609a56be9042d9ed",
+      "candidate_profile_sha256": "dda1baf3fd793748a3844c65ca2fff5999d8616cfd7416d6a862d23164aee5c6",
+      "baseline_wall_seconds": 0.9241359999869019,
+      "candidate_wall_seconds": 0.8527482000063173,
+      "wall_change_percent": -7.725,
+      "baseline_span_cumulative_seconds": 0.095,
+      "candidate_span_cumulative_seconds": 0.104,
+      "span_regression_percent": 9.474,
+      "baseline_shared_evaluator_cumulative_seconds": 0.481,
+      "candidate_shared_evaluator_cumulative_seconds": 0.502,
+      "shared_evaluator_regression_percent": 4.366
+    },
+    {
+      "cell_id": "m0_devanagari_continuous",
+      "baseline_run_id": "s1m2_continuous_probe_m0_devanagari_b19df31_a01",
+      "candidate_run_id": "s1m2_continuous_probe_m0_devanagari_5560f62_a01",
+      "candidate_benchmark_metrics_sha256": "49d4e17853755576ad76f59b4f78ed128fba043392c7cd121e7c12ba2961a5bb",
+      "candidate_profile_sha256": "5f11e4fd2b52fd1df4e23412104498aeb4fea4dc51db80c0896073f001b31cae",
+      "baseline_wall_seconds": 0.8180753999913577,
+      "candidate_wall_seconds": 0.8628950999991503,
+      "wall_change_percent": 5.479,
+      "baseline_span_cumulative_seconds": 0.096,
+      "candidate_span_cumulative_seconds": 0.122,
+      "span_regression_percent": 27.083,
+      "baseline_shared_evaluator_cumulative_seconds": 0.458,
+      "candidate_shared_evaluator_cumulative_seconds": 0.475,
+      "shared_evaluator_regression_percent": 3.712
+    }
+  ],
+  "mechanism": {
+    "baseline_phonological_form_initializations": 10249,
+    "candidate_phonological_form_initializations": 8825,
+    "initialization_count_reduction_percent": 13.894,
+    "finding": "Tuple-key dictionary lookup and insertion outweighed the avoided immutable form/key constructions in the measured span path."
+  },
+  "decision": "Rejected and reverted. Scientific equivalence passes, but the targeted span and shared-evaluator profile costs regress in both frontends and total-wall direction disagrees. No timing repeat is warranted because the intended mechanism itself failed.",
+  "representative_rerun": "NOT_AUTHORIZED_OR_NEEDED"
+}

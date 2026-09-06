@@ -571,6 +571,29 @@ S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+### Optimization 11 result: rejected and reverted
+
+Candidate SHA `5560f620fadeea3947d90e83a00fbf9be7a567de` is scientifically
+exact: the canonical comparator reports zero numeric difference across 10,252
+values per frontend. It reduces `PhonologicalForm` initialization count by
+`13.9%`, from 10,249 to 8,825.
+
+The intended construction path nevertheless regresses. `LazyTokenLattice.span`
+cumulative time rises `9.5%` for M0-prime IAST and `27.1%` for M0 Devanagari;
+the shared evaluator rises `4.4%`/`3.7%`. Total wall moves in opposite
+directions (`-7.7%`/`+5.5%`), consistent with subsecond host noise rather than
+a reproducible win. Tuple-key dictionary work outweighs the avoided form/key
+construction in the target path. The candidate was reverted at
+`035802a5c8acf24291d5bb045d42d6b1d09072e1` without a repeat. Evidence is
+`evidence/s1m2_continuous_optimization_11_v1.json`.
+
+```text
+S1M2_OPTIMIZATION_10=ACCEPTED_ACTIVE_BASELINE
+S1M2_OPTIMIZATION_11=REJECTED_REVERTED
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ### Optimization 8 result: accepted for training marginals
 
 At clean candidate SHA `2dad1b342042eb1ec9b282c3fd0d1798b363557e`,

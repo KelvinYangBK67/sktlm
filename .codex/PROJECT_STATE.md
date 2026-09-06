@@ -1354,6 +1354,29 @@ S1M2_TRAINER_INTEGRATION=READY_TO_START
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 71. Token-local lexical-form interning rejected (2026-09-06)
+
+Candidate SHA `5560f620fadeea3947d90e83a00fbf9be7a567de` remained exactly
+equivalent to optimization 10 across seven artifacts and 10,252 values per
+frontend. It reduced `PhonologicalForm` initializations from 10,249 to 8,825
+(`13.9%`), but the added tuple-key dictionary work made the profiled span path
+`9.5%`/`27.1%` slower and the shared evaluator `4.4%`/`3.7%` slower. IAST and
+Devanagari total-wall changes disagreed (`-7.7%` and `+5.5%`).
+
+Because the intended mechanism regressed in both profiles, optimization 11
+was rejected and normally reverted by SHA
+`035802a5c8acf24291d5bb045d42d6b1d09072e1`; no repeat was run. Compact
+evidence is `s1m2_continuous_optimization_11_v1.json`. Optimization 10 remains
+the active implementation baseline.
+
+```text
+S1M2_OPTIMIZATION_10=ACCEPTED_ACTIVE_BASELINE
+S1M2_OPTIMIZATION_11=REJECTED_REVERTED
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+CONTINUOUS_RUNTIME_TARGET=NOT_READY
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 62. Continuous optimization 7 accepted; representative gate next (2026-09-05)
 
 Candidate SHA `29c08a242bc4c4f65b39ddeebeb210c4bc45ccf3` keys the existing
