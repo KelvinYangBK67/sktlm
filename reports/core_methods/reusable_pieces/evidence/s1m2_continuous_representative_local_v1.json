@@ -1,0 +1,125 @@
+{
+  "schema_version": "sktlm-s1m2-continuous-benchmark-evidence/v1",
+  "benchmark_id": "s1m2_continuous_representative_local_v1_attempt01",
+  "status": "COMPLETE_VALIDATED",
+  "git_sha": "765742a1037ff2e1ef5dc267d300742ad84ef0c8",
+  "benchmark_contract_sha256": "76869bc82db3bc4c48ea076e3241475e8c31f16470bcf147cec5e39c9c5643bd",
+  "document_list_sha256": "7bf936025ce28c43cdae0407d532c461b50726a28275fa40062a8a6889296ed3",
+  "external_job": {
+    "task_name": "sktlm-s1m2-cont-representative-local-v1-a01",
+    "run_id": "s1m2_continuous_representative_local_v1_attempt01",
+    "attempt": 1,
+    "started_at": "2026-09-05T19:30:15.5472450+02:00",
+    "finished_at": "2026-09-06T01:15:47.0190503+02:00",
+    "exit_code": 0,
+    "state_sha256": "d8f0188a46fb39452859a60b232873341d70efa8bc41b1c5d754460cd0aaccd1",
+    "iast_stderr_bytes": 0,
+    "devanagari_stderr_bytes": 0
+  },
+  "workload": {
+    "documents": 3,
+    "phonemes": 456891,
+    "punctuation_free_spans": 12306,
+    "squared_span_proxy": 17336773,
+    "maximum_span_phonemes": 85,
+    "passes": 1,
+    "inspection_enabled": true,
+    "workers": 4,
+    "cprofile_enabled": false,
+    "host_class": "local_windows_development"
+  },
+  "cells": [
+    {
+      "cell_id": "m0_prime_iast_continuous",
+      "script": "iast_m0_prime",
+      "manifest_sha256": "3a8cbb3359ce8cce2a7d551281a8faf50b9fed33f9b8d4bce3425d28237ae922",
+      "benchmark_metrics_sha256": "fd8db2a71fa3eb148893b03b90093c645e3f74056ae56e0768e076ce393a91bc",
+      "wall_seconds": 10374.5728745,
+      "cpu_seconds": 12275.96875,
+      "training_parallel_wall_seconds": 3369.5557811,
+      "inspection_parallel_wall_seconds": 6500.0591006,
+      "training_inference_worker_seconds": 4074.0102343,
+      "inspection_inference_worker_seconds": 8016.7958043,
+      "candidate_span_hypotheses_per_phase": 6886648,
+      "training_composed_states": 33510791,
+      "training_composed_transitions": 199678202,
+      "inspection_composed_states": 33511643,
+      "inspection_composed_transitions": 199680426,
+      "training_form_cache_evictions": 1954778,
+      "inspection_form_cache_evictions": 1954945,
+      "training_piece_score_cache_evictions": 3958816,
+      "inspection_piece_score_cache_evictions": 3958815,
+      "artifact_bytes": 2428267484,
+      "peak_transient_artifact_bytes": 3753889952,
+      "sqlite_total_bytes": 1567113568,
+      "reported_parent_peak_rss_bytes": 79400960
+    },
+    {
+      "cell_id": "m0_devanagari_continuous",
+      "script": "devanagari",
+      "manifest_sha256": "c04124f05c42e8605fb97ab1e472338c47e00ed80670b6473fb5ef4c91912cf6",
+      "benchmark_metrics_sha256": "2f9da72cd308bba4bf5972d2c2d85b759172949c7573ce1f32c807d73ffc8011",
+      "wall_seconds": 10352.9005515,
+      "cpu_seconds": 12159.765625,
+      "training_parallel_wall_seconds": 3352.2943377,
+      "inspection_parallel_wall_seconds": 6495.8634292,
+      "training_inference_worker_seconds": 4070.6983007,
+      "inspection_inference_worker_seconds": 8119.0057815,
+      "candidate_span_hypotheses_per_phase": 6886648,
+      "training_composed_states": 33510791,
+      "training_composed_transitions": 199678202,
+      "inspection_composed_states": 33511643,
+      "inspection_composed_transitions": 199680426,
+      "training_form_cache_evictions": 1954778,
+      "inspection_form_cache_evictions": 1954945,
+      "training_piece_score_cache_evictions": 3958816,
+      "inspection_piece_score_cache_evictions": 3958815,
+      "artifact_bytes": 2521922615,
+      "peak_transient_artifact_bytes": 3889166013,
+      "sqlite_total_bytes": 1659502944,
+      "reported_parent_peak_rss_bytes": 82632704
+    }
+  ],
+  "script_neutral_equivalence": {
+    "status": "PASS",
+    "piece_inventory_sha256": "b519fe1678cbe5e125d96eee4e372d3eaa013fbdfb2c5477ca31bf7f0ff2fd0e",
+    "lexical_diagnostics_sha256": "3a532467a2c7fca4ea77865e3bf24c19b40c8e7ba8d71a2fea8df07c0bc289d1",
+    "rule_usage_sha256": "d326e9fb735813631b765ea829e48b72f3f33d387aa855ee374c446942e75fa4",
+    "iteration_metrics_difference": "written character count only",
+    "summary_difference": "written character count only",
+    "presentation_artifacts": "analyses and boundary offsets legitimately retain script-specific written provenance"
+  },
+  "full_corpus_projection": {
+    "formal_pipeline": "three training passes plus final exact inspection and measured fixed finalization",
+    "multipliers": {
+      "documents": 80.0,
+      "phonemes": 101.23887973280279,
+      "squared_span_proxy": 131.85572672607526
+    },
+    "m0_prime_iast_continuous": {
+      "measured_sample_formal_pipeline_hours": 4.753801232416666,
+      "document_projection_hours": 380.3040985933333,
+      "central_phoneme_projection_hours": 481.26951124228054,
+      "conservative_complexity_projection_hours": 626.8159162116117,
+      "phoneme_projected_artifact_gib": 228.95175942382926,
+      "phoneme_projected_peak_transient_artifact_gib": 353.9394711895891,
+      "phoneme_projected_sqlite_gib": 147.75695469080978
+    },
+    "m0_devanagari_continuous": {
+      "measured_sample_formal_pipeline_hours": 4.738191451916666,
+      "document_projection_hours": 379.05531615333325,
+      "central_phoneme_projection_hours": 479.68919455158556,
+      "conservative_complexity_projection_hours": 624.7576772597497,
+      "phoneme_projected_artifact_gib": 237.78213217428,
+      "phoneme_projected_peak_transient_artifact_gib": 366.69411719870857,
+      "phoneme_projected_sqlite_gib": 156.46798439682289
+    },
+    "readiness": "NOT_READY",
+    "reason": "The exact representative measurement is two orders of magnitude above the approximately-three-hour target after full-corpus projection; transient storage also exceeds a 300 GiB host. Production-like cloud scaling and the frozen stress run are deferred until exact structural inference and storage work materially change this regime."
+  },
+  "measurement_limits": {
+    "runtime": "Local Windows w4 is diagnostic and does not substitute for required production-cloud w4/w8 evidence.",
+    "memory": "reported_parent_peak_rss_bytes is not aggregate process-tree RSS and is not a production memory claim.",
+    "projection": "The phoneme projection is the central linear estimate; the squared-span proxy is conservative because exact composed work is strongly span-sensitive. Neither is presented as precise."
+  }
+}

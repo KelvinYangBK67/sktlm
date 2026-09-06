@@ -471,3 +471,66 @@ the frozen stress workload.
 S1M2_OPTIMIZATION_7=ACCEPTED_SMALL
 S1M2_CONTINUOUS_REPRESENTATIVE_LOCAL=READY_TO_LAUNCH_DETACHED
 ```
+
+## Frozen representative result
+
+The detached attempt
+`s1m2_continuous_representative_local_v1_attempt01` completed successfully at
+SHA `765742a1037ff2e1ef5dc267d300742ad84ef0c8` on 2026-09-06. It ran the
+three frozen representative documents sequentially through M0-prime IAST and
+M0 Devanagari continuous, at four local Windows workers, for one pass plus
+final exact inspection. Both stderr logs are empty, both checkpoints record
+one completed pass, and both output configurations/provenance records match
+the frozen benchmark contract. The compact evidence envelope is
+`evidence/s1m2_continuous_representative_local_v1.json`.
+
+The matched frontends produce the same exact script-neutral work: each phase
+has 6,886,648 outer span hypotheses, about 33.51 million composed states, and
+about 199.68 million composed transitions. Their piece inventory, lexical
+diagnostics, and rule usage artifacts are byte-identical. Iteration metrics and
+the scientific summary differ only in written character counts; analyses and
+boundary files legitimately retain script-specific presentation and written
+offsets. This passes the representative cross-frontend scientific identity
+check and leaves no unexplained script residual in composed inference.
+
+Measured elapsed time is 10,374.6 seconds (2.882 hours) for IAST and 10,352.9
+seconds (2.876 hours) for Devanagari. Those values cover only one training pass
+plus inspection. Replacing the measured one-pass training phase by three such
+phases while retaining measured inspection and fixed finalization gives a
+same-sample formal-pipeline estimate of 4.754/4.738 hours. Scaling that estimate
+to all 240 documents gives the following deliberately non-precise projections:
+
+| Basis | M0-prime IAST | M0 Devanagari |
+|---|---:|---:|
+| documents (80.0x) | 380 h | 379 h |
+| phonemes, central (101.24x) | 481 h | 480 h |
+| squared-span proxy, conservative (131.86x) | 627 h | 625 h |
+
+The central projection is therefore approximately 480 hours per continuous
+cell on this diagnostic local w4 host, not approximately three hours. The
+frozen stress workload would only confirm an already decisive bad scaling
+regime, so it is not launched at this point. Production-cloud w4/w8 scaling is
+also premature until an exact structural change materially reduces the work.
+
+Storage is independently not ready. The representative outputs occupy
+2.43/2.52 GB, transient output reaches 3.75/3.89 GB, and SQLite reaches
+1.57/1.66 GB. Simple phoneme scaling implies roughly 229/238 GiB final output,
+354/367 GiB transient output, and 148/156 GiB SQLite per continuous cell. The
+reported 79/83 MB RSS values cover the benchmark parent metric only, not the
+aggregate process tree, and cannot close the memory gate.
+
+The measured mechanism is exact per-span form composition under heavy bounded
+cache churn: each phase evicts about 1.95 million form evaluations and 3.96
+million piece scores. The next optimization must therefore reduce repeated
+exact interval/form work or represent it through an equivalent shared dynamic
+program, and the storage schema must become substantially more compact without
+dropping required scientific information.
+
+```text
+S1M2_CONTINUOUS_REPRESENTATIVE_LOCAL=COMPLETE_VALIDATED
+CONTINUOUS_SCRIPT_NEUTRAL_REPRESENTATIVE=PASS
+CONTINUOUS_RUNTIME_TARGET=NOT_READY
+PRODUCTION_STORAGE_GATE=NOT_READY
+S1M2_CONTINUOUS_STRESS=DEFERRED_PENDING_STRUCTURAL_OPTIMIZATION
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+```

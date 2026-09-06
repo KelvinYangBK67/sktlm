@@ -1374,6 +1374,50 @@ S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 63. Local representative measurement exposes structural/runtime and storage failure (2026-09-06)
+
+Detached attempt `s1m2_continuous_representative_local_v1_attempt01`
+completed successfully at
+`765742a1037ff2e1ef5dc267d300742ad84ef0c8`. It ran the frozen three-document
+representative workload sequentially for M0-prime IAST and M0 Devanagari
+continuous at local Windows w4, one pass plus final exact inspection. Both
+stderr logs are empty and output config, manifest, checkpoint, provenance, and
+benchmark identities validate. Do not rerun this attempt.
+
+The two frontends have identical script-neutral work per phase: 6,886,648
+outer span hypotheses, approximately 33.51 million composed states, and
+approximately 199.68 million composed transitions. Piece inventory, lexical
+diagnostics, and rule usage are byte-identical; summaries and iteration
+metrics differ only in written character count. Representative cross-frontend
+scientific identity therefore passes.
+
+Elapsed time was 2.882/2.876 hours for only one pass plus inspection. A
+three-pass-plus-inspection reconstruction on this same sample is 4.754/4.738
+hours. Full-corpus projections are approximately 481/480 hours by phonemes and
+627/625 hours by the conservative squared-span proxy. Final representative
+artifacts are 2.43/2.52 GB and transient output is 3.75/3.89 GB; phoneme
+scaling projects 354/367 GiB transient output per continuous cell. Parent-only
+RSS is not process-tree evidence and does not close the memory gate.
+
+The measured mechanism is repeated exact interval/form composition under
+heavy bounded-LRU churn: roughly 1.95 million form-evaluation evictions and
+3.96 million piece-score evictions per phase. The frozen stress and cloud
+w4/w8 gates are deferred until exact structural inference and compact storage
+work materially change this regime. This is not yet a scientific blocker
+because semantics-preserving factorization has not been exhausted. Compact
+evidence is tracked at
+`reports/core_methods/reusable_pieces/evidence/s1m2_continuous_representative_local_v1.json`.
+
+```text
+S1M2_CONTINUOUS_REPRESENTATIVE_LOCAL=COMPLETE_VALIDATED
+CONTINUOUS_SCRIPT_NEUTRAL_REPRESENTATIVE=PASS
+CONTINUOUS_RUNTIME_TARGET=NOT_READY
+PRODUCTION_STORAGE_GATE=NOT_READY
+S1M2_CONTINUOUS_STRESS=DEFERRED_PENDING_STRUCTURAL_OPTIMIZATION
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 61. Continuous optimization 6 accepted (2026-09-05)
 
 Candidate SHA `25fbeedc2afb84b868d35624ba5303310dcc574f` reuses immutable
