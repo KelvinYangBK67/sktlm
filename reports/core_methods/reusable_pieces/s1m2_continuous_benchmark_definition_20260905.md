@@ -828,3 +828,36 @@ S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 CONTINUOUS_RUNTIME_TARGET=NOT_READY
 FULL_M0_PROCESS_RUNNING=NO
 ```
+
+### Factorized representative audit attempt 01: comparator-only failure
+
+Detached audit attempt
+`s1m2_continuous_representative_factorized_audit_v1_attempt01` started from
+clean pushed SHA `a0887bb33b1e5f2969123b105bff96a988d95706` and failed after
+1.9 seconds, before a complete large-artifact scan. It launched no model,
+training, inference, representative, stress, cloud, or full-M0 workload.
+
+The preserved error is audit-only: the bounded streaming rewrite compared TSV
+rows positionally, but the established semantic comparator keys TSV rows by
+their first column. Equal-count piece-inventory rows may exchange presentation
+order without changing the inventory. The first such pair was `V_R.V_A` and
+`V_RR.V_A`. Attempt-01 state and stderr SHA-256 values are respectively
+`56c1f10af244f5be83d2d091cfbb178795b0efc73f4c1f98805f934c0caf5e38` and
+`adc562dcca519f787e4acf1636e197b3534a855442a6ef70a1eb55aed7b967ef`.
+
+The corrected comparator restores the original first-column identity contract
+using a temporary SQLite `WITHOUT ROWID` table. Reference insertion is batched
+at 4,096 rows, candidate rows are consumed one at a time, matched identities
+are removed, and any duplicate, unexpected, or missing identity fails closed.
+Thus RAM remains bounded even for the 639 MB piece inventory and 401 MB lexical
+diagnostics. JSONL remains line-streamed and order-sensitive. A focused fixture
+with reversed TSV row order passes under the frozen `rtol=1e-10`,
+`atol=1e-12` contract.
+
+```text
+S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=COMPLETE_AWAITING_STREAMING_AUDIT_RETRY
+S1M2_BOUNDED_ARTIFACT_COMPARATOR=KEYED_DISK_BACKED_FOCUSED_PASS
+CONTINUOUS_RUNTIME_TARGET=NOT_READY
+PRODUCTION_STORAGE_GATE=NOT_READY
+FULL_M0_PROCESS_RUNNING=NO
+```

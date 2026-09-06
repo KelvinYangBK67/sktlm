@@ -6,6 +6,9 @@ import argparse
 import csv
 import json
 import math
+import sqlite3
+import tempfile
+from contextlib import closing
 from dataclasses import dataclass
 from itertools import zip_longest
 from pathlib import Path
@@ -141,9 +144,40 @@ def _compare_jsonl(
 
 
 def _parse_tsv_row(row: list[str]) -> list[str | float]:
-    if not row:
-        return []
-    return [row[0], *(_maybe_float(value) for value in row[1:])]
+    return [_maybe_float(value) for value in row[1:]]
+
+
+def _insert_tsv_rows(
+    connection: sqlite3.Connection,
+    rows: csv.reader,
+    *,
+    path: Path,
+    batch_size: int = 4096,
+) -> None:
+    batch: list[tuple[str, str]] = []
+    try:
+        for row in rows:
+            if not row:
+                raise ValueError(f"empty TSV row in {path}")
+            batch.append(
+                (
+                    row[0],
+                    json.dumps(row[1:], ensure_ascii=False, separators=(",", ":")),
+                )
+            )
+            if len(batch) >= batch_size:
+                connection.executemany(
+                    "INSERT INTO reference_rows(identity, row_json) VALUES (?, ?)",
+                    batch,
+                )
+                batch.clear()
+        if batch:
+            connection.executemany(
+                "INSERT INTO reference_rows(identity, row_json) VALUES (?, ?)",
+                batch,
+            )
+    except sqlite3.IntegrityError as error:
+        raise ValueError(f"duplicate first-column identity in {path}") from error
 
 
 def _compare_tsv(
@@ -154,42 +188,83 @@ def _compare_tsv(
     result: Comparison,
     rtol: float,
     atol: float,
+    scratch_dir: Path | None,
 ) -> None:
-    with (
-        left_path.open(encoding="utf-8", newline="") as left_handle,
-        right_path.open(encoding="utf-8", newline="") as right_handle,
-    ):
-        left_rows = csv.reader(left_handle, delimiter="\t")
-        right_rows = csv.reader(right_handle, delimiter="\t")
-        left_header = next(left_rows, None)
-        right_header = next(right_rows, None)
-        if left_header is None or right_header is None:
-            raise ValueError(f"empty TSV artifact: {left_path} or {right_path}")
-        _compare(
-            left_header,
-            right_header,
-            path=f"{name}.header",
-            result=result,
-            rtol=rtol,
-            atol=atol,
-        )
-        for index, (left_row, right_row) in enumerate(
-            zip_longest(left_rows, right_rows, fillvalue=_MISSING),
-            start=1,
+    if scratch_dir is not None:
+        scratch_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix="sktlm_artifact_compare_",
+        dir=scratch_dir,
+    ) as temporary:
+        database = Path(temporary) / "reference_rows.sqlite"
+        with (
+            left_path.open(encoding="utf-8", newline="") as left_handle,
+            right_path.open(encoding="utf-8", newline="") as right_handle,
+            closing(sqlite3.connect(database)) as connection,
         ):
-            if left_row is _MISSING or right_row is _MISSING:
-                raise AssertionError(f"{name}: row counts differ at {index}")
-            if not left_row or not right_row:
-                raise AssertionError(f"{name}: empty row at {index}")
-            left_identity = left_row[0]
+            left_rows = csv.reader(left_handle, delimiter="\t")
+            right_rows = csv.reader(right_handle, delimiter="\t")
+            left_header = next(left_rows, None)
+            right_header = next(right_rows, None)
+            if left_header is None or right_header is None:
+                raise ValueError(
+                    f"empty TSV artifact: {left_path} or {right_path}"
+                )
             _compare(
-                _parse_tsv_row(left_row),
-                _parse_tsv_row(right_row),
-                path=f"{name}[{left_identity}]",
+                left_header,
+                right_header,
+                path=f"{name}.header",
                 result=result,
                 rtol=rtol,
                 atol=atol,
             )
+            connection.execute("PRAGMA journal_mode=OFF")
+            connection.execute("PRAGMA synchronous=OFF")
+            connection.execute("PRAGMA temp_store=FILE")
+            connection.execute(
+                "CREATE TABLE reference_rows("
+                "identity TEXT PRIMARY KEY, row_json TEXT NOT NULL"
+                ") WITHOUT ROWID"
+            )
+            _insert_tsv_rows(
+                connection,
+                left_rows,
+                path=left_path,
+            )
+            connection.commit()
+
+            for right_row in right_rows:
+                if not right_row:
+                    raise ValueError(f"empty TSV row in {right_path}")
+                identity = right_row[0]
+                stored = connection.execute(
+                    "SELECT row_json FROM reference_rows WHERE identity = ?",
+                    (identity,),
+                ).fetchone()
+                if stored is None:
+                    raise AssertionError(
+                        f"{name}: unexpected or duplicate identity {identity!r}"
+                    )
+                left_row = [identity, *json.loads(stored[0])]
+                _compare(
+                    _parse_tsv_row(left_row),
+                    _parse_tsv_row(right_row),
+                    path=f"{name}[{identity}]",
+                    result=result,
+                    rtol=rtol,
+                    atol=atol,
+                )
+                connection.execute(
+                    "DELETE FROM reference_rows WHERE identity = ?",
+                    (identity,),
+                )
+            missing = connection.execute(
+                "SELECT identity FROM reference_rows LIMIT 1"
+            ).fetchone()
+            if missing is not None:
+                raise AssertionError(
+                    f"{name}: candidate is missing identity {missing[0]!r}"
+                )
 
 
 def _compare_artifact(
@@ -200,6 +275,7 @@ def _compare_artifact(
     result: Comparison,
     rtol: float,
     atol: float,
+    scratch_dir: Path | None,
 ) -> None:
     if left_path.suffix == ".jsonl":
         _compare_jsonl(
@@ -219,6 +295,7 @@ def _compare_artifact(
             result=result,
             rtol=rtol,
             atol=atol,
+            scratch_dir=scratch_dir,
         )
         return
     _compare(
@@ -237,6 +314,7 @@ def compare_artifacts(
     *,
     rtol: float = 1e-10,
     atol: float = 1e-12,
+    scratch_dir: Path | None = None,
 ) -> dict[str, Any]:
     result = Comparison()
     for name in CANONICAL_ARTIFACTS:
@@ -247,6 +325,7 @@ def compare_artifacts(
             result=result,
             rtol=rtol,
             atol=atol,
+            scratch_dir=scratch_dir,
         )
     return {
         "schema_version": "sktlm-s1m2-artifact-comparison/v1",
@@ -269,6 +348,11 @@ def main() -> None:
     parser.add_argument("candidate", type=Path)
     parser.add_argument("--rtol", type=float, default=1e-10)
     parser.add_argument("--atol", type=float, default=1e-12)
+    parser.add_argument(
+        "--scratch-dir",
+        type=Path,
+        help="directory for bounded disk-backed TSV comparison scratch space",
+    )
     args = parser.parse_args()
     print(
         json.dumps(
@@ -277,6 +361,7 @@ def main() -> None:
                 args.candidate,
                 rtol=args.rtol,
                 atol=args.atol,
+                scratch_dir=args.scratch_dir,
             ),
             ensure_ascii=False,
             indent=2,

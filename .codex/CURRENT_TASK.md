@@ -38,8 +38,8 @@ optimization 9 shared inspection marginals/top-K: ACCEPTED
 optimization 10 shared bounded piece-prefix top-K: ACCEPTED
 optimization 11 token-local lexical-form interning: REJECTED / REVERTED
 optimization 12 exact bounded Cartesian top-K merge: ACCEPTED
-factorized local representative benchmark: COMPLETE / AUDIT PENDING
-bounded streaming artifact comparator: IMPLEMENTED / FOCUSED PASS
+factorized local representative benchmark: COMPLETE / AUDIT RETRY READY
+bounded streaming artifact comparator: KEYED DISK-BACKED / FOCUSED PASS
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -94,7 +94,7 @@ therefore decisively not ready. Artifact/SQLite sizes are scientifically
 unchanged; phoneme scaling still projects 354.1/366.8 GiB transient output and
 147.8/156.5 GiB SQLite. Storage is not ready.
 
-## Next task: detached bounded streaming artifact audit
+## Next task: detached bounded streaming artifact audit attempt 02
 
 The fixed probe accepts optimization 8: training states fall 81.5%, transitions
 and score calls 78.3%, training inference 70.3%/73.2%, and complete wall
@@ -130,14 +130,25 @@ inference improves `5.3%`/`16.0%`, and profiled calls fall `4.0%`. Opposing
 subsecond total-wall changes are recorded as noise, not evidence against the
 reproduced target-phase result.
 
-The previous comparator loaded complete large TSV/JSONL artifacts in memory.
-It now compares JSONL line-by-line and TSV row-by-row under the same numerical
-contract and deterministic order; its focused test and both cheap historical
-comparisons pass. Commit and push this bounded audit implementation, then
-launch exactly one detached audit comparing each factorized representative
-cell to its same-frontend optimization-7 reference. Also verify the three
-script-neutral artifacts share hashes across the new frontends. Do not rerun
-training, representative, stress, cloud, or full-M0.
+Audit attempt 01
+`s1m2_continuous_representative_factorized_audit_v1_attempt01` failed in 1.9
+seconds before scanning the large outputs. The failure was an audit-only
+regression: the streaming rewrite compared TSV rows positionally, while the
+established comparator treats the first column as identity and intentionally
+allows tied inventory rows to occur in a different order. The preserved state
+and stderr hashes are `56c1f10af244f5be83d2d091cfbb178795b0efc73f4c1f98805f934c0caf5e38`
+and `adc562dcca519f787e4acf1636e197b3534a855442a6ef70a1eb55aed7b967ef`.
+No benchmark, training, inference, or complete large-artifact scan ran.
+
+The comparator now restores the original first-column keyed TSV semantics with
+a temporary SQLite `WITHOUT ROWID` join. Input iteration and insertion batches
+are bounded, JSONL remains line-streamed and order-sensitive, duplicate/missing
+identities fail closed, and the temporary database is closed before cleanup.
+The focused regression fixture reverses TSV rows and passes. Commit and push
+this correction, then launch exactly one new detached attempt 02 against the
+same frozen artifacts. Also verify the three script-neutral artifacts share
+hashes across the new frontends. Do not rerun training, representative, stress,
+cloud, or full-M0.
 
 ```text
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
@@ -161,6 +172,6 @@ S1M2_OPTIMIZATION_9=ACCEPTED
 S1M2_OPTIMIZATION_10=ACCEPTED
 S1M2_OPTIMIZATION_11=REJECTED_REVERTED
 S1M2_OPTIMIZATION_12=ACCEPTED
-S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=COMPLETE_AWAITING_STREAMING_AUDIT
-S1M2_BOUNDED_ARTIFACT_COMPARATOR=IMPLEMENTED_FOCUSED_PASS
+S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=COMPLETE_AWAITING_STREAMING_AUDIT_RETRY
+S1M2_BOUNDED_ARTIFACT_COMPARATOR=KEYED_DISK_BACKED_FOCUSED_PASS
 ```

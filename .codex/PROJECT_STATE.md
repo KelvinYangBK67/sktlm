@@ -1990,3 +1990,27 @@ S1M2_OPTIMIZATION_4=COMPOSED_PATH_TIE_KEY_REUSE_READY
 S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
 FULL_M0_PROCESS_RUNNING=NO
 ```
+
+## 70. Factorized representative audit comparator corrected (2026-09-06)
+
+Detached read-only audit attempt
+`s1m2_continuous_representative_factorized_audit_v1_attempt01` failed after
+1.9 seconds at SHA `a0887bb33b1e5f2969123b105bff96a988d95706`, before a complete
+large-artifact scan. It ran no training or inference. The streaming comparator
+had accidentally made TSV row order significant, unlike the established
+first-column keyed comparison contract; equal-count piece rows exposed the
+regression immediately.
+
+The comparator now uses a bounded temporary SQLite keyed join for TSV files,
+while retaining line-streamed, order-sensitive JSONL comparison. Duplicate,
+unexpected, and missing TSV identities fail closed. Its regression fixture
+reverses TSV rows and passes. The failed attempt remains preserved; a new
+attempt identity is required for the same frozen representative artifacts.
+
+```text
+S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=COMPLETE_AWAITING_STREAMING_AUDIT_RETRY
+S1M2_BOUNDED_ARTIFACT_COMPARATOR=KEYED_DISK_BACKED_FOCUSED_PASS
+CONTINUOUS_RUNTIME_TARGET=NOT_READY
+PRODUCTION_STORAGE_GATE=NOT_READY
+FULL_M0_PROCESS_RUNNING=NO
+```

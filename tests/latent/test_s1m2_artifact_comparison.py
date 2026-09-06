@@ -7,15 +7,24 @@ from pathlib import Path
 COMPARATOR = Path("scripts/analysis/compare_s1m2_artifacts.py")
 
 
-def _write_fixture(root: Path, *, delta: float, traversal_count: int) -> None:
+def _write_fixture(
+    root: Path,
+    *,
+    delta: float,
+    traversal_count: int,
+    reverse_tsv_rows: bool = False,
+) -> None:
     root.mkdir()
     (root / "iteration_metrics.json").write_text(
         json.dumps({"value": 1.0 + delta}),
         encoding="utf-8",
     )
+    tsv_rows = [f"V_I\t{1.0 + delta}", "V_AA\t2.0"]
+    if reverse_tsv_rows:
+        tsv_rows.reverse()
     for name in ("piece_inventory.tsv", "lexical_diagnostics.tsv"):
         (root / name).write_text(
-            f"identity\tvalue\nV_I\t{1.0 + delta}\nV_AA\t2.0\n",
+            "identity\tvalue\n" + "\n".join(tsv_rows) + "\n",
             encoding="utf-8",
         )
     (root / "analyses.jsonl").write_text(
@@ -50,11 +59,16 @@ def _run(reference: Path, candidate: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_streaming_comparator_preserves_tolerance_and_order(tmp_path: Path) -> None:
+def test_streaming_comparator_preserves_tolerance_and_contract(tmp_path: Path) -> None:
     reference = tmp_path / "reference"
     candidate = tmp_path / "candidate"
     _write_fixture(reference, delta=0.0, traversal_count=10)
-    _write_fixture(candidate, delta=1e-13, traversal_count=2)
+    _write_fixture(
+        candidate,
+        delta=1e-13,
+        traversal_count=2,
+        reverse_tsv_rows=True,
+    )
 
     result = _run(reference, candidate)
 
