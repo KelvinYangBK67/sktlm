@@ -25,6 +25,21 @@ CANONICAL_ARTIFACTS = (
     "summary.json",
 )
 ENGINEERING_ONLY_KEYS = frozenset({"lazy_span_traversals"})
+TSV_NUMERIC_COLUMNS = frozenset(
+    {
+        "active",
+        "active_parameter_count",
+        "expected_count",
+        "expected_usage",
+        "length",
+        "model_log_score",
+        "model_probability",
+        "number_of_contexts",
+        "number_of_surface_variants",
+        "occurrence_support",
+        "value",
+    }
+)
 
 
 @dataclass(slots=True)
@@ -155,8 +170,20 @@ def _compare_jsonl(
             )
 
 
-def _parse_tsv_row(row: list[str]) -> list[str | float]:
-    return [_maybe_float(value) for value in row[1:]]
+def _parse_tsv_row(
+    row: list[str],
+    *,
+    header: list[str],
+    path: str,
+) -> list[str | float]:
+    if len(row) != len(header):
+        raise AssertionError(
+            f"{path}: row has {len(row)} columns; expected {len(header)}"
+        )
+    return [
+        _maybe_float(value) if column in TSV_NUMERIC_COLUMNS else value
+        for column, value in zip(header[1:], row[1:], strict=True)
+    ]
 
 
 def _insert_tsv_rows(
@@ -259,8 +286,16 @@ def _compare_tsv(
                     )
                 left_row = [identity, *json.loads(stored[0])]
                 _compare(
-                    _parse_tsv_row(left_row),
-                    _parse_tsv_row(right_row),
+                    _parse_tsv_row(
+                        left_row,
+                        header=left_header,
+                        path=f"{name}[{identity}]",
+                    ),
+                    _parse_tsv_row(
+                        right_row,
+                        header=right_header,
+                        path=f"{name}[{identity}]",
+                    ),
                     path=f"{name}[{identity}]",
                     result=result,
                     rtol=rtol,

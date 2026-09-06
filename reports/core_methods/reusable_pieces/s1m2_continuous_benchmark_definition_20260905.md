@@ -861,3 +861,34 @@ CONTINUOUS_RUNTIME_TARGET=NOT_READY
 PRODUCTION_STORAGE_GATE=NOT_READY
 FULL_M0_PROCESS_RUNNING=NO
 ```
+
+### Factorized representative audit attempt 02: TSV typing correction
+
+Detached audit attempt
+`s1m2_continuous_representative_factorized_audit_v1_attempt02` started from
+clean pushed SHA `5c47ecde4e1d369630856fe0a35e6a4278512588` and failed after
+9m17s during the keyed piece-inventory comparison. It ran no model, training,
+inference, representative, stress, cloud, or full-M0 workload and did not
+complete the large-artifact scan.
+
+The affected identity is `C_N.V_A.C_N`, whose rendered piece is literally
+`nan`. The old and factorized rows retain identical text and differ only at
+floating-point roundoff in numeric fields, but the generic TSV value parser
+coerced the text spelling to IEEE NaN. The attempt-02 state and stderr SHA-256
+values are `50c2bf80034e1bd611d2e44aed1855103fa2f9960b30b4ba0fa49268af77fabc`
+and `08a7a6cc4c2adefa545b0e1e5793ae952dda6a31f9f19486f6f7a994cbf724d0`.
+
+The comparator now derives typing from an explicit set of numeric TSV headers.
+Only those columns receive the frozen numeric tolerance and nonfinite handling;
+piece spellings, phoneme IDs, roles, and other text remain exact. This composes
+with the bounded disk-backed first-column join from attempt 01. Three focused
+tests pass: reordered keyed TSV rows, equal/unequal numeric nonfinite values,
+and exact distinction between text `nan` and `NaN`.
+
+```text
+S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=COMPLETE_AWAITING_STREAMING_AUDIT_ATTEMPT_03
+S1M2_BOUNDED_ARTIFACT_COMPARATOR=SCHEMA_TYPED_KEYED_DISK_BACKED_FOCUSED_PASS
+CONTINUOUS_RUNTIME_TARGET=NOT_READY
+PRODUCTION_STORAGE_GATE=NOT_READY
+FULL_M0_PROCESS_RUNNING=NO
+```

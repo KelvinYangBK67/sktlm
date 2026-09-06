@@ -2014,3 +2014,28 @@ CONTINUOUS_RUNTIME_TARGET=NOT_READY
 PRODUCTION_STORAGE_GATE=NOT_READY
 FULL_M0_PROCESS_RUNNING=NO
 ```
+
+## 71. Factorized representative audit TSV typing corrected (2026-09-06)
+
+Detached audit attempt
+`s1m2_continuous_representative_factorized_audit_v1_attempt02` failed after
+9m17s at SHA `5c47ecde4e1d369630856fe0a35e6a4278512588`, while comparing the keyed
+piece inventory. It ran no training or inference and did not finish a complete
+large-artifact scan. The literal piece spelling `nan` had been coerced to IEEE
+NaN by the generic TSV parser; the underlying old/new rows have identical text
+and only tolerance-scale differences in declared numeric columns.
+
+The comparator now applies numeric parsing/tolerance only to explicit numeric
+TSV headers. Text remains exact, including nonfinite-looking spellings. Equal
+numeric nonfinite values are supported and unequal ones fail closed. This
+schema typing composes with the bounded SQLite first-column join; three focused
+regression tests pass. Attempt 02 remains preserved and attempt 03 must use a
+new task/run identity against the unchanged frozen representative artifacts.
+
+```text
+S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=COMPLETE_AWAITING_STREAMING_AUDIT_ATTEMPT_03
+S1M2_BOUNDED_ARTIFACT_COMPARATOR=SCHEMA_TYPED_KEYED_DISK_BACKED_FOCUSED_PASS
+CONTINUOUS_RUNTIME_TARGET=NOT_READY
+PRODUCTION_STORAGE_GATE=NOT_READY
+FULL_M0_PROCESS_RUNNING=NO
+```

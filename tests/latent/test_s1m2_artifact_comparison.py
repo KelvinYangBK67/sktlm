@@ -123,3 +123,33 @@ def test_streaming_comparator_preserves_matching_nan(tmp_path: Path) -> None:
 
     assert mismatch.returncode != 0
     assert "nan" in mismatch.stderr.lower()
+
+
+def test_streaming_comparator_keeps_nonfinite_looking_text_exact(
+    tmp_path: Path,
+) -> None:
+    reference = tmp_path / "reference"
+    candidate = tmp_path / "candidate"
+    _write_fixture(reference, delta=0.0, traversal_count=10)
+    _write_fixture(candidate, delta=0.0, traversal_count=2)
+
+    for root in (reference, candidate):
+        for name in ("piece_inventory.tsv", "lexical_diagnostics.tsv"):
+            (root / name).write_text(
+                "identity\tpiece\tvalue\n"
+                "C_N.V_A.C_N\tnan\t1.0\n",
+                encoding="utf-8",
+            )
+
+    matching = _run(reference, candidate)
+    assert matching.returncode == 0
+
+    (candidate / "piece_inventory.tsv").write_text(
+        "identity\tpiece\tvalue\n"
+        "C_N.V_A.C_N\tNaN\t1.0\n",
+        encoding="utf-8",
+    )
+    mismatch = _run(reference, candidate)
+
+    assert mismatch.returncode != 0
+    assert "'nan' != 'NaN'" in mismatch.stderr

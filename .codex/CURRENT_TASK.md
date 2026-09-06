@@ -38,8 +38,8 @@ optimization 9 shared inspection marginals/top-K: ACCEPTED
 optimization 10 shared bounded piece-prefix top-K: ACCEPTED
 optimization 11 token-local lexical-form interning: REJECTED / REVERTED
 optimization 12 exact bounded Cartesian top-K merge: ACCEPTED
-factorized local representative benchmark: COMPLETE / AUDIT RETRY READY
-bounded streaming artifact comparator: KEYED DISK-BACKED / FOCUSED PASS
+factorized local representative benchmark: COMPLETE / AUDIT ATTEMPT 03 READY
+bounded streaming artifact comparator: SCHEMA-TYPED KEYED DISK-BACKED / FOCUSED PASS
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -94,7 +94,7 @@ therefore decisively not ready. Artifact/SQLite sizes are scientifically
 unchanged; phoneme scaling still projects 354.1/366.8 GiB transient output and
 147.8/156.5 GiB SQLite. Storage is not ready.
 
-## Next task: detached bounded streaming artifact audit attempt 02
+## Next task: detached bounded streaming artifact audit attempt 03
 
 The fixed probe accepts optimization 8: training states fall 81.5%, transitions
 and score calls 78.3%, training inference 70.3%/73.2%, and complete wall
@@ -140,15 +140,26 @@ and stderr hashes are `56c1f10af244f5be83d2d091cfbb178795b0efc73f4c1f98805f934c0
 and `adc562dcca519f787e4acf1636e197b3534a855442a6ef70a1eb55aed7b967ef`.
 No benchmark, training, inference, or complete large-artifact scan ran.
 
-The comparator now restores the original first-column keyed TSV semantics with
-a temporary SQLite `WITHOUT ROWID` join. Input iteration and insertion batches
-are bounded, JSONL remains line-streamed and order-sensitive, duplicate/missing
-identities fail closed, and the temporary database is closed before cleanup.
-The focused regression fixture reverses TSV rows and passes. Commit and push
-this correction, then launch exactly one new detached attempt 02 against the
-same frozen artifacts. Also verify the three script-neutral artifacts share
-hashes across the new frontends. Do not rerun training, representative, stress,
-cloud, or full-M0.
+Audit attempt 02
+`s1m2_continuous_representative_factorized_audit_v1_attempt02` ran for 9m17s
+and failed while comparing the keyed piece inventory. Generic numeric coercion
+had interpreted the literal piece spelling `nan` (`C_N.V_A.C_N`) as IEEE NaN;
+the matching old/new rows differ only by numerical roundoff in their actual
+numeric columns. Its preserved state and stderr hashes are
+`50c2bf80034e1bd611d2e44aed1855103fa2f9960b30b4ba0fa49268af77fabc` and
+`08a7a6cc4c2adefa545b0e1e5793ae952dda6a31f9f19486f6f7a994cbf724d0`.
+It ran no training or inference and did not complete a large-artifact scan.
+
+The comparator now applies floating-point tolerance only to explicitly numeric
+TSV columns selected by header; text columns remain exact. Matching numeric
+nonfinite sentinels are supported, but text `nan` and `NaN` remain distinct.
+Together with the temporary SQLite `WITHOUT ROWID` keyed join, input iteration
+and insertion batches remain bounded, JSONL remains line-streamed and
+order-sensitive, and duplicate/missing identities fail closed. Three focused
+tests cover reordered keyed rows, numeric nonfinite values, and nonfinite-like
+text. Commit and push this refinement, then launch exactly one attempt 03
+against the same frozen artifacts. Do not rerun training, representative,
+stress, cloud, or full-M0.
 
 ```text
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
@@ -172,6 +183,6 @@ S1M2_OPTIMIZATION_9=ACCEPTED
 S1M2_OPTIMIZATION_10=ACCEPTED
 S1M2_OPTIMIZATION_11=REJECTED_REVERTED
 S1M2_OPTIMIZATION_12=ACCEPTED
-S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=COMPLETE_AWAITING_STREAMING_AUDIT_RETRY
-S1M2_BOUNDED_ARTIFACT_COMPARATOR=KEYED_DISK_BACKED_FOCUSED_PASS
+S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=COMPLETE_AWAITING_STREAMING_AUDIT_ATTEMPT_03
+S1M2_BOUNDED_ARTIFACT_COMPARATOR=SCHEMA_TYPED_KEYED_DISK_BACKED_FOCUSED_PASS
 ```
