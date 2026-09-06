@@ -892,3 +892,49 @@ CONTINUOUS_RUNTIME_TARGET=NOT_READY
 PRODUCTION_STORAGE_GATE=NOT_READY
 FULL_M0_PROCESS_RUNNING=NO
 ```
+
+### Factorized representative audit attempt 03: manual reconciliation
+
+Attempt 03 stopped in IAST `analyses.jsonl` on a derived
+segmentation-entropy value just outside the frozen numeric tolerance. The
+preserved failed job remains provenance, including its copied internal
+`attempt: 2` metadata error.
+
+A complete bounded diagnostic and continuation audit closes the scientific
+question. IAST covers all 12,306 analysis records and 903,234 numeric values:
+70 tolerance exceedances occur, all in
+`piece_posterior.segmentation_entropy`; no other scientific numeric field fails.
+Five top-K membership differences occur at records 1092, 1203, 1301, 1937,
+and 11353, all at the K=8 presentation cutoff among exact or near-exact ties.
+The remaining canonical IAST artifacts pass.
+
+For Devanagari, SHA-256 triage proves that piece inventory, lexical diagnostics,
+and rule usage are respectively identical to the audited IAST reference and
+candidate artifacts. The remaining four artifacts were scanned once. Across
+2,132,828 numeric values there are no scientific non-entropy failures and no
+structural failures. Two apparent numeric differences are
+`lazy_span_traversals`, an engineering-only key. The scan reproduces the same
+70 entropy cases, the same five cutoff membership records, and 24 top-K
+order-only records.
+
+The frozen comparator remains strict at `rtol=1e-10`, `atol=1e-12`; its JSONL
+order sensitivity is unchanged. Scientific closure is recorded by reconciliation
+evidence rather than by weakening the comparator or modifying production
+inference to match a derived diagnostic bit-for-bit.
+
+The factorized representative therefore passes scientific equivalence with
+bounded presentation caveats. No representative rerun or audit rerun is
+required without new contradictory evidence.
+
+Canonical evidence:
+`evidence/s1m2_factorized_representative_reconciliation_v1.json`.
+
+```text
+S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=COMPLETE_RECONCILED
+S1M2_FACTORIZED_REPRESENTATIVE_SCIENTIFIC_EQUIVALENCE=PASS_WITH_BOUNDED_PRESENTATION_CAVEATS
+S1M2_REPRESENTATIVE_RERUN=FORBIDDEN_WITHOUT_NEW_CONTRADICTORY_EVIDENCE
+S1M2_REPRESENTATIVE_AUDIT_RERUN=NOT_REQUIRED
+CONTINUOUS_RUNTIME_TARGET=NOT_READY
+PRODUCTION_STORAGE_GATE=NOT_READY
+FULL_M0_PROCESS_RUNNING=NO
+```

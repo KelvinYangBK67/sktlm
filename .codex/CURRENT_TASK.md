@@ -38,7 +38,7 @@ optimization 9 shared inspection marginals/top-K: ACCEPTED
 optimization 10 shared bounded piece-prefix top-K: ACCEPTED
 optimization 11 token-local lexical-form interning: REJECTED / REVERTED
 optimization 12 exact bounded Cartesian top-K merge: ACCEPTED
-factorized local representative benchmark: COMPLETE / AUDIT ATTEMPT 03 READY
+factorized local representative benchmark: COMPLETE / RECONCILED
 bounded streaming artifact comparator: SCHEMA-TYPED KEYED DISK-BACKED / FOCUSED PASS
 ```
 
@@ -94,7 +94,7 @@ therefore decisively not ready. Artifact/SQLite sizes are scientifically
 unchanged; phoneme scaling still projects 354.1/366.8 GiB transient output and
 147.8/156.5 GiB SQLite. Storage is not ready.
 
-## Next task: detached bounded streaming artifact audit attempt 03
+## Next task: structural optimization decision and VM-readiness gate
 
 The fixed probe accepts optimization 8: training states fall 81.5%, transitions
 and score calls 78.3%, training inference 70.3%/73.2%, and complete wall
@@ -157,9 +157,21 @@ Together with the temporary SQLite `WITHOUT ROWID` keyed join, input iteration
 and insertion batches remain bounded, JSONL remains line-streamed and
 order-sensitive, and duplicate/missing identities fail closed. Three focused
 tests cover reordered keyed rows, numeric nonfinite values, and nonfinite-like
-text. Commit and push this refinement, then launch exactly one attempt 03
-against the same frozen artifacts. Do not rerun training, representative,
-stress, cloud, or full-M0.
+text.
+
+Attempt 03 and the subsequent manual continuation/diagnostic scans are now
+reconciled in
+`evidence/s1m2_factorized_representative_reconciliation_v1.json`.
+Across IAST and Devanagari there is no substantive structural divergence and
+no scientific non-entropy numeric failure. The remaining differences are
+derived segmentation-entropy roundoff, bounded K=8 exact/near-tie inspection
+presentation, and engineering-only `lazy_span_traversals`. The global frozen
+numeric tolerance and strict JSONL comparator remain unchanged.
+
+The factorized representative is therefore scientifically complete and must
+not be rerun merely to obtain a green strict-wrapper exit code. Continue only
+with a genuinely structural exact optimization candidate or proceed to the
+VM scaling/readiness gate when the local optimization stopping rule is met.
 
 ```text
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
@@ -183,6 +195,9 @@ S1M2_OPTIMIZATION_9=ACCEPTED
 S1M2_OPTIMIZATION_10=ACCEPTED
 S1M2_OPTIMIZATION_11=REJECTED_REVERTED
 S1M2_OPTIMIZATION_12=ACCEPTED
-S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=COMPLETE_AWAITING_STREAMING_AUDIT_ATTEMPT_03
+S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=COMPLETE_RECONCILED
 S1M2_BOUNDED_ARTIFACT_COMPARATOR=SCHEMA_TYPED_KEYED_DISK_BACKED_FOCUSED_PASS
+S1M2_FACTORIZED_REPRESENTATIVE_SCIENTIFIC_EQUIVALENCE=PASS_WITH_BOUNDED_PRESENTATION_CAVEATS
+S1M2_REPRESENTATIVE_RERUN=FORBIDDEN_WITHOUT_NEW_CONTRADICTORY_EVIDENCE
+S1M2_REPRESENTATIVE_AUDIT_RERUN=NOT_REQUIRED
 ```

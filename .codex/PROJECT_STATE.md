@@ -2039,3 +2039,49 @@ CONTINUOUS_RUNTIME_TARGET=NOT_READY
 PRODUCTION_STORAGE_GATE=NOT_READY
 FULL_M0_PROCESS_RUNNING=NO
 ```
+
+## 72. Factorized representative audit manually reconciled (2026-09-06)
+
+The factorized representative audit is scientifically closed from the
+preserved attempt-03 evidence plus bounded manual continuation and diagnostic
+scans. Attempt 03 remains historically `FAILED` because the strict
+order-sensitive wrapper stopped during IAST `analyses.jsonl`; its state payload
+also retains the copied internal `attempt: 2` field despite the distinct
+attempt-03 task/run identity. Neither historical record is rewritten.
+
+IAST reconciliation covers all seven canonical artifacts. A complete diagnostic
+over all 12,306 analysis records compared 903,234 numeric values. Exactly 70
+values exceeded the frozen `rtol=1e-10`, `atol=1e-12` gate, all in the derived
+`piece_posterior.segmentation_entropy` field. No other scientific numeric
+quantity exceeded the gate and no substantive structural divergence was found.
+Five bounded top-K membership differences occur at records 1092, 1203, 1301,
+1937, and 11353; each is a K=8 cutoff exact/near tie.
+
+Devanagari SHA-256 triage showed that piece inventory, lexical diagnostics,
+and rule usage are respectively byte-identical to the already audited IAST
+reference/candidate sides. The four frontend-specific artifacts were scanned
+once. Across 2,132,828 numeric values there are zero substantive structural
+failures and zero scientific non-entropy numeric failures. The only two
+non-entropy apparent differences are `lazy_span_traversals`, an engineering-only
+key. The scan reproduces exactly 70 entropy exceedances and the same five top-K
+membership records as IAST, plus 24 order-only top-K records.
+
+The global comparator tolerance remains unchanged; JSONL order sensitivity is
+not relaxed and no special entropy or top-K bypass is added. Scientific closure
+is recorded by reconciliation evidence rather than by changing production
+inference merely to force the historical wrapper to return zero.
+
+The entropy-stabilization experiment (`9edfd7f`) and its cheap-probe acceptance
+checkpoint (`20687a3`) were reviewed and reverted. Canonical evidence is
+`evidence/s1m2_factorized_representative_reconciliation_v1.json`.
+
+```text
+S1M2_CONTINUOUS_REPRESENTATIVE_FACTORIZED=COMPLETE_RECONCILED
+S1M2_FACTORIZED_REPRESENTATIVE_SCIENTIFIC_EQUIVALENCE=PASS_WITH_BOUNDED_PRESENTATION_CAVEATS
+S1M2_REPRESENTATIVE_RERUN=FORBIDDEN_WITHOUT_NEW_CONTRADICTORY_EVIDENCE
+S1M2_REPRESENTATIVE_AUDIT_RERUN=NOT_REQUIRED
+S1M2_BOUNDED_ARTIFACT_COMPARATOR=SCHEMA_TYPED_KEYED_DISK_BACKED_FOCUSED_PASS
+CONTINUOUS_RUNTIME_TARGET=NOT_READY
+PRODUCTION_STORAGE_GATE=NOT_READY
+FULL_M0_PROCESS_RUNNING=NO
+```

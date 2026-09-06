@@ -1,0 +1,137 @@
+{
+  "schema_version": "sktlm-s1m2-factorized-representative-reconciliation/v1",
+  "date": "2026-09-06",
+  "accepted_code_state": {
+    "branch": "exp/s1m2-reusable-pieces",
+    "head_before_reconciliation": "0d0b513fc531ad3c6ca4ccb7904c715fea21094f",
+    "effective_tree_equivalent_to": "e63263fec9b89f711159cb609925e041688f7162",
+    "accepted_comparator_change": "schema-typed keyed TSV comparison",
+    "non_adopted_experiments": [
+      {
+        "sha": "9edfd7fac3157d1eab2d205216c50bd8710f049f",
+        "description": "shared piece-entropy production-path stabilization",
+        "status": "REVERTED"
+      },
+      {
+        "sha": "20687a3f77e8111e9c864498e0114f69a5922055",
+        "description": "cheap-probe acceptance of entropy stabilization",
+        "status": "REVERTED"
+      }
+    ]
+  },
+  "frozen_numeric_contract": {
+    "rtol": 1e-10,
+    "atol": 1e-12,
+    "global_tolerance_changed": false,
+    "jsonl_order_sensitive_comparator_changed": false,
+    "special_entropy_tolerance_added": false,
+    "special_top_k_tie_bypass_added": false
+  },
+  "audit_attempts": [
+    {
+      "attempt": 1,
+      "status": "FAILED_AUDIT_IMPLEMENTATION",
+      "reason": "streaming TSV rewrite accidentally made keyed TSV order-sensitive"
+    },
+    {
+      "attempt": 2,
+      "status": "FAILED_AUDIT_IMPLEMENTATION",
+      "reason": "generic TSV coercion interpreted literal piece text 'nan' as IEEE NaN"
+    },
+    {
+      "attempt": 3,
+      "run_id": "s1m2_continuous_representative_factorized_audit_v1_attempt03",
+      "task": "sktlm-s1m2-representative-factorized-audit-v1-a03",
+      "git_sha": "2fea66aba9dc569759ac786c11eecf40c6ad654d",
+      "status": "FAILED_STRICT_WRAPPER_RECONCILED_MANUALLY",
+      "strict_failure": "IAST analyses.jsonl[16].piece_posterior.segmentation_entropy",
+      "provenance_note": "state payload retained attempt=2 despite attempt03 run/task identity; historical state remains unmodified"
+    }
+  ],
+  "iast": {
+    "reference": "s1m2_continuous_representative_m0_prime_iast_local_w4_attempt01",
+    "candidate": "s1m2_continuous_representative_m0_prime_iast_factorized_local_w4_attempt01",
+    "canonical_artifacts": {
+      "iteration_metrics.json": "PASS",
+      "piece_inventory.tsv": "PASS",
+      "lexical_diagnostics.tsv": "PASS",
+      "analyses.jsonl": "RECONCILED",
+      "boundary_posteriors.jsonl": "PASS",
+      "rule_usage.tsv": "PASS",
+      "summary.json": "PASS"
+    },
+    "analyses_records": 12306,
+    "numeric_values": 903234,
+    "numeric_outside_frozen_tolerance": 70,
+    "numeric_outside_tolerance_fields": {
+      "piece_posterior.segmentation_entropy": 70
+    },
+    "max_entropy_absolute_difference": 1.3301360013429075e-11,
+    "scientific_non_entropy_numeric_failures": 0,
+    "substantive_structural_failures": 0,
+    "top_k_membership_difference_records": [
+      1092,
+      1203,
+      1301,
+      1937,
+      11353
+    ],
+    "top_k_interpretation": "All five occur at the bounded K=8 cutoff among exact or near-exact ties.",
+    "cutoff_score_difference": "0 or 1.4210854715202004e-14",
+    "cutoff_posterior_difference": "0 or approximately 1e-18 to 1e-19"
+  },
+  "devanagari": {
+    "reference": "s1m2_continuous_representative_m0_devanagari_local_w4_attempt01",
+    "candidate": "s1m2_continuous_representative_m0_devanagari_factorized_local_w4_attempt01",
+    "hash_inherited_artifacts": {
+      "piece_inventory.tsv": {
+        "deva_ref_equals_iast_ref": true,
+        "deva_candidate_equals_iast_candidate": true
+      },
+      "lexical_diagnostics.tsv": {
+        "deva_ref_equals_iast_ref": true,
+        "deva_candidate_equals_iast_candidate": true
+      },
+      "rule_usage.tsv": {
+        "deva_ref_equals_iast_ref": true,
+        "deva_candidate_equals_iast_candidate": true
+      }
+    },
+    "frontend_specific_scanned_artifacts": [
+      "iteration_metrics.json",
+      "analyses.jsonl",
+      "boundary_posteriors.jsonl",
+      "summary.json"
+    ],
+    "numeric_values": 2132828,
+    "apparent_non_entropy_numeric_failures": 2,
+    "apparent_failure_field": "lazy_span_traversals",
+    "lazy_span_traversals_class": "ENGINEERING_ONLY_KEYS",
+    "scientific_non_entropy_numeric_failures": 0,
+    "structural_failures": 0,
+    "entropy_failures": 70,
+    "top_k_membership_failures": 5,
+    "top_k_membership_difference_records": [
+      1092,
+      1203,
+      1301,
+      1937,
+      11353
+    ],
+    "top_k_order_only_records": 24,
+    "interpretation": "Same script-neutral entropy and bounded cutoff-tie signature as IAST; no frontend-specific scientific divergence detected."
+  },
+  "decision": {
+    "representative_scientific_equivalence": "PASS_RECONCILED",
+    "presentation_status": "PASS_WITH_BOUNDED_PRESENTATION_CAVEATS",
+    "accepted_caveats": [
+      "derived segmentation_entropy floating reduction drift",
+      "bounded top-K exact/near-tie ordering or cutoff presentation",
+      "engineering-only lazy_span_traversals differences"
+    ],
+    "representative_rerun_required": false,
+    "representative_audit_rerun_required": false,
+    "full_m0_started": false,
+    "next_gate": "Continue exact structural optimization decision-making and then VM scaling/readiness work; do not reopen the representative audit without new contradictory evidence."
+  }
+}
