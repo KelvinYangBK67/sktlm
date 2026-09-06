@@ -2064,6 +2064,45 @@ S1M2_LOCAL_OPTIMIZATION_ROUNDS_REMAINING=1
 FULL_M0_PROCESS_RUNNING=NO
 ```
 
+## 76. S1M2 local optimization 14 accepted; bounded task closed (2026-09-06)
+
+After canonical S1M2 artifacts are written, Opt14 now removes six
+reconstructible final-pass diagnostic/inspection tables and compacts
+`learner.sqlite`. The completed persistent database retains only metadata with
+the transactional checkpoint and the authoritative active `piece_lexicon`.
+Every run records the separation in `storage_manifest.json`; scientific
+support, weights, posteriors, outputs, and ordering are unchanged.
+
+The focused pieces/latent suite passes (`93 passed`). The single fixed
+Devanagari probe is exact across all seven canonical artifacts and 10,252
+numeric values, reduces final artifact bytes `38.8%`, and shows no wall
+regression. On a disposable copy of the completed factorized Devanagari
+representative database, 1,470,657 active rows retain the identical ordered
+digest while completed SQLite bytes fall from 1,221,271,552 to 69,447,680
+(`94.3%`); compaction takes 74.5 seconds, `1.6%` of the prior representative
+wall.
+
+The measured compact ratio projects completed SQLite to `6.55 GiB` and total
+completed output to `129.17 GiB` by the frozen phoneme multiplier. These are
+bounded projections, not VM/full-corpus measurements. The pre-compaction
+transient projection remains `366.69 GiB`, so the production storage gate is
+still `NOT_READY`. No representative, VM, cloud, or full-M0 workload ran.
+Compact evidence is `evidence/s1m2_local_optimization_14_v1.json`.
+
+Opt13 and Opt14 are the last authorized local structural rounds and are both
+resolved. Opt15 is not implemented. Reusing immutable lexical/piece-support
+and shared-prefix topology across EM passes appears conditionally worthwhile,
+provided a future design proves compact bounded storage and exact reweighting.
+
+```text
+S1M2_OPTIMIZATION_13=ACCEPTED
+S1M2_OPTIMIZATION_14=ACCEPTED
+S1M2_LOCAL_OPTIMIZATION_TASK=COMPLETE
+S1M2_OPTIMIZATION_15=CONDITIONALLY_JUSTIFIED_NOT_IMPLEMENTED
+PRODUCTION_STORAGE_GATE=NOT_READY
+FULL_M0_PROCESS_RUNNING=NO
+```
+
 ## 72. Factorized representative audit manually reconciled (2026-09-06)
 
 The factorized representative audit is scientifically closed from the

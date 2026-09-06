@@ -24,6 +24,14 @@ from sktlm.pieces.scorer import GeometricPhonemeBaseMeasure
 
 
 TRAINING_CHECKPOINT_KEY = "training_checkpoint"
+S1M2_RECONSTRUCTIBLE_TABLES = (
+    "context_usage",
+    "inspection_counts",
+    "inspection_piece_counts",
+    "lexical_diagnostics",
+    "piece_inventory",
+    "surface_usage",
+)
 
 
 class LexiconScorer:
@@ -213,6 +221,57 @@ class LexiconStore:
 
     def close(self) -> None:
         self.connection.close()
+
+    def _storage_bytes(self) -> dict[str, int]:
+        paths = {
+            "database": self.path,
+            "wal": Path(f"{self.path}-wal"),
+            "shm": Path(f"{self.path}-shm"),
+        }
+        sizes = {
+            label: path.stat().st_size if path.is_file() else 0
+            for label, path in paths.items()
+        }
+        sizes["total"] = sum(sizes.values())
+        return sizes
+
+    def compact_completed_piece_state(self) -> dict[str, Any]:
+        """Retain authoritative S1M2 parameters, not exported inspection indexes."""
+
+        if not self.has_table("piece_lexicon"):
+            raise RuntimeError("Completed S1M2 state requires piece_lexicon.")
+        before = self._storage_bytes()
+        dropped = tuple(
+            table for table in S1M2_RECONSTRUCTIBLE_TABLES if self.has_table(table)
+        )
+        started = time.perf_counter()
+        with self.connection:
+            for table in dropped:
+                self.connection.execute(f"DROP TABLE {table}")
+        self.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+        self.connection.execute("VACUUM")
+        self.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+        elapsed = time.perf_counter() - started
+        after = self._storage_bytes()
+        retained = tuple(
+            str(row[0])
+            for row in self.connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' "
+                "AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            )
+        )
+        if "metadata" not in retained or "piece_lexicon" not in retained:
+            raise RuntimeError("Completed S1M2 compaction lost authoritative state.")
+        self.telemetry.add_seconds("sqlite_completed_state_compaction", elapsed)
+        self.telemetry.increment("sqlite_completed_state_tables_dropped", len(dropped))
+        return {
+            "layout": "s1m2_active_piece_state_v1",
+            "before_bytes": before,
+            "after_bytes": after,
+            "dropped_tables": list(dropped),
+            "retained_tables": list(retained),
+            "seconds": elapsed,
+        }
 
     def set_metadata(self, key: str, value: str) -> None:
         with self.connection:

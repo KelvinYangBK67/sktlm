@@ -156,6 +156,22 @@ def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(
     assert result.runtime["gauges"]["sqlite_database_bytes"] > 0
     assert result.runtime["gauges"]["sqlite_total_bytes"] > 0
     assert result.runtime["gauges"]["artifact_bytes_before_timing_metrics"] > 0
+    assert result.runtime["gauges"]["sqlite_completed_state_bytes_saved"] > 0
+
+    storage = json.loads(
+        (result.run_dir / "storage_manifest.json").read_text("utf-8")
+    )
+    assert storage["status"] == "COMPACT"
+    assert storage["retained_tables"] == ["metadata", "piece_lexicon"]
+    assert set(storage["dropped_tables"]) == {
+        "context_usage",
+        "inspection_counts",
+        "inspection_piece_counts",
+        "lexical_diagnostics",
+        "piece_inventory",
+        "surface_usage",
+    }
+    assert storage["after_bytes"]["total"] < storage["before_bytes"]["total"]
 
     summary = json.loads((result.run_dir / "summary.json").read_text("utf-8"))
     assert summary["complexity"]["active_piece_types"] > 0

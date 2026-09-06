@@ -1787,6 +1787,15 @@ _LEGACY_INSPECTION_SHARD_KINDS = (
     "contexts",
     "reductions",
 )
+_S1M2_CANONICAL_SCIENTIFIC_ARTIFACTS = (
+    "iteration_metrics.json",
+    "piece_inventory.tsv",
+    "lexical_diagnostics.tsv",
+    "analyses.jsonl",
+    "boundary_posteriors.jsonl",
+    "rule_usage.tsv",
+    "summary.json",
+)
 
 
 def _inspection_shard_paths(
@@ -1840,9 +1849,14 @@ def _write_inspection_shard(
         raise RuntimeError("Inspection worker was not initialized.")
     paths = _inspection_shard_paths(run_dir, document_index)
     paths["marker"].parent.mkdir(parents=True, exist_ok=True)
+    shard_kinds = (
+        _INSPECTION_SHARD_KINDS
+        if config.model == S1M2_MODEL
+        else _LEGACY_INSPECTION_SHARD_KINDS
+    )
     temporary = {
         kind: paths[kind].with_suffix(paths[kind].suffix + ".tmp")
-        for kind in _INSPECTION_SHARD_KINDS
+        for kind in shard_kinds
     }
     counts: Counter[PhonologicalForm] = Counter()
     piece_counts: Counter[PhonologicalForm] = Counter()
@@ -1884,44 +1898,53 @@ def _write_inspection_shard(
     context_rows_buffer: list[tuple[str, str, float]] = []
     shard_database_seconds = 0.0
 
-    aggregate_temporary = temporary["aggregates"]
-    if aggregate_temporary.exists():
-        aggregate_temporary.unlink()
-    aggregate_connection = sqlite3.connect(aggregate_temporary)
-    aggregate_connection.execute("PRAGMA journal_mode=OFF")
-    aggregate_connection.execute("PRAGMA synchronous=OFF")
-    aggregate_connection.execute("PRAGMA temp_store=MEMORY")
-    aggregate_connection.executescript(
-        "CREATE TABLE count_rows ("
-        "row_number INTEGER PRIMARY KEY, form_key TEXT NOT NULL, "
-        "expected_count REAL NOT NULL);"
-        "CREATE TABLE piece_rows ("
-        "row_number INTEGER PRIMARY KEY, form_key TEXT NOT NULL, "
-        "expected_count REAL NOT NULL, occurrence_support INTEGER NOT NULL);"
-        "CREATE TABLE surface_rows ("
-        "row_number INTEGER PRIMARY KEY, form_key TEXT NOT NULL, "
-        "surface TEXT NOT NULL, expected_mass REAL NOT NULL);"
-        "CREATE TABLE context_rows ("
-        "row_number INTEGER PRIMARY KEY, form_key TEXT NOT NULL, "
-        "context TEXT NOT NULL, expected_mass REAL NOT NULL);"
-    )
+    aggregate_temporary = temporary.get("aggregates")
+    aggregate_connection = None
+    if aggregate_temporary is not None:
+        if aggregate_temporary.exists():
+            aggregate_temporary.unlink()
+        aggregate_connection = sqlite3.connect(aggregate_temporary)
+        aggregate_connection.execute("PRAGMA journal_mode=OFF")
+        aggregate_connection.execute("PRAGMA synchronous=OFF")
+        aggregate_connection.execute("PRAGMA temp_store=MEMORY")
+        aggregate_connection.executescript(
+            "CREATE TABLE count_rows ("
+            "row_number INTEGER PRIMARY KEY, form_key TEXT NOT NULL, "
+            "expected_count REAL NOT NULL);"
+            "CREATE TABLE piece_rows ("
+            "row_number INTEGER PRIMARY KEY, form_key TEXT NOT NULL, "
+            "expected_count REAL NOT NULL, occurrence_support INTEGER NOT NULL);"
+            "CREATE TABLE surface_rows ("
+            "row_number INTEGER PRIMARY KEY, form_key TEXT NOT NULL, "
+            "surface TEXT NOT NULL, expected_mass REAL NOT NULL);"
+            "CREATE TABLE context_rows ("
+            "row_number INTEGER PRIMARY KEY, form_key TEXT NOT NULL, "
+            "context TEXT NOT NULL, expected_mass REAL NOT NULL);"
+        )
 
     def flush_counts() -> None:
         nonlocal count_rows, shard_database_seconds
         if not counts:
             return
         started = time.perf_counter()
-        rows = []
-        for form, value in sorted(counts.items(), key=lambda item: item[0].key):
-            aggregate_row_numbers["counts"] += 1
-            rows.append(
-                (aggregate_row_numbers["counts"], form.key, float(value))
+        ordered = sorted(counts.items(), key=lambda item: item[0].key)
+        if aggregate_connection is None:
+            for form, value in ordered:
+                handles["counts"].write(
+                    f"{form.key}\t{float(value).hex()}\n"
+                )
+        else:
+            rows = []
+            for form, value in ordered:
+                aggregate_row_numbers["counts"] += 1
+                rows.append(
+                    (aggregate_row_numbers["counts"], form.key, float(value))
+                )
+            aggregate_connection.executemany(
+                "INSERT INTO count_rows VALUES (?, ?, ?)",
+                rows,
             )
-        aggregate_connection.executemany(
-            "INSERT INTO count_rows VALUES (?, ?, ?)",
-            rows,
-        )
-        count_rows += len(rows)
+        count_rows += len(ordered)
         counts.clear()
         shard_database_seconds += time.perf_counter() - started
 
@@ -1929,6 +1952,7 @@ def _write_inspection_shard(
         nonlocal piece_rows, shard_database_seconds
         if not piece_counts:
             return
+        assert aggregate_connection is not None
         started = time.perf_counter()
         rows = []
         for piece, value in sorted(
@@ -1957,33 +1981,60 @@ def _write_inspection_shard(
         if not surface_rows_buffer and not context_rows_buffer:
             return
         started = time.perf_counter()
-        surface_rows = []
-        for key, surface, mass in surface_rows_buffer:
-            aggregate_row_numbers["surfaces"] += 1
-            surface_rows.append(
-                (aggregate_row_numbers["surfaces"], key, surface, float(mass))
+        if aggregate_connection is None:
+            for key, surface, mass in surface_rows_buffer:
+                handles["surfaces"].write(
+                    f"{key}\t{json.dumps(surface, ensure_ascii=False)}\t"
+                    f"{float(mass).hex()}\n"
+                )
+            for key, context, mass in context_rows_buffer:
+                handles["contexts"].write(
+                    f"{key}\t{json.dumps(context, ensure_ascii=False)}\t"
+                    f"{float(mass).hex()}\n"
+                )
+        else:
+            surface_rows = []
+            for key, surface, mass in surface_rows_buffer:
+                aggregate_row_numbers["surfaces"] += 1
+                surface_rows.append(
+                    (
+                        aggregate_row_numbers["surfaces"],
+                        key,
+                        surface,
+                        float(mass),
+                    )
+                )
+            context_rows = []
+            for key, context, mass in context_rows_buffer:
+                aggregate_row_numbers["contexts"] += 1
+                context_rows.append(
+                    (
+                        aggregate_row_numbers["contexts"],
+                        key,
+                        context,
+                        float(mass),
+                    )
+                )
+            aggregate_connection.executemany(
+                "INSERT INTO surface_rows VALUES (?, ?, ?, ?)",
+                surface_rows,
             )
-        context_rows = []
-        for key, context, mass in context_rows_buffer:
-            aggregate_row_numbers["contexts"] += 1
-            context_rows.append(
-                (aggregate_row_numbers["contexts"], key, context, float(mass))
+            aggregate_connection.executemany(
+                "INSERT INTO context_rows VALUES (?, ?, ?, ?)",
+                context_rows,
             )
-        aggregate_connection.executemany(
-            "INSERT INTO surface_rows VALUES (?, ?, ?, ?)",
-            surface_rows,
-        )
-        aggregate_connection.executemany(
-            "INSERT INTO context_rows VALUES (?, ?, ?, ?)",
-            context_rows,
-        )
         surface_rows_buffer.clear()
         context_rows_buffer.clear()
         shard_database_seconds += time.perf_counter() - started
 
     handles: dict[str, Any] = {}
     try:
-        for kind in _INSPECTION_STREAM_SHARD_KINDS:
+        stream_kinds = (
+            _INSPECTION_STREAM_SHARD_KINDS
+            if aggregate_connection is not None
+            else _LEGACY_INSPECTION_SHARD_KINDS
+        )
+        for kind in stream_kinds:
             handles[kind] = temporary[kind].open(
                 "w",
                 encoding="utf-8",
@@ -2209,9 +2260,18 @@ def _write_inspection_shard(
             )
             for form, mass in inference_lexical_counts.items():
                 if mass >= config.usage_posterior_threshold:
-                    surface_rows_buffer.append(
-                        (form.key, segment.written, float(mass))
-                    )
+                    if aggregate_connection is None:
+                        surface = json.dumps(
+                            segment.written,
+                            ensure_ascii=False,
+                        )
+                        handles["surfaces"].write(
+                            f"{form.key}\t{surface}\t{float(mass).hex()}\n"
+                        )
+                    else:
+                        surface_rows_buffer.append(
+                            (form.key, segment.written, float(mass))
+                        )
                     surface_rows += 1
             for analysis in inference.top_analyses:
                 if analysis.probability < config.usage_posterior_threshold:
@@ -2227,9 +2287,20 @@ def _write_inspection_shard(
                         if word_index + 1 < len(analysis.words)
                         else "<EOS>"
                     )
-                    context_rows_buffer.append(
-                        (word.key, f"{left}>{right}", float(analysis.probability))
-                    )
+                    context = f"{left}>{right}"
+                    if aggregate_connection is None:
+                        encoded_context = json.dumps(
+                            context,
+                            ensure_ascii=False,
+                        )
+                        handles["contexts"].write(
+                            f"{word.key}\t{encoded_context}\t"
+                            f"{float(analysis.probability).hex()}\n"
+                        )
+                    else:
+                        context_rows_buffer.append(
+                            (word.key, context, float(analysis.probability))
+                        )
                     context_rows += 1
             if len(counts) + len(piece_counts) >= config.flush_types:
                 flush_counts()
@@ -2245,14 +2316,15 @@ def _write_inspection_shard(
     finally:
         for handle in handles.values():
             handle.close()
-        aggregate_connection.commit()
-        aggregate_connection.close()
-    for kind in _INSPECTION_STREAM_SHARD_KINDS:
+        if aggregate_connection is not None:
+            aggregate_connection.commit()
+            aggregate_connection.close()
+    for kind in stream_kinds:
         _replace_file(temporary[kind], paths[kind])
-    _replace_file(aggregate_temporary, paths["aggregates"])
+    if aggregate_temporary is not None:
+        _replace_file(aggregate_temporary, paths["aggregates"])
     payload = {
-        "schema_version": 2,
-        "aggregate_format": _INSPECTION_AGGREGATE_FORMAT,
+        "schema_version": 2 if aggregate_connection is not None else 1,
         "config_signature": config_signature,
         "document_index": document_index,
         "relative_path": document.relative_path,
@@ -2265,7 +2337,7 @@ def _write_inspection_shard(
             "reductions": reduction_rows,
         },
         "sha256": {
-            kind: _file_sha256(paths[kind]) for kind in _INSPECTION_SHARD_KINDS
+            kind: _file_sha256(paths[kind]) for kind in shard_kinds
         },
         "runtime": {
             "inspection_candidate_generation": candidate_seconds,
@@ -2273,7 +2345,6 @@ def _write_inspection_shard(
             "inspection_count_aggregation": aggregation_seconds,
             "inspection_frontend_io": frontend_seconds,
             "inspection_serialization": serialization_seconds,
-            "inspection_worker_shard_database": shard_database_seconds,
             "inspection_worker_document_total": time.perf_counter() - wall_started,
             "inspection_worker_cpu": time.process_time() - cpu_started,
             "lexical_score_calls": (
@@ -2298,6 +2369,11 @@ def _write_inspection_shard(
             "engineering_telemetry": engineering.payload(),
         },
     }
+    if aggregate_connection is not None:
+        payload["aggregate_format"] = _INSPECTION_AGGREGATE_FORMAT
+        payload["runtime"]["inspection_worker_shard_database"] = (
+            shard_database_seconds
+        )
     _write_json(paths["marker"], payload)
     return payload
 
@@ -2786,6 +2862,39 @@ def _cleanup_inspection_shards(run_dir: Path) -> None:
     for path in root.iterdir():
         if path.is_file():
             path.unlink()
+
+
+def _compact_completed_s1m2_storage(
+    *,
+    store: LexiconStore,
+    run_dir: Path,
+) -> dict[str, Any]:
+    compaction = store.compact_completed_piece_state()
+    before = int(compaction["before_bytes"]["total"])
+    after = int(compaction["after_bytes"]["total"])
+    saved = before - after
+    payload = {
+        "schema_version": "sktlm-s1m2-completed-storage/v1",
+        "status": "COMPACT",
+        **compaction,
+        "bytes_saved": saved,
+        "reduction_fraction": saved / max(1, before),
+        "authoritative_state": {
+            "metadata": "configuration signature and transactional checkpoint",
+            "piece_lexicon": "fixed active piece parameters used by final inspection",
+        },
+        "canonical_scientific_artifacts": list(
+            _S1M2_CANONICAL_SCIENTIFIC_ARTIFACTS
+        ),
+        "reconstructibility": (
+            "The dropped tables are final-pass diagnostic or inspection indexes. "
+            "Canonical scientific values remain in the listed artifacts; final "
+            "inspection indexes are exactly regenerable from the retained active "
+            "piece state, frozen inputs, configuration, and code identity."
+        ),
+    }
+    _write_json(run_dir / "storage_manifest.json", payload)
+    return payload
 
 
 def _inspection_pass(
@@ -3574,13 +3683,36 @@ def run_training(
             "artifact_bytes_before_timing_metrics",
             _existing_path_bytes(run_dir.rglob("*")),
         )
-        runtime = store.runtime_payload()
-        runtime['grammar_cache'] = grammar.cache_statistics()
-        _write_json(run_dir / 'timing_metrics.json', runtime)
+        if config.model == S1M2_MODEL:
+            storage_manifest = _compact_completed_s1m2_storage(
+                store=store,
+                run_dir=run_dir,
+            )
+            telemetry.gauges["sqlite_compacted_database_bytes"] = int(
+                storage_manifest["after_bytes"]["database"]
+            )
+            telemetry.gauges["sqlite_compacted_total_bytes"] = int(
+                storage_manifest["after_bytes"]["total"]
+            )
+            telemetry.gauges["sqlite_completed_state_bytes_saved"] = int(
+                storage_manifest["bytes_saved"]
+            )
         checkpoint["inspection_complete"] = True
-        store.save_training_checkpoint(checkpoint)
-        _timed_checkpoint(run_dir, checkpoint, telemetry)
-        _cleanup_inspection_shards(run_dir)
+        if config.model == S1M2_MODEL:
+            store.save_training_checkpoint(checkpoint)
+            store.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+            _timed_checkpoint(run_dir, checkpoint, telemetry)
+            _cleanup_inspection_shards(run_dir)
+            runtime = store.runtime_payload()
+            runtime['grammar_cache'] = grammar.cache_statistics()
+            _write_json(run_dir / 'timing_metrics.json', runtime)
+        else:
+            runtime = store.runtime_payload()
+            runtime['grammar_cache'] = grammar.cache_statistics()
+            _write_json(run_dir / 'timing_metrics.json', runtime)
+            store.save_training_checkpoint(checkpoint)
+            _timed_checkpoint(run_dir, checkpoint, telemetry)
+            _cleanup_inspection_shards(run_dir)
         return TrainingResult(
             run_dir=run_dir,
             history=tuple(checkpoint["history"]),

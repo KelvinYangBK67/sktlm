@@ -41,7 +41,8 @@ optimization 12 exact bounded Cartesian top-K merge: ACCEPTED
 factorized local representative benchmark: COMPLETE / RECONCILED
 bounded streaming artifact comparator: SCHEMA-TYPED KEYED DISK-BACKED / FOCUSED PASS
 optimization 13 ordered SQLite inspection-shard reduction: ACCEPTED
-optimization 14 artifact/storage architecture: READY
+optimization 14 completed-state storage compaction: ACCEPTED
+Opt13+Opt14 bounded local optimization task: COMPLETE
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -191,13 +192,41 @@ probe preserves all seven canonical artifacts exactly (`10,252` values, zero
 difference) and improves wall time `2.2%`, so training and cheap total wall do
 not regress. Evidence is `evidence/s1m2_local_optimization_13_v1.json`.
 
-Proceed only to Opt14 storage/artifact architecture. Do not run another local
-optimization, representative, stress, VM, cloud, or full-M0 workload.
+This Opt13-only handoff is superseded by the completed Opt14 section below.
+
+## Opt14 accepted; bounded task complete
+
+Opt14 retains only SQLite metadata/checkpoint state and the authoritative
+active `piece_lexicon` after every canonical S1M2 artifact has been written.
+Final-pass diagnostic and inspection tables are declared reconstructible and
+removed, the database is compacted, and `storage_manifest.json` records the
+layout. No required canonical artifact is dropped or changed.
+
+The focused pieces/latent suite passes (`93 passed`). The single fixed
+Devanagari probe preserves all seven canonical artifacts exactly (`10,252`
+numeric values, zero difference), reduces final artifact bytes `38.8%`, and
+does not regress wall time. A single disposable-copy measurement of the
+existing factorized Devanagari representative database preserves all
+1,470,657 active-piece rows with identical digest and reduces completed
+SQLite state from 1,221,271,552 to 69,447,680 bytes (`94.3%`) in 74.5 seconds.
+
+Using the unchanged phoneme multiplier, compacted completed SQLite projects to
+`6.55 GiB` and total completed output to `129.17 GiB`. These are projections,
+not VM/full-corpus measurements. The pre-compaction transient projection stays
+`366.69 GiB`, so production storage remains `NOT_READY` despite the accepted
+persistent-storage improvement. Evidence is
+`evidence/s1m2_local_optimization_14_v1.json`.
+
+No work remains in this bounded Opt13/Opt14 task. A future Opt15 appears
+conditionally structurally worthwhile because immutable candidate/piece-prefix
+topology is rebuilt across each EM pass and inspection, but its compact
+representation and storage cost must be designed before implementation. Do
+not implement it without a new task.
 
 ```text
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
 CONTINUOUS_SCRIPT_NEUTRAL_PROBE=PASS
-S1M2_CONTINUOUS_EXACT_OPTIMIZATION=IN_PROGRESS
+S1M2_CONTINUOUS_EXACT_OPTIMIZATION=COMPLETE_BOUNDED_LOCAL
 S1M2_OPTIMIZATION_1=ACCEPTED
 S1M2_OPTIMIZATION_2=ACCEPTED
 S1M2_OPTIMIZATION_3=ACCEPTED
@@ -210,7 +239,7 @@ CONTINUOUS_SCRIPT_NEUTRAL_REPRESENTATIVE=PASS
 CONTINUOUS_RUNTIME_TARGET=NOT_READY
 PRODUCTION_STORAGE_GATE=NOT_READY
 S1M2_CONTINUOUS_STRESS=DEFERRED_PENDING_STRUCTURAL_OPTIMIZATION
-S1M2_CONTINUOUS_STRUCTURAL_FACTORIZATION=IN_PROGRESS
+S1M2_CONTINUOUS_STRUCTURAL_FACTORIZATION=COMPLETE_BOUNDED_LOCAL
 S1M2_OPTIMIZATION_8=ACCEPTED_TRAINING_ONLY
 S1M2_OPTIMIZATION_9=ACCEPTED
 S1M2_OPTIMIZATION_10=ACCEPTED
@@ -222,5 +251,7 @@ S1M2_FACTORIZED_REPRESENTATIVE_SCIENTIFIC_EQUIVALENCE=PASS_WITH_BOUNDED_PRESENTA
 S1M2_REPRESENTATIVE_RERUN=FORBIDDEN_WITHOUT_NEW_CONTRADICTORY_EVIDENCE
 S1M2_REPRESENTATIVE_AUDIT_RERUN=NOT_REQUIRED
 S1M2_OPTIMIZATION_13=ACCEPTED
-S1M2_OPTIMIZATION_14=READY
+S1M2_OPTIMIZATION_14=ACCEPTED
+S1M2_LOCAL_OPTIMIZATION_TASK=COMPLETE
+S1M2_OPTIMIZATION_15=CONDITIONALLY_JUSTIFIED_NOT_IMPLEMENTED
 ```

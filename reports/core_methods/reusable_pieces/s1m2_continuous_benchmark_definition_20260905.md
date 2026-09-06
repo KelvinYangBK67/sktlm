@@ -960,3 +960,33 @@ is `evidence/s1m2_local_optimization_13_v1.json`.
 S1M2_OPTIMIZATION_13=ACCEPTED
 S1M2_OPTIMIZATION_14=READY
 ```
+
+### Local optimization 14: completed-state storage separation
+
+Opt14 is accepted at measured implementation commit `636fc58`. Once the seven
+canonical scientific artifacts are complete, the database retains only
+checkpoint metadata and the active `piece_lexicon`; six final-pass diagnostic
+and inspection-index tables are declared reconstructible, removed, and
+compacted. Each new run emits `storage_manifest.json` describing this boundary.
+
+The focused pieces/latent suite passes (`93 passed`). The one allowed fixed
+Devanagari probe is exact across 10,252 numeric values, reduces final artifact
+bytes `38.8%`, and does not regress wall. A one-shot disposable-copy
+measurement on the existing factorized Devanagari representative database
+preserves all 1,470,657 active-piece rows and their exact digest while reducing
+completed SQLite bytes from 1,221,271,552 to 69,447,680 (`94.3%`). The
+compaction itself takes 74.5 seconds, about `1.6%` of the prior representative
+wall.
+
+Phoneme scaling projects the compacted completed database to `6.55 GiB` and
+completed total output to `129.17 GiB`. These are projections from bounded
+local evidence, not VM/full-corpus measurements. Since compaction occurs after
+canonical artifact production, the prior `366.69 GiB` pre-compaction transient
+projection remains unchanged and storage readiness remains `NOT_READY`.
+Canonical evidence is `evidence/s1m2_local_optimization_14_v1.json`.
+
+```text
+S1M2_OPTIMIZATION_14=ACCEPTED
+S1M2_LOCAL_OPTIMIZATION_TASK=COMPLETE
+S1M2_OPTIMIZATION_15=CONDITIONALLY_JUSTIFIED_NOT_IMPLEMENTED
+```

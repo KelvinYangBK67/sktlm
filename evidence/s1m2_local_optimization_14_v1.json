@@ -1,0 +1,108 @@
+{
+  "schema_version": "sktlm-s1m2-local-optimization-evidence/v1",
+  "optimization": "Opt14",
+  "status": "ACCEPTED",
+  "baseline_git_sha": "54c52e11ede9beabf63b8600c1f3d8be803b21c5",
+  "measured_candidate_git_sha": "636fc586696dfcd93d0b3500bc5170ab8d63f441",
+  "measured_candidate_tree_sha": "798e2bd894d4e875f33e02ea2c140ac193d25b58",
+  "target": "completed-run artifact and SQLite storage architecture",
+  "implementation": {
+    "layout": "s1m2_active_piece_state_v1",
+    "retained_tables": [
+      "metadata",
+      "piece_lexicon"
+    ],
+    "dropped_reconstructible_tables": [
+      "context_usage",
+      "inspection_counts",
+      "inspection_piece_counts",
+      "lexical_diagnostics",
+      "piece_inventory",
+      "surface_usage"
+    ],
+    "canonical_scientific_artifacts_changed": false,
+    "storage_manifest": "storage_manifest.json",
+    "model_scope": "S1M2_ONLY_S1M1_LEGACY_PATH_PRESERVED",
+    "scientific_semantics_changed": false
+  },
+  "focused_exactness": {
+    "command": ".venv\\Scripts\\python.exe -m pytest tests/pieces tests/latent -q",
+    "result": "93 passed in 19.35s (final validation)",
+    "pre_boundary_review_result": "93 passed in 17.02s",
+    "completed_resume": "PASS",
+    "serial_parallel_byte_identity": "PASS"
+  },
+  "fixed_devanagari_probe": {
+    "command": ".venv\\Scripts\\python.exe -m sktlm.latent.benchmark --benchmark s1m2_continuous_probe_m0_devanagari --run-id s1m2_continuous_probe_m0_devanagari_opt14_636fc58_a01 --output-root artifacts/s1m2_benchmarks --passes 1 --workers 1 --profile",
+    "runs": 1,
+    "reference_run_id": "s1m2_continuous_probe_m0_devanagari_opt13_424f217_a01",
+    "candidate_run_id": "s1m2_continuous_probe_m0_devanagari_opt14_636fc58_a01",
+    "reference_wall_seconds": 0.8946804000006523,
+    "candidate_wall_seconds": 0.7903406999830622,
+    "wall_improvement_percent": 11.662,
+    "reference_artifact_bytes": 628924,
+    "candidate_artifact_bytes": 384782,
+    "artifact_byte_reduction_percent": 38.819,
+    "reference_completed_database_bytes": 290816,
+    "candidate_completed_database_bytes": 45056,
+    "database_byte_reduction_percent": 84.507,
+    "compaction_seconds": 0.010842899995623156,
+    "benchmark_metrics_sha256": "3d117354403fbd11332c234bdc454bc8dabe7f13c779c856fc6ec30b8e0ea322",
+    "profile_sha256": "fa7bcaefe98f1554c1a7d253a55bdcc8a1b5838ceaab1a45e30e89fbab45c1bc",
+    "storage_manifest_sha256": "d61b87435f6beaf52fd06413bed9c6a3f6577e488b894ec698668779334db477",
+    "comparator": {
+      "status": "PASS",
+      "rtol": 1e-10,
+      "atol": 1e-12,
+      "numeric_values": 10252,
+      "max_absolute_difference": 0.0,
+      "max_relative_difference": 0.0
+    }
+  },
+  "bounded_representative_copy_measurement": {
+    "command": ".venv\\Scripts\\python.exe scripts/analysis/measure_s1m2_completed_storage.py artifacts/s1m2_benchmarks/s1m2_continuous_representative_m0_devanagari_factorized_local_w4_attempt01/learner.sqlite",
+    "runs": 1,
+    "model_training_or_inference_run": false,
+    "source_run_id": "s1m2_continuous_representative_m0_devanagari_factorized_local_w4_attempt01",
+    "source_git_sha": "8f694d64d350b1e7e2c882de3556d69bcda2b8db",
+    "source_main_database_bytes": 1221238784,
+    "measured_pre_compaction_total_bytes": 1221271552,
+    "measured_compacted_total_bytes": 69447680,
+    "persistent_reduction_percent": 94.3134940066139,
+    "compaction_seconds": 74.48844029998872,
+    "representative_wall_additive_fraction_percent": 1.582,
+    "active_piece_rows_before": 1470657,
+    "active_piece_rows_after": 1470657,
+    "active_piece_digest_before": "03a9bf1318fe9555e66983e7044ac36a96d2bccb512d3c99d15e5e0c596be0be",
+    "active_piece_digest_after": "03a9bf1318fe9555e66983e7044ac36a96d2bccb512d3c99d15e5e0c596be0be",
+    "active_piece_state_exact": true,
+    "source_main_database_modified": false,
+    "diagnostic_sidecars_observed_after_read": {
+      "shm_bytes": 32768,
+      "wal_bytes": 0
+    }
+  },
+  "phoneme_scaled_projection": {
+    "classification": "PROJECTION_NOT_VM_OR_FULL_CORPUS_MEASUREMENT",
+    "multiplier": 101.23887973280279,
+    "previous_completed_database_gib": 115.148875651901,
+    "projected_compacted_completed_database_gib": 6.54794771526211,
+    "previous_completed_output_gib": 237.78213217428,
+    "projected_compacted_completed_output_gib": 129.168845975955,
+    "completed_output_reduction_percent": 45.678,
+    "pre_compaction_transient_projection_gib": 366.69411719870857,
+    "transient_projection_changed": false,
+    "storage_readiness": "NOT_READY_BECAUSE_PRE_COMPACTION_TRANSIENT_PEAK_REMAINS_ABOVE_300_GIB"
+  },
+  "post_measurement_boundary_review": {
+    "measured_s1m2_path_changed": false,
+    "changes": [
+      "Restricted ordered aggregate inspection shards to S1M2; restored the frozen S1M1 legacy shard layout.",
+      "Changed the bounded measurement helper to a direct disposable file copy after requiring a closed zero-WAL source, avoiding read-only SQLite sidecars on future measurements.",
+      "Added durable state, report, and evidence documentation."
+    ]
+  },
+  "acceptance_reason": "Canonical artifacts are exact, the measured representative-copy completed database is 94.3% smaller with identical active parameter state, and the measured compaction cost is only 1.6% of the prior representative wall.",
+  "representative_rerun": "NOT_RUN_NOT_REQUIRED",
+  "external_command_required": false
+}

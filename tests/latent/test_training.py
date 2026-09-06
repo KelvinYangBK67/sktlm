@@ -303,8 +303,10 @@ def test_parallel_inspection_reuses_valid_shards_after_crash(
         run("inspection-crashed")
     crashed_dir = tmp_path / "artifacts" / "inspection-crashed"
     assert tuple((crashed_dir / "shards" / "inspection").glob("*.complete.json"))
-    assert tuple((crashed_dir / "shards" / "inspection").glob("*.aggregates.sqlite"))
-    assert not tuple((crashed_dir / "shards" / "inspection").glob("*.pieces.tsv"))
+    assert not tuple(
+        (crashed_dir / "shards" / "inspection").glob("*.aggregates.sqlite")
+    )
+    assert tuple((crashed_dir / "shards" / "inspection").glob("*.counts.tsv"))
     monkeypatch.setattr(
         latent_training,
         "_apply_inspection_shard",
