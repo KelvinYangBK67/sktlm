@@ -990,3 +990,31 @@ S1M2_OPTIMIZATION_14=ACCEPTED
 S1M2_LOCAL_OPTIMIZATION_TASK=COMPLETE
 S1M2_OPTIMIZATION_15=CONDITIONALLY_JUSTIFIED_NOT_IMPLEMENTED
 ```
+
+### Local optimization 15: bounded transient-state lifetime
+
+Opt15 is accepted at measured implementation commit `d197a8a`. Reconstructible
+training diagnostics are retired transactionally at each completed pass, and
+inspection worker shards are retired after canonical reduction rather than
+accumulating through completion. Crash/resume regeneration, serial/parallel
+identity, and the focused suite pass (`95 passed`).
+
+One bounded 24-document/two-worker Devanagari comparison preserves all seven
+artifacts byte-for-byte and reduces peak bytes `39.9%` (3,738,727 to
+2,247,509), with candidate wall lower in the single pair. The fixed Devanagari
+probe is exact across 10,252 values; its +0.195 second subsecond wall shift is
+recorded without repetition.
+
+The representative-copy audit measures 533,065,728 training-diagnostic bytes
+and 930,493,404 accumulated shard bytes. Keeping the old WAL allowance and an
+eight-worker pending-shard bound projects transient storage at `229.86 GiB`,
+down `37.31%` from `366.69 GiB`. This is
+`PROJECTION_NOT_VM_OR_FULL_CORPUS_MEASUREMENT`. Evidence is
+`evidence/s1m2_local_optimization_15_v1.json`; representative/stress/full-M0
+were not run.
+
+```text
+S1M2_OPTIMIZATION_15=ACCEPTED
+S1M2_OPTIMIZATION_16=READY
+PRODUCTION_STORAGE_GATE=PROJECTED_BELOW_300_GIB_NOT_VM_MEASURED
+```

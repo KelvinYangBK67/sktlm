@@ -2148,3 +2148,38 @@ CONTINUOUS_RUNTIME_TARGET=NOT_READY
 PRODUCTION_STORAGE_GATE=NOT_READY
 FULL_M0_PROCESS_RUNNING=NO
 ```
+
+## 77. S1M2 local optimization 15 accepted (2026-09-07)
+
+Opt15 makes reconstructible S1M2 state follow bounded lifetimes. Each training
+pass drops `piece_inventory` and `lexical_diagnostics` in the same transaction
+that installs the active `piece_lexicon` and completed-pass checkpoint. Each
+parallel inspection shard is deleted after successful canonical reduction;
+after interruption, missing shards are deterministically regenerated from the
+frozen input and durable active piece state. S1M1 remains unchanged.
+
+The focused pieces/latent suite passes (`95 passed`), including interruption
+after durable pass-state retirement and after inspection-shard retirement. A
+24-document, two-worker Devanagari lifecycle benchmark preserves all seven
+scientific artifacts byte-for-byte and reduces measured peak bytes from
+3,738,727 to 2,247,509 (`39.9%`); candidate wall is lower in the single bounded
+pair. The one fixed Devanagari probe is exact across 10,252 numeric values. Its
++0.195 second one-shot subsecond wall shift is recorded as noise and was not
+rerun.
+
+A read-only audit on a disposable copy of the existing factorized Devanagari
+representative database measures 533,065,728 bytes of training diagnostic
+tables, 617,578,496 bytes of inspection indexes, 70,627,328 bytes of active
+state, and 930,493,404 bytes of accumulated inspection shards. Conservatively
+retaining the historical WAL projection and allowing an eight-worker bounded
+pending window gives `229.86 GiB`, down `37.31%` from `366.69 GiB`. This is
+`PROJECTION_NOT_VM_OR_FULL_CORPUS_MEASUREMENT`; it is below the 300 GiB host
+limit but still requires later VM measurement. Evidence is
+`evidence/s1m2_local_optimization_15_v1.json`.
+
+```text
+S1M2_OPTIMIZATION_15=ACCEPTED
+S1M2_OPTIMIZATION_16=READY
+PRODUCTION_STORAGE_GATE=PROJECTED_BELOW_300_GIB_NOT_VM_MEASURED
+FULL_M0_PROCESS_RUNNING=NO
+```

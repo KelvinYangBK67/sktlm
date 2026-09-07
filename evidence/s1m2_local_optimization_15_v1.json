@@ -1,0 +1,102 @@
+{
+  "schema_version": "sktlm-s1m2-local-optimization-evidence/v1",
+  "optimization": "Opt15",
+  "status": "ACCEPTED",
+  "baseline_git_sha": "3f433f2825ca0d12b34bdd2b5296093b4793defa",
+  "measured_candidate_git_sha": "d197a8a4c63bb4e01e1f1fbe373b503bbb12d924",
+  "measured_candidate_tree_sha": "7b195d07040e6450a3ac83527ce05e2852fe60b5",
+  "target": "transient lifetime and peak-storage architecture",
+  "implementation": {
+    "description": "S1M2 retires reconstructible pass diagnostics in the same transaction that installs the active piece state and completed-pass checkpoint, and retires each inspection worker shard immediately after successful canonical reduction.",
+    "training_tables_retired_per_pass": [
+      "lexical_diagnostics",
+      "piece_inventory"
+    ],
+    "inspection_shard_policy": "BOUNDED_BY_ROLLING_PENDING_WINDOW_NOT_CORPUS_SIZE",
+    "resume_semantics": "A retired worker shard is reconstructed from frozen inputs and durable active piece parameters after interruption; canonical order and outputs are unchanged.",
+    "s1m1_legacy_path_changed": false,
+    "scientific_semantics_changed": false
+  },
+  "read_only_representative_lifetime_audit": {
+    "source_run_id": "s1m2_continuous_representative_m0_devanagari_factorized_local_w4_attempt01",
+    "source_git_sha": "8f694d64d350b1e7e2c882de3556d69bcda2b8db",
+    "final_recorded_command": ".venv\\Scripts\\python.exe scripts/analysis/measure_s1m2_transient_storage.py artifacts/s1m2_benchmarks/s1m2_continuous_representative_m0_devanagari_factorized_local_w4_attempt01 --candidate-workers 8",
+    "measurement_executions": 2,
+    "recorded_execution": 2,
+    "model_training_or_inference_run": false,
+    "source_database_stat_unchanged": true,
+    "source_sqlite_bytes": 1221271552,
+    "inspection_plus_active_compacted_bytes": 688205824,
+    "active_only_compacted_bytes": 70627328,
+    "training_diagnostic_bytes": 533065728,
+    "inspection_index_bytes": 617578496,
+    "precleanup_artifact_highwater_bytes": 3890658965,
+    "sqlite_total_highwater_bytes": 1659502944,
+    "sqlite_wal_highwater_bytes": 437412192,
+    "retained_inspection_shard_bytes": 930493404,
+    "pending_shard_highwater_bytes": 624346393,
+    "modeled_representative_candidate_peak_bytes": 3051446226,
+    "modeled_representative_reduction_percent": 21.569938320204326
+  },
+  "targeted_bounded_measurement": {
+    "command": ".venv\\Scripts\\python.exe scripts/analysis/benchmark_s1m2_storage_lifecycle.py --documents 24",
+    "runs_per_variant": 1,
+    "frontend": "devanagari",
+    "condition": "continuous",
+    "documents": 24,
+    "workers": 2,
+    "legacy_retain_all_peak_bytes": 3738727,
+    "candidate_early_retirement_peak_bytes": 2247509,
+    "peak_reduction_percent": 39.885715111052505,
+    "legacy_seconds": 2.653150799975265,
+    "candidate_seconds": 1.9623849000199698,
+    "runtime_change_percent": -26.035681799984193,
+    "retired_shard_bytes": 1556033,
+    "seven_scientific_artifacts_byte_identical": true
+  },
+  "focused_exactness": {
+    "command": ".venv\\Scripts\\python.exe -m pytest tests/pieces tests/latent -q",
+    "result": "95 passed in 16.85s",
+    "durable_pass_retirement_resume": "PASS",
+    "retired_inspection_shard_regeneration_resume": "PASS",
+    "serial_parallel_scientific_identity": "PASS"
+  },
+  "fixed_devanagari_probe": {
+    "command": ".venv\\Scripts\\python.exe -m sktlm.latent.benchmark --benchmark s1m2_continuous_probe_m0_devanagari --run-id s1m2_continuous_probe_m0_devanagari_opt15_d197a8a_a01 --output-root artifacts/s1m2_benchmarks --passes 1 --workers 1 --profile",
+    "runs": 1,
+    "reference_run_id": "s1m2_continuous_probe_m0_devanagari_opt14_636fc58_a01",
+    "candidate_run_id": "s1m2_continuous_probe_m0_devanagari_opt15_d197a8a_a01",
+    "reference_wall_seconds": 0.7903406999830622,
+    "candidate_wall_seconds": 0.9850193000165746,
+    "wall_change_percent": 24.632238,
+    "wall_interpretation": "A +0.195 second one-shot subsecond shift is recorded as probe noise; the targeted 24-document lifecycle measurement improves 26.0%, so there is no measured mechanism-level runtime regression and the probe was not repeated.",
+    "reference_artifact_bytes": 384782,
+    "candidate_artifact_bytes": 385228,
+    "benchmark_metrics_sha256": "07a257e16b59d1ed815020a6fee7ad7e6605169a2bc919b9d331a8ba528f8368",
+    "profile_sha256": "2c54f63474026d9ec1446ac526d7cb1fcb41dd3e78ba501000bed32d1abe1ea3",
+    "storage_manifest_sha256": "f57025b92f475511c9729dec492f9873bfaafd3255fbb9c87cf06a5bfa482fad",
+    "comparator": {
+      "status": "PASS",
+      "rtol": 1e-10,
+      "atol": 1e-12,
+      "numeric_values": 10252,
+      "max_absolute_difference": 0.0,
+      "max_relative_difference": 0.0
+    }
+  },
+  "bounded_projection": {
+    "classification": "PROJECTION_NOT_VM_OR_FULL_CORPUS_MEASUREMENT",
+    "phoneme_multiplier": 101.23887973280279,
+    "candidate_worker_allowance": 8,
+    "bounded_pending_shard_bytes": 1248692786,
+    "previous_transient_projection_gib": 366.69411719870857,
+    "candidate_transient_projection_gib": 229.8638374457302,
+    "projected_reduction_percent": 37.314555,
+    "host_limit_gib": 300,
+    "below_host_limit": true,
+    "wal_projection_changed": false
+  },
+  "acceptance_reason": "The bounded paired lifecycle benchmark reduces measured peak bytes 39.9% with exact artifacts, the representative-copy audit measures the retired table/shard classes directly, and the conservative bounded projection falls from 366.69 GiB to 229.86 GiB without reducing the historical WAL allowance.",
+  "representative_rerun": "NOT_RUN_NOT_REQUIRED",
+  "external_command_required": false
+}

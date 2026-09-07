@@ -42,7 +42,8 @@ factorized local representative benchmark: COMPLETE / RECONCILED
 bounded streaming artifact comparator: SCHEMA-TYPED KEYED DISK-BACKED / FOCUSED PASS
 optimization 13 ordered SQLite inspection-shard reduction: ACCEPTED
 optimization 14 completed-state storage compaction: ACCEPTED
-Opt13+Opt14 bounded local optimization task: COMPLETE
+optimization 15 bounded transient-state lifetime: ACCEPTED
+Opt16 compile-once immutable topology reuse: READY
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -217,11 +218,35 @@ not VM/full-corpus measurements. The pre-compaction transient projection stays
 persistent-storage improvement. Evidence is
 `evidence/s1m2_local_optimization_14_v1.json`.
 
-No work remains in this bounded Opt13/Opt14 task. A future Opt15 appears
-conditionally structurally worthwhile because immutable candidate/piece-prefix
-topology is rebuilt across each EM pass and inspection, but its compact
-representation and storage cost must be designed before implementation. Do
-not implement it without a new task.
+## Opt15 accepted; Opt16 is the only remaining round
+
+Opt15 retires final-pass `piece_inventory` and `lexical_diagnostics` in the
+same SQLite transaction that installs the authoritative active piece state and
+completed-pass checkpoint. Parallel inspection now retires each reconstructible
+worker shard immediately after successful canonical reduction, so shard bytes
+are bounded by the rolling pending window rather than corpus size. Interrupted
+runs regenerate already-retired shards from frozen inputs and durable active
+parameters; focused resume and serial/parallel exactness tests pass.
+
+A 24-document/two-worker bounded Devanagari measurement reduces peak bytes
+from 3,738,727 to 2,247,509 (`39.9%`) with all seven artifacts byte-identical
+and no targeted runtime regression. A read-only selective-compaction audit of
+the existing representative database measures 533,065,728 training-diagnostic
+bytes and 930,493,404 accumulated inspection-shard bytes. With an unchanged
+historical WAL allowance and a conservative eight-worker pending-shard bound,
+the transient projection falls from `366.69 GiB` to `229.86 GiB`. This is
+`PROJECTION_NOT_VM_OR_FULL_CORPUS_MEASUREMENT`, not a production measurement.
+
+The single fixed Devanagari probe passes all seven artifacts and 10,252 numeric
+values with zero difference. Its one-shot wall changes from 0.790 to 0.985
+seconds; the +0.195 second subsecond shift is recorded without a repeat, while
+the targeted lifecycle measurement improves 26.0%. Evidence is
+`evidence/s1m2_local_optimization_15_v1.json`.
+
+Proceed only to Opt16: first measure how much immutable topology is rebuilt and
+the bytes of a compact representation, then implement only if exact reweighting
+can materially reduce the target phase without materially worsening the new
+229.86 GiB transient projection. Do not rerun representative/stress/full-M0.
 
 ```text
 S1M2_CONTINUOUS_CHEAP_PROFILE=COMPLETE
@@ -252,6 +277,7 @@ S1M2_REPRESENTATIVE_RERUN=FORBIDDEN_WITHOUT_NEW_CONTRADICTORY_EVIDENCE
 S1M2_REPRESENTATIVE_AUDIT_RERUN=NOT_REQUIRED
 S1M2_OPTIMIZATION_13=ACCEPTED
 S1M2_OPTIMIZATION_14=ACCEPTED
-S1M2_LOCAL_OPTIMIZATION_TASK=COMPLETE
-S1M2_OPTIMIZATION_15=CONDITIONALLY_JUSTIFIED_NOT_IMPLEMENTED
+S1M2_OPTIMIZATION_15=ACCEPTED
+S1M2_OPTIMIZATION_16=READY
+PRODUCTION_STORAGE_GATE=PROJECTED_BELOW_300_GIB_NOT_VM_MEASURED
 ```
