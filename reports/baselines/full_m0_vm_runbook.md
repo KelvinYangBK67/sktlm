@@ -1,7 +1,9 @@
 # Full-M0 baseline VM runbook
 
-No command in this runbook was executed during pre-production closure. Stages 1
-and 2 require explicit human authorization; the queue command only prints jobs.
+No command in this runbook was executed on an external VM during
+pre-production closure. Local read-only/preflight equivalents were exercised;
+no production cell was launched. Stages 1 and 2 require explicit human
+authorization; the queue command only prints jobs.
 
 ## Stage 0 — preflight and non-launching checks
 
