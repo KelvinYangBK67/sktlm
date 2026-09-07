@@ -2183,3 +2183,49 @@ S1M2_OPTIMIZATION_16=READY
 PRODUCTION_STORAGE_GATE=PROJECTED_BELOW_300_GIB_NOT_VM_MEASURED
 FULL_M0_PROCESS_RUNNING=NO
 ```
+
+## 78. S1M2 local optimization 16 accepted; local optimization stopped (2026-09-07)
+
+Opt16 separates immutable S1M2 inference topology from mutable model state.
+Training pass 1 compiles score-free candidate/form support and shared
+piece-prefix transitions into compact document-local archives. Later EM passes
+and final inspection stream one bounded segment record at a time and exactly
+reweight it from the current authoritative piece parameters. Piece scores,
+segmentation-prior weights, forward/backward vectors, posteriors, expected
+counts, and top-K score state are never persisted in the topology cache.
+
+The focused pieces/latent suite passes (`96 passed in 17.69s`). It includes an
+explicit changed-parameter reweight-versus-rebuild test, archive lifecycle,
+interrupted resume, durable pass/shard retirement resume, and serial/parallel
+scientific identity. The final bounded 3-document/64-line measurement compares
+154,136 values exactly. Against four legacy rebuilds, avoidable topology
+lifecycle overhead falls from 1.368 to 0.520 seconds (`61.99%`), the all-in
+compile/archive/decode/reweight lifecycle improves `21.26%`, and piece-score
+calls fall `83.80%`.
+
+The bounded archive is 995,862 bytes (3.149 bytes per transition). Frozen
+phoneme scaling projects compiled full-corpus topology at `11.60 GiB`; adding
+it to the accepted Opt15 bound raises the transient projection from `229.86`
+to `241.46 GiB`. This remains below the 300 GiB host limit and is explicitly
+`PROJECTION_NOT_VM_OR_FULL_CORPUS_MEASUREMENT`.
+
+The one allowed fixed Devanagari probe passes all seven canonical artifacts
+exactly across 10,252 numeric values. Its wall changes from 0.985 to 1.007
+seconds; the +0.022 second one-shot subsecond shift was not repeated. No
+representative, stress, VM, cloud, six-cell, or full-M0 workload ran. Evidence
+is `evidence/s1m2_local_optimization_16_v1.json`.
+
+Opt15 and Opt16 are both accepted. Current evidence exposes no further obvious
+structural local optimization target, so the stopping decision is
+`STOP_LOCAL_OPTIMIZATION`; Opt17 must not be opened. VM worker scaling,
+scheduling, and production readiness remain separate future work requiring
+explicit authorization.
+
+```text
+S1M2_OPTIMIZATION_15=ACCEPTED
+S1M2_OPTIMIZATION_16=ACCEPTED
+S1M2_LOCAL_OPTIMIZATION_TASK=COMPLETE
+S1M2_LOCAL_OPTIMIZATION_RECOMMENDATION=STOP_LOCAL_OPTIMIZATION
+PRODUCTION_STORAGE_GATE=PROJECTED_BELOW_300_GIB_NOT_VM_MEASURED
+FULL_M0_PROCESS_RUNNING=NO
+```

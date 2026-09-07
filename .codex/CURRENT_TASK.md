@@ -31,8 +31,8 @@ optimization 6 inner piece-path key reuse: ACCEPTED
 optimization 7 canonical form-cache key: ACCEPTED (small)
 local frozen representative benchmark: COMPLETE / VALIDATED
 representative cross-frontend script-neutral identity: PASS
-continuous runtime target: NOT READY
-production storage gate: NOT READY
+continuous runtime target: NOT READY / NEXT GATE IS VM READINESS
+production storage gate: PROJECTED BELOW 300 GiB / VM NOT MEASURED
 optimization 8 shared token-local form-prefix DP: ACCEPTED (training marginals)
 optimization 9 shared inspection marginals/top-K: ACCEPTED
 optimization 10 shared bounded piece-prefix top-K: ACCEPTED
@@ -43,7 +43,7 @@ bounded streaming artifact comparator: SCHEMA-TYPED KEYED DISK-BACKED / FOCUSED 
 optimization 13 ordered SQLite inspection-shard reduction: ACCEPTED
 optimization 14 completed-state storage compaction: ACCEPTED
 optimization 15 bounded transient-state lifetime: ACCEPTED
-Opt16 compile-once immutable topology reuse: READY
+Opt16 compile-once immutable topology reuse: ACCEPTED
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -278,6 +278,43 @@ S1M2_REPRESENTATIVE_AUDIT_RERUN=NOT_REQUIRED
 S1M2_OPTIMIZATION_13=ACCEPTED
 S1M2_OPTIMIZATION_14=ACCEPTED
 S1M2_OPTIMIZATION_15=ACCEPTED
-S1M2_OPTIMIZATION_16=READY
+S1M2_OPTIMIZATION_16=ACCEPTED
 PRODUCTION_STORAGE_GATE=PROJECTED_BELOW_300_GIB_NOT_VM_MEASURED
+S1M2_LOCAL_OPTIMIZATION_TASK=COMPLETE
+S1M2_LOCAL_OPTIMIZATION_RECOMMENDATION=STOP_LOCAL_OPTIMIZATION
 ```
+
+## Opt16 accepted; stop local optimization
+
+Opt16 compiles the verified immutable candidate/form/piece-prefix topology once
+in training pass 1 and stores compact, reconstructible document-local records.
+Passes 2/3 and final inspection stream one segment record at a time. Each phase
+recomputes piece scores, segmentation-prior weights, forward/backward vectors,
+posteriors, expected counts, and top-K score state from the current
+authoritative piece parameters; none of that mutable state is cached.
+
+The focused pieces/latent suite passes (`96 passed in 17.69s`), including an
+explicit changed-piece-parameter reweight-versus-fresh-rebuild test,
+interrupted resume, pass/shard retirement resume, and serial/parallel
+scientific identity. The final bounded 3-document/64-line measurement compares
+154,136 values exactly. Avoidable topology lifecycle overhead falls from
+1.368 to 0.520 seconds (`61.99%`), while the all-in
+compile/archive/decode/reweight pair improves `21.26%`; piece-score calls fall
+`83.80%`.
+
+The bounded compiled archive is 995,862 bytes (3.149 bytes/transition). Its
+phoneme-scaled full-corpus projection is `11.60 GiB`, raising the accepted
+Opt15 transient projection from `229.86` to `241.46 GiB`. This is
+`PROJECTION_NOT_VM_OR_FULL_CORPUS_MEASUREMENT` and remains below the 300 GiB
+host limit.
+
+The one fixed Devanagari Opt16 probe passes all seven canonical artifacts
+exactly (10,252 numeric values, zero difference). Its one-shot wall is 1.007
+seconds versus 0.985 for Opt15; the +0.022 second subsecond shift was not
+repeated. Evidence is `evidence/s1m2_local_optimization_16_v1.json`. No
+representative, stress, VM, cloud, six-cell, or full-M0 run was performed.
+
+Both authorized rounds are resolved. There is no remaining obvious structural
+local target supported by current profiling evidence; do not open Opt17.
+`STOP_LOCAL_OPTIMIZATION`. Any next session requires explicit authorization
+and should address VM worker scaling, scheduling, and production readiness.

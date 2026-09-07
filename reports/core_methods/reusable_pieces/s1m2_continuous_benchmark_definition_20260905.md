@@ -1018,3 +1018,43 @@ S1M2_OPTIMIZATION_15=ACCEPTED
 S1M2_OPTIMIZATION_16=READY
 PRODUCTION_STORAGE_GATE=PROJECTED_BELOW_300_GIB_NOT_VM_MEASURED
 ```
+
+### Local optimization 16: compile-once immutable topology reuse
+
+Opt16 is accepted at measured implementation commit `9536649`. Pass 1 compiles
+the score-free lexical/piece-prefix topology into compact document-local
+records; later passes and final inspection stream those records one segment at
+a time and exactly reweight them from the current authoritative piece
+parameters. Piece scores, forward/backward state, posteriors, expected counts,
+and top-K score state are never cached. Archive validation binds configuration,
+document/freeze identity, primitive representation, phoneme inventory, and
+ordered factor/form support.
+
+The focused pieces/latent suite passes (`96 passed`), including explicit
+changed-parameter reweight-versus-rebuild equality, interrupted resume, and
+serial/parallel scientific identity. In the final bounded 3-document/64-line
+measurement, the old four rebuilds take 3.990 seconds. After subtracting the
+2.622 seconds of unavoidable four-phase reweighting, avoidable topology
+lifecycle overhead falls from 1.368 to 0.520 seconds (`61.99%`); the complete
+compile/archive/decode/reweight pair improves `21.26%`. Piece-score calls fall
+`83.80%`, and 154,136 numeric values compare exactly.
+
+The compact bounded archive is 995,862 bytes, or 3.149 bytes per transition.
+Its frozen phoneme-scaled full-corpus projection is `11.60 GiB`, raising the
+accepted Opt15 transient projection from `229.86` to `241.46 GiB`. This is
+`PROJECTION_NOT_VM_OR_FULL_CORPUS_MEASUREMENT` and remains below the 300 GiB
+host limit.
+
+The one allowed fixed Devanagari probe passes all seven canonical artifacts
+exactly across 10,252 numeric values. Its wall changes from 0.985 to 1.007
+seconds; the +0.022 second one-shot subsecond shift is recorded without a
+repeat. No representative, stress, VM, cloud, or full-M0 workload ran.
+Canonical evidence is `evidence/s1m2_local_optimization_16_v1.json`.
+
+```text
+S1M2_OPTIMIZATION_16=ACCEPTED
+S1M2_LOCAL_OPTIMIZATION_TASK=COMPLETE
+S1M2_LOCAL_OPTIMIZATION_RECOMMENDATION=STOP_LOCAL_OPTIMIZATION
+PRODUCTION_STORAGE_GATE=PROJECTED_BELOW_300_GIB_NOT_VM_MEASURED
+FULL_M0_PROCESS_RUNNING=NO
+```
