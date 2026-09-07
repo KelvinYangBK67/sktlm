@@ -4,6 +4,7 @@
 /data/processed/
 /data/canonical/
 /data/representations/
+/data/derived/
 /data/tokenizer_corpora/
 /data/canonical_candidate/
 /reports/cleaning/generated/
@@ -12,6 +13,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 artifacts/
+.sktlm-bridge.toml
 *.egg-info/
 /archive/legacy/pilot/checkpoints/
 /archive/legacy/pilot/tokenizer/*.model

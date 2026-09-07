@@ -1,0 +1,85 @@
+freeze_id: 9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40
+canonical_manifest: data/manifests/canonical_corpus.csv
+m0_representation_manifest: data/manifests/representations.csv
+artifact_root: artifacts/baselines/full_m0
+seed: 0
+vocab_size: 24000
+condition_manifest_version: full-m0-baselines-v1
+full_m0_definition_version: full-m0-v1
+
+historical_condition_manifest:
+  path: configs/experiments/baselines/m0_matrix.yaml
+  version: m0-baselines-v2
+matrix_accounting:
+  historical_m0_cell_count: 22
+  historical_retired_cell_count: 4
+  unchanged_m0_production_cell_count: 18
+  m0_prime_replacement_cell_count: 4
+  full_m0_production_cell_count: 22
+  retired_original_m0_condition_ids:
+    - bpe__iast__continuous
+    - unigram__iast__continuous
+    - unicode_codepoint__iast__continuous
+    - surface_lattice__iast__continuous
+
+# This is a read-only consumer identity. The payload and formal manifest are
+# generated elsewhere, ignored by Git, and must be provisioned before input checks.
+m0_prime:
+  derivation_id: m0-prime-iast-continuous-v1
+  manifest_schema: sktlm-m0-prime-representation/v1
+  manifest: artifacts/m0_prime/m0_prime_iast_continuous_v1/manifest.csv
+  manifest_sha256: 3a8cbb3359ce8cce2a7d551281a8faf50b9fed33f9b8d4bce3425d28237ae922
+  payload_root: data/derived/m0_prime/iast/continuous
+
+downstream_lm:
+  contract_version: m0-common-downstream-lm-v1
+  model_class: TinyDecoderOnlyTransformer
+  context_length: 32
+  n_embd: 64
+  n_head: 2
+  n_layer: 2
+  dropout: 0.0
+  batch_size: 8
+  learning_rate: 0.001
+  max_steps: 20
+  shuffle_buffer_blocks: 1024
+  eval_split: test
+  device: cuda
+  optimizer: AdamW
+  context_policy: segment_contained_sliding_context_v1
+  scoring_protocol: each_within_segment_target_once_v1
+  canonical_unit: frozen_iast_surface_word_unicode_codepoint_v1
+  prepend_bos: true
+  append_eos: true
+  deterministic_algorithms: true
+
+m0: &m0 data/manifests/representations.csv
+m0_prime_manifest: &m0_prime_manifest artifacts/m0_prime/m0_prime_iast_continuous_v1/manifest.csv
+
+# Eighteen unchanged valid M0 cells. Historical retired cells remain only in
+# m0_matrix.yaml and in the explicit retired_original_m0_conditions plan view.
+conditions:
+  - {method: bpe, script: iast, spacing: surface_word, substrate: M0, observation_manifest: *m0, role: unchanged_m0}
+  - {method: bpe, script: iast, spacing: legacy_joined, substrate: M0, observation_manifest: *m0, role: unchanged_m0}
+  - {method: bpe, script: devanagari, spacing: surface_word, substrate: M0, observation_manifest: *m0, role: unchanged_m0}
+  - {method: bpe, script: devanagari, spacing: legacy_joined, substrate: M0, observation_manifest: *m0, role: unchanged_m0}
+  - {method: bpe, script: devanagari, spacing: continuous, substrate: M0, observation_manifest: *m0, role: unchanged_m0}
+  - {method: unigram, script: iast, spacing: surface_word, substrate: M0, observation_manifest: *m0, role: unchanged_m0}
+  - {method: unigram, script: iast, spacing: legacy_joined, substrate: M0, observation_manifest: *m0, role: unchanged_m0}
+  - {method: unigram, script: devanagari, spacing: surface_word, substrate: M0, observation_manifest: *m0, role: unchanged_m0}
+  - {method: unigram, script: devanagari, spacing: legacy_joined, substrate: M0, observation_manifest: *m0, role: unchanged_m0}
+  - {method: unigram, script: devanagari, spacing: continuous, substrate: M0, observation_manifest: *m0, role: unchanged_m0}
+  - {method: unicode_codepoint, script: iast, spacing: surface_word, substrate: M0, observation_manifest: *m0, role: unchanged_m0}
+  - {method: unicode_codepoint, script: iast, spacing: legacy_joined, substrate: M0, observation_manifest: *m0, role: unchanged_m0}
+  - {method: unicode_codepoint, script: devanagari, spacing: surface_word, substrate: M0, observation_manifest: *m0, role: unchanged_m0}
+  - {method: unicode_codepoint, script: devanagari, spacing: legacy_joined, substrate: M0, observation_manifest: *m0, role: unchanged_m0}
+  - {method: unicode_codepoint, script: devanagari, spacing: continuous, substrate: M0, observation_manifest: *m0, role: unchanged_m0}
+  - {method: aksara_safe_bpe, script: devanagari, spacing: continuous, substrate: M0, observation_manifest: *m0, role: unchanged_m0}
+  - {method: surface_lattice, script: iast, spacing: surface_word, substrate: M0, observation_manifest: *m0, role: unchanged_m0}
+  - {method: surface_lattice, script: iast, spacing: legacy_joined, substrate: M0, observation_manifest: *m0, role: unchanged_m0}
+
+  # Explicit replacements; none relabels or overwrites original M0 IAST continuous.
+  - {method: bpe, script: iast_m0_prime, spacing: continuous, substrate: M0-prime, observation_manifest: *m0_prime_manifest, role: m0_prime_replacement}
+  - {method: unigram, script: iast_m0_prime, spacing: continuous, substrate: M0-prime, observation_manifest: *m0_prime_manifest, role: m0_prime_replacement}
+  - {method: unicode_codepoint, script: iast_m0_prime, spacing: continuous, substrate: M0-prime, observation_manifest: *m0_prime_manifest, role: m0_prime_replacement}
+  - {method: surface_lattice, script: iast_m0_prime, spacing: continuous, substrate: M0-prime, observation_manifest: *m0_prime_manifest, role: m0_prime_replacement}

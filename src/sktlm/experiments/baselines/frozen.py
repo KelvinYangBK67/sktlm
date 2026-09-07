@@ -7,6 +7,18 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+from sktlm.corpus.dataset import file_sha256
+from sktlm.experiments.baselines.full_m0 import (
+    FULL_M0_CONDITION_MANIFEST_VERSION,
+    FROZEN_M0_CANONICAL_MANIFEST_SHA256,
+    FROZEN_M0_REPRESENTATION_MANIFEST_SHA256,
+    M0_PRIME_DERIVATION_ID,
+    M0_PRIME_MANIFEST_SCHEMA,
+    M0_PRIME_SCRIPT,
+    M0_PRIME_SPACING,
+    FullM0MatrixSettings,
+    MatrixSettings,
+)
 from sktlm.experiments.baselines.matrix import (
     FROZEN_M0_ID,
     FORMAL_SCRIPTS,
@@ -187,4 +199,205 @@ def load_frozen_catalog(
         freeze_id=settings.freeze_id,
         documents=documents,
         files_by_condition=files_by_condition,
+    )
+
+
+_M0_PRIME_REQUIRED_FIELDS = {
+    "schema_version",
+    "derivation_id",
+    "freeze_id",
+    "relative_path",
+    "document_id",
+    "split",
+    "canonical_hash",
+    "script",
+    "condition",
+    "representation_path",
+    "representation_hash",
+    "byte_count",
+    "source_script",
+    "source_condition",
+    "source_representation_path",
+    "source_representation_hash",
+}
+
+
+def _canonical_rows_by_relative(
+    canonical_manifest: Path,
+) -> tuple[list[str], dict[str, dict[str, str]]]:
+    rows = _read_csv(canonical_manifest)
+    order = [row["freeze_input_path"].replace("\\", "/") for row in rows]
+    if len(order) != len(set(order)):
+        raise ValueError("canonical manifest contains duplicate freeze_input_path values")
+    return order, dict(zip(order, rows))
+
+
+def _load_m0_prime_files(
+    settings: FullM0MatrixSettings,
+    frozen: FrozenRepresentationCatalog,
+    *,
+    repo_root: Path,
+    expected_documents: int,
+    check_paths: bool,
+) -> tuple[FrozenRepresentationFile, ...]:
+    """Validate the pinned M0-prime downstream interface without importing latent code."""
+    manifest_path = _resolve_repo_path(settings.m0_prime.manifest.as_posix(), repo_root)
+    if not manifest_path.is_file():
+        raise FileNotFoundError(
+            f"formal M0-prime manifest is not provisioned: {manifest_path}"
+        )
+    actual_manifest_hash = file_sha256(manifest_path)
+    if actual_manifest_hash != settings.m0_prime.manifest_sha256:
+        raise ValueError(
+            "M0-prime manifest SHA-256 mismatch: "
+            f"expected {settings.m0_prime.manifest_sha256}, found {actual_manifest_hash}"
+        )
+    if settings.m0_prime.formal:
+        canonical_path = _resolve_repo_path(settings.canonical_manifest.as_posix(), repo_root)
+        m0_manifest_path = _resolve_repo_path(
+            settings.m0_representation_manifest.as_posix(), repo_root
+        )
+        if file_sha256(canonical_path) != FROZEN_M0_CANONICAL_MANIFEST_SHA256:
+            raise ValueError("formal M0-prime canonical-manifest identity mismatch")
+        if file_sha256(m0_manifest_path) != FROZEN_M0_REPRESENTATION_MANIFEST_SHA256:
+            raise ValueError("formal M0-prime source representation-manifest identity mismatch")
+    with manifest_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        fields = set(reader.fieldnames or ())
+        rows = list(reader)
+    missing_fields = _M0_PRIME_REQUIRED_FIELDS - fields
+    if missing_fields:
+        raise ValueError(f"M0-prime manifest fields are missing: {sorted(missing_fields)}")
+    if len(rows) != expected_documents:
+        raise ValueError(
+            f"M0-prime manifest must contain {expected_documents} documents, found {len(rows)}"
+        )
+    relative_order = [row["relative_path"].replace("\\", "/") for row in rows]
+    if relative_order != sorted(relative_order):
+        raise ValueError("M0-prime manifest document order differs from the formal derivation")
+    if len(relative_order) != len(set(relative_order)):
+        raise ValueError("M0-prime manifest contains duplicate documents")
+
+    canonical_path = _resolve_repo_path(settings.canonical_manifest.as_posix(), repo_root)
+    canonical_order, canonical_by_relative = _canonical_rows_by_relative(canonical_path)
+    if set(relative_order) != set(canonical_order):
+        missing = sorted(set(canonical_order) - set(relative_order))
+        extra = sorted(set(relative_order) - set(canonical_order))
+        raise ValueError(
+            f"M0-prime/canonical membership mismatch: missing={missing}, extra={extra}"
+        )
+
+    source_by_relative = {
+        item.relative_path: item
+        for item in frozen.files_by_condition[("devanagari", "continuous")]
+    }
+    payload_root = _resolve_repo_path(settings.m0_prime.payload_root.as_posix(), repo_root).resolve()
+    files_by_relative: dict[str, FrozenRepresentationFile] = {}
+    for row in rows:
+        relative = row["relative_path"].replace("\\", "/")
+        canonical = canonical_by_relative[relative]
+        if row["schema_version"] != M0_PRIME_MANIFEST_SCHEMA:
+            raise ValueError(f"M0-prime manifest schema mismatch: {relative}")
+        if row["derivation_id"] != M0_PRIME_DERIVATION_ID:
+            raise ValueError(f"M0-prime derivation ID mismatch: {relative}")
+        if row["freeze_id"] != settings.freeze_id:
+            raise ValueError(f"M0-prime freeze identity mismatch: {relative}")
+        if row["document_id"] != canonical["document_id"] or row["split"] != canonical["split"]:
+            raise ValueError(f"M0-prime document ID/split mismatch: {relative}")
+        if row["canonical_hash"] != canonical["canonical_hash"]:
+            raise ValueError(f"M0-prime canonical hash mismatch: {relative}")
+        if row["script"] != M0_PRIME_SCRIPT or row["condition"] != M0_PRIME_SPACING:
+            raise ValueError(f"M0-prime representation identity mismatch: {relative}")
+        if row["source_script"] != "devanagari" or row["source_condition"] != "continuous":
+            raise ValueError(f"M0-prime source identity mismatch: {relative}")
+        source = source_by_relative[relative]
+        if row["source_representation_hash"] != source.sha256:
+            raise ValueError(f"M0-prime source representation hash mismatch: {relative}")
+        declared_source = _resolve_repo_path(row["source_representation_path"], repo_root).resolve()
+        if declared_source != source.path.resolve():
+            raise ValueError(f"M0-prime source representation path mismatch: {relative}")
+        if check_paths and file_sha256(source.path) != source.sha256:
+            raise ValueError(f"M0-prime frozen source file SHA-256 mismatch: {relative}")
+
+        path = _resolve_repo_path(row["representation_path"], repo_root).resolve()
+        expected_path = (payload_root / relative).resolve()
+        if path != expected_path or not path.is_relative_to(payload_root):
+            raise ValueError(f"M0-prime representation path escapes its payload root: {relative}")
+        if check_paths:
+            if not path.is_file():
+                raise FileNotFoundError(path)
+            if path.stat().st_size != int(row["byte_count"]):
+                raise ValueError(f"M0-prime representation byte count mismatch: {relative}")
+            if file_sha256(path) != row["representation_hash"]:
+                raise ValueError(f"M0-prime representation SHA-256 mismatch: {relative}")
+        files_by_relative[relative] = FrozenRepresentationFile(
+            relative_path=relative,
+            script=M0_PRIME_SCRIPT,
+            spacing=M0_PRIME_SPACING,
+            path=path,
+            sha256=row["representation_hash"],
+        )
+    return tuple(files_by_relative[relative] for relative in canonical_order)
+
+
+def load_full_m0_catalog(
+    settings: FullM0MatrixSettings,
+    *,
+    repo_root: Path = Path("."),
+    expected_documents: int = 240,
+    check_paths: bool = True,
+) -> FrozenRepresentationCatalog:
+    """Expose exactly five valid M0 conditions plus corrected M0-prime continuous."""
+    frozen = load_frozen_catalog(
+        settings,
+        repo_root=repo_root,
+        expected_documents=expected_documents,
+        check_paths=check_paths,
+    )
+    selected = {
+        key: files
+        for key, files in frozen.files_by_condition.items()
+        if key != ("iast", "continuous")
+    }
+    selected[(M0_PRIME_SCRIPT, M0_PRIME_SPACING)] = _load_m0_prime_files(
+        settings,
+        frozen,
+        repo_root=repo_root,
+        expected_documents=expected_documents,
+        check_paths=check_paths,
+    )
+    if len(selected) != 6:
+        raise ValueError(f"full-M0 catalog must expose six conditions, found {len(selected)}")
+    expected_files = expected_documents * 6
+    actual_files = sum(len(files) for files in selected.values())
+    if actual_files != expected_files:
+        raise ValueError(
+            f"full-M0 catalog must expose {expected_files} files, found {actual_files}"
+        )
+    return FrozenRepresentationCatalog(
+        freeze_id=frozen.freeze_id,
+        documents=frozen.documents,
+        files_by_condition=selected,
+    )
+
+
+def load_catalog(
+    settings: MatrixSettings,
+    *,
+    repo_root: Path = Path("."),
+    expected_documents: int = 240,
+    check_paths: bool = True,
+) -> FrozenRepresentationCatalog:
+    if settings.condition_manifest_version == FULL_M0_CONDITION_MANIFEST_VERSION:
+        return load_full_m0_catalog(
+            settings,
+            repo_root=repo_root,
+            expected_documents=expected_documents,
+            check_paths=check_paths,
+        )
+    return load_frozen_catalog(
+        settings,
+        repo_root=repo_root,
+        expected_documents=expected_documents,
+        check_paths=check_paths,
     )

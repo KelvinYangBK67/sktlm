@@ -1,0 +1,1 @@
+"""Generic cloud transfer contracts."""

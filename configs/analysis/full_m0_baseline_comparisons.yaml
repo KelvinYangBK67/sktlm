@@ -1,0 +1,109 @@
+schema_version: sktlm-shared-analysis-comparisons/v1
+comparison_manifest_id: full-m0-baseline-comparisons-v1
+adapter_id: full-m0-baseline-adapter-v1
+
+# These templates are declarations, not post-hoc result selection. Each selector
+# must resolve exactly one of the 22 validated production cells.
+comparison_families:
+  - family_id: script_effect
+    kind: script_effect
+    mode: same_dimension
+    dimension: method
+    values: [bpe, unigram, unicode_codepoint]
+    strict_control: true
+    contexts:
+      - context_id: surface_word
+        left: {script: iast, representation: surface_word, substrate: M0}
+        right: {script: devanagari, representation: surface_word, substrate: M0}
+      - context_id: legacy_joined
+        left: {script: iast, representation: legacy_joined, substrate: M0}
+        right: {script: devanagari, representation: legacy_joined, substrate: M0}
+      - context_id: continuous
+        left: {script: iast_m0_prime, representation: continuous, substrate: M0-prime}
+        right: {script: devanagari, representation: continuous, substrate: M0}
+
+  - family_id: ordinary_iast_spacing
+    kind: spacing_effect
+    mode: same_dimension
+    dimension: method
+    values: [bpe, unigram, unicode_codepoint, surface_lattice]
+    strict_control: true
+    contexts:
+      - context_id: surface_vs_legacy
+        left: {script: iast, representation: surface_word, substrate: M0}
+        right: {script: iast, representation: legacy_joined, substrate: M0}
+
+  - family_id: devanagari_spacing
+    kind: spacing_effect
+    mode: same_dimension
+    dimension: method
+    values: [bpe, unigram, unicode_codepoint]
+    strict_control: true
+    contexts:
+      - context_id: surface_vs_legacy
+        left: {script: devanagari, representation: surface_word, substrate: M0}
+        right: {script: devanagari, representation: legacy_joined, substrate: M0}
+      - context_id: surface_vs_continuous
+        left: {script: devanagari, representation: surface_word, substrate: M0}
+        right: {script: devanagari, representation: continuous, substrate: M0}
+      - context_id: legacy_vs_continuous
+        left: {script: devanagari, representation: legacy_joined, substrate: M0}
+        right: {script: devanagari, representation: continuous, substrate: M0}
+
+  - family_id: cross_orthography_descriptive
+    kind: descriptive_difference
+    mode: same_dimension
+    dimension: method
+    values: [bpe, unigram, unicode_codepoint, surface_lattice]
+    strict_control: false
+    note: "Not a pure spacing effect: M0-prime also changes diphthong and aspirate orthography."
+    contexts:
+      - context_id: surface_vs_prime_continuous
+        left: {script: iast, representation: surface_word, substrate: M0}
+        right: {script: iast_m0_prime, representation: continuous, substrate: M0-prime}
+      - context_id: legacy_vs_prime_continuous
+        left: {script: iast, representation: legacy_joined, substrate: M0}
+        right: {script: iast_m0_prime, representation: continuous, substrate: M0-prime}
+
+  - family_id: method_effect
+    kind: method_effect
+    mode: dimension_pairs
+    dimension: method
+    strict_control: true
+    value_pairs:
+      - [bpe, unigram]
+      - [bpe, unicode_codepoint]
+      - [unigram, unicode_codepoint]
+    contexts:
+      - {context_id: iast_surface, selector: {script: iast, representation: surface_word, substrate: M0}}
+      - {context_id: iast_legacy, selector: {script: iast, representation: legacy_joined, substrate: M0}}
+      - {context_id: devanagari_surface, selector: {script: devanagari, representation: surface_word, substrate: M0}}
+      - {context_id: devanagari_legacy, selector: {script: devanagari, representation: legacy_joined, substrate: M0}}
+      - {context_id: devanagari_continuous, selector: {script: devanagari, representation: continuous, substrate: M0}}
+      - {context_id: prime_continuous, selector: {script: iast_m0_prime, representation: continuous, substrate: M0-prime}}
+
+  - family_id: specialized_method_effect
+    kind: method_effect
+    mode: dimension_pairs
+    dimension: method
+    strict_control: true
+    value_pairs:
+      - [surface_lattice, bpe]
+      - [surface_lattice, unigram]
+      - [surface_lattice, unicode_codepoint]
+    contexts:
+      - {context_id: iast_surface, selector: {script: iast, representation: surface_word, substrate: M0}}
+      - {context_id: iast_legacy, selector: {script: iast, representation: legacy_joined, substrate: M0}}
+      - {context_id: prime_continuous, selector: {script: iast_m0_prime, representation: continuous, substrate: M0-prime}}
+
+  - family_id: aksara_method_effect
+    kind: method_effect
+    mode: dimension_pairs
+    dimension: method
+    strict_control: true
+    value_pairs:
+      - [aksara_safe_bpe, bpe]
+      - [aksara_safe_bpe, unigram]
+      - [aksara_safe_bpe, unicode_codepoint]
+    contexts:
+      - {context_id: devanagari_continuous, selector: {script: devanagari, representation: continuous, substrate: M0}}

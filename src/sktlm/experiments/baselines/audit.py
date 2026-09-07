@@ -9,9 +9,14 @@ from pathlib import Path
 from typing import Any, Callable
 
 from sktlm.experiments.baselines.aggregate import _read_json, _verify_completion
+from sktlm.experiments.baselines.full_m0 import (
+    FullM0MatrixSettings,
+    MatrixSettings,
+    build_specs,
+    load_matrix_settings,
+)
 from sktlm.experiments.baselines.matrix import (
     RETIRED,
-    BaselineMatrixSettings,
     RetiredConditionError,
 )
 
@@ -31,7 +36,7 @@ def _check(
 
 
 def audit_first_production_cell(
-    settings: BaselineMatrixSettings,
+    settings: MatrixSettings,
     condition_id: str,
     artifact_dir: Path,
 ) -> dict[str, Any]:
@@ -64,6 +69,10 @@ def audit_first_production_cell(
         )
     provenance = payloads.get("provenance", {})
     metrics = payloads.get("metrics", {})
+    spec = next(
+        (spec for spec in build_specs(settings) if spec.cell.condition_id == condition_id),
+        None,
+    )
     _check(
         engineering,
         "formal_production_scope",
@@ -91,6 +100,17 @@ def audit_first_production_cell(
         )
         and provenance.get("corpus_freeze_id") == settings.freeze_id,
     )
+    if isinstance(settings, FullM0MatrixSettings):
+        assert spec is not None
+        _check(
+            engineering,
+            "substrate_and_observation_manifest",
+            lambda: provenance.get("substrate") == spec.cell.substrate
+            and provenance.get("observation_manifest")
+            == spec.observation_manifest.as_posix()
+            and provenance.get("full_m0_definition_version")
+            == settings.full_m0_definition_version,
+        )
     _check(
         engineering,
         "runtime_and_peak_memory",
@@ -183,10 +203,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    settings = BaselineMatrixSettings.from_yaml(args.config)
+    settings = load_matrix_settings(args.config)
     audit = audit_first_production_cell(settings, args.condition, args.artifact_dir)
     rendered = json.dumps(audit, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     if args.output:
+        if args.output.exists():
+            raise FileExistsError(f"refusing to overwrite audit output: {args.output}")
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(rendered, encoding="utf-8")
     print(rendered, end="")

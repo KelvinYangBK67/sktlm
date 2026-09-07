@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import unicodedata
 from dataclasses import dataclass
@@ -20,6 +21,10 @@ from sktlm.tokenizers.base import Encoding
 
 
 SURFACE_LATTICE_CONTRACT = "iast_surface_lattice_v1"
+M0_PRIME_SURFACE_LATTICE_CONTRACT = "iast_m0_prime_surface_lattice_v1"
+SUPPORTED_SURFACE_LATTICE_CONTRACTS = frozenset(
+    {SURFACE_LATTICE_CONTRACT, M0_PRIME_SURFACE_LATTICE_CONTRACT}
+)
 DEFAULT_UNKNOWN_LOG_SCORE = -20.0
 
 
@@ -34,6 +39,11 @@ def atomize_iast_surface(text: str) -> tuple[SurfaceAtom, ...]:
         )
         atoms.append(SurfaceAtom(surface, match.start(), match.end(), mergeable))
     return tuple(atoms)
+
+
+def atomize_m0_prime_iast_surface(text: str) -> tuple[SurfaceAtom, ...]:
+    """Atomize injective M0-prime IAST under its separately versioned contract."""
+    return atomize_iast_surface(text)
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,7 +100,13 @@ class SurfaceLatticeTokenizer(SurrogateSentencePieceTokenizer):
     unknown_semantics = "unseen_iast_grapheme_singleton_arc_with_fixed_log_score"
 
     def __init__(self, model_path: Path) -> None:
-        super().__init__(model_path, expected_contract=SURFACE_LATTICE_CONTRACT)
+        metadata_path = Path(model_path).with_suffix(".atoms.json")
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        contract = str(metadata.get("contract"))
+        if contract not in SUPPORTED_SURFACE_LATTICE_CONTRACTS:
+            raise ValueError(f"unsupported surface-lattice atomizer contract: {contract}")
+        super().__init__(model_path, expected_contract=contract)
+        self.atomizer_contract = contract
         expected_regex = str(self.metadata.get("regex_version"))
         if expected_regex != regex.__version__:
             raise RuntimeError(
@@ -103,7 +119,11 @@ class SurfaceLatticeTokenizer(SurrogateSentencePieceTokenizer):
                 f"expected {expected_unicode}, found {unicodedata.unidata_version}"
             )
         self.unknown_log_score = float(self.metadata["unknown_log_score"])
-        self.unknown_semantics = type(self).unknown_semantics
+        self.unknown_semantics = (
+            "unseen_m0_prime_grapheme_singleton_arc_with_fixed_log_score"
+            if contract == M0_PRIME_SURFACE_LATTICE_CONTRACT
+            else type(self).unknown_semantics
+        )
         self._piece_trie = _PieceTrieNode()
         for token_id in range(4, self.vocab_size):
             atoms = self.piece_atoms(token_id)
@@ -249,7 +269,7 @@ class SurfaceLatticeTokenizer(SurrogateSentencePieceTokenizer):
         return {
             **super().fingerprint_payload(),
             "type": self.name,
-            "atomizer": SURFACE_LATTICE_CONTRACT,
+            "atomizer": self.atomizer_contract,
             "regex_version": regex.__version__,
             "unicodedata_version": unicodedata.unidata_version,
             "unknown_log_score": self.unknown_log_score,
@@ -263,20 +283,28 @@ def train_surface_lattice(
     vocab_size: int,
     max_piece_atoms: int = 16,
     unknown_log_score: float = DEFAULT_UNKNOWN_LOG_SCORE,
+    contract: str = SURFACE_LATTICE_CONTRACT,
 ) -> SurfaceLatticeTokenizer:
     """Fit one independent surface-only Unigram lattice vocabulary."""
     if not math.isfinite(unknown_log_score) or unknown_log_score >= 0:
         raise ValueError("unknown_log_score must be a finite negative number")
+    if contract not in SUPPORTED_SURFACE_LATTICE_CONTRACTS:
+        raise ValueError(f"unsupported surface-lattice atomizer contract: {contract}")
+    atomizer = (
+        atomize_m0_prime_iast_surface
+        if contract == M0_PRIME_SURFACE_LATTICE_CONTRACT
+        else atomize_iast_surface
+    )
     model_path = train_surrogate_sentencepiece(
         texts,
         model_dir / f"surface_lattice_{vocab_size}",
-        atomizer=atomize_iast_surface,
-        contract=SURFACE_LATTICE_CONTRACT,
+        atomizer=atomizer,
+        contract=contract,
         model_type="unigram",
         vocab_size=vocab_size,
         max_piece_atoms=max_piece_atoms,
         metadata={
-            "atomizer": SURFACE_LATTICE_CONTRACT,
+            "atomizer": contract,
             "regex_version": regex.__version__,
             "unicodedata_version": unicodedata.unidata_version,
             "unknown_log_score": unknown_log_score,

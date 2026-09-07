@@ -1,4 +1,4 @@
-"""Fail-closed completeness validation and aggregation for 18 production cells."""
+"""Fail-closed completeness validation for historical-M0 and full-M0 baselines."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 from typing import Any
 
@@ -13,12 +14,22 @@ import yaml
 
 from sktlm.corpus.dataset import file_sha256
 from sktlm.experiments.artifacts import payload_sha256
+from sktlm.experiments.baselines.full_m0 import (
+    FULL_M0_AGGREGATE_SCHEMA,
+    FULL_M0_REQUIRED_PROVENANCE,
+    M0_PRIME_SUBSTRATE,
+    FullM0MatrixSettings,
+    MatrixSettings,
+    build_specs,
+    load_matrix_settings,
+)
 from sktlm.experiments.baselines.matrix import (
     REQUIRED_PROVENANCE,
     RETIRED,
     BaselineMatrixSettings,
     BaselineRunSpec,
     build_run_specs,
+    expected_condition_manifest,
 )
 
 
@@ -147,17 +158,19 @@ def _comparison_structure(specs: tuple[BaselineRunSpec, ...]) -> dict[str, Any]:
 
 
 def aggregate_formal_results(
-    settings: BaselineMatrixSettings,
+    settings: MatrixSettings,
     artifact_root: Path,
     *,
     repo_root: Path = Path("."),
 ) -> dict[str, Any]:
-    """Validate exactly 18 production bundles, then return a structured aggregate."""
-    specs = build_run_specs(settings)
+    """Validate exactly the configured production universe and aggregate it."""
+    full = isinstance(settings, FullM0MatrixSettings)
+    specs = build_specs(settings)
+    retirement_records = (
+        expected_condition_manifest() if full else settings.condition_manifest
+    )
     retired_ids = {
-        record.cell.condition_id
-        for record in settings.condition_manifest
-        if record.status == RETIRED
+        record.cell.condition_id for record in retirement_records if record.status == RETIRED
     }
     for condition_id in retired_ids:
         if (artifact_root / condition_id).exists():
@@ -178,10 +191,11 @@ def aggregate_formal_results(
     invariant_values: dict[str, set[Any]] = {
         "code_commit": set(),
         "canonical_manifest_sha256": set(),
-        "representation_manifest_sha256": set(),
         "environment_fingerprint_sha256": set(),
         "seed": set(),
     }
+    if not full:
+        invariant_values["representation_manifest_sha256"] = set()
     training_instances: set[str] = set()
     results: dict[str, Any] = {}
     for spec in specs:
@@ -197,7 +211,8 @@ def aggregate_formal_results(
         artifact_dir = seed_dirs[0]
         _verify_completion(artifact_dir, condition_id)
         provenance = _read_json(artifact_dir / "provenance.json")
-        missing_provenance = set(REQUIRED_PROVENANCE) - set(provenance)
+        required_provenance = FULL_M0_REQUIRED_PROVENANCE if full else REQUIRED_PROVENANCE
+        missing_provenance = set(required_provenance) - set(provenance)
         if missing_provenance:
             raise AggregateValidationError(
                 f"incomplete provenance for {condition_id}: {sorted(missing_provenance)}"
@@ -214,6 +229,14 @@ def aggregate_formal_results(
             "seed": settings.seed,
             "training_initialization": "fresh_per_cell",
         }
+        if full:
+            expected_identity.update(
+                {
+                    "substrate": spec.cell.substrate,
+                    "observation_manifest": spec.observation_manifest.as_posix(),
+                    "full_m0_definition_version": settings.full_m0_definition_version,
+                }
+            )
         for key, expected in expected_identity.items():
             if provenance.get(key) != expected:
                 raise AggregateValidationError(
@@ -225,6 +248,33 @@ def aggregate_formal_results(
             raise AggregateValidationError(f"effective config mismatch for {condition_id}")
         if config.get("condition_id") != condition_id:
             raise AggregateValidationError(f"config condition mismatch for {condition_id}")
+        if full:
+            expected_tokenizer_config = spec.cell.tokenizer_config(
+                vocab_size=settings.vocab_size
+            )
+            expected_config_identity = {
+                "matrix": "full_m0_baselines",
+                "condition_manifest_version": settings.condition_manifest_version,
+                "condition_status": "valid",
+                "retirement_reason": None,
+                "run_scope": "formal_production",
+                "method": spec.cell.method,
+                "script": spec.cell.script,
+                "spacing": spec.cell.spacing,
+                "seed": settings.seed,
+                "corpus_freeze_id": settings.freeze_id,
+                "canonical_manifest": settings.canonical_manifest.as_posix(),
+                "representation_manifest": spec.observation_manifest.as_posix(),
+                "observation_manifest": spec.observation_manifest.as_posix(),
+                "substrate": spec.cell.substrate,
+                "full_m0_definition_version": settings.full_m0_definition_version,
+                "tokenizer": expected_tokenizer_config,
+            }
+            for key, expected in expected_config_identity.items():
+                if config.get(key) != expected:
+                    raise AggregateValidationError(
+                        f"effective config {key} mismatch for {condition_id}"
+                    )
         limits = config.get("limits", {})
         downstream = config.get("common_downstream_lm", {})
         if limits != {"max_train_segments": None, "max_eval_segments": None}:
@@ -251,12 +301,55 @@ def aggregate_formal_results(
             raise AggregateValidationError(
                 f"tokenizer fingerprint provenance mismatch: {condition_id}"
             )
+        if full and tokenizer_fingerprint.get("config") != expected_tokenizer_config:
+            raise AggregateValidationError(
+                f"tokenizer compatibility/config identity mismatch: {condition_id}"
+            )
         if (
             data_fingerprint.get("corpus_freeze_id") != settings.freeze_id
             or data_fingerprint.get("script") != spec.cell.script
             or data_fingerprint.get("spacing") != spec.cell.spacing
         ):
             raise AggregateValidationError(f"data identity mismatch for {condition_id}")
+        if full:
+            canonical_path = (
+                settings.canonical_manifest
+                if settings.canonical_manifest.is_absolute()
+                else repo_root / settings.canonical_manifest
+            )
+            expected_canonical_hash = file_sha256(canonical_path)
+            expected_observation_hash = (
+                settings.m0_prime.manifest_sha256
+                if spec.cell.substrate == M0_PRIME_SUBSTRATE
+                else file_sha256(
+                    settings.m0_representation_manifest
+                    if settings.m0_representation_manifest.is_absolute()
+                    else repo_root / settings.m0_representation_manifest
+                )
+            )
+            if (
+                data_fingerprint.get("substrate") != spec.cell.substrate
+                or data_fingerprint.get("canonical_manifest_sha256")
+                != expected_canonical_hash
+                or data_fingerprint.get("observation_manifest")
+                != spec.observation_manifest.as_posix()
+                or data_fingerprint.get("observation_manifest_sha256")
+                != expected_observation_hash
+                or provenance.get("observation_manifest_sha256")
+                != expected_observation_hash
+                or provenance.get("representation_manifest_sha256")
+                != expected_observation_hash
+                or provenance.get("canonical_manifest_sha256")
+                != expected_canonical_hash
+                or provenance.get("input_compatibility_contract")
+                != expected_tokenizer_config.get(
+                    "input_compatibility_contract",
+                    "frozen-m0-tokenizer-compatibility-v1",
+                )
+            ):
+                raise AggregateValidationError(
+                    f"substrate observation-manifest identity mismatch: {condition_id}"
+                )
 
         environment = _read_json(artifact_dir / "environment.json")
         environment_hash = _verify_embedded_fingerprint(
@@ -304,6 +397,21 @@ def aggregate_formal_results(
                 raise AggregateValidationError(f"invalid metric {key} for {condition_id}")
 
         training_instance = str(provenance["training_instance_id"])
+        if full:
+            expected_training_instance = payload_sha256(
+                {
+                    "condition_id": condition_id,
+                    "seed": settings.seed,
+                    "data_fingerprint_sha256": data_hash,
+                    "tokenizer_fingerprint_sha256": tokenizer_hash,
+                    "observation_manifest_sha256": expected_observation_hash,
+                    "common_downstream_contract": settings.downstream_lm.contract_version,
+                }
+            )
+            if training_instance != expected_training_instance:
+                raise AggregateValidationError(
+                    f"training instance identity mismatch: {condition_id}"
+                )
         if training_instance in training_instances:
             raise AggregateValidationError(
                 f"cells do not have independent training instances: {condition_id}"
@@ -313,6 +421,12 @@ def aggregate_formal_results(
             invariant_values[key].add(provenance[key])
         results[condition_id] = {
             "identity": expected_identity,
+            "provenance": provenance if full else None,
+            "artifacts": (
+                _read_json(artifact_dir / "COMPLETED.json").get("files")
+                if full
+                else None
+            ),
             **_category_view(metrics),
         }
 
@@ -323,20 +437,42 @@ def aggregate_formal_results(
     }
     if mismatches:
         raise AggregateValidationError(f"cross-cell provenance mismatch: {mismatches}")
-    return {
-        "aggregate_schema_version": "m0-baseline-aggregate-v1",
+    payload = {
+        "aggregate_schema_version": (
+            FULL_M0_AGGREGATE_SCHEMA if full else "m0-baseline-aggregate-v1"
+        ),
         "condition_manifest_version": settings.condition_manifest_version,
         "historical_cell_count": 22,
-        "valid_production_cell_count": 18,
+        "valid_production_cell_count": 22 if full else 18,
         "retired_cell_count": 4,
         "complete_valid_cell_count": len(results),
         "freeze_id": settings.freeze_id,
         "shared_provenance": {
             key: next(iter(values)) for key, values in invariant_values.items()
         },
-        "comparisons": _comparison_structure(specs),
+        "comparisons": (
+            {
+                "source": "configs/analysis/full_m0_baseline_comparisons.yaml",
+                "continuous_script_pair": ["iast_m0_prime", "devanagari"],
+                "ordinary_iast_continuous_pure_spacing": False,
+            }
+            if full
+            else _comparison_structure(specs)
+        ),
         "results": results,
     }
+    if full:
+        payload.update(
+            {
+                "full_m0_definition_version": settings.full_m0_definition_version,
+                "historical_m0_cell_count": 22,
+                "historical_retired_cell_count": 4,
+                "unchanged_m0_production_cell_count": 18,
+                "m0_prime_replacement_cell_count": 4,
+                "full_m0_production_cell_count": 22,
+            }
+        )
+    return payload
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -354,15 +490,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    settings = BaselineMatrixSettings.from_yaml(args.config)
+    settings = load_matrix_settings(args.config)
     artifact_root = args.artifact_root or settings.artifact_root
     aggregate = aggregate_formal_results(settings, artifact_root, repo_root=args.repo_root)
+    if args.output.exists():
+        raise FileExistsError(f"refusing to overwrite aggregate output: {args.output}")
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
+    temporary = args.output.with_name(f".{args.output.name}.tmp-{os.getpid()}")
+    temporary.write_text(
         json.dumps(aggregate, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    print(f"validated and aggregated 18 production cells: {args.output}")
+    os.replace(temporary, args.output)
+    print(f"validated and aggregated {len(aggregate['results'])} production cells: {args.output}")
 
 
 if __name__ == "__main__":

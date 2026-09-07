@@ -1,0 +1,85 @@
+schema_version: sktlm-cloud-experiment-contract/v1
+contract_id: full-m0-baselines-v1
+branch: exp/m0-baseline-validation
+
+input_sets:
+  - input_id: frozen_m0_canonical
+    paths: [data/canonical/gretil_iast, data/manifests/canonical_corpus.csv]
+    validator_argv: [sktlm-validate-gretil-freeze]
+  - input_id: frozen_m0_representations
+    paths: [data/representations/gretil, data/manifests/representations.csv]
+    validator_argv: [sktlm-validate-representations]
+  - input_id: derived_m0_prime
+    paths:
+      - data/derived/m0_prime/iast/continuous
+      - artifacts/m0_prime/m0_prime_iast_continuous_v1/manifest.csv
+      - artifacts/m0_prime/m0_prime_iast_continuous_v1/config.snapshot.json
+      - artifacts/m0_prime/m0_prime_iast_continuous_v1/generation.json
+      - artifacts/m0_prime/m0_prime_iast_continuous_v1/validation.json
+      - artifacts/m0_prime/m0_prime_iast_continuous_v1/SHA256SUMS
+    validator_argv:
+      - python
+      - scripts/cloud/verify_full_m0_inputs.py
+      - --config
+      - configs/experiments/baselines/full_m0_matrix.yaml
+
+remote_run_root: artifacts/baselines/full_m0
+optional_metrics_root: null
+audit:
+  entrypoint_argv:
+    - python
+    - scripts/cloud/audit_baseline_run.py
+    - --config
+    - configs/experiments/baselines/full_m0_matrix.yaml
+    - --condition
+    - "{condition_id}"
+    - --artifact-dir
+    - "{artifact_dir}"
+  inventory_key: artifacts
+
+collection_profiles:
+  report:
+    - COMPLETED.json
+    - config.yaml
+    - metrics.json
+    - provenance.json
+    - data_fingerprint.json
+    - tokenizer_fingerprint.json
+    - environment.json
+    - requirements-freeze.txt
+    - git_commit.txt
+    - result.csv
+    - predictions.jsonl
+    - logs.txt
+  scientific:
+    - COMPLETED.json
+    - config.yaml
+    - metrics.json
+    - provenance.json
+    - data_fingerprint.json
+    - tokenizer_fingerprint.json
+    - environment.json
+    - requirements-freeze.txt
+    - git_commit.txt
+    - result.csv
+    - predictions.jsonl
+    - logs.txt
+  full: null
+
+required_audited_files:
+  - COMPLETED.json
+  - config.yaml
+  - metrics.json
+  - provenance.json
+  - data_fingerprint.json
+  - tokenizer_fingerprint.json
+  - environment.json
+  - requirements-freeze.txt
+  - git_commit.txt
+  - result.csv
+  - predictions.jsonl
+  - logs.txt
+
+local_collection_root: artifacts/cloud_collected/full_m0_baselines
+completion:
+  schema_version: m0-baseline-completion-v1

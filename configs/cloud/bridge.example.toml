@@ -1,0 +1,15 @@
+# Copy to the ignored `.sktlm-bridge.toml`; keep credentials in your SSH agent.
+[bridge]
+host = "baseline-gpu.example.org"
+user = "ubuntu"
+port = 22
+identity_file = "~/.ssh/id_ed25519"
+remote_repo = "/mnt/sktlm-data/sktlm/repo"
+remote_data_mount = "/mnt/sktlm-data"
+remote_cloud_root = "/mnt/sktlm-data/sktlm"
+repository_url = "https://github.com/KelvinYangBK67/sktlm.git"
+
+[host_profiles.baseline-01]
+machine_id = "baseline-01"
+host = "baseline-gpu.example.org"
+role = "full-m0-baseline"

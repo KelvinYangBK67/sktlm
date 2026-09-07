@@ -8,15 +8,19 @@ import shlex
 from pathlib import Path
 from typing import Any
 
+from sktlm.experiments.baselines.full_m0 import (
+    FullM0MatrixSettings,
+    MatrixSettings,
+    build_specs,
+    load_matrix_settings,
+)
 from sktlm.experiments.baselines.matrix import (
     RETIRED,
-    BaselineMatrixSettings,
     RetiredConditionError,
-    build_run_specs,
 )
 
 
-def require_valid_condition(settings: BaselineMatrixSettings, condition_id: str) -> None:
+def require_valid_condition(settings: MatrixSettings, condition_id: str) -> None:
     record = settings.condition(condition_id)
     if record.status == RETIRED:
         raise RetiredConditionError(
@@ -26,7 +30,7 @@ def require_valid_condition(settings: BaselineMatrixSettings, condition_id: str)
 
 
 def build_production_queue(
-    settings: BaselineMatrixSettings,
+    settings: MatrixSettings,
     *,
     config_path: Path,
     condition_id: str | None = None,
@@ -35,7 +39,7 @@ def build_production_queue(
     if condition_id is not None:
         require_valid_condition(settings, condition_id)
     specs = [
-        spec for spec in build_run_specs(settings)
+        spec for spec in build_specs(settings)
         if condition_id is None or spec.cell.condition_id == condition_id
     ]
     jobs = []
@@ -60,11 +64,19 @@ def build_production_queue(
                 "command": shlex.join(argv),
             }
         )
+    full = isinstance(settings, FullM0MatrixSettings)
     return {
-        "queue_schema_version": "m0-baseline-production-queue-v1",
+        "queue_schema_version": (
+            "full-m0-baseline-production-queue/v1"
+            if full
+            else "m0-baseline-production-queue-v1"
+        ),
         "condition_manifest_version": settings.condition_manifest_version,
-        "historical_cell_count": len(settings.condition_manifest),
-        "valid_production_cell_count": 18,
+        "historical_cell_count": 22,
+        "historical_retired_cell_count": 4,
+        "unchanged_m0_production_cell_count": 18 if full else None,
+        "m0_prime_replacement_cell_count": 4 if full else 0,
+        "valid_production_cell_count": 22 if full else 18,
         "scheduled_job_count": len(jobs),
         "launches_jobs": False,
         "jobs": jobs,
@@ -87,7 +99,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    settings = BaselineMatrixSettings.from_yaml(args.config)
+    settings = load_matrix_settings(args.config)
     queue = build_production_queue(
         settings,
         config_path=args.config,

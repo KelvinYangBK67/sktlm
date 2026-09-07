@@ -1,5 +1,31 @@
 # Formal M₀ baseline matrix
 
+`full_m0_matrix.yaml` is the current production contract. It adds four explicit
+M0-prime corrected-continuous replacements to the 18 unchanged valid M0 cells,
+for exactly 22 runnable cells. Its read-only M0-prime manifest identity is
+`3a8cbb3359ce8cce2a7d551281a8faf50b9fed33f9b8d4bce3425d28237ae922`.
+The original four M0 IAST-continuous cells remain scientifically excluded and
+cannot be selected through this config.
+
+`m0_matrix.yaml` remains the historical `m0-baselines-v2` contract described
+below; it is not rewritten or reinterpreted by the new production view.
+
+Print the new plan without loading ignored payloads, or fail closed while
+checking every formal input:
+
+```bash
+python -m sktlm.experiments.baselines.full_m0 \
+  --config configs/experiments/baselines/full_m0_matrix.yaml
+python -m sktlm.experiments.baselines.full_m0 \
+  --config configs/experiments/baselines/full_m0_matrix.yaml \
+  --check-inputs
+```
+
+The second command is expected to fail on a checkout where the validated,
+ignored M0-prime manifest and payload have not been provisioned. Deployment,
+smoke, first-cell gating, production, analysis, and collection commands are in
+`reports/baselines/full_m0_vm_runbook.md`.
+
 `m0_matrix.yaml` is the versioned condition manifest. It retains the historical
 22-cell design while marking 18 representation-valid production cells and four
 IAST `continuous` cells as retired. It also fixes the frozen manifests, 24k

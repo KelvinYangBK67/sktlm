@@ -1,0 +1,6 @@
+schema_version = 1
+contract_id = "full-m0-baselines-v1"
+
+# Populate only after a real host is assigned. Empty assignments prevent the
+# bridge from inferring a machine or claiming that a run was launched.
+assignments = []

@@ -12,6 +12,7 @@ import subprocess
 import time
 import unicodedata
 from collections import Counter
+from dataclasses import replace
 from importlib import metadata
 from pathlib import Path
 from typing import Any, Iterator
@@ -27,20 +28,26 @@ from sktlm.experiments.artifacts import (
     payload_sha256,
 )
 from sktlm.experiments.environment import write_environment
-from sktlm.experiments.baselines.frozen import FrozenRepresentationCatalog, load_frozen_catalog
+from sktlm.experiments.baselines.frozen import FrozenRepresentationCatalog, load_catalog
+from sktlm.experiments.baselines.full_m0 import (
+    FULL_M0_REQUIRED_PROVENANCE,
+    M0_PRIME_SUBSTRATE,
+    FullM0MatrixSettings,
+    MatrixSettings,
+    build_specs,
+    load_matrix_settings,
+)
 from sktlm.experiments.baselines.downstream import run_common_downstream_lm
 from sktlm.experiments.baselines.matrix import (
     REQUIRED_PROVENANCE,
     RETIRED,
     VALID,
-    BaselineMatrixSettings,
     BaselineRunSpec,
     RetiredConditionError,
-    build_run_specs,
 )
 from sktlm.representations.canonical import RepresentedSegment
 from sktlm.tokenizers.aksara_bpe import train_aksara_safe_bpe
-from sktlm.tokenizers.base import Encoding, Tokenizer
+from sktlm.tokenizers.base import Encoding, Tokenizer, validate_surface_spans
 from sktlm.tokenizers.factory import build_tokenizer
 from sktlm.tokenizers.surface_lattice import (
     SurfaceLatticeTokenizer,
@@ -136,14 +143,14 @@ def _declared_file_fingerprint(
     }
 
 
-def _select_spec(settings: BaselineMatrixSettings, condition_id: str) -> BaselineRunSpec:
+def _select_spec(settings: MatrixSettings, condition_id: str):
     record = settings.condition(condition_id)
     if record.status == RETIRED:
         raise RetiredConditionError(
             f"refusing retired condition {condition_id}: {record.reason}; "
             f"decision_id={record.decision_id}"
         )
-    for spec in build_run_specs(settings):
+    for spec in build_specs(settings):
         if spec.cell.condition_id == condition_id:
             return spec
     raise RuntimeError(f"valid condition is missing from the production plan: {condition_id}")
@@ -214,12 +221,13 @@ def _fit_cell_tokenizer(
             vocab_size=int(tokenizer_config["vocab_size"]),
             max_piece_atoms=int(tokenizer_config["max_piece_atoms"]),
             unknown_log_score=float(tokenizer_config["unknown_log_score"]),
+            contract=str(tokenizer_config["atomizer_contract"]),
         )
     return build_tokenizer(tokenizer_config, training_texts(), model_dir=model_dir)
 
 
 def run_supported_cell(
-    settings: BaselineMatrixSettings,
+    settings: MatrixSettings,
     condition_id: str,
     *,
     repo_root: Path = Path("."),
@@ -234,7 +242,7 @@ def run_supported_cell(
     downstream_max_steps: int | None = None,
     run_mode: str = "diagnostic",
 ) -> Path:
-    """Fit and evaluate one of the 18 valid cells using frozen files directly."""
+    """Fit and evaluate one valid historical-M0 or full-M0 cell."""
     started = time.monotonic()
     if eval_split not in {"dev", "test"}:
         raise ValueError("eval_split must be 'dev' or 'test'")
@@ -269,6 +277,8 @@ def run_supported_cell(
             raise ValueError("production runs reject downstream device or step overrides")
         if not require_clean_git:
             raise ValueError("production runs require clean Git verification")
+        if isinstance(settings, FullM0MatrixSettings) and not settings.m0_prime.formal:
+            raise ValueError("production runs reject non-formal M0-prime fixture identity")
 
     if not spec.cell.tokenizer_supported:
         raise NotImplementedError(
@@ -281,7 +291,7 @@ def run_supported_cell(
         else current_git_commit(repo_root)
     )
 
-    catalog = load_frozen_catalog(
+    catalog = load_catalog(
         settings,
         repo_root=repo_root,
         expected_documents=expected_documents,
@@ -318,11 +328,13 @@ def run_supported_cell(
     lattice_log_probability = 0.0
     lattice_arc_count = 0
     lattice_ambiguous_node_count = 0
+    exact_reconstruction_checked_segments = 0
 
     def encoded_evaluation() -> Iterator[tuple[str, Encoding]]:
         nonlocal lattice_log_probability
         nonlocal lattice_arc_count
         nonlocal lattice_ambiguous_node_count
+        nonlocal exact_reconstruction_checked_segments
         eval_segments = catalog.iter_segments(
             spec.cell.script,
             spec.cell.spacing,
@@ -339,6 +351,16 @@ def run_supported_cell(
                 lattice_ambiguous_node_count += lattice_stats.ambiguous_node_count
             else:
                 encoding = tokenizer.encode(segment.text)
+            if getattr(spec.cell, "substrate", "M0") == M0_PRIME_SUBSTRATE:
+                validate_surface_spans(segment.text, encoding)
+                if isinstance(tokenizer, SurfaceLatticeTokenizer):
+                    if "".join(encoding.pieces) != segment.text:
+                        raise ValueError("surface-lattice encoding failed exact reconstruction")
+                    exact_reconstruction_checked_segments += 1
+                elif tokenizer.unknown_id is None or tokenizer.unknown_id not in encoding.ids:
+                    if tokenizer.decode(encoding.ids) != segment.text:
+                        raise ValueError("known-token encoding failed exact reconstruction")
+                    exact_reconstruction_checked_segments += 1
             if len(predictions) < prediction_examples:
                 prediction = {
                     "kind": "tokenization_preview",
@@ -411,15 +433,21 @@ def run_supported_cell(
         bits_per_canonical_unit = float(downstream.metrics["bits_per_canonical_unit"])
 
     canonical_manifest = _resolve_repo_path(settings.canonical_manifest, repo_root)
-    representation_manifest = _resolve_repo_path(settings.representation_manifest, repo_root)
+    observation_manifest_path = getattr(
+        spec, "observation_manifest", settings.representation_manifest
+    )
+    representation_manifest = _resolve_repo_path(observation_manifest_path, repo_root)
     canonical_manifest_sha256 = file_sha256(canonical_manifest)
     representation_manifest_sha256 = file_sha256(representation_manifest)
     data_fingerprint: dict[str, Any] = {
         "corpus_freeze_id": settings.freeze_id,
         "canonical_manifest": settings.canonical_manifest.as_posix(),
         "canonical_manifest_sha256": canonical_manifest_sha256,
-        "representation_manifest": settings.representation_manifest.as_posix(),
+        "representation_manifest": observation_manifest_path.as_posix(),
         "representation_manifest_sha256": representation_manifest_sha256,
+        "observation_manifest": observation_manifest_path.as_posix(),
+        "observation_manifest_sha256": representation_manifest_sha256,
+        "substrate": getattr(spec.cell, "substrate", "M0"),
         "script": spec.cell.script,
         "spacing": spec.cell.spacing,
         "train": {
@@ -441,7 +469,11 @@ def run_supported_cell(
     run_scope = "formal_production" if run_mode == "production" else "bounded_diagnostic"
 
     execution_config: dict[str, Any] = {
-        "matrix": "formal_m0_baselines",
+        "matrix": (
+            "full_m0_baselines"
+            if isinstance(settings, FullM0MatrixSettings)
+            else "formal_m0_baselines"
+        ),
         "condition_manifest_version": settings.condition_manifest_version,
         "condition_id": condition_id,
         "condition_status": VALID,
@@ -453,7 +485,12 @@ def run_supported_cell(
         "seed": settings.seed,
         "corpus_freeze_id": settings.freeze_id,
         "canonical_manifest": settings.canonical_manifest.as_posix(),
-        "representation_manifest": settings.representation_manifest.as_posix(),
+        "representation_manifest": observation_manifest_path.as_posix(),
+        "observation_manifest": observation_manifest_path.as_posix(),
+        "substrate": getattr(spec.cell, "substrate", "M0"),
+        "full_m0_definition_version": getattr(
+            settings, "full_m0_definition_version", None
+        ),
         "tokenizer": tokenizer_config,
         "evaluation": {
             "split": eval_split,
@@ -478,6 +515,7 @@ def run_supported_cell(
             "seed": settings.seed,
             "data_fingerprint_sha256": data_fingerprint["fingerprint_sha256"],
             "tokenizer_fingerprint_sha256": tokenizer_fingerprint["fingerprint_sha256"],
+            "observation_manifest_sha256": representation_manifest_sha256,
             "common_downstream_contract": settings.downstream_lm.contract_version,
         }
     )
@@ -497,6 +535,15 @@ def run_supported_cell(
         "corpus_freeze_id": settings.freeze_id,
         "canonical_manifest_sha256": canonical_manifest_sha256,
         "representation_manifest_sha256": representation_manifest_sha256,
+        "observation_manifest": observation_manifest_path.as_posix(),
+        "observation_manifest_sha256": representation_manifest_sha256,
+        "substrate": getattr(spec.cell, "substrate", "M0"),
+        "full_m0_definition_version": getattr(
+            settings, "full_m0_definition_version", None
+        ),
+        "input_compatibility_contract": tokenizer_config.get(
+            "input_compatibility_contract", "frozen-m0-tokenizer-compatibility-v1"
+        ),
         "data_fingerprint_sha256": data_fingerprint["fingerprint_sha256"],
         "tokenizer_fingerprint_sha256": tokenizer_fingerprint["fingerprint_sha256"],
         "environment_fingerprint_sha256": environment["environment_fingerprint_sha256"],
@@ -505,7 +552,12 @@ def run_supported_cell(
         "software_versions": _software_versions(),
         "artifact_location": artifact_dir.as_posix(),
     }
-    missing_provenance = set(REQUIRED_PROVENANCE) - set(provenance)
+    required_provenance = (
+        FULL_M0_REQUIRED_PROVENANCE
+        if isinstance(settings, FullM0MatrixSettings)
+        else REQUIRED_PROVENANCE
+    )
+    missing_provenance = set(required_provenance) - set(provenance)
     if missing_provenance:
         raise RuntimeError(f"incomplete baseline provenance: {sorted(missing_provenance)}")
 
@@ -515,6 +567,7 @@ def run_supported_cell(
         "method": spec.cell.method,
         "script": spec.cell.script,
         "spacing": spec.cell.spacing,
+        "substrate": getattr(spec.cell, "substrate", "M0"),
         "condition_status": VALID,
         "retirement_reason": None,
         "run_scope": run_scope,
@@ -524,6 +577,7 @@ def run_supported_cell(
         "train_segments": train_trace.segment_count,
         "evaluation_split": eval_split,
         "evaluation_segments": eval_trace.segment_count,
+        "exact_reconstruction_checked_segments": exact_reconstruction_checked_segments,
         "bits_per_character": bits_per_character,
         "bits_per_byte": bits_per_byte,
         "bits_per_canonical_unit": bits_per_canonical_unit,
@@ -586,6 +640,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--condition", required=True)
     parser.add_argument("--repo-root", type=Path, default=Path("."))
+    parser.add_argument(
+        "--artifact-root",
+        type=Path,
+        help="diagnostic-only artifact root override; production uses the tracked config",
+    )
     parser.add_argument("--eval-split", choices=("dev", "test"), default="test")
     parser.add_argument("--max-train-segments", type=int)
     parser.add_argument("--max-eval-segments", type=int)
@@ -608,7 +667,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     config_path = _resolve_repo_path(args.config, args.repo_root)
-    settings = BaselineMatrixSettings.from_yaml(config_path)
+    settings = load_matrix_settings(config_path)
+    if args.artifact_root is not None:
+        if args.production:
+            raise ValueError("production runs reject artifact-root overrides")
+        settings = replace(settings, artifact_root=args.artifact_root)
     artifact_dir = run_supported_cell(
         settings,
         args.condition,
