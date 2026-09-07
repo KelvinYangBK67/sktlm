@@ -2229,3 +2229,48 @@ S1M2_LOCAL_OPTIMIZATION_RECOMMENDATION=STOP_LOCAL_OPTIMIZATION
 PRODUCTION_STORAGE_GATE=PROJECTED_BELOW_300_GIB_NOT_VM_MEASURED
 FULL_M0_PROCESS_RUNNING=NO
 ```
+
+## 79. Generic Windows Codex automation framework complete (2026-09-07)
+
+The bounded-task Windows automation logic is now task-independent and tracked
+under `.codex/automation/`. `install_task.ps1` performs fail-closed repository,
+remote, CLI, task-inventory, and runtime-root preflight; freezes initial/resume
+prompts; writes schema-versioned config/state under ignored
+`artifacts/codex_automation/<automation_id>/`; and registers the fixed anchored
+schedule without an immediate start unless `-StartNow` is explicit.
+
+`run_task.ps1` uses both a named mutex and Task Scheduler
+`MultipleInstances IgnoreNew`. Every wake requires the expected clean branch,
+a HEAD descended from the installed base, exact local/remote equality, and
+unchanged prompt hashes. A new thread is created only when `thread_id` is null;
+all later wakes construct exact-ID resume and reject any observed mismatch.
+`resume --last` is never constructed. Unique per-wake JSONL, stderr, and final
+message logs feed a strict final-marker parser. `CONTINUE` stays active;
+`WAITING_EXTERNAL`, `COMPLETE`, and every invalid/failure phase disable the
+task. State replacement uses same-directory atomic file replacement.
+
+`control_task.ps1` exposes read-only `Status`, an extra manual `Wake` that
+never changes trigger definition, and `ResumeExternal`, which requires
+`WAITING_EXTERNAL`, preserves the stored exact thread ID, atomically returns
+to `ACTIVE`, enables the unchanged task, and optionally performs one extra
+wake. The ASCII-only framework parses under Windows PowerShell 5.1. The final
+focused dry-run/state suite passes seven contract groups in 1.644 seconds,
+including fixed 301-minute scheduling, exact resume construction, all three
+valid status transitions, invalid-marker fail-closed behavior, atomic state
+replacement, and disposable installer output. It registered no Scheduled Task
+and started no Codex automation.
+
+The three historical `notes/planned_ps1/**` implementations were inspected
+read-only and were not modified. No scientific source, benchmark, VM, cloud,
+representative, stress, or full-M0 workload was touched. This closes only the
+generic infrastructure prerequisite; S1M2 Pre-VM Closure itself remains
+`NOT_STARTED`. The next action is researcher installation through the generic
+installer, not autonomous continuation.
+
+```text
+GENERIC_CODEX_WINDOWS_AUTOMATION=COMPLETE
+S1M2_PREVM_CLOSURE=NOT_STARTED
+S1M2_PREVM_NEXT_ACTION=RESEARCHER_INSTALLS_GENERIC_TASK
+ACTUAL_SCHEDULED_TASK_CREATED=NO
+CODEX_AUTOMATION_STARTED=NO
+```

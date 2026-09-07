@@ -44,6 +44,8 @@ optimization 13 ordered SQLite inspection-shard reduction: ACCEPTED
 optimization 14 completed-state storage compaction: ACCEPTED
 optimization 15 bounded transient-state lifetime: ACCEPTED
 Opt16 compile-once immutable topology reuse: ACCEPTED
+generic Windows Codex automation framework: COMPLETE
+S1M2 Pre-VM Closure: NOT STARTED / RESEARCHER INSTALL REQUIRED
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -318,3 +320,33 @@ Both authorized rounds are resolved. There is no remaining obvious structural
 local target supported by current profiling evidence; do not open Opt17.
 `STOP_LOCAL_OPTIMIZATION`. Any next session requires explicit authorization
 and should address VM worker scaling, scheduling, and production readiness.
+
+## Generic Windows Codex automation prerequisite complete
+
+The reusable framework is tracked in `.codex/automation/`. It freezes each
+bounded task prompt and keeps task-specific config, state, exact thread ID, and
+per-wake logs under ignored `artifacts/codex_automation/<automation_id>/`.
+The generic runner enforces a named mutex plus `MultipleInstances IgnoreNew`,
+clean branch/HEAD/remote ancestry gates, exact thread-ID resume, strict final
+status markers, atomic state replacement, and fail-closed task disabling.
+
+`control_task.ps1` provides read-only `Status`, one extra `Wake` without
+changing the fixed trigger, and `ResumeExternal` from `WAITING_EXTERNAL`
+without manual state/thread editing. The PowerShell 5.1 static parse and the
+focused dry-run/state suite pass; the successful focused run covers seven
+contract groups in 1.644 seconds. It registered no Scheduled Task and started
+no Codex automation. `notes/planned_ps1/**` was inspected read-only and remains
+unchanged.
+
+This completes only the infrastructure prerequisite. S1M2 Pre-VM Closure is
+not started or complete. The sole next action is for the researcher to install
+`SKTLM-S1M2-PreVM-Closure` with the generic installer command documented in
+`.codex/automation/README.md`; Codex must not install or start it autonomously.
+
+```text
+GENERIC_CODEX_WINDOWS_AUTOMATION=COMPLETE
+S1M2_PREVM_CLOSURE=NOT_STARTED
+S1M2_PREVM_NEXT_ACTION=RESEARCHER_INSTALLS_GENERIC_TASK
+ACTUAL_SCHEDULED_TASK_CREATED=NO
+CODEX_AUTOMATION_STARTED=NO
+```
