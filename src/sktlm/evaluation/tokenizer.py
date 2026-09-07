@@ -18,6 +18,7 @@ from sktlm.tokenizers.base import Encoding
 
 
 DEFAULT_SANDHI_PATTERNS = ("ोऽपि", "ोऽ", "ेऽ")
+SUPPORTED_DIAGNOSTIC_SCRIPTS = frozenset({"iast", "iast_m0_prime", "devanagari"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,7 +43,7 @@ def evaluate_tokenizer(
     unknown_semantics: str,
 ) -> dict[str, Any]:
     """Evaluate script-neutral metrics and scoped Devanagari diagnostics."""
-    if script not in {"iast", "devanagari"}:
+    if script not in SUPPORTED_DIAGNOSTIC_SCRIPTS:
         raise ValueError(f"tokenizer diagnostics require a formal script, found {script}")
     sandhi_config = sandhi_config or SandhiFragmentConfig()
     devanagari_applicable = script == "devanagari"

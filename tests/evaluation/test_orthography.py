@@ -63,3 +63,17 @@ def test_iast_does_not_receive_devanagari_specific_quantities() -> None:
     assert metrics["suspect_sandhi_fragment_rate"] is None
     assert metrics["sandhi_patterns"] == []
     assert metrics["script_specific_diagnostic"]["applicability"] == "not_applicable"
+
+
+def test_m0_prime_iast_uses_only_script_neutral_diagnostics() -> None:
+    text = "kʰēō"
+    encoding = CharacterTokenizer.train([text]).encode(text)
+    metrics = evaluate_tokenizer(
+        [(text, encoding)],
+        script="iast_m0_prime",
+        unknown_id=0,
+        unknown_semantics="unseen_train_vocabulary_unicode_codepoint",
+    )
+    assert metrics["token_count"] == len(text)
+    assert metrics["dependent_vowel_start_rate"] is None
+    assert metrics["script_specific_diagnostic"]["applicability"] == "not_applicable"
