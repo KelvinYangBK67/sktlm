@@ -10,10 +10,10 @@ of:
 
 - `install_task.ps1`: fail-closed preflight, prompt freeze, runtime creation,
   and one fixed Scheduled Task registration.
-- `run_task.ps1`: single-instance repository gate, new-thread launch, exact
+- `run_task.ps1`: task- and repository-level single-instance gates, new-thread launch, exact
   thread-id resume, logging, and status-marker state transitions.
-- `control_task.ps1`: read-only status, one extra manual wake, and controlled
-  recovery after an external workload.
+- `control_task.ps1`: read-only status, one extra manual wake, controlled
+  recovery after an external workload, and restricted pre-thread recovery.
 - `helper.ps1`: shared schema, atomic JSON, schedule, invocation, marker, and
   control-plan functions.
 
@@ -34,9 +34,14 @@ shell may be required by local Task Scheduler policy.
 
 The installer requires a clean expected branch whose local HEAD exactly equals
 `origin/<branch>`. It fetches origin but never pulls, rebases, merges, repairs,
-or deletes anything. It refuses an existing task/runtime root and an obvious
-active SKTLM automation conflict. It verifies the Codex CLI and ScheduledTasks
-commands before registering. By default it does not call
+or deletes anything. It refuses the exact same TaskName or runtime root. Other
+tasks merely sharing the `SKTLM-*` prefix—including historical one-shot tasks—
+are not conflicts. Existing generic framework tasks are identified from their
+runner action, config path, and repository identity and may coexist; actual
+same-repository execution is serialized by the repository mutex. An installed
+task in READY or ACTIVE is not assumed to be currently running. The installer
+verifies the Codex CLI and ScheduledTasks commands before registering. By
+default it does not call
 `Start-ScheduledTask`; `-StartNow` is an explicit extra wake.
 
 `-DryRun` performs repository and CLI preflight, creates disposable runtime
@@ -59,8 +64,13 @@ next future member of that exact sequence. For an anchor of 15:50 and interval
 wake is only one extra `Start-ScheduledTask` call. It never recreates the
 trigger, changes the anchor/interval, or re-anchors the next scheduled wake.
 
-Task Scheduler uses `MultipleInstances IgnoreNew`; the runner also uses a
-named mutex. These are independent re-entry guards.
+Task Scheduler uses `MultipleInstances IgnoreNew`; the runner also uses one
+per-task named mutex and one deterministic mutex derived from the canonical
+repository path. The per-task mutex rejects re-entry into the same automation.
+The repository mutex permits only one generic runner to invoke Codex in a given
+repository while leaving different repositories independent. Repository-lock
+contention is a non-failing skipped wake: it does not change a healthy task's
+state or disable it.
 
 ## Runtime layout
 
@@ -85,6 +95,11 @@ The first wake runs a new `codex exec` thread and extracts the unique
 `thread.started.thread_id` from JSONL. Every later wake resumes only that exact
 ID and verifies the newly observed ID against stored state. The framework never
 uses or constructs `resume --last`.
+
+Both new and exact-resume invocations use `--approve-for-me` as the unattended
+policy. In supported Codex CLI versions that option already selects the
+workspace-write sandbox, so the framework does not also pass `--sandbox`; the
+two flags are mutually exclusive. It never uses the dangerous bypass option.
 
 The final non-empty response line must be exactly one of:
 
@@ -159,6 +174,26 @@ Without `-StartNow`, `ResumeExternal` changes `WAITING_EXTERNAL` to `ACTIVE`,
 enables the task, and waits for the next occurrence in the original schedule.
 With `-StartNow`, it also requests one immediate extra wake. Neither form
 rebuilds or modifies the trigger. `COMPLETE` cannot be resumed.
+
+A narrowly recoverable launcher failure that occurred before any Codex thread
+was created can be reset without editing state by hand:
+
+```powershell
+.\.codex\automation\control_task.ps1 `
+  -AutomationId "s1m2_prevm_closure" `
+  -Action RecoverPreThread
+```
+
+`RecoverPreThread` is accepted only for `LAUNCHER_ERROR` with an empty
+`thread_id`, launch logs proving that no `thread.started` event or last message
+was produced, unchanged frozen prompt hashes, a clean compatible local HEAD
+equal to the configured remote branch, and the exact disabled Scheduled Task
+action/config/repository/trigger identity. It atomically returns state to
+`READY` and enables the existing task. `-StartNow` adds one immediate wake;
+without it, the task waits for the next original occurrence. The task name,
+automation ID, config, thread ID, anchor, interval, and trigger are never
+rewritten. Unsafe or ambiguous recovery is rejected. `WAITING_EXTERNAL` still
+requires `ResumeExternal`, and `COMPLETE` remains terminal.
 
 ## Retiring an old task
 

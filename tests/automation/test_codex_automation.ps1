@@ -1,11 +1,15 @@
 [CmdletBinding()]
 param(
-    [string]$FrameworkRoot = (Join-Path (Join-Path $PSScriptRoot "..\..") ".codex\automation")
+    [string]$FrameworkRoot
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 $Started = Get-Date
+
+if ([string]::IsNullOrWhiteSpace($FrameworkRoot)) {
+    $FrameworkRoot = Join-Path (Join-Path $PSScriptRoot "..\..") ".codex\automation"
+}
 
 function Assert-True {
     param([bool]$Condition, [string]$Message)
@@ -41,6 +45,10 @@ $ExactThreadId = "0199cafe-1234-7000-8000-0123456789ab"
 $NewInvocation = New-CodexInvocation -Repo "C:\repo" -LastMessagePath "C:\logs\last.txt" -InitialPromptPath "C:\runtime\initial.txt" -ResumePromptPath "C:\runtime\resume.txt" -ThreadId $null
 Assert-Equal "NEW" $NewInvocation.Mode "new-thread mode"
 Assert-Equal "-" $NewInvocation.ArgumentList[-1] "new prompt stdin"
+Assert-True ($NewInvocation.ArgumentList -contains "--approve-for-me") "new invocation uses unattended automatic review"
+Assert-True ($NewInvocation.ArgumentList -notcontains "-s") "new invocation does not combine -s with --approve-for-me"
+Assert-True ($NewInvocation.ArgumentList -notcontains "--sandbox") "new invocation does not combine --sandbox with --approve-for-me"
+Assert-True ($NewInvocation.ArgumentList -notcontains "--dangerously-bypass-approvals-and-sandbox") "new invocation does not bypass sandbox and approvals"
 $ResumeInvocation = New-CodexInvocation -Repo "C:\repo" -LastMessagePath "C:\logs\last.txt" -InitialPromptPath "C:\runtime\initial.txt" -ResumePromptPath "C:\runtime\resume.txt" -ThreadId $ExactThreadId
 Assert-Equal "RESUME_EXACT" $ResumeInvocation.Mode "resume mode"
 Assert-Equal "-C" $ResumeInvocation.ArgumentList[1] "Codex receives explicit repository option"
@@ -48,6 +56,31 @@ Assert-Equal "C:\repo" $ResumeInvocation.ArgumentList[2] "Codex receives exact r
 Assert-Equal "resume" $ResumeInvocation.ArgumentList[-3] "resume subcommand"
 Assert-Equal $ExactThreadId $ResumeInvocation.ArgumentList[-2] "exact thread-id resume"
 Assert-True ($ResumeInvocation.ArgumentList -notcontains "--last") "resume --last forbidden"
+Assert-True ($ResumeInvocation.ArgumentList -contains "--approve-for-me") "resume invocation uses same unattended policy"
+Assert-True ($ResumeInvocation.ArgumentList -notcontains "-s") "resume invocation avoids conflicting sandbox flag"
+Assert-True ($ResumeInvocation.ArgumentList -notcontains "--sandbox") "resume invocation avoids long sandbox flag"
+
+$HistoricalTask = [pscustomobject]@{
+    TaskName = "sktlm-m0-prime-iast-continuous-v1"
+    State = "Ready"
+    Actions = @([pscustomobject]@{
+        Execute = "powershell.exe"
+        Arguments = '-NoProfile -File "C:\historical\one_shot.ps1"'
+    })
+}
+$HistoricalIdentity = Get-GenericAutomationTaskIdentity -Task $HistoricalTask
+Assert-True (-not $HistoricalIdentity.IsGeneric) "historical one-shot task is not a generic framework task"
+$HistoricalInventory = Get-AutomationTaskInventory -TaskName "SKTLM-New-Generic" -Tasks @($HistoricalTask)
+Assert-Equal 0 $HistoricalInventory.ExactTaskCount "historical task does not conflict by unrelated name"
+Assert-Equal 0 $HistoricalInventory.GenericTasks.Count "historical task does not become a prefix-based conflict"
+$ExactTaskInventory = Get-AutomationTaskInventory -TaskName $HistoricalTask.TaskName -Tasks @($HistoricalTask)
+Assert-Equal 1 $ExactTaskInventory.ExactTaskCount "exact same TaskName remains fail-closed"
+
+$RepoMutexA = Get-AutomationRepoMutexName -Repo "C:\repo"
+$RepoMutexARepeat = Get-AutomationRepoMutexName -Repo "c:\REPO\."
+$RepoMutexB = Get-AutomationRepoMutexName -Repo "C:\other-repo"
+Assert-Equal $RepoMutexA $RepoMutexARepeat "repository mutex is deterministic for canonical path"
+Assert-True ($RepoMutexA -cne $RepoMutexB) "different repositories receive independent mutexes"
 
 $Continue = Resolve-AutomationStatusMarker -Text "done`r`nAUTOMATION_STATUS=CONTINUE`r`n"
 Assert-True $Continue.Valid "CONTINUE marker valid"
@@ -89,6 +122,22 @@ Assert-Equal "ACTIVE" $ResumePlan.NewPhase "ResumeExternal transition"
 Assert-True $ResumePlan.EnableTask "ResumeExternal enables task"
 Assert-True $ResumePlan.StartTask "ResumeExternal StartNow extra wake"
 Assert-True (-not $ResumePlan.ModifyTrigger) "ResumeExternal preserves trigger"
+$RecoveryPlan = Get-AutomationControlPlan -Action RecoverPreThread -Phase LAUNCHER_ERROR -ThreadId $null
+Assert-Equal "READY" $RecoveryPlan.NewPhase "RecoverPreThread returns state to READY"
+Assert-True $RecoveryPlan.EnableTask "RecoverPreThread enables the existing task"
+Assert-True (-not $RecoveryPlan.StartTask) "RecoverPreThread without StartNow waits for the fixed schedule"
+Assert-True (-not $RecoveryPlan.ModifyTrigger) "RecoverPreThread preserves the fixed trigger"
+$RecoveryWakePlan = Get-AutomationControlPlan -Action RecoverPreThread -Phase LAUNCHER_ERROR -ThreadId $null -StartNow
+Assert-True $RecoveryWakePlan.StartTask "RecoverPreThread StartNow is one extra wake"
+Assert-True (-not $RecoveryWakePlan.ModifyTrigger) "RecoverPreThread StartNow still preserves trigger"
+$UnsafePlanRejected = $false
+try { [void](Get-AutomationControlPlan -Action RecoverPreThread -Phase WAITING_EXTERNAL -ThreadId $null) }
+catch { $UnsafePlanRejected = $true }
+Assert-True $UnsafePlanRejected "non-launcher phase recovery is rejected"
+$ThreadedRecoveryRejected = $false
+try { [void](Get-AutomationControlPlan -Action RecoverPreThread -Phase LAUNCHER_ERROR -ThreadId $ExactThreadId) }
+catch { $ThreadedRecoveryRejected = $true }
+Assert-True $ThreadedRecoveryRejected "non-empty thread recovery is rejected"
 
 $FixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) "sktlm_automation_test_$([guid]::NewGuid().ToString('N'))"
 $FixtureRoot = [System.IO.Path]::GetFullPath($FixtureRoot)
@@ -96,12 +145,49 @@ $SystemTemp = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
 if (-not $FixtureRoot.StartsWith($SystemTemp, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "Refusing unsafe fixture path: $FixtureRoot"
 }
+$MutexHolder = $null
+$MutexAsync = $null
 
 try {
     $BareRepo = Join-Path $FixtureRoot "origin.git"
     $FixtureRepo = Join-Path $FixtureRoot "repo"
     $RuntimeRoot = Join-Path $FixtureRoot "runtime"
     New-Item -ItemType Directory -Path $FixtureRoot | Out-Null
+
+    $MutexSignal = Join-Path $FixtureRoot "mutex-holder-ready.txt"
+    $MutexHolder = [powershell]::Create()
+    $MutexHolderScript = @'
+param($LoadedHelperPath, $HeldMutexName, $ReadyPath)
+. $LoadedHelperPath
+$heldLock = Enter-AutomationMutex -Name $HeldMutexName
+try {
+    if (-not $heldLock.Acquired) { throw "holder failed to acquire fixture mutex" }
+    Write-Utf8NoBom -Path $ReadyPath -Text "READY"
+    Start-Sleep -Milliseconds 1200
+}
+finally {
+    Exit-AutomationMutex -Lock $heldLock
+}
+'@
+    [void]$MutexHolder.AddScript($MutexHolderScript).AddArgument($HelperPath).AddArgument($RepoMutexA).AddArgument($MutexSignal)
+    $MutexAsync = $MutexHolder.BeginInvoke()
+    $MutexWait = [System.Diagnostics.Stopwatch]::StartNew()
+    while (-not (Test-Path -LiteralPath $MutexSignal -PathType Leaf) -and $MutexWait.Elapsed.TotalSeconds -lt 3) {
+        Start-Sleep -Milliseconds 20
+    }
+    Assert-True (Test-Path -LiteralPath $MutexSignal -PathType Leaf) "fixture holder acquired repository mutex"
+    $ContendedLock = Enter-AutomationMutex -Name $RepoMutexA
+    try {
+        Assert-True (-not $ContendedLock.Acquired) "same-repository mutex contention skips concurrent execution"
+    }
+    finally {
+        Exit-AutomationMutex -Lock $ContendedLock
+    }
+    [void]$MutexHolder.EndInvoke($MutexAsync)
+    $MutexHolder.Dispose()
+    $MutexHolder = $null
+    $MutexAsync = $null
+
     & git.exe init --bare $BareRepo | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "fixture bare git init failed" }
     & git.exe init $FixtureRepo | Out-Null
@@ -155,8 +241,110 @@ try {
     Assert-True ($FrozenPrompt.Contains("Perform one bounded fixture task.")) "prompt frozen"
     Assert-True ($FrozenPrompt.Contains("AUTOMATION_STATUS=WAITING_EXTERNAL")) "status contract appended"
     Assert-True ([string]$Config.task_action.arguments -notmatch "framework_dryrun.*run_task.ps1") "runner remains repo-generic"
+
+    $RootConflictRejected = $false
+    try {
+        & $FixtureInstaller `
+            -TaskName "SKTLM-Automation-Framework-Second" `
+            -AutomationId "framework_dryrun" `
+            -PromptPath $FixturePrompt `
+            -Branch "automation-test" `
+            -Start $Anchor `
+            -IntervalMinutes 301 `
+            -Repo $FixtureRepo `
+            -DryRun `
+            -RuntimeRoot $RuntimeRoot 6>&1 | Out-Null
+    }
+    catch {
+        $RootConflictRejected = $_.Exception.Message.Contains("Automation directory already exists")
+    }
+    Assert-True $RootConflictRejected "exact same runtime root remains fail-closed"
+
+    $GenericTask = [pscustomobject]@{
+        TaskName = [string]$Config.task_name
+        State = "Ready"
+        Actions = @([pscustomobject]@{
+            Execute = [string]$Config.task_action.execute
+            Arguments = [string]$Config.task_action.arguments
+        })
+    }
+    $GenericIdentity = Get-GenericAutomationTaskIdentity -Task $GenericTask
+    Assert-True $GenericIdentity.IsGeneric "generic task is detected from action/config/repository identity"
+    $CoexistenceInventory = Get-AutomationTaskInventory -TaskName "SKTLM-Unrelated-New-Task" -Tasks @($HistoricalTask, $GenericTask)
+    Assert-Equal 0 $CoexistenceInventory.ExactTaskCount "unrelated task name remains installable"
+    Assert-Equal 1 $CoexistenceInventory.GenericTasks.Count "READY generic peer is classified without being treated as running"
+
+    $TaskTrigger = [pscustomobject]@{
+        StartBoundary = [string]$Config.registered_start
+        Repetition = [pscustomobject]@{
+            Interval = "PT5H1M"
+            Duration = "P3650D"
+        }
+    }
+    $ScheduledTaskFixture = [pscustomobject]@{
+        TaskName = [string]$Config.task_name
+        State = "Disabled"
+        Actions = $GenericTask.Actions
+        Triggers = @($TaskTrigger)
+    }
+    $TriggerBefore = $ScheduledTaskFixture.Triggers | ConvertTo-Json -Depth 8 -Compress
+    $TaskIdentity = Test-ScheduledTaskIdentity -Task $ScheduledTaskFixture -Config $Config
+    Assert-True $TaskIdentity.Valid "exact Scheduled Task action and fixed trigger match config"
+    Assert-Equal $TriggerBefore ($ScheduledTaskFixture.Triggers | ConvertTo-Json -Depth 8 -Compress) "identity and recovery planning preserve trigger"
+    $WrongActionTask = [pscustomobject]@{
+        TaskName = [string]$Config.task_name
+        Actions = @([pscustomobject]@{ Execute = "powershell.exe"; Arguments = "-File wrong.ps1" })
+        Triggers = @($TaskTrigger)
+    }
+    Assert-True (-not (Test-ScheduledTaskIdentity -Task $WrongActionTask -Config $Config).Valid) "task action mismatch rejects recovery"
+
+    $PromptIntegrity = Test-FrozenPromptIntegrity -Config $Config
+    Assert-True $PromptIntegrity.Valid "matching frozen prompt hashes permit recovery gate"
+    $BadHashConfig = $Config | ConvertTo-Json -Depth 16 | ConvertFrom-Json
+    $BadHashConfig.resume_prompt_sha256 = ("0" * 64)
+    Assert-True (-not (Test-FrozenPromptIntegrity -Config $BadHashConfig).Valid) "prompt hash mismatch rejects recovery"
+
+    $RepoGatePass = Test-AutomationRepoSnapshot -Config $Config -CurrentBranch "automation-test" -Dirty "" -Head $Config.base_head -BaseIsAncestor $true -RemoteHead $Config.base_head
+    Assert-True $RepoGatePass.Valid "clean branch compatible equal-head recovery gate passes"
+    Assert-True (-not (Test-AutomationRepoSnapshot -Config $Config -CurrentBranch "wrong" -Dirty "" -Head $Config.base_head -BaseIsAncestor $true -RemoteHead $Config.base_head).Valid) "wrong branch rejects recovery"
+    Assert-True (-not (Test-AutomationRepoSnapshot -Config $Config -CurrentBranch "automation-test" -Dirty "changed" -Head $Config.base_head -BaseIsAncestor $true -RemoteHead $Config.base_head).Valid) "dirty tree rejects recovery"
+    Assert-True (-not (Test-AutomationRepoSnapshot -Config $Config -CurrentBranch "automation-test" -Dirty "" -Head "new-head" -BaseIsAncestor $false -RemoteHead "new-head").Valid) "incompatible head rejects recovery"
+    Assert-True (-not (Test-AutomationRepoSnapshot -Config $Config -CurrentBranch "automation-test" -Dirty "" -Head "local-head" -BaseIsAncestor $true -RemoteHead "remote-head").Valid) "remote divergence rejects recovery"
+
+    $RecoveryJsonLog = Join-Path $FixtureRoot "prethread.jsonl"
+    $RecoveryStderrLog = Join-Path $FixtureRoot "prethread.stderr.txt"
+    $RecoveryLastMessage = Join-Path $FixtureRoot "prethread.last.txt"
+    Write-Utf8NoBom -Path $RecoveryJsonLog -Text ""
+    Write-Utf8NoBom -Path $RecoveryStderrLog -Text ""
+    $RecoveryState = [pscustomobject]@{
+        phase = "LAUNCHER_ERROR"
+        thread_id = $null
+        last_error = "launcher argument conflict"
+        last_exit_code = $null
+        last_json_log = $RecoveryJsonLog
+        last_stderr_log = $RecoveryStderrLog
+        last_message_file = $RecoveryLastMessage
+    }
+    $RecoveryEligibility = Test-PreThreadRecoveryEligibility -State $RecoveryState
+    Assert-True $RecoveryEligibility.Eligible "proven no-thread LAUNCHER_ERROR is recoverable"
+    Assert-True ([string]::IsNullOrWhiteSpace([string]$RecoveryState.thread_id)) "legal recovery path keeps thread_id empty"
+    $UnsafePhaseState = $RecoveryState | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $UnsafePhaseState.phase = "WAITING_EXTERNAL"
+    Assert-True (-not (Test-PreThreadRecoveryEligibility -State $UnsafePhaseState).Eligible) "non-recoverable phase is rejected"
+    $UnsafeThreadState = $RecoveryState | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $UnsafeThreadState.thread_id = $ExactThreadId
+    Assert-True (-not (Test-PreThreadRecoveryEligibility -State $UnsafeThreadState).Eligible) "existing thread is rejected"
+    Write-Utf8NoBom -Path $RecoveryJsonLog -Text ('{"type":"thread.started","thread_id":"' + $ExactThreadId + '"}' + "`r`n")
+    Assert-True (-not (Test-PreThreadRecoveryEligibility -State $RecoveryState).Eligible) "observed thread.started event is rejected"
 }
 finally {
+    if ($null -ne $MutexHolder) {
+        try {
+            if ($null -ne $MutexAsync) { [void]$MutexHolder.EndInvoke($MutexAsync) }
+        }
+        catch {}
+        $MutexHolder.Dispose()
+    }
     if (Test-Path -LiteralPath $FixtureRoot -PathType Container) {
         $ResolvedFixture = [System.IO.Path]::GetFullPath($FixtureRoot)
         if (-not $ResolvedFixture.StartsWith($SystemTemp, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -168,7 +356,7 @@ finally {
 
 $Elapsed = ((Get-Date) - $Started).TotalSeconds
 Write-Host "FOCUSED_VALIDATION=PASS"
-Write-Host "TESTS=7_CONTRACT_GROUPS"
+Write-Host "TESTS=12_FOCUSED_CONTRACT_GROUPS"
 Write-Host ("VALIDATION_SECONDS={0:N3}" -f $Elapsed)
 Write-Host "ACTUAL_SCHEDULED_TASK_CREATED=NO"
 Write-Host "CODEX_AUTOMATION_STARTED=NO"

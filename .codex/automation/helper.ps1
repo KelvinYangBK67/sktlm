@@ -254,6 +254,255 @@ function New-RunnerActionDefinition {
     }
 }
 
+function Get-AutomationRepoMutexName {
+    param([Parameter(Mandatory = $true)][string]$Repo)
+
+    $canonical = [System.IO.Path]::GetFullPath($Repo).TrimEnd([char[]]@('\', '/')).ToUpperInvariant()
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($canonical)
+        $hash = [System.BitConverter]::ToString($sha256.ComputeHash($bytes)).Replace("-", "").ToLowerInvariant()
+    }
+    finally {
+        $sha256.Dispose()
+    }
+    return "Local\SKTLM_CodexAutomation_Repo_$hash"
+}
+
+function Enter-AutomationMutex {
+    param([Parameter(Mandatory = $true)][string]$Name)
+
+    $mutex = New-Object System.Threading.Mutex($false, $Name)
+    try {
+        try {
+            $acquired = $mutex.WaitOne(0, $false)
+        }
+        catch [System.Threading.AbandonedMutexException] {
+            $acquired = $true
+        }
+        return [pscustomobject]@{
+            Name = $Name
+            Mutex = $mutex
+            Acquired = [bool]$acquired
+        }
+    }
+    catch {
+        $mutex.Dispose()
+        throw
+    }
+}
+
+function Exit-AutomationMutex {
+    param([Parameter(Mandatory = $true)][object]$Lock)
+
+    if ([bool]$Lock.Acquired) {
+        try { $Lock.Mutex.ReleaseMutex() | Out-Null } catch {}
+    }
+    $Lock.Mutex.Dispose()
+}
+
+function Get-GenericAutomationTaskIdentity {
+    param([Parameter(Mandatory = $true)][object]$Task)
+
+    $notGeneric = {
+        param([string]$Reason)
+        return [pscustomobject]@{
+            IsGeneric = $false
+            Reason = $Reason
+            TaskName = [string]$Task.TaskName
+            Repo = $null
+            ConfigPath = $null
+        }
+    }
+    $actions = @($Task.Actions)
+    if ($actions.Count -ne 1) {
+        return (& $notGeneric "expected exactly one action")
+    }
+    $executeName = [System.IO.Path]::GetFileName([string]$actions[0].Execute)
+    if (@("powershell.exe", "pwsh.exe") -notcontains $executeName.ToLowerInvariant()) {
+        return (& $notGeneric "action is not PowerShell")
+    }
+    $pattern = '^-NoProfile\s+-NonInteractive\s+-ExecutionPolicy\s+Bypass\s+-File\s+"(?<runner>[^"]+\\\.codex\\automation\\run_task\.ps1)"\s+-ConfigPath\s+"(?<config>[^"]+\\config\.json)"$'
+    $match = [regex]::Match([string]$actions[0].Arguments, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if (-not $match.Success) {
+        return (& $notGeneric "action is not the generic runner contract")
+    }
+    $runnerPath = [System.IO.Path]::GetFullPath($match.Groups["runner"].Value)
+    $configPath = [System.IO.Path]::GetFullPath($match.Groups["config"].Value)
+    try {
+        $config = Read-AutomationJson -Path $configPath
+        Assert-AutomationConfig -Config $config
+        $configuredRunner = [System.IO.Path]::GetFullPath([string]$config.runner_path)
+        $configuredRoot = [System.IO.Path]::GetFullPath([string]$config.automation_root)
+        $configRoot = [System.IO.Path]::GetDirectoryName($configPath)
+        if (-not [string]::Equals($runnerPath, $configuredRunner, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return (& $notGeneric "runner path does not match config")
+        }
+        if (-not [string]::Equals($configRoot, $configuredRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return (& $notGeneric "config path does not match automation root")
+        }
+        if (-not [string]::Equals([string]$Task.TaskName, [string]$config.task_name, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return (& $notGeneric "task name does not match config")
+        }
+        if (-not [string]::Equals([string]$actions[0].Execute, [string]$config.task_action.execute, [System.StringComparison]::OrdinalIgnoreCase) -or
+            -not [string]::Equals([string]$actions[0].Arguments, [string]$config.task_action.arguments, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return (& $notGeneric "task action does not match config")
+        }
+    }
+    catch {
+        return (& $notGeneric "config validation failed: $($_.Exception.Message)")
+    }
+    return [pscustomobject]@{
+        IsGeneric = $true
+        Reason = $null
+        TaskName = [string]$Task.TaskName
+        Repo = [System.IO.Path]::GetFullPath([string]$config.repo)
+        ConfigPath = $configPath
+    }
+}
+
+function Get-AutomationTaskInventory {
+    param(
+        [Parameter(Mandatory = $true)][string]$TaskName,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$Tasks
+    )
+
+    $exact = @($Tasks | Where-Object { [string]::Equals([string]$_.TaskName, $TaskName, [System.StringComparison]::OrdinalIgnoreCase) })
+    $generic = @()
+    foreach ($task in $Tasks) {
+        $identity = Get-GenericAutomationTaskIdentity -Task $task
+        if ($identity.IsGeneric) {
+            $generic += $identity
+        }
+    }
+    return [pscustomobject]@{
+        ExactTaskCount = $exact.Count
+        GenericTasks = $generic
+    }
+}
+
+function Test-FrozenPromptIntegrity {
+    param([Parameter(Mandatory = $true)][object]$Config)
+
+    $checks = @(
+        [pscustomobject]@{ Path = [string]$Config.initial_prompt_path; Hash = [string]$Config.initial_prompt_sha256 },
+        [pscustomobject]@{ Path = [string]$Config.resume_prompt_path; Hash = [string]$Config.resume_prompt_sha256 }
+    )
+    foreach ($check in $checks) {
+        if (-not (Test-Path -LiteralPath $check.Path -PathType Leaf)) {
+            return [pscustomobject]@{ Valid = $false; Reason = "Frozen prompt not found: $($check.Path)" }
+        }
+        $observed = (Get-FileHash -LiteralPath $check.Path -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($observed -cne $check.Hash) {
+            return [pscustomobject]@{ Valid = $false; Reason = "Frozen prompt hash mismatch: $($check.Path)" }
+        }
+    }
+    return [pscustomobject]@{ Valid = $true; Reason = $null }
+}
+
+function Test-AutomationRepoSnapshot {
+    param(
+        [Parameter(Mandatory = $true)][object]$Config,
+        [Parameter(Mandatory = $true)][string]$CurrentBranch,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Dirty,
+        [Parameter(Mandatory = $true)][string]$Head,
+        [Parameter(Mandatory = $true)][bool]$BaseIsAncestor,
+        [Parameter(Mandatory = $true)][string]$RemoteHead
+    )
+
+    if ($CurrentBranch -cne [string]$Config.expected_branch) {
+        return [pscustomobject]@{ Valid = $false; Reason = "Expected branch '$($Config.expected_branch)', got '$CurrentBranch'." }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Dirty)) {
+        return [pscustomobject]@{ Valid = $false; Reason = "Working tree is dirty." }
+    }
+    if (-not $BaseIsAncestor) {
+        return [pscustomobject]@{ Valid = $false; Reason = "Current HEAD $Head is not descended from base HEAD $($Config.base_head)." }
+    }
+    if ($Head -cne $RemoteHead) {
+        return [pscustomobject]@{ Valid = $false; Reason = "Local HEAD and $($Config.remote_ref) differ. local=$Head remote=$RemoteHead" }
+    }
+    return [pscustomobject]@{ Valid = $true; Reason = $null }
+}
+
+function Test-ScheduledTaskIdentity {
+    param(
+        [Parameter(Mandatory = $true)][object]$Task,
+        [Parameter(Mandatory = $true)][object]$Config
+    )
+
+    if (-not [string]::Equals([string]$Task.TaskName, [string]$Config.task_name, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return [pscustomobject]@{ Valid = $false; Reason = "Scheduled Task name does not match config." }
+    }
+    $actions = @($Task.Actions)
+    if ($actions.Count -ne 1 -or
+        -not [string]::Equals([string]$actions[0].Execute, [string]$Config.task_action.execute, [System.StringComparison]::OrdinalIgnoreCase) -or
+        -not [string]::Equals([string]$actions[0].Arguments, [string]$Config.task_action.arguments, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return [pscustomobject]@{ Valid = $false; Reason = "Scheduled Task action does not match config." }
+    }
+    $triggers = @($Task.Triggers)
+    if ($triggers.Count -ne 1) {
+        return [pscustomobject]@{ Valid = $false; Reason = "Scheduled Task must have exactly one trigger." }
+    }
+    try {
+        $actualStart = [datetime]::Parse([string]$triggers[0].StartBoundary).ToString("yyyy-MM-ddTHH:mm:ss")
+        $expectedStart = [datetime]::Parse([string]$Config.registered_start).ToString("yyyy-MM-ddTHH:mm:ss")
+        $actualInterval = [System.Xml.XmlConvert]::ToTimeSpan([string]$triggers[0].Repetition.Interval).TotalMinutes
+        $actualDuration = [System.Xml.XmlConvert]::ToTimeSpan([string]$triggers[0].Repetition.Duration).TotalDays
+    }
+    catch {
+        return [pscustomobject]@{ Valid = $false; Reason = "Scheduled Task trigger is not parseable: $($_.Exception.Message)" }
+    }
+    if ($actualStart -cne $expectedStart -or [int]$actualInterval -ne [int]$Config.interval_minutes) {
+        return [pscustomobject]@{ Valid = $false; Reason = "Scheduled Task start/interval does not match config." }
+    }
+    if ($Config.PSObject.Properties.Name -contains "repetition_duration_days" -and
+        [int]$actualDuration -ne [int]$Config.repetition_duration_days) {
+        return [pscustomobject]@{ Valid = $false; Reason = "Scheduled Task repetition duration does not match config." }
+    }
+    return [pscustomobject]@{ Valid = $true; Reason = $null }
+}
+
+function Test-PreThreadRecoveryEligibility {
+    param([Parameter(Mandatory = $true)][object]$State)
+
+    if ([string]$State.phase -cne "LAUNCHER_ERROR") {
+        return [pscustomobject]@{ Eligible = $false; Reason = "RecoverPreThread requires phase LAUNCHER_ERROR." }
+    }
+    if (-not [string]::IsNullOrWhiteSpace([string]$State.thread_id)) {
+        return [pscustomobject]@{ Eligible = $false; Reason = "RecoverPreThread requires an empty thread_id." }
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$State.last_error)) {
+        return [pscustomobject]@{ Eligible = $false; Reason = "RecoverPreThread requires a recorded launcher error." }
+    }
+    if ($null -ne $State.last_exit_code -and [int]$State.last_exit_code -eq 0) {
+        return [pscustomobject]@{ Eligible = $false; Reason = "A successful prior Codex exit is not a recoverable pre-thread launcher error." }
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$State.last_json_log) -or
+        -not (Test-Path -LiteralPath ([string]$State.last_json_log) -PathType Leaf)) {
+        return [pscustomobject]@{ Eligible = $false; Reason = "RecoverPreThread requires the prior JSONL launch log." }
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$State.last_stderr_log) -or
+        -not (Test-Path -LiteralPath ([string]$State.last_stderr_log) -PathType Leaf)) {
+        return [pscustomobject]@{ Eligible = $false; Reason = "RecoverPreThread requires the prior stderr launch log." }
+    }
+    try {
+        $ids = @(Get-ThreadIdsFromJsonLines -Lines @([System.IO.File]::ReadLines([string]$State.last_json_log)))
+    }
+    catch {
+        return [pscustomobject]@{ Eligible = $false; Reason = "Prior JSONL cannot prove no thread was created: $($_.Exception.Message)" }
+    }
+    if ($ids.Count -ne 0) {
+        return [pscustomobject]@{ Eligible = $false; Reason = "Prior JSONL records a created Codex thread." }
+    }
+    if (-not [string]::IsNullOrWhiteSpace([string]$State.last_message_file) -and
+        (Test-Path -LiteralPath ([string]$State.last_message_file) -PathType Leaf) -and
+        (Get-Item -LiteralPath ([string]$State.last_message_file)).Length -gt 0) {
+        return [pscustomobject]@{ Eligible = $false; Reason = "Prior wake produced a last message and is not safely pre-thread." }
+    }
+    return [pscustomobject]@{ Eligible = $true; Reason = $null }
+}
+
 function New-CodexInvocation {
     param(
         [Parameter(Mandatory = $true)][string]$Repo,
@@ -267,8 +516,6 @@ function New-CodexInvocation {
         "exec",
         "-C",
         $Repo,
-        "-s",
-        "workspace-write",
         "--approve-for-me",
         "--json",
         "--output-last-message",
@@ -372,7 +619,7 @@ function Get-ThreadIdsFromJsonLines {
 
 function Get-AutomationControlPlan {
     param(
-        [Parameter(Mandatory = $true)][ValidateSet("Status", "Wake", "ResumeExternal")][string]$Action,
+        [Parameter(Mandatory = $true)][ValidateSet("Status", "Wake", "ResumeExternal", "RecoverPreThread")][string]$Action,
         [Parameter(Mandatory = $true)][string]$Phase,
         [AllowNull()][string]$ThreadId,
         [switch]$StartNow
@@ -397,14 +644,28 @@ function Get-AutomationControlPlan {
             ModifyTrigger = $false
         }
     }
-    if ($Phase -ne "WAITING_EXTERNAL") {
-        throw "ResumeExternal requires phase WAITING_EXTERNAL; current phase is $Phase."
+    if ($Action -eq "ResumeExternal") {
+        if ($Phase -ne "WAITING_EXTERNAL") {
+            throw "ResumeExternal requires phase WAITING_EXTERNAL; current phase is $Phase."
+        }
+        if ([string]::IsNullOrWhiteSpace($ThreadId)) {
+            throw "ResumeExternal requires an existing exact thread_id."
+        }
+        return [pscustomobject]@{
+            NewPhase = "ACTIVE"
+            EnableTask = $true
+            StartTask = [bool]$StartNow
+            ModifyTrigger = $false
+        }
     }
-    if ([string]::IsNullOrWhiteSpace($ThreadId)) {
-        throw "ResumeExternal requires an existing exact thread_id."
+    if ($Phase -ne "LAUNCHER_ERROR") {
+        throw "RecoverPreThread requires phase LAUNCHER_ERROR; current phase is $Phase."
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ThreadId)) {
+        throw "RecoverPreThread requires an empty thread_id."
     }
     return [pscustomobject]@{
-        NewPhase = "ACTIVE"
+        NewPhase = "READY"
         EnableTask = $true
         StartTask = [bool]$StartNow
         ModifyTrigger = $false

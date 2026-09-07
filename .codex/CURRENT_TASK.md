@@ -44,8 +44,8 @@ optimization 13 ordered SQLite inspection-shard reduction: ACCEPTED
 optimization 14 completed-state storage compaction: ACCEPTED
 optimization 15 bounded transient-state lifetime: ACCEPTED
 Opt16 compile-once immutable topology reuse: ACCEPTED
-generic Windows Codex automation framework: COMPLETE
-S1M2 Pre-VM Closure: NOT STARTED / RESEARCHER INSTALL REQUIRED
+generic Windows Codex automation framework: COMPLETE / INFRASTRUCTURE REPAIRED
+S1M2 Pre-VM Closure: NOT STARTED / INSTALLED PRE-THREAD FAILURE / RECOVERABLE BY RESEARCHER
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -321,32 +321,37 @@ local target supported by current profiling evidence; do not open Opt17.
 `STOP_LOCAL_OPTIMIZATION`. Any next session requires explicit authorization
 and should address VM worker scaling, scheduling, and production readiness.
 
-## Generic Windows Codex automation prerequisite complete
+## Generic Windows Codex automation repaired; PreVM recovery remains researcher-controlled
 
-The reusable framework is tracked in `.codex/automation/`. It freezes each
-bounded task prompt and keeps task-specific config, state, exact thread ID, and
-per-wake logs under ignored `artifacts/codex_automation/<automation_id>/`.
-The generic runner enforces a named mutex plus `MultipleInstances IgnoreNew`,
-clean branch/HEAD/remote ancestry gates, exact thread-ID resume, strict final
-status markers, atomic state replacement, and fail-closed task disabling.
+The reusable framework is tracked in `.codex/automation/`. New and exact-ID
+resume invocations now use the legal Codex CLI 0.153.2 unattended policy
+`--approve-for-me` without a conflicting `--sandbox`. Exact TaskName/runtime
+collisions still fail closed, while historical one-shot tasks and idle generic
+peers can coexist. The runner retains its per-task lock and adds a canonical
+repository mutex so only one generic runner can invoke Codex in one worktree;
+contention safely skips a wake and different repositories remain independent.
 
-`control_task.ps1` provides read-only `Status`, one extra `Wake` without
-changing the fixed trigger, and `ResumeExternal` from `WAITING_EXTERNAL`
-without manual state/thread editing. The PowerShell 5.1 static parse and the
-focused dry-run/state suite pass; the successful focused run covers seven
-contract groups in 1.644 seconds. It registered no Scheduled Task and started
-no Codex automation. `notes/planned_ps1/**` was inspected read-only and remains
-unchanged.
+`control_task.ps1` retains `Status`, `Wake`, and `ResumeExternal` and adds the
+restricted `RecoverPreThread` action. It requires a disabled pre-thread
+`LAUNCHER_ERROR`, empty thread identity, no `thread.started` evidence or last
+message, intact frozen prompt hashes, normal clean branch/HEAD/remote gates,
+and exact task action/config/repo/fixed-trigger identity. It preserves the
+existing trigger and adds an immediate wake only with explicit `-StartNow`.
+The Windows PowerShell 5.1 static parse and one focused suite pass 12 contract
+groups in 4.096 seconds. The repair created no task and started no Codex.
 
-This completes only the infrastructure prerequisite. S1M2 Pre-VM Closure is
-not started or complete. The sole next action is for the researcher to install
-`SKTLM-S1M2-PreVM-Closure` with the generic installer command documented in
-`.codex/automation/README.md`; Codex must not install or start it autonomously.
+The existing `SKTLM-S1M2-PreVM-Closure` task was inspected read-only. It is
+Disabled in `LAUNCHER_ERROR`, has null `thread_id`, empty JSONL, no last message,
+matching prompt hashes, and matching action/config/repo/trigger identity. After
+the repair commit is clean and pushed, the sole next action is an explicit
+researcher `RecoverPreThread` command without `-StartNow` unless the researcher
+also wants an immediate extra wake. Do not edit state, inject a thread ID,
+reinstall, or alter the fixed trigger. S1M2 Pre-VM Closure remains not started.
 
 ```text
-GENERIC_CODEX_WINDOWS_AUTOMATION=COMPLETE
-S1M2_PREVM_CLOSURE=NOT_STARTED
-S1M2_PREVM_NEXT_ACTION=RESEARCHER_INSTALLS_GENERIC_TASK
-ACTUAL_SCHEDULED_TASK_CREATED=NO
-CODEX_AUTOMATION_STARTED=NO
+GENERIC_CODEX_WINDOWS_AUTOMATION=COMPLETE_REPAIRED
+S1M2_PREVM_CLOSURE=NOT_STARTED_INSTALLED_PRETHREAD_FAILURE
+S1M2_PREVM_NEXT_ACTION=RESEARCHER_RECOVER_PRETHREAD
+ACTUAL_SCHEDULED_TASK_CREATED_BY_REPAIR=NO
+CODEX_AUTOMATION_STARTED_BY_REPAIR=NO
 ```

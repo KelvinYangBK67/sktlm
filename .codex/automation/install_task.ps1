@@ -117,6 +117,7 @@ foreach ($commandName in $ScheduledTaskCommands) {
     }
 }
 
+$GenericPeerNames = @()
 if (-not $DryRun) {
     try {
         $AllTasks = @(Get-ScheduledTask -ErrorAction Stop)
@@ -124,20 +125,11 @@ if (-not $DryRun) {
     catch {
         throw "Cannot inspect Windows Scheduled Tasks. Use an elevated Windows PowerShell shell if required: $($_.Exception.Message)"
     }
-    if (@($AllTasks | Where-Object { $_.TaskName -eq $TaskName }).Count -gt 0) {
+    $Inventory = Get-AutomationTaskInventory -TaskName $TaskName -Tasks $AllTasks
+    if ($Inventory.ExactTaskCount -gt 0) {
         throw "Scheduled Task already exists: $TaskName"
     }
-    $Conflicts = @(
-        $AllTasks |
-            Where-Object {
-                $_.TaskName -like "SKTLM-*" -and
-                [string]$_.State -ne "Disabled"
-            }
-    )
-    if ($Conflicts.Count -gt 0) {
-        $Names = @($Conflicts | ForEach-Object { $_.TaskName }) -join ", "
-        throw "An active SKTLM automation already exists. Retire it manually before installation: $Names"
-    }
+    $GenericPeerNames = @($Inventory.GenericTasks | ForEach-Object { $_.TaskName })
 }
 
 $Schedule = New-AutomationScheduleDefinition -Anchor $Start -IntervalMinutes $IntervalMinutes -Now (Get-Date)
@@ -238,6 +230,8 @@ $State = [ordered]@{
     last_observed_head = $BaseHead
     last_error = $null
     external_resume_at = $null
+    prethread_recovery_at = $null
+    prethread_recovery_reason = $null
 }
 Write-AutomationJsonAtomic -Path $ConfigPath -Value $Config
 Write-AutomationJsonAtomic -Path $StatePath -Value $State
@@ -309,3 +303,4 @@ Write-Host "REGISTERED_START=$($Schedule.RegisteredStart.ToString('yyyy-MM-dd HH
 Write-Host "INTERVAL_MINUTES=$IntervalMinutes"
 Write-Host "NEXT_RUN_TIME=$($TaskInfo.NextRunTime.ToString('o'))"
 Write-Host "STARTED_NOW=$([bool]$StartNow)"
+Write-Host "GENERIC_AUTOMATION_PEERS=$($GenericPeerNames -join ',')"

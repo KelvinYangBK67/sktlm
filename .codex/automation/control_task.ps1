@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$AutomationId,
-    [Parameter(Mandatory = $true)][ValidateSet("Status", "Wake", "ResumeExternal")][string]$Action,
+    [Parameter(Mandatory = $true)][ValidateSet("Status", "Wake", "ResumeExternal", "RecoverPreThread")][string]$Action,
     [string]$Repo,
     [switch]$StartNow
 )
@@ -16,8 +16,8 @@ if (-not (Test-Path -LiteralPath $HelperPath -PathType Leaf)) {
 . $HelperPath
 
 Assert-AutomationId -AutomationId $AutomationId
-if ($StartNow -and $Action -ne "ResumeExternal") {
-    throw "-StartNow is valid only with -Action ResumeExternal. Wake already means one immediate extra invocation."
+if ($StartNow -and @("ResumeExternal", "RecoverPreThread") -notcontains $Action) {
+    throw "-StartNow is valid only with -Action ResumeExternal or RecoverPreThread. Wake already means one immediate extra invocation."
 }
 if ([string]::IsNullOrWhiteSpace($Repo)) {
     $Repo = Join-Path $PSScriptRoot "..\.."
@@ -96,25 +96,108 @@ if ($Action -eq "Wake") {
     exit 0
 }
 
-$PreviousPhase = [string]$State.phase
+if ($Action -eq "RecoverPreThread") {
+    if (-not [bool]$Config.registration_performed) {
+        throw "RecoverPreThread requires config.json to record a completed Scheduled Task registration."
+    }
+    if ([string]$ScheduledTask.State -cne "Disabled") {
+        throw "RecoverPreThread requires the fail-closed Scheduled Task to be Disabled; current state is $($ScheduledTask.State)."
+    }
+    $Eligibility = Test-PreThreadRecoveryEligibility -State $State
+    if (-not $Eligibility.Eligible) {
+        throw "Unsafe RecoverPreThread request: $($Eligibility.Reason)"
+    }
+    $PromptIntegrity = Test-FrozenPromptIntegrity -Config $Config
+    if (-not $PromptIntegrity.Valid) {
+        throw "Unsafe RecoverPreThread request: $($PromptIntegrity.Reason)"
+    }
+    $TaskIdentity = Test-ScheduledTaskIdentity -Task $ScheduledTask -Config $Config
+    if (-not $TaskIdentity.Valid) {
+        throw "Unsafe RecoverPreThread request: $($TaskIdentity.Reason)"
+    }
+    $GenericIdentity = Get-GenericAutomationTaskIdentity -Task $ScheduledTask
+    if (-not $GenericIdentity.IsGeneric -or
+        -not [string]::Equals([string]$GenericIdentity.ConfigPath, $ConfigPath, [System.StringComparison]::OrdinalIgnoreCase) -or
+        -not [string]::Equals([string]$GenericIdentity.Repo, [string]$Config.repo, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Unsafe RecoverPreThread request: Scheduled Task is not the exact generic action/config/repo identity. $($GenericIdentity.Reason)"
+    }
+
+    $GitCommand = Get-Command git.exe -ErrorAction SilentlyContinue
+    if (-not $GitCommand) { $GitCommand = Get-Command git -ErrorAction SilentlyContinue }
+    if (-not $GitCommand) { throw "Git executable not found in PATH." }
+    $GitPath = $GitCommand.Source
+    function Invoke-RecoveryGit {
+        param([Parameter(Mandatory = $true)][string[]]$Arguments)
+
+        $output = @(& $GitPath -C ([string]$Config.repo) @Arguments 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw "Unsafe RecoverPreThread request: git $($Arguments -join ' ') failed: $($output -join ' ')"
+        }
+        return ($output -join "`n").Trim()
+    }
+    [void](Invoke-RecoveryGit -Arguments @("fetch", "--quiet", "origin"))
+    $CurrentBranch = Invoke-RecoveryGit -Arguments @("branch", "--show-current")
+    $Dirty = Invoke-RecoveryGit -Arguments @("status", "--porcelain")
+    $Head = Invoke-RecoveryGit -Arguments @("rev-parse", "HEAD")
+    & $GitPath -C ([string]$Config.repo) merge-base --is-ancestor ([string]$Config.base_head) $Head 2>&1 | Out-Null
+    $BaseIsAncestor = ($LASTEXITCODE -eq 0)
+    $RemoteHead = Invoke-RecoveryGit -Arguments @("rev-parse", [string]$Config.remote_ref)
+    $RepoGate = Test-AutomationRepoSnapshot `
+        -Config $Config `
+        -CurrentBranch $CurrentBranch `
+        -Dirty $Dirty `
+        -Head $Head `
+        -BaseIsAncestor $BaseIsAncestor `
+        -RemoteHead $RemoteHead
+    if (-not $RepoGate.Valid) {
+        throw "Unsafe RecoverPreThread request: $($RepoGate.Reason)"
+    }
+}
+
+$PreviousState = $State | ConvertTo-Json -Depth 16 | ConvertFrom-Json
+$PreviousError = [string]$State.last_error
 $State.phase = [string]$Plan.NewPhase
-$State.external_resume_at = (Get-Date).ToString("o")
+$ControlTime = (Get-Date).ToString("o")
+if ($Action -eq "ResumeExternal") {
+    $State.external_resume_at = $ControlTime
+}
+else {
+    if ($State.PSObject.Properties.Name -notcontains "prethread_recovery_at") {
+        $State | Add-Member -NotePropertyName prethread_recovery_at -NotePropertyValue $null
+    }
+    if ($State.PSObject.Properties.Name -notcontains "prethread_recovery_reason") {
+        $State | Add-Member -NotePropertyName prethread_recovery_reason -NotePropertyValue $null
+    }
+    $State.prethread_recovery_at = $ControlTime
+    $State.prethread_recovery_reason = $PreviousError
+    $State.last_exit_code = $null
+}
 $State.last_error = $null
 Write-AutomationJsonAtomic -Path ([string]$Config.state_path) -Value $State
 try {
     Enable-ScheduledTask -TaskName ([string]$Config.task_name) -ErrorAction Stop | Out-Null
 }
 catch {
-    $State.phase = $PreviousPhase
-    $State.last_error = "ResumeExternal could not enable Scheduled Task: $($_.Exception.Message)"
-    Write-AutomationJsonAtomic -Path ([string]$Config.state_path) -Value $State
+    $PreviousState.last_error = "$Action could not enable Scheduled Task: $($_.Exception.Message)"
+    Write-AutomationJsonAtomic -Path ([string]$Config.state_path) -Value $PreviousState
     throw
 }
 if ($Plan.StartTask) {
     Start-ScheduledTask -TaskName ([string]$Config.task_name) -ErrorAction Stop
 }
-Write-Host "RESUME_EXTERNAL=PASS"
-Write-Host "THREAD_ID=$($State.thread_id)"
+if ($Action -eq "RecoverPreThread") {
+    $PostRecoveryTask = Get-ScheduledTask -TaskName ([string]$Config.task_name) -ErrorAction Stop
+    $PostRecoveryIdentity = Test-ScheduledTaskIdentity -Task $PostRecoveryTask -Config $Config
+    if (-not $PostRecoveryIdentity.Valid) {
+        throw "Scheduled Task identity changed during RecoverPreThread: $($PostRecoveryIdentity.Reason)"
+    }
+    Write-Host "RECOVER_PRETHREAD=PASS"
+    Write-Host "THREAD_ID=EMPTY"
+}
+else {
+    Write-Host "RESUME_EXTERNAL=PASS"
+    Write-Host "THREAD_ID=$($State.thread_id)"
+}
 Write-Host "AUTOMATION_PHASE=$($State.phase)"
 Write-Host "TRIGGER_MODIFIED=NO"
 Write-Host "STARTED_NOW=$([bool]$Plan.StartTask)"

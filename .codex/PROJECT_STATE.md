@@ -2274,3 +2274,46 @@ S1M2_PREVM_NEXT_ACTION=RESEARCHER_INSTALLS_GENERIC_TASK
 ACTUAL_SCHEDULED_TASK_CREATED=NO
 CODEX_AUTOMATION_STARTED=NO
 ```
+
+## 80. Generic Windows Codex automation infrastructure repaired (2026-09-07)
+
+The installed Codex CLI is `codex-cli 0.153.2`. Its `--approve-for-me` option
+already selects the workspace-write sandbox and cannot be combined with
+`--sandbox`; the generic launcher now uses `--approve-for-me` alone for both
+new and exact-ID resume invocations. It still forbids `resume --last` and the
+dangerous approvals/sandbox bypass.
+
+Installer coexistence is now based on the Scheduled Task runner action, config
+path, and repository identity instead of the broad `SKTLM-*` prefix. Exact
+TaskName and runtime-root collisions still fail closed. Historical one-shot
+tasks and installed READY/ACTIVE generic peers are not treated as running merely
+because they exist. The runner retains the per-task mutex and adds a deterministic
+canonical-repository mutex; same-repository contention skips one wake without
+changing healthy state, while different repositories remain independent.
+
+`control_task.ps1` adds restricted `RecoverPreThread`. It accepts only a
+disabled `LAUNCHER_ERROR` with an empty thread ID, prior launch logs proving no
+thread or last message, unchanged frozen prompt hashes, a clean compatible HEAD
+equal to the configured remote ref, and exact Scheduled Task action/config/repo
+and fixed-trigger identity. Recovery atomically returns state to READY, enables
+the existing task, preserves TaskName/automation ID/config/thread/anchor/interval/
+trigger, and performs an immediate extra wake only when `-StartNow` is explicit.
+`WAITING_EXTERNAL` and `COMPLETE` semantics are unchanged.
+
+All four framework scripts and the focused suite parse under Windows PowerShell
+5.1. The single focused suite passes 12 contract groups in 4.096 seconds; it
+created no actual Scheduled Task and invoked no Codex automation. The existing
+`SKTLM-S1M2-PreVM-Closure` runtime was inspected read-only: its task is Disabled,
+state is `LAUNCHER_ERROR`, `thread_id` is null, JSONL is empty, no last-message
+file exists, both prompt hashes match, and action/config/repo/trigger identity
+matches. It is eligible for `RecoverPreThread` once the repaired commit is clean
+and pushed, but this repair did not recover, enable, start, or wake it. No
+scientific, VM, representative, stress, or full-M0 work ran.
+
+```text
+GENERIC_CODEX_WINDOWS_AUTOMATION=COMPLETE_REPAIRED
+S1M2_PREVM_CLOSURE=NOT_STARTED_INSTALLED_PRETHREAD_FAILURE
+S1M2_PREVM_RECOVER_PRETHREAD=RESEARCHER_ACTION_REQUIRED
+ACTUAL_SCHEDULED_TASK_CREATED_BY_REPAIR=NO
+CODEX_AUTOMATION_STARTED_BY_REPAIR=NO
+```

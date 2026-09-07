@@ -37,8 +37,8 @@ if (-not $GitCommand) { $GitCommand = Get-Command git -ErrorAction SilentlyConti
 if (-not $GitCommand) { throw "Git executable not found in PATH." }
 $GitPath = $GitCommand.Source
 $State = $null
-$Mutex = $null
-$OwnsMutex = $false
+$TaskLock = $null
+$RepoLock = $null
 $FailureRecorded = $false
 $FinalExitCode = 0
 
@@ -84,15 +84,16 @@ function Invoke-RunnerGit {
 }
 
 try {
-    $Mutex = New-Object System.Threading.Mutex($false, [string]$Config.mutex_name)
-    try {
-        $OwnsMutex = $Mutex.WaitOne(0, $false)
-    }
-    catch [System.Threading.AbandonedMutexException] {
-        $OwnsMutex = $true
-    }
-    if (-not $OwnsMutex) {
+    $TaskLock = Enter-AutomationMutex -Name ([string]$Config.mutex_name)
+    if (-not $TaskLock.Acquired) {
         Write-Host "AUTOMATION_ALREADY_RUNNING=YES"
+        exit 0
+    }
+    $RepoMutexName = Get-AutomationRepoMutexName -Repo $Repo
+    $RepoLock = Enter-AutomationMutex -Name $RepoMutexName
+    if (-not $RepoLock.Acquired) {
+        Write-Host "AUTOMATION_REPO_BUSY=YES"
+        Write-Host "REPO_MUTEX=$RepoMutexName"
         exit 0
     }
 
@@ -245,12 +246,8 @@ catch {
     Write-Error $_ -ErrorAction Continue
 }
 finally {
-    if ($OwnsMutex -and $null -ne $Mutex) {
-        try { $Mutex.ReleaseMutex() | Out-Null } catch {}
-    }
-    if ($null -ne $Mutex) {
-        $Mutex.Dispose()
-    }
+    if ($null -ne $RepoLock) { Exit-AutomationMutex -Lock $RepoLock }
+    if ($null -ne $TaskLock) { Exit-AutomationMutex -Lock $TaskLock }
 }
 
 exit $FinalExitCode
