@@ -15,6 +15,7 @@ import subprocess
 import time
 from collections import Counter
 from concurrent.futures import Future, ProcessPoolExecutor
+from contextlib import ExitStack
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Iterator
@@ -57,10 +58,17 @@ from sktlm.pieces.composed import (
     ComposedInferenceTimings,
     ComposedPieceInference,
     ComposedSegmentInference,
+    CompiledSegmentTopology,
+    compile_composed_segment_topology,
     infer_composed_segment,
 )
 from sktlm.pieces.model import PieceModelConfig
 from sktlm.pieces.scorer import NeutralPieceScorer
+from sktlm.pieces.topology_archive import (
+    TopologyArchiveReader,
+    TopologyArchiveWriter,
+    archive_header,
+)
 
 
 EXPECTED_FREEZE_ID = "9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40"
@@ -883,6 +891,63 @@ def _training_shard_paths(
     return root / f'{stem}.counts.tsv', root / f'{stem}.complete.json'
 
 
+def _topology_archive_path(run_dir: Path, document_index: int) -> Path:
+    return run_dir / "topology" / f"document_{document_index:08d}.bin"
+
+
+def _topology_archive_header(
+    config_signature: str,
+    document_index: int,
+    document: CorpusDocument,
+) -> dict[str, Any]:
+    return archive_header(
+        config_signature=config_signature,
+        document_index=document_index,
+        relative_path=document.relative_path,
+        freeze_id=document.freeze_id,
+    )
+
+
+def _profiled_document_segments_with_topology(
+    document: CorpusDocument,
+    document_index: int,
+    config: TrainingConfig,
+    run_dir: Path,
+    telemetry: RuntimeTelemetry,
+    *,
+    phase: str,
+    config_signature: str,
+) -> Iterator[tuple[int, int, ObservedSegment, CompiledSegmentTopology | None]]:
+    reader = None
+    if config.model == S1M2_MODEL:
+        reader = TopologyArchiveReader(
+            _topology_archive_path(run_dir, document_index),
+            _topology_archive_header(
+                config_signature, document_index, document
+            ),
+        )
+    try:
+        for line_number, segment_index, segment in _profiled_document_segments(
+            document,
+            config,
+            telemetry,
+            phase=phase,
+        ):
+            topology = (
+                None
+                if reader is None
+                else reader.read(line_number, segment_index)
+            )
+            yield line_number, segment_index, segment, topology
+        if reader is not None:
+            reader.close()
+            telemetry.increment("topology_archives_reused", 1)
+            telemetry.increment("topology_records_reused", reader.records)
+    finally:
+        if reader is not None:
+            reader.close(require_eof=False)
+
+
 def _initialize_training_worker(
     pass_index: int,
     database_path: Path,
@@ -1012,12 +1077,33 @@ def _write_training_shard(
         piece_counts.clear()
         piece_support.clear()
 
-    with temporary.open('w', encoding='utf-8', newline='') as handle:
+    topology_path = _topology_archive_path(run_dir, document_index)
+    topology_temporary = topology_path.with_suffix(topology_path.suffix + ".tmp")
+    topology_writer: TopologyArchiveWriter | None = None
+    topology_reader: TopologyArchiveReader | None = None
+    with ExitStack() as resources:
+        handle = resources.enter_context(
+            temporary.open('w', encoding='utf-8', newline='')
+        )
+        if config.model == S1M2_MODEL:
+            header = _topology_archive_header(
+                config_signature, document_index, document
+            )
+            if pass_index == 1:
+                if topology_temporary.exists():
+                    topology_temporary.unlink()
+                topology_writer = resources.enter_context(
+                    TopologyArchiveWriter(topology_temporary, header)
+                )
+            else:
+                topology_reader = resources.enter_context(
+                    TopologyArchiveReader(topology_path, header)
+                )
         iterator = _iter_document_segments(document, config)
         while True:
             started = time.perf_counter()
             try:
-                line_number, _, segment = next(iterator)
+                line_number, segment_index, segment = next(iterator)
             except StopIteration:
                 frontend_seconds += time.perf_counter() - started
                 break
@@ -1059,6 +1145,21 @@ def _write_training_shard(
                     candidate_counts,
                     phase="training",
                 )
+            segment_topology = None
+            if config.model == S1M2_MODEL:
+                assert _WORKER_PIECE_ENGINE is not None
+                if topology_writer is not None:
+                    segment_topology = compile_composed_segment_topology(
+                        graph, _WORKER_PIECE_ENGINE
+                    )
+                    topology_writer.write(
+                        line_number, segment_index, segment_topology
+                    )
+                else:
+                    assert topology_reader is not None
+                    segment_topology = topology_reader.read(
+                        line_number, segment_index
+                    )
             started = time.perf_counter()
             if config.model == S1M1_MODEL:
                 inference = infer_training_segment(
@@ -1073,6 +1174,7 @@ def _write_training_shard(
                     _WORKER_PIECE_ENGINE,
                     whitespace_merge_penalty=config.whitespace_merge_penalty,
                     support_epsilon=config.piece_support_epsilon,
+                    topology=segment_topology,
                 )
                 _record_composed_timings(
                     engineering,
@@ -1108,6 +1210,19 @@ def _write_training_shard(
         handle.flush()
         os.fsync(handle.fileno())
     _replace_file(temporary, shard_path)
+    if topology_writer is not None:
+        _replace_file(topology_temporary, topology_path)
+        engineering.increment("topology_archives_compiled", 1)
+        engineering.increment("topology_records_compiled", topology_writer.records)
+        engineering.increment(
+            "topology_uncompressed_bytes", topology_writer.uncompressed_bytes
+        )
+        engineering.maximum(
+            "topology_archive_bytes", topology_path.stat().st_size
+        )
+    elif topology_reader is not None:
+        engineering.increment("topology_archives_reused", 1)
+        engineering.increment("topology_records_reused", topology_reader.records)
     metrics.documents = 1
     metrics.lines = len(seen_lines)
     payload = {
@@ -1501,9 +1616,29 @@ def _training_pass(
         seen_lines: set[int] = set()
         document_metrics = PassMetrics()
         document_started = telemetry.now()
+        topology_path = _topology_archive_path(run_dir, document_index)
+        topology_temporary = topology_path.with_suffix(
+            topology_path.suffix + ".tmp"
+        )
+        topology_writer: TopologyArchiveWriter | None = None
+        topology_reader: TopologyArchiveReader | None = None
         store.begin_document_counts()
         try:
-            for line_number, _, segment in _profiled_document_segments(
+            if config.model == S1M2_MODEL:
+                header = _topology_archive_header(
+                    _config_signature(config), document_index, document
+                )
+                if pass_index == 1:
+                    if topology_temporary.exists():
+                        topology_temporary.unlink()
+                    topology_writer = TopologyArchiveWriter(
+                        topology_temporary, header
+                    )
+                else:
+                    topology_reader = TopologyArchiveReader(
+                        topology_path, header
+                    )
+            for line_number, segment_index, segment in _profiled_document_segments(
                 document,
                 config,
                 telemetry,
@@ -1542,6 +1677,21 @@ def _training_pass(
                         candidate_counts,
                         phase="training",
                     )
+                segment_topology = None
+                if config.model == S1M2_MODEL:
+                    assert piece_engine is not None
+                    if topology_writer is not None:
+                        segment_topology = compile_composed_segment_topology(
+                            graph, piece_engine
+                        )
+                        topology_writer.write(
+                            line_number, segment_index, segment_topology
+                        )
+                    else:
+                        assert topology_reader is not None
+                        segment_topology = topology_reader.read(
+                            line_number, segment_index
+                        )
                 started = telemetry.now()
                 if config.model == S1M1_MODEL:
                     assert scorer is not None
@@ -1558,6 +1708,7 @@ def _training_pass(
                         piece_engine,
                         whitespace_merge_penalty=config.whitespace_merge_penalty,
                         support_epsilon=config.piece_support_epsilon,
+                        topology=segment_topology,
                     )
                     _record_composed_telemetry(
                         telemetry,
@@ -1609,6 +1760,26 @@ def _training_pass(
                 _flush_piece_training_counts(
                     store, counts, piece_counts, piece_support
                 )
+            if topology_writer is not None:
+                topology_writer.close()
+                _replace_file(topology_temporary, topology_path)
+                telemetry.increment("topology_archives_compiled", 1)
+                telemetry.increment(
+                    "topology_records_compiled", topology_writer.records
+                )
+                telemetry.increment(
+                    "topology_uncompressed_bytes",
+                    topology_writer.uncompressed_bytes,
+                )
+                telemetry.maximum(
+                    "topology_archive_bytes", topology_path.stat().st_size
+                )
+            elif topology_reader is not None:
+                topology_reader.close()
+                telemetry.increment("topology_archives_reused", 1)
+                telemetry.increment(
+                    "topology_records_reused", topology_reader.records
+                )
             document_metrics.documents = 1
             document_metrics.lines = len(seen_lines)
             next_metrics = metrics.merged(document_metrics)
@@ -1621,6 +1792,10 @@ def _training_pass(
             store.commit_document(next_checkpoint)
             _record_store_storage(telemetry, store.path)
         except BaseException:
+            if topology_writer is not None:
+                topology_writer.close()
+            if topology_reader is not None:
+                topology_reader.close(require_eof=False)
             store.rollback_document()
             raise
         metrics = next_metrics
@@ -2038,6 +2213,7 @@ def _write_inspection_shard(
         shard_database_seconds += time.perf_counter() - started
 
     handles: dict[str, Any] = {}
+    topology_reader: TopologyArchiveReader | None = None
     try:
         stream_kinds = (
             _INSPECTION_STREAM_SHARD_KINDS
@@ -2049,6 +2225,13 @@ def _write_inspection_shard(
                 "w",
                 encoding="utf-8",
                 newline="",
+            )
+        if config.model == S1M2_MODEL:
+            topology_reader = TopologyArchiveReader(
+                _topology_archive_path(run_dir, document_index),
+                _topology_archive_header(
+                    config_signature, document_index, document
+                ),
             )
         iterator = _iter_document_segments(document, config)
         while True:
@@ -2096,6 +2279,12 @@ def _write_inspection_shard(
                     candidate_values,
                     phase="inspection",
                 )
+            segment_topology = None
+            if config.model == S1M2_MODEL:
+                assert topology_reader is not None
+                segment_topology = topology_reader.read(
+                    line_number, segment_index
+                )
             started = time.perf_counter()
             if config.model == S1M1_MODEL:
                 inference = infer_segment(
@@ -2111,6 +2300,7 @@ def _write_inspection_shard(
                     _WORKER_PIECE_ENGINE,
                     whitespace_merge_penalty=config.whitespace_merge_penalty,
                     support_epsilon=config.piece_support_epsilon,
+                    topology=segment_topology,
                 )
                 _record_composed_timings(
                     engineering,
@@ -2323,7 +2513,15 @@ def _write_inspection_shard(
         for handle in handles.values():
             handle.flush()
             os.fsync(handle.fileno())
+        if topology_reader is not None:
+            topology_reader.close()
+            engineering.increment("topology_archives_reused", 1)
+            engineering.increment(
+                "topology_records_reused", topology_reader.records
+            )
     finally:
+        if topology_reader is not None:
+            topology_reader.close(require_eof=False)
         for handle in handles.values():
             handle.close()
         if aggregate_connection is not None:
@@ -2915,6 +3113,17 @@ def _compact_completed_s1m2_storage(
             "metadata": "configuration signature and transactional checkpoint",
             "piece_lexicon": "fixed active piece parameters used by final inspection",
         },
+        "compiled_topology": {
+            "path": "topology/document_*.bin",
+            "role": "reconstructible immutable cache, never authoritative state",
+            "compression": "zlib level 1 per bounded segment record",
+            "mutable_scores_or_posteriors_stored": False,
+            "validation": (
+                "archive header binds configuration, document, freeze, byte order, "
+                "array sizes, and phoneme inventory; every inference validates "
+                "factor IDs and ordered lexical-form support"
+            ),
+        },
         "canonical_scientific_artifacts": list(
             _S1M2_CANONICAL_SCIENTIFIC_ARTIFACTS
         ),
@@ -2934,6 +3143,12 @@ def _compact_completed_s1m2_storage(
                 "each reconstructible worker shard is retired immediately after "
                 "successful canonical reduction; interruption recovery regenerates "
                 "retired shards from durable active parameters and frozen inputs"
+            ),
+            "compiled_topology": (
+                "compiled once while pass 1 streams each document, retained as "
+                "compressed document-local records, and read one segment at a "
+                "time by later passes and inspection; all scores and DP state "
+                "are recomputed from current authoritative piece parameters"
             ),
         },
     }
@@ -3008,16 +3223,25 @@ def _inspection_pass(
     with analyses_tmp.open("w", encoding="utf-8", newline="\n") as analyses_handle, (
         boundaries_tmp.open("w", encoding="utf-8", newline="\n")
     ) as boundaries_handle:
-        for document in documents:
+        signature = _config_signature(config)
+        for document_index, document in enumerate(documents):
             document_started = telemetry.now()
             seen_lines: set[int] = set()
             surface_usage: list[tuple[str, str, float]] = []
             context_usage: list[tuple[str, str, float]] = []
-            for line_number, segment_index, segment in _profiled_document_segments(
+            for (
+                line_number,
+                segment_index,
+                segment,
+                segment_topology,
+            ) in _profiled_document_segments_with_topology(
                 document,
+                document_index,
                 config,
+                run_dir,
                 telemetry,
                 phase='inspection',
+                config_signature=signature,
             ):
                 seen_lines.add(line_number)
                 started = telemetry.now()
@@ -3069,6 +3293,7 @@ def _inspection_pass(
                         piece_engine,
                         whitespace_merge_penalty=config.whitespace_merge_penalty,
                         support_epsilon=config.piece_support_epsilon,
+                        topology=segment_topology,
                     )
                     _record_composed_telemetry(
                         telemetry,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from sktlm.latent.candidates import CandidateBuildProfile
@@ -18,6 +20,7 @@ from sktlm.pieces import (
     PieceModel,
     PieceModelConfig,
     build_piece_lattice,
+    compile_composed_segment_topology,
     evaluate_piece_lattice,
     infer_composed_segment,
 )
@@ -397,6 +400,71 @@ def test_shared_token_prefix_bound_falls_back_to_legacy_path() -> None:
 
     assert result.total_posterior_mass == pytest.approx(1.0, abs=1e-12)
     assert result.counters.form_cache_misses > 0
+
+
+def test_compiled_topology_reweights_changed_piece_parameters_exactly() -> None:
+    grammar = StructuredSandhiGrammar.from_default_inventory()
+    segment = next(iter_observed_segments("devo'pi"))
+    graph = build_lazy_candidate_graph(segment, grammar)
+    config = PieceModelConfig(max_piece_length=3, rho=0.41)
+    topology = compile_composed_segment_topology(
+        graph,
+        ComposedPieceInference(_TableScorer(), model_config=config),
+    )
+    topology = replace(topology, reused=True)
+
+    reference = infer_composed_segment(
+        graph,
+        ComposedPieceInference(
+            _production_scorer(),
+            model_config=config,
+            inspection_top_k=5,
+        ),
+        whitespace_merge_penalty=8.0,
+    )
+    observed = infer_composed_segment(
+        graph,
+        ComposedPieceInference(
+            _production_scorer(),
+            model_config=config,
+            inspection_top_k=5,
+        ),
+        whitespace_merge_penalty=8.0,
+        topology=topology,
+    )
+
+    for name in (
+        "log_partition",
+        "entropy",
+        "identity_mass",
+        "latent_mass",
+        "expected_lexical_tokens",
+        "expected_piece_tokens",
+        "piece_segmentation_entropy",
+        "expected_whole_form_uses",
+        "expected_singleton_path_uses",
+        "expected_multi_piece_uses",
+        "top_analysis_mass",
+        "total_posterior_mass",
+    ):
+        assert getattr(observed, name) == pytest.approx(
+            getattr(reference, name), rel=1e-10, abs=1e-12
+        )
+    assert observed.lexical_expected_counts == pytest.approx(
+        reference.lexical_expected_counts, rel=1e-10, abs=1e-12
+    )
+    assert observed.piece_expected_counts == pytest.approx(
+        reference.piece_expected_counts, rel=1e-10, abs=1e-12
+    )
+    assert observed.rule_usage == pytest.approx(
+        reference.rule_usage, rel=1e-10, abs=1e-12
+    )
+    assert observed.boundary_posteriors == reference.boundary_posteriors
+    assert observed.top_analyses == reference.top_analyses
+    assert observed.piece_occurrence_support == reference.piece_occurrence_support
+    assert observed.counters.topology_reuses == sum(
+        factor is not None for factor in topology.factors
+    )
 
 
 @pytest.mark.parametrize("surface", ("devo'pi", "tattvamasi"))

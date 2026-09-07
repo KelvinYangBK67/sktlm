@@ -7,7 +7,10 @@ from sktlm.pieces.composed import (
     ComposedInferenceTimings,
     ComposedPieceInference,
     ComposedSegmentInference,
+    CompiledSegmentTopology,
+    CompiledSharedFormTopology,
     FormPieceEvaluation,
+    compile_composed_segment_topology,
     infer_composed_segment,
 )
 from sktlm.pieces.inference import (
@@ -48,6 +51,8 @@ __all__ = [
     "ComposedInferenceTimings",
     "ComposedPieceInference",
     "ComposedSegmentInference",
+    "CompiledSegmentTopology",
+    "CompiledSharedFormTopology",
     "ExpectedCountPieceScorer",
     "FormPieceEvaluation",
     "GeometricPhonemeBaseMeasure",
@@ -65,6 +70,7 @@ __all__ = [
     "ProductionPieceTrainingResult",
     "ReferencePieceTrainingResult",
     "build_piece_lattice",
+    "compile_composed_segment_topology",
     "evaluate_piece_lattice",
     "fit_reference_piece_model",
     "fit_production_piece_model",

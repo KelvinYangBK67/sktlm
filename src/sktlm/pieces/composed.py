@@ -12,6 +12,7 @@ from __future__ import annotations
 import heapq
 import math
 import time
+from array import array
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass, field
 
@@ -101,6 +102,8 @@ class ComposedInferenceCounters:
     shared_batch_fallbacks: int = 0
     shared_top_k_states: int = 0
     shared_top_k_paths: int = 0
+    topology_compiles: int = 0
+    topology_reuses: int = 0
     store_lookups: int = 0
     piece_score_cache_entries: int = 0
     piece_score_cache_estimated_bytes: int = 0
@@ -114,6 +117,8 @@ class ComposedInferenceTimings:
 
     inner_piece_evaluation_seconds: float = 0.0
     inner_piece_transition_build_seconds: float = 0.0
+    inner_piece_topology_compile_seconds: float = 0.0
+    inner_piece_reweight_seconds: float = 0.0
     inner_piece_forward_seconds: float = 0.0
     inner_piece_backward_seconds: float = 0.0
     inner_piece_posterior_seconds: float = 0.0
@@ -152,6 +157,8 @@ _EVENT_COUNTERS = (
     "shared_batch_fallbacks",
     "shared_top_k_states",
     "shared_top_k_paths",
+    "topology_compiles",
+    "topology_reuses",
     "store_lookups",
 )
 
@@ -250,14 +257,6 @@ class _FactorSummary:
 
 
 @dataclass(frozen=True, slots=True)
-class _SharedPieceTransition:
-    source: int
-    piece: PhonologicalForm
-    prior_score: float
-    raw_score: float
-
-
-@dataclass(frozen=True, slots=True)
 class _SharedInnerPath:
     score: float
     pieces: tuple[PhonologicalForm, ...]
@@ -270,11 +269,31 @@ class _SharedPrefixNode:
     symbol: Phoneme | None
     depth: int
     children: dict[Phoneme, int] = field(default_factory=dict)
-    transitions: tuple[_SharedPieceTransition, ...] = ()
-    prior_alpha: float = -math.inf
-    alpha: float = -math.inf
-    singleton_score: float = -math.inf
-    top_paths: tuple[_SharedInnerPath, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledSharedFormTopology:
+    """Compact immutable support for one shared lexical-form prefix DAG."""
+
+    max_piece_length: int
+    parent: array
+    depth: array
+    transition_offsets: array
+    transition_sources: array
+    transition_piece_ids: array
+    pieces: tuple[tuple[Phoneme, ...], ...]
+    form_keys: tuple[str, ...]
+    endpoint_nodes: array
+    whole_piece_ids: array
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledSegmentTopology:
+    """Factor-aligned immutable topology for one observed segment."""
+
+    factor_ids: tuple[str, ...]
+    factors: tuple[CompiledSharedFormTopology | None, ...]
+    reused: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -291,7 +310,13 @@ class _SharedFormScore:
 
 @dataclass(slots=True)
 class _SharedFormBatch:
-    nodes: list[_SharedPrefixNode]
+    topology: CompiledSharedFormTopology
+    pieces: tuple[PhonologicalForm, ...]
+    transition_raw_scores: array
+    prior_alpha: list[float]
+    alpha: list[float]
+    singleton_scores: list[float]
+    top_paths: list[tuple[_SharedInnerPath, ...]] | None
     forms: dict[str, _SharedFormScore]
 
 
@@ -702,36 +727,26 @@ class ComposedPieceInference:
         self._form_bytes += size
         return evaluation
 
-    def _build_shared_form_batch(
+    def _compile_shared_form_topology(
         self,
         forms: tuple[PhonologicalForm, ...],
-    ) -> _SharedFormBatch | None:
-        """Build one bounded prefix DAG for exact token-local form scores.
+    ) -> CompiledSharedFormTopology | None:
+        """Compile bounded score-free support for one token-local prefix DAG."""
 
-        The DAG shares only immutable phonological prefixes.  It is discarded
-        with the token summary and falls back before score/cache mutation when
-        its explicit engineering node bound would be exceeded.
-        """
-
-        evaluation_started = time.perf_counter()
         nodes = [
             _SharedPrefixNode(
                 parent=-1,
                 symbol=None,
                 depth=0,
-                prior_alpha=0.0,
-                alpha=0.0,
-                singleton_score=0.0,
             )
         ]
-        endpoints: dict[str, int] = {}
+        endpoints: list[int] = []
         for form in forms:
             current = 0
             for symbol in form.symbols:
                 child = nodes[current].children.get(symbol)
                 if child is None:
                     if len(nodes) >= self.cache_config.shared_prefix_nodes:
-                        self._events["shared_batch_fallbacks"] += 1
                         return None
                     child = len(nodes)
                     nodes[current].children[symbol] = child
@@ -743,24 +758,19 @@ class ComposedPieceInference:
                         )
                     )
                 current = child
-            endpoints[form.key] = current
+            endpoints.append(current)
 
-        if self.inspection_top_k is not None and (
-            self.inspection_top_k * sum(node.depth for node in nodes)
-            > self.cache_config.shared_top_k_piece_references
-        ):
-            self._events["shared_batch_fallbacks"] += 1
-            return None
-
-        transition_started = time.perf_counter()
-        transition_count = 0
         max_piece_length = self.model_config.max_piece_length
-        rho = self.model_config.rho
+        piece_ids: dict[tuple[Phoneme, ...], int] = {}
+        pieces: list[tuple[Phoneme, ...]] = []
+        offsets = array("I", [0])
+        sources = array("I")
+        transition_piece_ids = array("I")
         for node_index in range(1, len(nodes)):
             node = nodes[node_index]
             cursor = node_index
             suffix_reversed: list[Phoneme] = []
-            descending: list[_SharedPieceTransition] = []
+            descending: list[tuple[int, int]] = []
             for _piece_length in range(
                 1,
                 min(node.depth, max_piece_length) + 1,
@@ -769,75 +779,164 @@ class ComposedPieceInference:
                 assert symbol is not None
                 suffix_reversed.append(symbol)
                 source = nodes[cursor].parent
-                piece, piece_score = self._piece_and_score(
-                    tuple(reversed(suffix_reversed))
-                )
-                prior = _raw_prior_score(
-                    nodes[source].depth,
-                    node.depth,
-                    rho=rho,
-                )
-                descending.append(
-                    _SharedPieceTransition(
-                        source=source,
-                        piece=piece,
-                        prior_score=prior,
-                        raw_score=prior + piece_score,
-                    )
-                )
+                piece_symbols = tuple(reversed(suffix_reversed))
+                piece_id = piece_ids.get(piece_symbols)
+                if piece_id is None:
+                    piece_id = len(pieces)
+                    piece_ids[piece_symbols] = piece_id
+                    pieces.append(piece_symbols)
+                descending.append((source, piece_id))
                 cursor = source
             # Existing per-form DP accumulates contributions by ascending
             # source position.  Preserve that deterministic order here.
-            node.transitions = tuple(reversed(descending))
-            transition_count += len(node.transitions)
-        self.add_timing("inner_piece_transition_build_seconds", transition_started)
+            for source, piece_id in reversed(descending):
+                sources.append(source)
+                transition_piece_ids.append(piece_id)
+            offsets.append(len(sources))
+
+        whole_piece_ids = array("I")
+        for form in forms:
+            piece_id = piece_ids.get(form.symbols)
+            if piece_id is None:
+                piece_id = len(pieces)
+                piece_ids[form.symbols] = piece_id
+                pieces.append(form.symbols)
+            whole_piece_ids.append(piece_id)
+        return CompiledSharedFormTopology(
+            max_piece_length=max_piece_length,
+            parent=array("i", (node.parent for node in nodes)),
+            depth=array("I", (node.depth for node in nodes)),
+            transition_offsets=offsets,
+            transition_sources=sources,
+            transition_piece_ids=transition_piece_ids,
+            pieces=tuple(pieces),
+            form_keys=tuple(form.key for form in forms),
+            endpoint_nodes=array("I", endpoints),
+            whole_piece_ids=whole_piece_ids,
+        )
+
+    def _build_shared_form_batch(
+        self,
+        forms: tuple[PhonologicalForm, ...],
+        *,
+        topology: CompiledSharedFormTopology | None = None,
+        topology_reused: bool = False,
+    ) -> _SharedFormBatch | None:
+        """Compile or exactly reweight one bounded shared prefix DAG."""
+
+        evaluation_started = time.perf_counter()
+        transition_started = time.perf_counter()
+        if topology is None:
+            compile_started = time.perf_counter()
+            topology = self._compile_shared_form_topology(forms)
+            self.add_timing(
+                "inner_piece_topology_compile_seconds", compile_started
+            )
+            if topology is None:
+                self._events["shared_batch_fallbacks"] += 1
+                return None
+            self._events["topology_compiles"] += 1
+        elif topology_reused:
+            self._events["topology_reuses"] += 1
+        else:
+            self._events["topology_compiles"] += 1
+        if topology.max_piece_length != self.model_config.max_piece_length:
+            raise ValueError("Compiled piece topology uses a different max length.")
+        form_keys = tuple(form.key for form in forms)
+        if topology.form_keys != form_keys:
+            raise ValueError("Compiled piece topology does not match lexical forms.")
+        if self.inspection_top_k is not None and (
+            self.inspection_top_k * sum(topology.depth)
+            > self.cache_config.shared_top_k_piece_references
+        ):
+            self._events["shared_batch_fallbacks"] += 1
+            return None
+
+        reweight_started = time.perf_counter()
+        pieces_and_scores = tuple(
+            self._piece_and_score(piece_symbols)
+            for piece_symbols in topology.pieces
+        )
+        prior_by_shape = {
+            (noninitial, length): (
+                int(noninitial) * math.log(self.model_config.rho)
+                + (length - 1) * math.log1p(-self.model_config.rho)
+            )
+            for noninitial in (False, True)
+            for length in range(1, topology.max_piece_length + 1)
+        }
+        prior_alpha = [-math.inf] * len(topology.parent)
+        alpha = [-math.inf] * len(topology.parent)
+        singleton_scores = [-math.inf] * len(topology.parent)
+        prior_alpha[0] = 0.0
+        alpha[0] = 0.0
+        singleton_scores[0] = 0.0
+        transition_raw_scores = array("d")
 
         forward_started = time.perf_counter()
-        for node_index in range(1, len(nodes)):
-            node = nodes[node_index]
-            prior_alpha = -math.inf
-            alpha = -math.inf
-            for transition in node.transitions:
-                source = nodes[transition.source]
-                prior_alpha = logaddexp(
-                    prior_alpha,
-                    source.prior_alpha + transition.prior_score,
+        for node_index in range(1, len(topology.parent)):
+            node_prior_alpha = -math.inf
+            node_alpha = -math.inf
+            start = topology.transition_offsets[node_index - 1]
+            end = topology.transition_offsets[node_index]
+            for transition_index in range(start, end):
+                source = topology.transition_sources[transition_index]
+                prior = prior_by_shape[
+                    (
+                        source > 0,
+                        topology.depth[node_index] - topology.depth[source],
+                    )
+                ]
+                raw = (
+                    prior
+                    + pieces_and_scores[
+                        topology.transition_piece_ids[transition_index]
+                    ][1]
                 )
-                alpha = logaddexp(
-                    alpha,
-                    source.alpha + transition.raw_score,
+                transition_raw_scores.append(raw)
+                node_prior_alpha = logaddexp(
+                    node_prior_alpha,
+                    prior_alpha[source] + prior,
                 )
-            node.prior_alpha = prior_alpha
-            node.alpha = alpha
-            singleton = node.transitions[-1]
-            assert singleton.source == node.parent
-            node.singleton_score = (
-                nodes[node.parent].singleton_score + singleton.raw_score
+                node_alpha = logaddexp(
+                    node_alpha,
+                    alpha[source] + raw,
+                )
+            prior_alpha[node_index] = node_prior_alpha
+            alpha[node_index] = node_alpha
+            singleton_index = end - 1
+            assert (
+                topology.transition_sources[singleton_index]
+                == topology.parent[node_index]
+            )
+            singleton_scores[node_index] = (
+                singleton_scores[topology.parent[node_index]]
+                + transition_raw_scores[singleton_index]
             )
         self.add_timing("inner_piece_forward_seconds", forward_started)
 
         scores: dict[str, _SharedFormScore] = {}
-        long_whole_started = time.perf_counter()
-        for form in forms:
-            node_index = endpoints[form.key]
-            node = nodes[node_index]
-            if node.depth > max_piece_length:
-                whole_piece, piece_score = self._piece_and_score(form.symbols)
-                whole_prior = _raw_prior_score(0, node.depth, rho=rho)
+        long_whole_count = 0
+        for form_index, form in enumerate(forms):
+            node_index = topology.endpoint_nodes[form_index]
+            node_depth = topology.depth[node_index]
+            whole_piece, piece_score = pieces_and_scores[
+                topology.whole_piece_ids[form_index]
+            ]
+            whole_prior = _raw_prior_score(
+                0,
+                len(form.symbols),
+                rho=self.model_config.rho,
+            )
+            if node_depth > topology.max_piece_length:
                 whole_raw = whole_prior + piece_score
-                prior_log_z = logaddexp(whole_prior, node.prior_alpha)
-                raw_log_z = logaddexp(whole_raw, node.alpha)
-                transition_count += 1
+                prior_log_z = logaddexp(whole_prior, prior_alpha[node_index])
+                raw_log_z = logaddexp(whole_raw, alpha[node_index])
+                long_whole_count += 1
             else:
-                whole = next(
-                    transition
-                    for transition in node.transitions
-                    if transition.source == 0
-                )
-                whole_piece = whole.piece
-                whole_raw = whole.raw_score
-                prior_log_z = node.prior_alpha
-                raw_log_z = node.alpha
+                whole_raw = whole_prior + piece_score
+                prior_log_z = prior_alpha[node_index]
+                raw_log_z = alpha[node_index]
             if prior_log_z == -math.inf or raw_log_z == -math.inf:
                 raise ValueError("Lexical form has no complete piece segmentation.")
             scores[form.key] = _SharedFormScore(
@@ -848,43 +947,62 @@ class ComposedPieceInference:
                 log_score=raw_log_z - prior_log_z,
                 whole_piece=whole_piece,
                 whole_raw_score=whole_raw,
-                singleton_score=node.singleton_score,
+                singleton_score=singleton_scores[node_index],
             )
-        self.add_timing(
-            "inner_piece_transition_build_seconds",
-            long_whole_started,
-        )
+        top_paths: list[tuple[_SharedInnerPath, ...]] | None = None
         if self.inspection_top_k is not None:
             top_k_started = time.perf_counter()
-            nodes[0].top_paths = (_SharedInnerPath(0.0, (), ()),)
-            for node_index in range(1, len(nodes)):
+            top_paths = [() for _ in topology.parent]
+            top_paths[0] = (_SharedInnerPath(0.0, (), ()),)
+            for node_index in range(1, len(topology.parent)):
                 candidates: list[_SharedInnerPath] = []
-                for transition in nodes[node_index].transitions:
+                for transition_index in range(
+                    topology.transition_offsets[node_index - 1],
+                    topology.transition_offsets[node_index],
+                ):
+                    source = topology.transition_sources[transition_index]
+                    piece = pieces_and_scores[
+                        topology.transition_piece_ids[transition_index]
+                    ][0]
+                    raw_score = transition_raw_scores[transition_index]
                     candidates.extend(
                         _SharedInnerPath(
-                            score=prefix.score + transition.raw_score,
-                            pieces=prefix.pieces + (transition.piece,),
-                            piece_keys=prefix.piece_keys + (transition.piece.key,),
+                            score=prefix.score + raw_score,
+                            pieces=prefix.pieces + (piece,),
+                            piece_keys=prefix.piece_keys + (piece.key,),
                         )
-                        for prefix in nodes[transition.source].top_paths
+                        for prefix in top_paths[source]
                     )
                 candidates.sort(
                     key=lambda item: (-item.score, item.piece_keys)
                 )
-                nodes[node_index].top_paths = tuple(
+                top_paths[node_index] = tuple(
                     candidates[: self.inspection_top_k]
                 )
-            self._events["shared_top_k_states"] += len(nodes)
+            self._events["shared_top_k_states"] += len(topology.parent)
             self._events["shared_top_k_paths"] += sum(
-                len(node.top_paths) for node in nodes
+                len(paths) for paths in top_paths
             )
             self.add_timing("inner_piece_top_k_seconds", top_k_started)
-        self._events["composed_state_count"] += len(nodes)
-        self._events["composed_transition_count"] += transition_count
-        self._events["shared_prefix_nodes"] += len(nodes)
+        self.add_timing("inner_piece_reweight_seconds", reweight_started)
+        self.add_timing("inner_piece_transition_build_seconds", transition_started)
+        self._events["composed_state_count"] += len(topology.parent)
+        self._events["composed_transition_count"] += (
+            len(topology.transition_sources) + long_whole_count
+        )
+        self._events["shared_prefix_nodes"] += len(topology.parent)
         self._events["shared_form_endpoints"] += len(scores)
         self.add_timing("inner_piece_evaluation_seconds", evaluation_started)
-        return _SharedFormBatch(nodes=nodes, forms=scores)
+        return _SharedFormBatch(
+            topology=topology,
+            pieces=tuple(item[0] for item in pieces_and_scores),
+            transition_raw_scores=transition_raw_scores,
+            prior_alpha=prior_alpha,
+            alpha=alpha,
+            singleton_scores=singleton_scores,
+            top_paths=top_paths,
+            forms=scores,
+        )
 
     def _aggregate_shared_piece_marginals(
         self,
@@ -894,7 +1012,8 @@ class ComposedPieceInference:
         """Reverse one shared DAG for posterior-weighted exact piece counts."""
 
         started = time.perf_counter()
-        log_adjoint = [-math.inf] * len(batch.nodes)
+        topology = batch.topology
+        log_adjoint = [-math.inf] * len(topology.parent)
         piece_counts: dict[PhonologicalForm, float] = defaultdict(float)
         expected_raw_score = 0.0
         max_piece_length = self.model_config.max_piece_length
@@ -912,21 +1031,27 @@ class ComposedPieceInference:
                 piece_counts[score.whole_piece] += contribution
                 expected_raw_score += contribution * score.whole_raw_score
 
-        for node_index in range(len(batch.nodes) - 1, 0, -1):
+        for node_index in range(len(topology.parent) - 1, 0, -1):
             adjoint = log_adjoint[node_index]
             if adjoint == -math.inf:
                 continue
-            node = batch.nodes[node_index]
-            for transition in node.transitions:
-                source = batch.nodes[transition.source]
+            for transition_index in range(
+                topology.transition_offsets[node_index - 1],
+                topology.transition_offsets[node_index],
+            ):
+                source = topology.transition_sources[transition_index]
+                raw_score = batch.transition_raw_scores[transition_index]
+                piece = batch.pieces[
+                    topology.transition_piece_ids[transition_index]
+                ]
                 contribution = math.exp(
-                    adjoint + source.alpha + transition.raw_score
+                    adjoint + batch.alpha[source] + raw_score
                 )
-                piece_counts[transition.piece] += contribution
-                expected_raw_score += contribution * transition.raw_score
-                log_adjoint[transition.source] = logaddexp(
-                    log_adjoint[transition.source],
-                    adjoint + transition.raw_score,
+                piece_counts[piece] += contribution
+                expected_raw_score += contribution * raw_score
+                log_adjoint[source] = logaddexp(
+                    log_adjoint[source],
+                    adjoint + raw_score,
                 )
         self.add_timing("inner_piece_backward_seconds", started)
         self.add_timing("inner_piece_posterior_seconds", started)
@@ -940,11 +1065,18 @@ class ComposedPieceInference:
         """Return deterministic positive-support pieces for one endpoint."""
 
         pieces: dict[str, PhonologicalForm] = {}
+        topology = batch.topology
         cursor = score.node
         while cursor:
-            for transition in batch.nodes[cursor].transitions:
-                pieces.setdefault(transition.piece.key, transition.piece)
-            cursor = batch.nodes[cursor].parent
+            for transition_index in range(
+                topology.transition_offsets[cursor - 1],
+                topology.transition_offsets[cursor],
+            ):
+                piece = batch.pieces[
+                    topology.transition_piece_ids[transition_index]
+                ]
+                pieces.setdefault(piece.key, piece)
+            cursor = topology.parent[cursor]
         pieces.setdefault(score.whole_piece.key, score.whole_piece)
         return tuple(pieces[key] for key in sorted(pieces))
 
@@ -956,8 +1088,9 @@ class ComposedPieceInference:
         """Derive the unchanged bounded top-K from shared transitions."""
 
         assert self.inspection_top_k is not None
+        assert batch.top_paths is not None
         started = time.perf_counter()
-        candidates = list(batch.nodes[score.node].top_paths)
+        candidates = list(batch.top_paths[score.node])
         if len(score.form.symbols) > self.model_config.max_piece_length:
             candidates.append(
                 _SharedInnerPath(
@@ -1162,6 +1295,8 @@ def _evaluate_lazy_token_legacy(
 def _evaluate_lazy_token_shared(
     lattice: LazyTokenLattice,
     engine: ComposedPieceInference,
+    topology: CompiledSharedFormTopology | None = None,
+    topology_reused: bool = False,
 ) -> _TokenSummary | None:
     """Exact training marginals through a bounded token-local prefix DAG."""
 
@@ -1173,7 +1308,11 @@ def _evaluate_lazy_token_shared(
         spans_by_start.append(spans)
         for span in spans:
             unique_forms.setdefault(span.word.key, span.word)
-    batch = engine._build_shared_form_batch(tuple(unique_forms.values()))
+    batch = engine._build_shared_form_batch(
+        tuple(unique_forms.values()),
+        topology=topology,
+        topology_reused=topology_reused,
+    )
     if batch is None:
         return None
     for spans in spans_by_start:
@@ -1349,12 +1488,23 @@ def _evaluate_lazy_token(
     engine: ComposedPieceInference,
     *,
     support_epsilon: float,
+    topology: CompiledSharedFormTopology | None = None,
+    topology_available: bool = False,
+    topology_reused: bool = False,
 ) -> _TokenSummary:
     if (
         engine.cache_config.shared_token_marginals
         and support_epsilon == 0.0
     ):
-        shared = _evaluate_lazy_token_shared(lattice, engine)
+        if topology_available and topology is None:
+            engine._events["shared_batch_fallbacks"] += 1
+            return _evaluate_lazy_token_legacy(lattice, engine)
+        shared = _evaluate_lazy_token_shared(
+            lattice,
+            engine,
+            topology,
+            topology_reused,
+        )
         if shared is not None:
             return shared
     return _evaluate_lazy_token_legacy(lattice, engine)
@@ -1366,6 +1516,9 @@ def _evaluate_factor(
     *,
     whitespace_merge_penalty: float,
     support_epsilon: float,
+    topology: CompiledSharedFormTopology | None = None,
+    topology_available: bool = False,
+    topology_reused: bool = False,
 ) -> _FactorSummary:
     if factor.merged_word is not None:
         engine.record_merged_form()
@@ -1416,6 +1569,9 @@ def _evaluate_factor(
         factor.lattice,
         engine,
         support_epsilon=support_epsilon,
+        topology=topology,
+        topology_available=topology_available,
+        topology_reused=topology_reused,
     )
     return _FactorSummary(
         factor=factor,
@@ -1577,12 +1733,36 @@ def _add_scaled(
         target[key] += scale * value
 
 
+def compile_composed_segment_topology(
+    graph: LazyCandidateGraph,
+    engine: ComposedPieceInference,
+) -> CompiledSegmentTopology:
+    """Compile only immutable factor-aligned piece support for one segment."""
+
+    compiled: list[CompiledSharedFormTopology | None] = []
+    for factor in graph.factors:
+        if factor.lattice is None:
+            compiled.append(None)
+            continue
+        unique_forms: dict[str, PhonologicalForm] = {}
+        for span in factor.lattice.iter_spans():
+            unique_forms.setdefault(span.word.key, span.word)
+        compiled.append(
+            engine._compile_shared_form_topology(tuple(unique_forms.values()))
+        )
+    return CompiledSegmentTopology(
+        factor_ids=tuple(factor.factor_id for factor in graph.factors),
+        factors=tuple(compiled),
+    )
+
+
 def infer_composed_segment(
     graph: LazyCandidateGraph,
     engine: ComposedPieceInference,
     *,
     whitespace_merge_penalty: float,
     support_epsilon: float = 0.0,
+    topology: CompiledSegmentTopology | None = None,
 ) -> ComposedSegmentInference:
     """Marginalize lazy outer analyses and all inner piece paths exactly."""
 
@@ -1593,6 +1773,15 @@ def infer_composed_segment(
     before = engine.counter_snapshot()
     timing_before = engine.timing_snapshot()
     engine.record_graph(graph)
+    if topology is not None and topology.factor_ids != tuple(
+        factor.factor_id for factor in graph.factors
+    ):
+        raise ValueError("Compiled segment topology does not match candidate factors.")
+    factor_topologies = (
+        topology.factors
+        if topology is not None
+        else (None,) * len(graph.factors)
+    )
     started = time.perf_counter()
     evaluations = tuple(
         _evaluate_factor(
@@ -1600,8 +1789,11 @@ def infer_composed_segment(
             engine,
             whitespace_merge_penalty=whitespace_merge_penalty,
             support_epsilon=support_epsilon,
+            topology=factor_topology,
+            topology_available=topology is not None,
+            topology_reused=topology.reused if topology is not None else False,
         )
-        for factor in graph.factors
+        for factor, factor_topology in zip(graph.factors, factor_topologies)
     )
     engine.add_timing("piece_composition_seconds", started)
     started = time.perf_counter()

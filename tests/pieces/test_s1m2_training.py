@@ -114,6 +114,7 @@ def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(
         "rule_usage.tsv",
         "summary.json",
         "timing_metrics.json",
+        "topology",
     }
     assert expected <= {path.name for path in result.run_dir.iterdir()}
     assert len(result.history) == 2
@@ -128,6 +129,12 @@ def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(
     assert result.runtime["counters"].get("training_shared_batch_fallbacks", 0) == 0
     assert result.runtime["counters"]["training_form_cache_hits"] > 0
     assert result.runtime["counters"]["training_store_lookups"] > 0
+    assert result.runtime["counters"]["training_topology_compiles"] > 0
+    assert result.runtime["counters"]["training_topology_reuses"] > 0
+    assert result.runtime["counters"]["inspection_topology_reuses"] > 0
+    assert result.runtime["counters"]["topology_archives_compiled"] == 2
+    assert result.runtime["counters"]["topology_archives_reused"] == 4
+    assert len(tuple((result.run_dir / "topology").glob("*.bin"))) == 2
     assert (
         result.runtime["gauges"]["training_piece_score_cache_entries"]
         <= 65_536
@@ -150,6 +157,10 @@ def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(
     assert result.runtime["timings_seconds"]["training_piece_composition_seconds"] > 0.0
     assert (
         result.runtime["timings_seconds"]["training_inner_piece_transition_build_seconds"]
+        > 0.0
+    )
+    assert (
+        result.runtime["timings_seconds"]["training_inner_piece_reweight_seconds"]
         > 0.0
     )
     assert result.runtime["timings_seconds"]["training_outer_forward_seconds"] > 0.0
@@ -177,6 +188,10 @@ def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(
     ]
     assert "retired immediately" in storage["transient_lifecycle"][
         "inspection_worker_shards"
+    ]
+    assert storage["compiled_topology"]["mutable_scores_or_posteriors_stored"] is False
+    assert "one segment at a time" in storage["transient_lifecycle"][
+        "compiled_topology"
     ]
 
     summary = json.loads((result.run_dir / "summary.json").read_text("utf-8"))
@@ -303,6 +318,7 @@ def test_s1m2_resume_after_durable_pass_diagnostics_retired(
             repo_root=Path("."),
         )
     crashed = tmp_path / "artifacts" / "pass-retirement-crashed"
+    assert len(tuple((crashed / "topology").glob("*.bin"))) == 2
     store = LexiconStore(crashed / "learner.sqlite")
     try:
         assert store.has_table("piece_lexicon")
@@ -411,6 +427,8 @@ def test_s1m2_parallel_and_serial_scientific_outputs_match(tmp_path: Path) -> No
     assert runtime["gauges"]["inspection_pending_shard_bytes"] > 0
     assert runtime["counters"]["inspection_shard_files_retired"] > 0
     assert runtime["counters"]["inspection_shard_bytes_retired"] > 0
+    assert runtime["counters"]["topology_archives_compiled"] == 2
+    assert runtime["counters"]["topology_archives_reused"] == 4
     assert not tuple((parallel / "shards" / "inspection").glob("*"))
     assert runtime["timings_seconds"]["training_reducer_stall"] >= 0.0
     assert runtime["timings_seconds"]["inspection_reducer_stall"] >= 0.0
