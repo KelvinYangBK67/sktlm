@@ -32,6 +32,10 @@ S1M2_RECONSTRUCTIBLE_TABLES = (
     "piece_inventory",
     "surface_usage",
 )
+S1M2_PASS_DIAGNOSTIC_TABLES = (
+    "lexical_diagnostics",
+    "piece_inventory",
+)
 
 
 class LexiconScorer:
@@ -420,7 +424,7 @@ class LexiconStore:
         min_reuse_occurrences: int,
         checkpoint: dict[str, Any],
     ) -> tuple[int, int, float]:
-        """Freeze the next finite active piece map and retain all diagnostics."""
+        """Freeze the next active map and retire reconstructible pass tables."""
 
         row = self.connection.execute(
             "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) "
@@ -467,7 +471,13 @@ class LexiconStore:
                     "active_piece_count_total": float(active[1]),
                 }
             )
+            for table in S1M2_PASS_DIAGNOSTIC_TABLES:
+                self.connection.execute(f"DROP TABLE {table}")
             self._set_training_checkpoint(checkpoint)
+        self.telemetry.increment(
+            "sqlite_pass_diagnostic_tables_retired",
+            len(S1M2_PASS_DIAGNOSTIC_TABLES),
+        )
         if int(active[0]) == 0 or float(active[1]) <= 0.0:
             raise ValueError("Piece activation produced an empty active state.")
         return all_piece_types, int(active[0]), float(active[1])

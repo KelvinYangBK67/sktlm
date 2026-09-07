@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import sktlm.latent.training as latent_training
 from sktlm.latent.store import LexiconStore
 from sktlm.latent.phonology import PhonologicalForm, parse_iast_form
 from sktlm.latent.training import (
@@ -167,11 +168,16 @@ def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(
         "context_usage",
         "inspection_counts",
         "inspection_piece_counts",
-        "lexical_diagnostics",
-        "piece_inventory",
         "surface_usage",
     }
+    assert result.runtime["counters"]["sqlite_pass_diagnostic_tables_retired"] == 4
     assert storage["after_bytes"]["total"] < storage["before_bytes"]["total"]
+    assert "same transaction" in storage["transient_lifecycle"][
+        "training_pass_diagnostics"
+    ]
+    assert "retired immediately" in storage["transient_lifecycle"][
+        "inspection_worker_shards"
+    ]
 
     summary = json.loads((result.run_dir / "summary.json").read_text("utf-8"))
     assert summary["complexity"]["active_piece_types"] > 0
@@ -276,6 +282,113 @@ def test_s1m2_interrupted_document_resume_matches_uninterrupted(
     _assert_same_science(reference, resumed)
 
 
+def test_s1m2_resume_after_durable_pass_diagnostics_retired(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = _write_fixture(tmp_path)
+    reference = run_training(
+        _config(tmp_path, manifest, "pass-retirement-reference"),
+        repo_root=Path("."),
+    ).run_dir
+    original_inspection = latent_training._inspection_pass
+
+    def crash_before_inspection(**_: object) -> dict[str, object]:
+        raise RuntimeError("simulated interruption before inspection")
+
+    monkeypatch.setattr(latent_training, "_inspection_pass", crash_before_inspection)
+    with pytest.raises(RuntimeError, match="before inspection"):
+        run_training(
+            _config(tmp_path, manifest, "pass-retirement-crashed"),
+            repo_root=Path("."),
+        )
+    crashed = tmp_path / "artifacts" / "pass-retirement-crashed"
+    store = LexiconStore(crashed / "learner.sqlite")
+    try:
+        assert store.has_table("piece_lexicon")
+        assert not store.has_table("piece_inventory")
+        assert not store.has_table("lexical_diagnostics")
+        assert store.load_training_checkpoint()["completed_passes"] == 2
+    finally:
+        store.close()
+
+    monkeypatch.setattr(latent_training, "_inspection_pass", original_inspection)
+    resumed = run_training(
+        _config(
+            tmp_path,
+            manifest,
+            "pass-retirement-crashed",
+            resume=True,
+        ),
+        repo_root=Path("."),
+    ).run_dir
+    _assert_same_science(reference, resumed)
+
+
+def test_s1m2_resume_regenerates_retired_inspection_shard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = _write_fixture(tmp_path)
+    reference = run_training(
+        _config(
+            tmp_path,
+            manifest,
+            "shard-retirement-reference",
+            workers=2,
+        ),
+        repo_root=Path("."),
+    ).run_dir
+    original_retire = latent_training._retire_inspection_shard
+    crashed = False
+
+    def crash_after_retirement(
+        run_dir: Path,
+        document_index: int,
+        telemetry: object,
+    ) -> None:
+        nonlocal crashed
+        original_retire(run_dir, document_index, telemetry)  # type: ignore[arg-type]
+        if not crashed:
+            crashed = True
+            raise RuntimeError("simulated interruption after shard retirement")
+
+    monkeypatch.setattr(
+        latent_training,
+        "_retire_inspection_shard",
+        crash_after_retirement,
+    )
+    with pytest.raises(RuntimeError, match="after shard retirement"):
+        run_training(
+            _config(
+                tmp_path,
+                manifest,
+                "shard-retirement-crashed",
+                workers=2,
+            ),
+            repo_root=Path("."),
+        )
+    run_dir = tmp_path / "artifacts" / "shard-retirement-crashed"
+    assert not latent_training._inspection_shard_paths(run_dir, 0)["marker"].exists()
+
+    monkeypatch.setattr(
+        latent_training,
+        "_retire_inspection_shard",
+        original_retire,
+    )
+    resumed = run_training(
+        _config(
+            tmp_path,
+            manifest,
+            "shard-retirement-crashed",
+            workers=2,
+            resume=True,
+        ),
+        repo_root=Path("."),
+    ).run_dir
+    _assert_same_science(reference, resumed)
+
+
 def test_s1m2_parallel_and_serial_scientific_outputs_match(tmp_path: Path) -> None:
     manifest = _write_fixture(tmp_path)
     serial = run_training(
@@ -296,5 +409,8 @@ def test_s1m2_parallel_and_serial_scientific_outputs_match(tmp_path: Path) -> No
     assert runtime["gauges"]["inspection_pending_shards"] <= 4
     assert runtime["gauges"]["training_pending_shard_bytes"] > 0
     assert runtime["gauges"]["inspection_pending_shard_bytes"] > 0
+    assert runtime["counters"]["inspection_shard_files_retired"] > 0
+    assert runtime["counters"]["inspection_shard_bytes_retired"] > 0
+    assert not tuple((parallel / "shards" / "inspection").glob("*"))
     assert runtime["timings_seconds"]["training_reducer_stall"] >= 0.0
     assert runtime["timings_seconds"]["inspection_reducer_stall"] >= 0.0

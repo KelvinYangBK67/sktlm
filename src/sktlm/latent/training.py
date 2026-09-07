@@ -474,6 +474,16 @@ def _record_store_storage(
     telemetry.maximum("sqlite_total_bytes", total)
 
 
+def _record_run_storage(
+    telemetry: RuntimeTelemetry,
+    run_dir: Path,
+) -> None:
+    telemetry.maximum(
+        "artifact_transient_bytes",
+        _existing_path_bytes(run_dir.rglob("*")),
+    )
+
+
 def _observe_segment_telemetry(
     telemetry: RuntimeTelemetry,
     segment: ObservedSegment,
@@ -2617,6 +2627,22 @@ def _apply_inspection_shard(
     telemetry.elapsed("inspection_reducer_apply", reducer_started)
 
 
+def _retire_inspection_shard(
+    run_dir: Path,
+    document_index: int,
+    telemetry: RuntimeTelemetry,
+) -> None:
+    """Retire one reconstructible shard after successful canonical reduction."""
+
+    paths = _inspection_shard_paths(run_dir, document_index)
+    existing = tuple(path for path in paths.values() if path.is_file())
+    retired_bytes = _existing_path_bytes(existing)
+    for path in existing:
+        path.unlink()
+    telemetry.increment("inspection_shard_files_retired", len(existing))
+    telemetry.increment("inspection_shard_bytes_retired", retired_bytes)
+
+
 def _finalize_inspection(
     *,
     store: LexiconStore,
@@ -2840,6 +2866,12 @@ def _parallel_inspection_pass(
                 aggregate=aggregate,
                 telemetry=telemetry,
             )
+            _record_run_storage(telemetry, run_dir)
+            _retire_inspection_shard(
+                run_dir,
+                document_index,
+                telemetry,
+            )
             fill_pending()
     parallel_seconds = time.perf_counter() - parallel_started
     telemetry.add_seconds("inspection_parallel_wall", parallel_seconds)
@@ -2892,6 +2924,18 @@ def _compact_completed_s1m2_storage(
             "inspection indexes are exactly regenerable from the retained active "
             "piece state, frozen inputs, configuration, and code identity."
         ),
+        "transient_lifecycle": {
+            "training_pass_diagnostics": (
+                "piece_inventory and lexical_diagnostics are retired in the same "
+                "transaction that installs the durable active piece state and "
+                "completed-pass checkpoint"
+            ),
+            "inspection_worker_shards": (
+                "each reconstructible worker shard is retired immediately after "
+                "successful canonical reduction; interruption recovery regenerates "
+                "retired shards from durable active parameters and frozen inputs"
+            ),
+        },
     }
     _write_json(run_dir / "storage_manifest.json", payload)
     return payload
