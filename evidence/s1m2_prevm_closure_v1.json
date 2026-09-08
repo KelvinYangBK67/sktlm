@@ -26,7 +26,7 @@
     "command": "python -m pytest -q",
     "result": "669 passed, 2 warnings in 61.74s",
     "status": "PASS",
-    "warnings": "Two known PyTorch nested-tensor warnings and two SentencePiece SWIG deprecation warnings; no test failures."
+    "warnings": "Two known PyTorch nested-tensor warnings; no test failures."
   },
   "round1_dry_run": {
     "command": "python -m sktlm.production.s1m2 plan-round1 --output artifacts/s1m2_prevm_validation/round1_plan_d4da38c.json",
