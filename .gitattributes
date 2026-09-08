@@ -5,3 +5,4 @@ configs/benchmarks/latent_smoke_documents.txt text eol=crlf
 configs/benchmarks/s1m2_prevm_bounded_documents.txt text eol=lf
 configs/benchmarks/s1m2_continuous_representative_documents.txt text eol=lf
 configs/benchmarks/s1m2_continuous_stress_documents.txt text eol=lf
+configs/benchmarks/s1m2_worker_calibration_documents.txt text eol=lf

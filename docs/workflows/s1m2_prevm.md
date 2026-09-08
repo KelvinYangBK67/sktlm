@@ -110,6 +110,8 @@ python scripts/cloud/s1m2_vm_ops.py --config .sktlm-bridge.toml sync-inputs --ex
 python scripts/cloud/s1m2_vm_ops.py --config .sktlm-bridge.toml validate --expected-head <PRE_VM_S1M2_SHA> --output artifacts/s1m2_vm/remote_validate.json
 python -m sktlm.production.s1m2 plan-round1 --output artifacts/s1m2_production/round1_plan.json
 python scripts/cloud/s1m2_vm_ops.py --config .sktlm-bridge.toml launch-round1 --plan artifacts/s1m2_production/round1_plan.json --expected-head <PRE_VM_S1M2_SHA> --output artifacts/s1m2_vm/round1_launch.json
+python scripts/cloud/s1m2_vm_ops.py --config .sktlm-bridge.toml collect-round1-attestations --plan artifacts/s1m2_production/round1_plan.json --expected-head <PRE_VM_S1M2_SHA> --attestation-dir artifacts/s1m2_vm/round1_attestations --output artifacts/s1m2_vm/round1_attestation_collection.json
+python -m sktlm.production.s1m2 aggregate-round1 --plan artifacts/s1m2_production/round1_plan.json --attestation-dir artifacts/s1m2_vm/round1_attestations --output artifacts/s1m2_production/round1_result.json
 ```
 
 `preflight` checks SSH reachability, hostname, physical/boot identity, CPU,
@@ -132,9 +134,13 @@ pre-VM closure; they are the operator's explicit network phase.
 
 ## Round 1: VM worker scaling
 
-Round 1 is six simultaneous executions of the same frozen
-Devanagari-continuous representative job. Scientific inputs and configuration
-are identical; only engineering worker count and physical host differ:
+Round 1 is six simultaneous executions of the same M0 Devanagari-continuous
+engineering worker-calibration job. Its tracked list contains 72 deterministic
+stratified documents selected from the already-frozen static structure scan,
+excluding both frozen stress documents. It is not a replacement or redefinition
+of the representative workload. Every job uses three passes and at most 256
+lines per selected document. Inputs and scientific configuration are identical;
+only engineering worker count and physical host differ:
 
 ```text
 core-01 -> workers=4
@@ -153,7 +159,7 @@ python -m sktlm.production.s1m2 plan-round1 --output artifacts/s1m2_production/r
 
 Use `s1m2_vm_ops.py launch-round1` so the machine-readable plan—not a manually
 copied trainer command—starts all six jobs in parallel on their assigned core
-hosts. A representative job is an external workload and is not a Codex-local
+hosts. These calibration jobs are external workloads and are not Codex-local
 validation. Each job must have a distinct absent run directory and metrics
 identity. The launcher records PID, process start ticks, machine and boot
 identity, command hash, completion marker, result path, logs, and exit-status
@@ -169,14 +175,21 @@ Audit one job explicitly when needed:
 python -m sktlm.production.s1m2 audit --plan artifacts/s1m2_production/round1_plan.json --job-id <JOB_ID> --output artifacts/s1m2_production/<JOB_ID>.audit.json
 ```
 
-Aggregate only after all six jobs pass:
+After completion, run `collect-round1-attestations`. Each host executes the
+formal production audit in place and writes one compact attestation containing
+the plan/contract/Git/job/host identity and only the resource fields needed by
+the frozen winner rule. Complete run directories, scientific artifacts,
+topology, and `learner.sqlite` remain on their VM. Only the six compact JSON
+files are copied locally.
+
+Aggregate only after all six compact attestations are present:
 
 ```text
-python -m sktlm.production.s1m2 aggregate-round1 --plan artifacts/s1m2_production/round1_plan.json --output artifacts/s1m2_production/round1_result.json
+python -m sktlm.production.s1m2 aggregate-round1 --plan artifacts/s1m2_production/round1_plan.json --attestation-dir artifacts/s1m2_vm/round1_attestations --output artifacts/s1m2_production/round1_result.json
 ```
 
 The aggregator excludes scientific/audit/provenance failures and memory or
-storage safety failures. It ranks eligible jobs by representative wall time.
+storage safety failures. It ranks eligible jobs by calibration wall time.
 If the fastest is at least 10% faster than the runner-up, it wins directly.
 Otherwise configurations within the 10% practical-tie envelope are ordered by
 lower process-tree RSS, watched storage, total CPU, canonical reducer stall,

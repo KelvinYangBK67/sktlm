@@ -55,12 +55,12 @@ completion:
   schema_version: sktlm-s1m2-run-manifest-v1
 
 host_assignments:
-  - {workload_id: s1m2_round1_m0_devanagari_continuous_representative_w4_p3, host_role: core-01}
-  - {workload_id: s1m2_round1_m0_devanagari_continuous_representative_w8_p3, host_role: core-02}
-  - {workload_id: s1m2_round1_m0_devanagari_continuous_representative_w12_p3, host_role: core-03}
-  - {workload_id: s1m2_round1_m0_devanagari_continuous_representative_w16_p3, host_role: core-04}
-  - {workload_id: s1m2_round1_m0_devanagari_continuous_representative_w20_p3, host_role: core-05}
-  - {workload_id: s1m2_round1_m0_devanagari_continuous_representative_w24_p3, host_role: core-06}
+  - {workload_id: s1m2_round1_m0_devanagari_continuous_worker_calibration_w4_p3, host_role: core-01}
+  - {workload_id: s1m2_round1_m0_devanagari_continuous_worker_calibration_w8_p3, host_role: core-02}
+  - {workload_id: s1m2_round1_m0_devanagari_continuous_worker_calibration_w12_p3, host_role: core-03}
+  - {workload_id: s1m2_round1_m0_devanagari_continuous_worker_calibration_w16_p3, host_role: core-04}
+  - {workload_id: s1m2_round1_m0_devanagari_continuous_worker_calibration_w20_p3, host_role: core-05}
+  - {workload_id: s1m2_round1_m0_devanagari_continuous_worker_calibration_w24_p3, host_role: core-06}
   - {workload_id: s1m2_round2_m0_devanagari_continuous_stress_p3, host_role: core-01}
   - {workload_id: s1m2_round2_m0_prime_iast_continuous_representative_p3, host_role: core-02}
   - {workload_id: s1m2_round2_m0_devanagari_continuous_representative_p3, host_role: core-03}

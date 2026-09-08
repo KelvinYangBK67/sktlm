@@ -76,11 +76,12 @@
     "smoke": {"document_list": "configs/benchmarks/latent_smoke_documents.txt", "document_list_sha256": "0ea7aaa132186c749e1505e058ea57ea78a4971d9e0d440f5b684c9e14fa9ce9", "max_lines_per_document": 2, "classification": "production_path_smoke"},
     "representative": {"document_list": "configs/benchmarks/s1m2_continuous_representative_documents.txt", "document_list_sha256": "7bf936025ce28c43cdae0407d532c461b50726a28275fa40062a8a6889296ed3", "max_lines_per_document": null, "phonemes": 456891, "classification": "frozen_continuous_representative"},
     "stress": {"document_list": "configs/benchmarks/s1m2_continuous_stress_documents.txt", "document_list_sha256": "904e105eddc45cff3e63c171ad016c056628f1040bc37c881850cb8ad2a988d9", "max_lines_per_document": null, "phonemes": 62748, "classification": "frozen_continuous_long_span_stress"},
+    "worker_calibration": {"document_list": "configs/benchmarks/s1m2_worker_calibration_documents.txt", "document_list_sha256": "14e30e34fec244f7606b82dc2d238a634a392ffdcf7086afdf1130b4fda1d8d1", "documents": 72, "max_lines_per_document": 256, "passes": 3, "classification": "engineering_worker_calibration", "selection_basis": "M0 Devanagari continuous static pressure", "structure_sha256": "03ebdf71afc80f82492d9d36cc593ab50c380fd3b0b57689862ea8e98c7b39f8"},
     "full": {"document_list": null, "document_list_sha256": null, "max_lines_per_document": null, "phonemes": 46255133, "classification": "full_frozen_corpus_one_cell"}
   },
   "round1": {
     "cell_id": "s1m2_m0_devanagari_continuous",
-    "workload_id": "representative",
+    "workload_id": "worker_calibration",
     "workers": [4, 8, 12, 16, 20, 24],
     "host_roles": ["core-01", "core-02", "core-03", "core-04", "core-05", "core-06"],
     "winner_rule": {

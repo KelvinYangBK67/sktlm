@@ -237,60 +237,60 @@ host_roles = ["core-01", "core-02", "core-03", "core-04", "core-05", "core-06"]
 
 [[s1m2_prevm.planned_runs]]
 phase = "round1"
-run_id = "s1m2_round1_m0_devanagari_continuous_representative_w4_p3"
-metrics_id = "round1_m0_devanagari_continuous_representative_w4_p3"
+run_id = "s1m2_round1_m0_devanagari_continuous_worker_calibration_w4_p3"
+metrics_id = "round1_m0_devanagari_continuous_worker_calibration_w4_p3"
 cell_id = "s1m2_m0_devanagari_continuous"
-workload_id = "representative"
+workload_id = "worker_calibration"
 workers = 4
 host_role = "core-01"
 state = "PREPARED_NOT_STARTED"
 
 [[s1m2_prevm.planned_runs]]
 phase = "round1"
-run_id = "s1m2_round1_m0_devanagari_continuous_representative_w8_p3"
-metrics_id = "round1_m0_devanagari_continuous_representative_w8_p3"
+run_id = "s1m2_round1_m0_devanagari_continuous_worker_calibration_w8_p3"
+metrics_id = "round1_m0_devanagari_continuous_worker_calibration_w8_p3"
 cell_id = "s1m2_m0_devanagari_continuous"
-workload_id = "representative"
+workload_id = "worker_calibration"
 workers = 8
 host_role = "core-02"
 state = "PREPARED_NOT_STARTED"
 
 [[s1m2_prevm.planned_runs]]
 phase = "round1"
-run_id = "s1m2_round1_m0_devanagari_continuous_representative_w12_p3"
-metrics_id = "round1_m0_devanagari_continuous_representative_w12_p3"
+run_id = "s1m2_round1_m0_devanagari_continuous_worker_calibration_w12_p3"
+metrics_id = "round1_m0_devanagari_continuous_worker_calibration_w12_p3"
 cell_id = "s1m2_m0_devanagari_continuous"
-workload_id = "representative"
+workload_id = "worker_calibration"
 workers = 12
 host_role = "core-03"
 state = "PREPARED_NOT_STARTED"
 
 [[s1m2_prevm.planned_runs]]
 phase = "round1"
-run_id = "s1m2_round1_m0_devanagari_continuous_representative_w16_p3"
-metrics_id = "round1_m0_devanagari_continuous_representative_w16_p3"
+run_id = "s1m2_round1_m0_devanagari_continuous_worker_calibration_w16_p3"
+metrics_id = "round1_m0_devanagari_continuous_worker_calibration_w16_p3"
 cell_id = "s1m2_m0_devanagari_continuous"
-workload_id = "representative"
+workload_id = "worker_calibration"
 workers = 16
 host_role = "core-04"
 state = "PREPARED_NOT_STARTED"
 
 [[s1m2_prevm.planned_runs]]
 phase = "round1"
-run_id = "s1m2_round1_m0_devanagari_continuous_representative_w20_p3"
-metrics_id = "round1_m0_devanagari_continuous_representative_w20_p3"
+run_id = "s1m2_round1_m0_devanagari_continuous_worker_calibration_w20_p3"
+metrics_id = "round1_m0_devanagari_continuous_worker_calibration_w20_p3"
 cell_id = "s1m2_m0_devanagari_continuous"
-workload_id = "representative"
+workload_id = "worker_calibration"
 workers = 20
 host_role = "core-05"
 state = "PREPARED_NOT_STARTED"
 
 [[s1m2_prevm.planned_runs]]
 phase = "round1"
-run_id = "s1m2_round1_m0_devanagari_continuous_representative_w24_p3"
-metrics_id = "round1_m0_devanagari_continuous_representative_w24_p3"
+run_id = "s1m2_round1_m0_devanagari_continuous_worker_calibration_w24_p3"
+metrics_id = "round1_m0_devanagari_continuous_worker_calibration_w24_p3"
 cell_id = "s1m2_m0_devanagari_continuous"
-workload_id = "representative"
+workload_id = "worker_calibration"
 workers = 24
 host_role = "core-06"
 state = "PREPARED_NOT_STARTED"

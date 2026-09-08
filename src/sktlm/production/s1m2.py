@@ -33,6 +33,7 @@ CONTRACT_SCHEMA = "sktlm-s1m2-production-contract/v1"
 PLAN_SCHEMA = "sktlm-s1m2-production-plan/v1"
 RUN_SCHEMA = "sktlm-s1m2-run-manifest/v1"
 ROUND1_SCHEMA = "sktlm-s1m2-round1-result/v1"
+ROUND1_ATTESTATION_SCHEMA = "sktlm-s1m2-round1-attestation/v1"
 ROUND2_SCHEMA = "sktlm-s1m2-round2-result/v1"
 BOUND_VALIDATION_SCHEMA = "sktlm-s1m2-bounded-validation/v1"
 SCRIPT_NEUTRAL_ARTIFACTS = (
@@ -42,6 +43,10 @@ SCRIPT_NEUTRAL_ARTIFACTS = (
 )
 ROUND1_WORKERS = (4, 8, 12, 16, 20, 24)
 CORE_HOST_ROLES = tuple(f"core-{index:02d}" for index in range(1, 7))
+WORKER_CALIBRATION_DOCUMENTS = 72
+WORKER_CALIBRATION_STRUCTURE_SHA256 = (
+    "03ebdf71afc80f82492d9d36cc593ab50c380fd3b0b57689862ea8e98c7b39f8"
+)
 SCIENTIFIC_CONFIG_FIELDS = (
     "lexical_alpha",
     "complexity_weight",
@@ -528,6 +533,57 @@ def build_round2_plan(
         {key: value for key, value in plan.items() if key != "plan_sha256"}
     )
     return plan
+
+
+def select_worker_calibration_documents(
+    structure: dict[str, Any],
+) -> list[str]:
+    """Select the frozen 72-stratum engineering calibration document set.
+
+    The tracked list was derived only from the frozen continuous static-structure
+    artifact identified by WORKER_CALIBRATION_STRUCTURE_SHA256.
+    """
+
+    cells = structure.get("cells")
+    if not isinstance(cells, dict):
+        raise ValueError("Static structure output has no cell mapping.")
+    cell = cells.get("m0_devanagari_continuous")
+    if not isinstance(cell, dict) or cell.get("script") != "devanagari":
+        raise ValueError("Static structure output lacks the M0 Devanagari basis cell.")
+    documents = cell.get("documents")
+    stress = structure.get("selection", {}).get("stress")
+    if not isinstance(documents, list) or not isinstance(stress, list) or len(stress) != 2:
+        raise ValueError("Static structure output lacks documents or two stress paths.")
+    stress_paths = {str(path) for path in stress}
+    remaining = [
+        item
+        for item in documents
+        if isinstance(item, dict) and item.get("relative_path") not in stress_paths
+    ]
+    if len(remaining) != len(documents) - 2:
+        raise ValueError("Stress exclusion did not remove exactly two documents.")
+    ordered = sorted(
+        remaining,
+        key=lambda item: (
+            int(item["span_squared_phonemes"]),
+            int(item["continuous_spans"]["max"]),
+            int(item["phonemes"]),
+            str(item["relative_path"]),
+        ),
+    )
+    total = len(ordered)
+    selected = []
+    for index in range(WORKER_CALIBRATION_DOCUMENTS):
+        lower = index * total // WORKER_CALIBRATION_DOCUMENTS
+        upper = (index + 1) * total // WORKER_CALIBRATION_DOCUMENTS - 1
+        if lower > upper:
+            raise ValueError("A worker-calibration stratum is empty.")
+        selected.append(str(ordered[(lower + upper) // 2]["relative_path"]))
+    if len(selected) != WORKER_CALIBRATION_DOCUMENTS or len(set(selected)) != len(selected):
+        raise ValueError("Worker calibration must select 72 distinct documents.")
+    if stress_paths.intersection(selected):
+        raise ValueError("Worker calibration includes a frozen stress document.")
+    return selected
 
 
 def build_final_plan(
@@ -1087,6 +1143,47 @@ def _resource_row(audit: dict[str, Any], workers: int) -> dict[str, Any]:
     }
 
 
+def build_round1_attestation(
+    plan: dict[str, Any],
+    job: dict[str, Any],
+    contract: dict[str, Any],
+    *,
+    repo_root: Path,
+) -> dict[str, Any]:
+    """Run the formal audit and reduce it to the Round 1 winner inputs."""
+
+    _validate_plan(plan, contract)
+    if plan.get("plan_type") != "round1" or job not in plan.get("jobs", []):
+        raise ValueError("Round 1 attestation requires a job from the exact plan.")
+    audit = audit_job(plan, job, contract, repo_root=repo_root)
+    resources = _resource_row(audit, int(job["workers"]))
+    return {
+        "schema_version": ROUND1_ATTESTATION_SCHEMA,
+        "job_id": job["job_id"],
+        "host_role": job["host_role"],
+        "workers": job["workers"],
+        "valid": audit.get("valid") is True,
+        "failures": list(audit.get("failures", [])),
+        **resources,
+        "git_sha": plan["git_sha"],
+        "plan_identity": {
+            "schema_version": plan["schema_version"],
+            "plan_type": plan["plan_type"],
+            "plan_sha256": plan["plan_sha256"],
+            "git_sha": plan["git_sha"],
+            "branch": plan["branch"],
+        },
+        "production_contract_identity": {
+            "path": plan["contract_path"],
+            "sha256": plan["production_contract_sha256"],
+        },
+    }
+
+
+def round1_attestation_filename(job_id: str) -> str:
+    return f"{job_id}.round1-attestation.json"
+
+
 def select_round1_winner(
     rows: Iterable[dict[str, Any]], winner_rule: dict[str, Any]
 ) -> tuple[int, str, list[dict[str, Any]]]:
@@ -1119,50 +1216,88 @@ def select_round1_winner(
     return int(selected["workers"]), "practical_tie_resource_rule", ranking
 
 
-def aggregate_round1(
-    plan: dict[str, Any], contract: dict[str, Any], *, repo_root: Path
+def aggregate_round1_attestations(
+    plan: dict[str, Any],
+    contract: dict[str, Any],
+    attestations: Iterable[dict[str, Any]],
 ) -> dict[str, Any]:
+    """Validate six compact remote attestations and select the local winner."""
+
     _validate_plan(plan, contract)
-    if plan["plan_type"] != "round1" or len(plan["jobs"]) != 6:
+    if plan.get("plan_type") != "round1" or len(plan.get("jobs", [])) != 6:
         raise ValueError("Round 1 aggregation requires the exact six-job plan.")
-    audits = []
-    eligible = []
+    supplied = list(attestations)
+    by_job = {str(item.get("job_id")): item for item in supplied}
+    if len(supplied) != 6 or len(by_job) != 6:
+        raise ValueError("Round 1 aggregation requires six unique attestations.")
+    rows: list[dict[str, Any]] = []
+    eligible: list[dict[str, Any]] = []
+    resource_fields = (
+        "wall_seconds",
+        "peak_process_tree_rss_bytes",
+        "peak_watched_run_bytes",
+        "sampled_process_tree_cpu_seconds",
+        "canonical_reducer_stall_seconds",
+        "host_memory_bytes",
+        "filesystem_free_bytes_end",
+    )
     for job in plan["jobs"]:
-        audit = audit_job(plan, job, contract, repo_root=repo_root)
+        attestation = by_job.get(job["job_id"])
+        if attestation is None:
+            raise ValueError(f"Missing Round 1 attestation: {job['job_id']}")
+        failures = list(attestation.get("failures", []))
+        expected = {
+            "schema_version": ROUND1_ATTESTATION_SCHEMA,
+            "job_id": job["job_id"],
+            "host_role": job["host_role"],
+            "workers": job["workers"],
+            "git_sha": plan["git_sha"],
+            "plan_identity": {
+                "schema_version": plan["schema_version"],
+                "plan_type": plan["plan_type"],
+                "plan_sha256": plan["plan_sha256"],
+                "git_sha": plan["git_sha"],
+                "branch": plan["branch"],
+            },
+            "production_contract_identity": {
+                "path": plan["contract_path"],
+                "sha256": plan["production_contract_sha256"],
+            },
+        }
+        for name, value in expected.items():
+            if attestation.get(name) != value:
+                failures.append(f"attestation {name} differs")
+        if attestation.get("valid") is not True:
+            failures.append("formal remote audit did not pass")
+        missing = [name for name in resource_fields if attestation.get(name) is None]
+        if missing:
+            failures.append(f"attestation resource fields are missing: {missing}")
         row = {
             "job_id": job["job_id"],
+            "host_role": job["host_role"],
             "workers": job["workers"],
-            "valid": audit["valid"],
-            "failures": audit["failures"],
+            "valid": not failures,
+            "failures": failures,
+            **{name: attestation.get(name) for name in resource_fields},
         }
-        if audit["valid"]:
-            resources = _resource_row(audit, job["workers"])
-            row.update(resources)
-            memory = resources["peak_process_tree_rss_bytes"]
-            host_memory = resources["host_memory_bytes"]
-            storage = resources["peak_watched_run_bytes"]
-            free_end = resources["filesystem_free_bytes_end"]
-            if memory is None or host_memory is None:
-                row["valid"] = False
-                row["failures"].append("aggregate process-tree/host memory is missing")
-            elif memory > host_memory * contract["gates"]["memory_max_host_fraction"]:
-                row["valid"] = False
-                row["failures"].append("memory safety gate failed")
-            if storage is None:
-                row["valid"] = False
-                row["failures"].append("peak watched storage is missing")
-            elif storage > contract["gates"]["storage_max_bytes"]:
-                row["valid"] = False
-                row["failures"].append("storage safety gate failed")
-            if free_end is None:
-                row["valid"] = False
-                row["failures"].append("filesystem free-space telemetry is missing")
-            elif free_end < contract["gates"]["storage_min_free_bytes_end"]:
-                row["valid"] = False
-                row["failures"].append("filesystem free-space safety gate failed")
+        memory = row["peak_process_tree_rss_bytes"]
+        host_memory = row["host_memory_bytes"]
+        storage = row["peak_watched_run_bytes"]
+        free_end = row["filesystem_free_bytes_end"]
+        if memory is not None and host_memory is not None and (
+            memory > host_memory * contract["gates"]["memory_max_host_fraction"]
+        ):
+            row["valid"] = False
+            row["failures"].append("memory safety gate failed")
+        if storage is not None and storage > contract["gates"]["storage_max_bytes"]:
+            row["valid"] = False
+            row["failures"].append("storage safety gate failed")
+        if free_end is not None and free_end < contract["gates"]["storage_min_free_bytes_end"]:
+            row["valid"] = False
+            row["failures"].append("filesystem free-space safety gate failed")
         if row["valid"]:
             eligible.append(row)
-        audits.append(row)
+        rows.append(row)
     result = {
         "schema_version": ROUND1_SCHEMA,
         "plan_sha256": plan["plan_sha256"],
@@ -1171,7 +1306,7 @@ def aggregate_round1(
         "WORKER_RANKING": [],
         "WINNER_WORKERS": None,
         "WINNER_REASON": None,
-        "jobs": audits,
+        "jobs": rows,
     }
     if len(eligible) == 6:
         winner, reason, ranking = select_round1_winner(
@@ -1186,6 +1321,21 @@ def aggregate_round1(
             }
         )
     return result
+
+
+def aggregate_round1(
+    plan: dict[str, Any], contract: dict[str, Any], *, repo_root: Path
+) -> dict[str, Any]:
+    _validate_plan(plan, contract)
+    if plan["plan_type"] != "round1" or len(plan["jobs"]) != 6:
+        raise ValueError("Round 1 aggregation requires the exact six-job plan.")
+    attestations = [
+        build_round1_attestation(
+            plan, job, contract, repo_root=repo_root
+        )
+        for job in plan["jobs"]
+    ]
+    return aggregate_round1_attestations(plan, contract, attestations)
 
 
 def evaluate_round2(
@@ -1402,6 +1552,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     item = commands.add_parser("aggregate-round1")
     item.add_argument("--plan", required=True, type=Path)
     item.add_argument("--output", required=True, type=Path)
+    item.add_argument("--attestation-dir", type=Path)
+    item = commands.add_parser("attest-round1")
+    item.add_argument("--plan", required=True, type=Path)
+    item.add_argument("--job-id", required=True)
+    item.add_argument("--output", required=True, type=Path)
     item = commands.add_parser("plan-round2")
     item.add_argument("--round1-result", required=True, type=Path)
     item.add_argument("--output", required=True, type=Path)
@@ -1466,6 +1621,18 @@ def main(argv: list[str] | None = None) -> None:
             _write_json(_resolve(repo_root, args.output), result)
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         raise SystemExit(0 if result["valid"] else 1)
+    if args.command == "attest-round1":
+        plan = _read_json(_resolve(repo_root, args.plan))
+        _validate_plan(plan, contract)
+        result = build_round1_attestation(
+            plan,
+            _job_from_plan(plan, args.job_id),
+            contract,
+            repo_root=repo_root,
+        )
+        _write_json(_resolve(repo_root, args.output), result)
+        print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        raise SystemExit(0 if result["valid"] else 2)
     identity = git_identity(repo_root)
     if args.command == "plan-round1":
         output = args.output
@@ -1493,7 +1660,15 @@ def main(argv: list[str] | None = None) -> None:
         output_payload = plan
     elif args.command == "aggregate-round1":
         plan = _read_json(_resolve(repo_root, args.plan))
-        result = aggregate_round1(plan, contract, repo_root=repo_root)
+        if args.attestation_dir is None:
+            result = aggregate_round1(plan, contract, repo_root=repo_root)
+        else:
+            directory = _resolve(repo_root, args.attestation_dir)
+            attestations = [
+                _read_json(directory / round1_attestation_filename(job["job_id"]))
+                for job in plan["jobs"]
+            ]
+            result = aggregate_round1_attestations(plan, contract, attestations)
         _write_json(_resolve(repo_root, args.output), result)
         output_payload = result
     elif args.command == "plan-round2":

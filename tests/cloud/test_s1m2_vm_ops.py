@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -130,6 +132,65 @@ def test_round1_detached_launch_uses_generated_command_and_strong_identity() -> 
     assert '"completion_marker"' in script
     assert '"exit_status":null' in script
     assert "run or control path already exists" in script
+
+
+def test_round1_active_process_checks_are_stdin_fed_not_ssh_argv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contract = s1m2.load_contract(repo_root=Path("."), verify_files=False)
+    plan = s1m2.build_round1_plan(
+        contract,
+        identity={
+            "git_sha": "a" * 40,
+            "branch": "exp/s1m2-reusable-pieces",
+            "dirty_worktree": False,
+        },
+    )
+    plan_path = tmp_path / "round1.json"
+    s1m2._write_plan_commands(plan, Path("artifacts/s1m2_production/round1.json"))
+    plan_path.write_text(json.dumps(plan), encoding="utf-8")
+    configs = {role: remote_config(role) for role in ops.CORE_HOST_ROLES}
+    stdin_calls: list[tuple[list[str], str]] = []
+
+    def stdin_run(config: object, script: str, runner: object) -> object:
+        del runner
+        argv = ops.bridge.ssh_stdin_argv(config)
+        stdin_calls.append((argv, script))
+        assert script not in " ".join(argv)
+        assert "pgrep" not in " ".join(argv)
+        role = config.host_profile
+        if "nohup sh" in script:
+            job = next(item for item in plan["jobs"] if item["host_role"] == role)
+            stdout = f"job_id={job['job_id']}\n"
+        else:
+            stdout = f"machine_identity=physical-{role}\n"
+        return subprocess.CompletedProcess(argv, 0, stdout, "")
+
+    monkeypatch.setattr(ops.bridge, "run_ssh_stdin", stdin_run)
+    monkeypatch.setattr(
+        ops.bridge,
+        "run_ssh",
+        lambda config, script, runner: subprocess.CompletedProcess([], 0, "", ""),
+    )
+    monkeypatch.setattr(ops.bridge, "scp_argv", lambda *args: ["scp"])
+
+    class Runner:
+        def run(self, argv: object, **kwargs: object) -> object:
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+    rows = ops.launch_round1_action(
+        configs,
+        Runner(),
+        repo_root=Path("."),
+        plan=plan,
+        plan_path=plan_path,
+        relative_plan="artifacts/s1m2_production/round1.json",
+        expected_head="a" * 40,
+    )
+    assert all(row["valid"] for row in rows)
+    assert len(stdin_calls) == 12
+    assert all("pgrep" in script for _, script in stdin_calls)
 
 
 def test_input_probe_checks_before_transfer_with_venv_path() -> None:

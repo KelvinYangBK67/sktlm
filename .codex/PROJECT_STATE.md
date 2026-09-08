@@ -2405,9 +2405,13 @@ and Linux `/proc` metrics wrapper. Process-tree/main/worker RSS, sampled CPU
 and I/O, filesystem headroom, and run/SQLite/WAL/SHM/topology/pending-shard
 high-water marks remain engineering-only telemetry.
 
-Round 1 is exactly one frozen Devanagari-continuous representative workload at
-workers 4, 8, 12, 16, 20, and 24, executed concurrently on physical roles
-`core-01` through `core-06` in that order. Its aggregator uses the frozen
+Round 1 is exactly one M0 Devanagari-continuous engineering calibration
+workload: 72 deterministic static-pressure strata, both frozen stress documents
+excluded, three passes, and at most 256 lines per document. It runs at workers
+4, 8, 12, 16, 20, and 24 concurrently on physical roles `core-01` through
+`core-06` in that order. It does not redefine the frozen representative or
+stress workload. Its aggregator uses compact per-host formal-audit attestations
+while full run artifacts remain remote, and retains the frozen
 direct >=10% wall winner rule and the resource tie rule in Decision 109. Round
 2 consumes that result artifact and maps its six frozen readiness jobs in
 contract order to the same six roles, all using `WINNER_WORKERS`. Only all PASS

@@ -435,6 +435,34 @@ def run_ssh(
     return runner.run(ssh_argv(config, script))
 
 
+def ssh_stdin_argv(config: BridgeConfig) -> list[str]:
+    """Build SSH argv for a shell program supplied only on standard input."""
+
+    argv = [
+        "ssh",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "-p",
+        str(config.port),
+    ]
+    if config.identity_file:
+        argv.extend(["-i", config.identity_file])
+    argv.extend(["--", config.target, "sh -s"])
+    return argv
+
+
+def run_ssh_stdin(
+    config: BridgeConfig,
+    script: str,
+    runner: SystemRunner,
+) -> subprocess.CompletedProcess[str]:
+    """Run a fixed remote shell program without exposing its body in argv."""
+
+    return runner.run(ssh_stdin_argv(config), input_text=script)
+
+
 def _parse_key_values(text: str) -> dict[str, str]:
     values: dict[str, str] = {}
     for line in text.splitlines():
@@ -1238,6 +1266,27 @@ def scp_argv(config: BridgeConfig, source: Path, destination: str) -> list[str]:
     if config.identity_file:
         argv.extend(["-i", config.identity_file])
     argv.extend(["--", str(source.resolve()), f"{_remote_endpoint(config)}:{destination}"])
+    return argv
+
+
+def scp_pull_argv(
+    config: BridgeConfig, source: str, destination: Path
+) -> list[str]:
+    """Build a guarded SCP pull for one compact remote file."""
+
+    require_remote_config(config)
+    remote_source = _normalize_remote_path(source, "remote SCP source")
+    if not (
+        _is_remote_child(remote_source, config.remote_repo or "")
+        or _is_remote_child(remote_source, config.remote_cloud_root)
+    ):
+        raise BridgeError("remote SCP source must be below the repo or cloud root")
+    argv = ["scp", "-P", str(config.port), "-o", "BatchMode=yes"]
+    if config.identity_file:
+        argv.extend(["-i", config.identity_file])
+    argv.extend(
+        ["--", f"{_remote_endpoint(config)}:{remote_source}", str(destination.resolve())]
+    )
     return argv
 
 

@@ -45,3 +45,10 @@ six-host helper provides preflight, bundle deploy, idempotent Python 3.11
 environment setup, validate-before-sync frozen inputs, remote validation, and
 detached plan-driven Round 1 launch. The operator must not use it until the
 closing session reports the new clean pushed `PRE_VM_S1M2_SHA` and bundle hash.
+
+Round 1 worker calibration now uses a separate 72-document M0 Devanagari
+continuous workload selected only from the frozen static structure scan, with
+both stress documents excluded, three passes, and 256 lines per document.
+Remote formal audits reduce to compact attestations; local winner aggregation
+downloads no full run directory. The 10% direct-wall/practical-tie rule is
+unchanged. These corrections remain uncommitted pending researcher review.

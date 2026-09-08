@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 
@@ -131,7 +132,12 @@ def test_round1_plan_has_six_jobs_and_only_workers_vary() -> None:
     assert {job["cell_id"] for job in plan["jobs"]} == {
         "s1m2_m0_devanagari_continuous"
     }
-    assert {job["workload_id"] for job in plan["jobs"]} == {"representative"}
+    assert {job["workload_id"] for job in plan["jobs"]} == {"worker_calibration"}
+    assert {job["passes"] for job in plan["jobs"]} == {3}
+    assert {job["max_lines_per_document"] for job in plan["jobs"]} == {256}
+    assert {job["document_list"] for job in plan["jobs"]} == {
+        "configs/benchmarks/s1m2_worker_calibration_documents.txt"
+    }
     assert len({str(job["resolved_config"]) for job in plan["jobs"]}) == 1
     assert all("--model" in job["training_command"] for job in plan["jobs"])
     assert all("--resume" not in job["training_command"] for job in plan["jobs"])
@@ -151,6 +157,25 @@ def test_round1_plan_has_six_jobs_and_only_workers_vary() -> None:
     )
     with pytest.raises(ValueError, match="frozen host mapping"):
         s1m2._validate_plan(wrong_host, contract)
+
+
+def test_worker_calibration_selector_is_frozen_distinct_and_nonstress() -> None:
+    structure_path = Path(
+        "artifacts/s1m2_structure/"
+        "s1m2_continuous_structure_v1_attempt01/structure.json"
+    )
+    assert hashlib.sha256(structure_path.read_bytes()).hexdigest() == (
+        "03ebdf71afc80f82492d9d36cc593ab50c380fd3b0b57689862ea8e98c7b39f8"
+    )
+    structure = json.loads(structure_path.read_text(encoding="utf-8"))
+    selected = s1m2.select_worker_calibration_documents(structure)
+    tracked = Path(
+        "configs/benchmarks/s1m2_worker_calibration_documents.txt"
+    ).read_text(encoding="utf-8").splitlines()
+    assert selected == tracked
+    assert selected == s1m2.select_worker_calibration_documents(structure)
+    assert len(selected) == len(set(selected)) == 72
+    assert not set(selected).intersection(structure["selection"]["stress"])
 
 
 def test_plan_commands_bind_exact_plan_path() -> None:
@@ -192,6 +217,63 @@ def test_round1_winner_rule_uses_resources_for_practical_tie() -> None:
     assert ranking[0]["workers"] == 8
     assert winner == 4
     assert reason == "practical_tie_resource_rule"
+
+
+def test_compact_round1_attestations_select_winner_without_run_download(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contract = _contract()
+    plan = s1m2.build_round1_plan(contract, identity=IDENTITY)
+
+    def fake_audit(
+        _plan: object,
+        job: dict[str, object],
+        _contract_value: object,
+        *,
+        repo_root: Path,
+    ) -> dict[str, object]:
+        del repo_root
+        workers = int(job["workers"])
+        return {
+            "valid": True,
+            "failures": [],
+            "artifact_audit": {
+                "run_dir": "remote-only-not-downloaded",
+                "metrics": {
+                    "wall_seconds": 80.0 if workers == 8 else 100.0 + workers,
+                    "peak_process_tree_rss_bytes": 1024 * workers,
+                    "peak_watched_run_bytes": 2048 * workers,
+                    "sampled_process_tree_cpu_seconds": 50.0 * workers,
+                    "host_memory_bytes": 1024**4,
+                    "filesystem_free_bytes_end": 30 * 1024**3,
+                },
+            },
+        }
+
+    monkeypatch.setattr(s1m2, "audit_job", fake_audit)
+    attestations = [
+        s1m2.build_round1_attestation(
+            plan, job, contract, repo_root=Path(".")
+        )
+        for job in plan["jobs"]
+    ]
+    assert all(item["valid"] for item in attestations)
+    assert all(item["plan_identity"]["plan_sha256"] == plan["plan_sha256"] for item in attestations)
+    assert all(
+        item["production_contract_identity"]["sha256"]
+        == plan["production_contract_sha256"]
+        for item in attestations
+    )
+    result = s1m2.aggregate_round1_attestations(plan, contract, attestations)
+    assert result["ROUND1_STATUS"] == "PASS"
+    assert result["WINNER_WORKERS"] == 8
+    assert result["WINNER_REASON"] == "direct_wall_winner"
+
+    tampered = copy.deepcopy(attestations)
+    tampered[0]["plan_identity"]["plan_sha256"] = "0" * 64
+    assert s1m2.aggregate_round1_attestations(
+        plan, contract, tampered
+    )["ROUND1_STATUS"] == "FAIL"
 
 
 def test_round1_aggregator_fails_closed_on_filesystem_headroom(

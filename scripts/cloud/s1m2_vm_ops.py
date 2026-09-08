@@ -630,7 +630,7 @@ command -v pgrep >/dev/null 2>&1 || {{ printf 'pgrep: MISSING\\n' >&2; exit 44; 
 if pgrep -af '[s]ktlm.production.s1m2|[r]un_with_metrics.py' >/dev/null 2>&1; then printf 'another S1M2 process is already active\\n' >&2; exit 43; fi
 printf 'machine_identity=%s\\n' "$(cat /etc/machine-id)"
 """.strip()
-        result = bridge.run_ssh(config, script, runner)
+        result = bridge.run_ssh_stdin(config, script, runner)
         if result.returncode != 0:
             raise VmOpsError(
                 f"launch precheck exited {result.returncode}: {(result.stderr or '').strip()}"
@@ -683,7 +683,7 @@ if [ -e {shlex.quote(remote_plan)} ] || [ -e {shlex.quote(incoming)} ]; then pri
         return prepared
 
     def launch(role: str, config: Any) -> Mapping[str, Any]:
-        result = bridge.run_ssh(
+        result = bridge.run_ssh_stdin(
             config,
             build_round1_launch_script(
                 config,
@@ -704,6 +704,93 @@ if [ -e {shlex.quote(remote_plan)} ] || [ -e {shlex.quote(incoming)} ]; then pri
         return {**values, "plan_path": remote_plan_by_role[role]}
 
     return _parallel(configs, launch)
+
+
+def collect_round1_attestations_action(
+    configs: Mapping[str, Any],
+    runner: Any,
+    *,
+    plan: Mapping[str, Any],
+    plan_path: Path,
+    relative_plan: str,
+    expected_head: str,
+    attestation_dir: Path,
+) -> list[dict[str, Any]]:
+    """Run formal audits remotely and pull only their compact attestations."""
+
+    if attestation_dir.exists():
+        raise VmOpsError(f"refusing to overwrite attestation directory: {attestation_dir}")
+    attestation_dir.mkdir(parents=True)
+    plan_sha256 = _sha256(plan_path)
+    jobs = {str(job["host_role"]): job for job in plan["jobs"]}
+
+    def collect_one(role: str, config: Any) -> Mapping[str, Any]:
+        job = jobs[role]
+        filename = s1m2.round1_attestation_filename(str(job["job_id"]))
+        local_path = attestation_dir / filename
+        remote_plan = posixpath.join(config.remote_repo or "", relative_plan)
+        remote_path = posixpath.join(
+            config.remote_repo or "", str(job["control_dir"]), filename
+        )
+        relative_output = posixpath.join(str(job["control_dir"]), filename)
+        command = shlex.join(
+            [
+                "./.venv/bin/python",
+                "-m",
+                "sktlm.production.s1m2",
+                "attest-round1",
+                "--plan",
+                relative_plan,
+                "--job-id",
+                str(job["job_id"]),
+                "--output",
+                relative_output,
+            ]
+        )
+        script = f"""
+set -eu
+{_identity_guard(config, expected_head)}
+if [ "$(sha256sum {shlex.quote(remote_plan)} | awk '{{print $1}}')" != {shlex.quote(plan_sha256)} ]; then printf 'plan SHA-256 mismatch\\n' >&2; exit 40; fi
+if [ -e {shlex.quote(remote_path)} ]; then printf 'attestation already exists\\n' >&2; exit 41; fi
+cd "$repo"
+set +e
+{command} >/dev/null
+audit_return_code=$?
+set -e
+if [ ! -f {shlex.quote(remote_path)} ]; then printf 'attestation was not produced\\n' >&2; exit 42; fi
+printf 'audit_return_code=%s\\n' "$audit_return_code"
+printf 'attestation_sha256=%s\\n' "$(sha256sum {shlex.quote(remote_path)} | awk '{{print $1}}')"
+printf 'attestation_bytes=%s\\n' "$(wc -c < {shlex.quote(remote_path)} | tr -d ' ')"
+""".strip()
+        audited = bridge.run_ssh(config, script, runner)
+        if audited.returncode != 0:
+            raise VmOpsError(
+                f"remote attestation exited {audited.returncode}: {(audited.stderr or '').strip()}"
+            )
+        remote_values = _parse_key_values(audited.stdout)
+        pulled = runner.run(bridge.scp_pull_argv(config, remote_path, local_path))
+        if pulled.returncode != 0:
+            raise VmOpsError(
+                f"compact attestation pull exited {pulled.returncode}: {(pulled.stderr or '').strip()}"
+            )
+        if _sha256(local_path) != remote_values.get("attestation_sha256"):
+            raise VmOpsError("downloaded attestation SHA-256 differs from the remote file")
+        payload = json.loads(local_path.read_text(encoding="utf-8"))
+        if payload.get("job_id") != job["job_id"] or payload.get("host_role") != role:
+            raise VmOpsError("downloaded attestation identity differs from the plan")
+        audit_passed = (
+            remote_values.get("audit_return_code") == "0"
+            and payload.get("valid") is True
+        )
+        return {
+            "valid": audit_passed,
+            "job_id": job["job_id"],
+            "workers": job["workers"],
+            "attestation_path": str(local_path),
+            **remote_values,
+        }
+
+    return _parallel(configs, collect_one)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -730,6 +817,11 @@ def build_parser() -> argparse.ArgumentParser:
     launch.add_argument("--plan", type=Path, required=True)
     launch.add_argument("--expected-head", required=True)
     launch.add_argument("--output", type=Path, required=True)
+    attest = commands.add_parser("collect-round1-attestations")
+    attest.add_argument("--plan", type=Path, required=True)
+    attest.add_argument("--expected-head", required=True)
+    attest.add_argument("--attestation-dir", type=Path, required=True)
+    attest.add_argument("--output", type=Path, required=True)
     return parser
 
 
@@ -782,7 +874,7 @@ def main(argv: list[str] | None = None, *, runner: Any | None = None) -> int:
             args.expected_head,
             int(production["gates"]["storage_min_free_bytes_end"]),
         )
-    else:
+    elif args.command == "launch-round1":
         plan, plan_path, relative_plan = load_round1_plan(
             repo_root, args.plan, production_path, args.expected_head
         )
@@ -794,6 +886,20 @@ def main(argv: list[str] | None = None, *, runner: Any | None = None) -> int:
             plan_path=plan_path,
             relative_plan=relative_plan,
             expected_head=args.expected_head,
+        )
+    else:
+        plan, plan_path, relative_plan = load_round1_plan(
+            repo_root, args.plan, production_path, args.expected_head
+        )
+        attestation_dir = _safe_artifact_path(repo_root, args.attestation_dir)
+        hosts = collect_round1_attestations_action(
+            configs,
+            active_runner,
+            plan=plan,
+            plan_path=plan_path,
+            relative_plan=relative_plan,
+            expected_head=args.expected_head,
+            attestation_dir=attestation_dir,
         )
 
     status = "PASS" if all(row.get("valid") for row in hosts) else "FAIL"
