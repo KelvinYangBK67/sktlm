@@ -44,8 +44,8 @@ optimization 13 ordered SQLite inspection-shard reduction: ACCEPTED
 optimization 14 completed-state storage compaction: ACCEPTED
 optimization 15 bounded transient-state lifetime: ACCEPTED
 Opt16 compile-once immutable topology reuse: ACCEPTED
-generic Windows Codex automation framework: COMPLETE / INFRASTRUCTURE REPAIRED
-S1M2 Pre-VM Closure: NOT STARTED / INSTALLED PRE-THREAD FAILURE / RECOVERABLE BY RESEARCHER
+generic Windows Codex automation framework: COMPLETE / CONTINUATION CONTRACT REPAIRED
+S1M2 Pre-VM Closure: INTERRUPTED / DIRTY WORK PRESERVED / RESEARCHER RECOVERY REQUIRED
 ```
 
 P1c uses direct exact position DP under P0 legal support and P1a fixed-pass
@@ -321,37 +321,45 @@ local target supported by current profiling evidence; do not open Opt17.
 `STOP_LOCAL_OPTIMIZATION`. Any next session requires explicit authorization
 and should address VM worker scaling, scheduling, and production readiness.
 
-## Generic Windows Codex automation repaired; PreVM recovery remains researcher-controlled
+## Generic continuation repaired; interrupted PreVM work remains untouched
 
-The reusable framework is tracked in `.codex/automation/`. New and exact-ID
-resume invocations now use the legal Codex CLI 0.153.2 unattended policy
-`--approve-for-me` without a conflicting `--sandbox`. Exact TaskName/runtime
-collisions still fail closed, while historical one-shot tasks and idle generic
-peers can coexist. The runner retains its per-task lock and adds a canonical
-repository mutex so only one generic runner can invoke Codex in one worktree;
-contention safely skips a wake and different repositories remain independent.
+The framework now persists `thread.started` while Codex is running and salvages
+JSONL again before abnormal-exit handling. Native stderr and the true exit code
+are isolated by `invoke_codex.ps1`. A known-thread quota/CLI/transport/nonzero
+failure becomes `INTERRUPTED_RECOVERABLE` without disabling the task; the next
+fixed wake exact-resumes the same ID. `resume --last` remains forbidden.
 
-`control_task.ps1` retains `Status`, `Wake`, and `ResumeExternal` and adds the
-restricted `RecoverPreThread` action. It requires a disabled pre-thread
-`LAUNCHER_ERROR`, empty thread identity, no `thread.started` evidence or last
-message, intact frozen prompt hashes, normal clean branch/HEAD/remote gates,
-and exact task action/config/repo/fixed-trigger identity. It preserves the
-existing trigger and adds an immediate wake only with explicit `-StartNow`.
-The Windows PowerShell 5.1 static parse and one focused suite pass 12 contract
-groups in 4.096 seconds. The repair created no task and started no Codex.
+NEW threads still require clean local/remote equality. An established thread
+uses an exact workspace checkpoint covering unstaged diff, staged diff,
+non-ignored untracked file contents, local HEAD, and remote HEAD. Unchanged
+dirty or local-ahead state may continue; outside changes fail closed.
+`WAITING_DETACHED` polls an immutable artifacts-local PID/start/result/exit
+manifest without consuming Codex quota and exact-resumes the thread once after
+success or failure. `WAITING_EXTERNAL` and `COMPLETE` are unchanged.
 
-The existing `SKTLM-S1M2-PreVM-Closure` task was inspected read-only. It is
-Disabled in `LAUNCHER_ERROR`, has null `thread_id`, empty JSONL, no last message,
-matching prompt hashes, and matching action/config/repo/trigger identity. After
-the repair commit is clean and pushed, the sole next action is an explicit
-researcher `RecoverPreThread` command without `-StartNow` unless the researcher
-also wants an immediate extra wake. Do not edit state, inject a thread ID,
-reinstall, or alter the fixed trigger. S1M2 Pre-VM Closure remains not started.
+The current PreVM task remains Disabled and no recovery was executed. Its
+preserved JSONL uniquely salvages thread
+`01a07c3d-47bd-7983-8171-90383489ae1f`; prompt, task action, config/repo,
+fixed trigger, branch, and base ancestry pass read-only checks. The current
+tracked/untracked PreVM workspace must remain untouched. After the framework
+commit is pushed, the sole next action is researcher-controlled:
+
+```powershell
+.\.codex\automation\control_task.ps1 `
+  -AutomationId "s1m2_prevm_closure" `
+  -Action RecoverInterrupted `
+  -AdoptWorkspace
+```
+
+Add `-StartNow` only if one immediate extra wake is intended. The action
+salvages the JSONL ID and adopts the present workspace; it does not reset,
+stash, clean, commit, inject another thread, or modify the fixed trigger.
 
 ```text
-GENERIC_CODEX_WINDOWS_AUTOMATION=COMPLETE_REPAIRED
-S1M2_PREVM_CLOSURE=NOT_STARTED_INSTALLED_PRETHREAD_FAILURE
-S1M2_PREVM_NEXT_ACTION=RESEARCHER_RECOVER_PRETHREAD
-ACTUAL_SCHEDULED_TASK_CREATED_BY_REPAIR=NO
-CODEX_AUTOMATION_STARTED_BY_REPAIR=NO
+GENERIC_CODEX_CONTINUATION_CONTRACT=COMPLETE_REPAIRED
+S1M2_PREVM_CLOSURE=INTERRUPTED_DIRTY_WORK_PRESERVED
+S1M2_PREVM_THREAD_ID=01a07c3d-47bd-7983-8171-90383489ae1f
+S1M2_PREVM_NEXT_ACTION=RESEARCHER_RECOVER_INTERRUPTED
+ACTUAL_PREVM_WAKE_STARTED_BY_REPAIR=NO
+SCIENTIFIC_WORK_MODIFIED_BY_REPAIR=NO
 ```

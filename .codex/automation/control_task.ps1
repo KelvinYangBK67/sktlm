@@ -1,9 +1,10 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$AutomationId,
-    [Parameter(Mandatory = $true)][ValidateSet("Status", "Wake", "ResumeExternal", "RecoverPreThread")][string]$Action,
+    [Parameter(Mandatory = $true)][ValidateSet("Status", "Wake", "ResumeExternal", "RecoverPreThread", "RecoverInterrupted")][string]$Action,
     [string]$Repo,
-    [switch]$StartNow
+    [switch]$StartNow,
+    [switch]$AdoptWorkspace
 )
 
 $ErrorActionPreference = "Stop"
@@ -16,8 +17,14 @@ if (-not (Test-Path -LiteralPath $HelperPath -PathType Leaf)) {
 . $HelperPath
 
 Assert-AutomationId -AutomationId $AutomationId
-if ($StartNow -and @("ResumeExternal", "RecoverPreThread") -notcontains $Action) {
-    throw "-StartNow is valid only with -Action ResumeExternal or RecoverPreThread. Wake already means one immediate extra invocation."
+if ($StartNow -and @("ResumeExternal", "RecoverPreThread", "RecoverInterrupted") -notcontains $Action) {
+    throw "-StartNow is valid only with a recovery/resume action. Wake already means one immediate extra invocation."
+}
+if ($AdoptWorkspace -and $Action -ne "RecoverInterrupted") {
+    throw "-AdoptWorkspace is valid only with -Action RecoverInterrupted."
+}
+if ($Action -eq "RecoverInterrupted" -and -not $AdoptWorkspace) {
+    throw "RecoverInterrupted requires explicit -AdoptWorkspace acknowledgement."
 }
 if ([string]::IsNullOrWhiteSpace($Repo)) {
     $Repo = Join-Path $PSScriptRoot "..\.."
@@ -84,6 +91,8 @@ if ($Action -eq "Status") {
         IntervalMinutes = [int]$Config.interval_minutes
         LastError = $State.last_error
         LastMessageTail = $LastMessageTail
+        WorkspaceCheckpoint = if ($State.PSObject.Properties.Name -contains "workspace_checkpoint") { $State.workspace_checkpoint } else { $null }
+        DetachedJob = if ($State.PSObject.Properties.Name -contains "detached_job") { $State.detached_job } else { $null }
     } | Format-List
     exit 0
 }
@@ -154,6 +163,75 @@ if ($Action -eq "RecoverPreThread") {
     }
 }
 
+if ($Action -eq "RecoverInterrupted") {
+    if (-not [bool]$Config.registration_performed) {
+        throw "RecoverInterrupted requires config.json to record a completed Scheduled Task registration."
+    }
+    if ([string]$ScheduledTask.State -cne "Disabled") {
+        throw "RecoverInterrupted requires the legacy fail-closed Scheduled Task to be Disabled; current state is $($ScheduledTask.State)."
+    }
+    $InterruptedEligibility = Test-InterruptedRecoveryEligibility -State $State
+    if (-not $InterruptedEligibility.Eligible) {
+        throw "Unsafe RecoverInterrupted request: $($InterruptedEligibility.Reason)"
+    }
+    $InterruptedThreadId = [string]$InterruptedEligibility.ThreadId
+    $PromptIntegrity = Test-FrozenPromptIntegrity -Config $Config
+    if (-not $PromptIntegrity.Valid) {
+        throw "Unsafe RecoverInterrupted request: $($PromptIntegrity.Reason)"
+    }
+    $TaskIdentity = Test-ScheduledTaskIdentity -Task $ScheduledTask -Config $Config
+    if (-not $TaskIdentity.Valid) {
+        throw "Unsafe RecoverInterrupted request: $($TaskIdentity.Reason)"
+    }
+    $GenericIdentity = Get-GenericAutomationTaskIdentity -Task $ScheduledTask
+    if (-not $GenericIdentity.IsGeneric -or
+        -not [string]::Equals([string]$GenericIdentity.ConfigPath, $ConfigPath, [System.StringComparison]::OrdinalIgnoreCase) -or
+        -not [string]::Equals([string]$GenericIdentity.Repo, [string]$Config.repo, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Unsafe RecoverInterrupted request: Scheduled Task is not the exact generic action/config/repo identity. $($GenericIdentity.Reason)"
+    }
+
+    $GitCommand = Get-Command git.exe -ErrorAction SilentlyContinue
+    if (-not $GitCommand) { $GitCommand = Get-Command git -ErrorAction SilentlyContinue }
+    if (-not $GitCommand) { throw "Git executable not found in PATH." }
+    $GitPath = $GitCommand.Source
+    function Invoke-InterruptedRecoveryGit {
+        param([Parameter(Mandatory = $true)][string[]]$Arguments)
+
+        $previousPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "Continue"
+            $output = @(& $GitPath -C ([string]$Config.repo) @Arguments 2>&1)
+            $exitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousPreference
+        }
+        if ($exitCode -ne 0) {
+            throw "Unsafe RecoverInterrupted request: git $($Arguments -join ' ') failed: $($output -join ' ')"
+        }
+        return ($output -join "`n").Trim()
+    }
+    [void](Invoke-InterruptedRecoveryGit -Arguments @("fetch", "--quiet", "origin"))
+    $CurrentBranch = Invoke-InterruptedRecoveryGit -Arguments @("branch", "--show-current")
+    if ($CurrentBranch -cne [string]$Config.expected_branch) {
+        throw "Unsafe RecoverInterrupted request: expected branch '$($Config.expected_branch)', got '$CurrentBranch'."
+    }
+    $Head = Invoke-InterruptedRecoveryGit -Arguments @("rev-parse", "HEAD")
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        & $GitPath -C ([string]$Config.repo) merge-base --is-ancestor ([string]$Config.base_head) $Head 2>&1 | Out-Null
+        $BaseIsAncestor = ($LASTEXITCODE -eq 0)
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+    if (-not $BaseIsAncestor) {
+        throw "Unsafe RecoverInterrupted request: current HEAD $Head is not descended from base HEAD $($Config.base_head)."
+    }
+    $AdoptedSnapshot = Get-AutomationWorkspaceSnapshot -Repo ([string]$Config.repo) -GitPath $GitPath -RemoteRef ([string]$Config.remote_ref)
+}
+
 $PreviousState = $State | ConvertTo-Json -Depth 16 | ConvertFrom-Json
 $PreviousError = [string]$State.last_error
 $State.phase = [string]$Plan.NewPhase
@@ -161,7 +239,7 @@ $ControlTime = (Get-Date).ToString("o")
 if ($Action -eq "ResumeExternal") {
     $State.external_resume_at = $ControlTime
 }
-else {
+elseif ($Action -eq "RecoverPreThread") {
     if ($State.PSObject.Properties.Name -notcontains "prethread_recovery_at") {
         $State | Add-Member -NotePropertyName prethread_recovery_at -NotePropertyValue $null
     }
@@ -171,6 +249,13 @@ else {
     $State.prethread_recovery_at = $ControlTime
     $State.prethread_recovery_reason = $PreviousError
     $State.last_exit_code = $null
+}
+else {
+    $State.thread_id = $InterruptedThreadId
+    Set-AutomationObjectProperty -Object $State -Name "workspace_checkpoint" -Value (New-AutomationWorkspaceCheckpoint -Snapshot $AdoptedSnapshot)
+    Set-AutomationObjectProperty -Object $State -Name "interrupted_recovery_at" -Value $ControlTime
+    Set-AutomationObjectProperty -Object $State -Name "interrupted_recovery_reason" -Value $PreviousError
+    $State.last_observed_head = [string]$AdoptedSnapshot.head
 }
 $State.last_error = $null
 Write-AutomationJsonAtomic -Path ([string]$Config.state_path) -Value $State
@@ -185,14 +270,21 @@ catch {
 if ($Plan.StartTask) {
     Start-ScheduledTask -TaskName ([string]$Config.task_name) -ErrorAction Stop
 }
-if ($Action -eq "RecoverPreThread") {
+if (@("RecoverPreThread", "RecoverInterrupted") -contains $Action) {
     $PostRecoveryTask = Get-ScheduledTask -TaskName ([string]$Config.task_name) -ErrorAction Stop
     $PostRecoveryIdentity = Test-ScheduledTaskIdentity -Task $PostRecoveryTask -Config $Config
     if (-not $PostRecoveryIdentity.Valid) {
-        throw "Scheduled Task identity changed during RecoverPreThread: $($PostRecoveryIdentity.Reason)"
+        throw "Scheduled Task identity changed during ${Action}: $($PostRecoveryIdentity.Reason)"
     }
-    Write-Host "RECOVER_PRETHREAD=PASS"
-    Write-Host "THREAD_ID=EMPTY"
+    if ($Action -eq "RecoverPreThread") {
+        Write-Host "RECOVER_PRETHREAD=PASS"
+        Write-Host "THREAD_ID=EMPTY"
+    }
+    else {
+        Write-Host "RECOVER_INTERRUPTED=PASS"
+        Write-Host "THREAD_ID=$($State.thread_id)"
+        Write-Host "WORKSPACE_FINGERPRINT=$($State.workspace_checkpoint.fingerprint)"
+    }
 }
 else {
     Write-Host "RESUME_EXTERNAL=PASS"

@@ -2317,3 +2317,54 @@ S1M2_PREVM_RECOVER_PRETHREAD=RESEARCHER_ACTION_REQUIRED
 ACTUAL_SCHEDULED_TASK_CREATED_BY_REPAIR=NO
 CODEX_AUTOMATION_STARTED_BY_REPAIR=NO
 ```
+
+## 81. Generic automation continuation contract repaired (2026-09-08)
+
+The generic Windows runner now persists a unique `thread.started` ID atomically
+while the native Codex process is still running and performs another JSONL
+salvage before handling abnormal exit. Codex runs through a small PowerShell
+5.1 native wrapper so stderr text cannot become a terminating launcher
+exception and the real native exit code is retained. Once a thread exists,
+quota, CLI/transport, or nonzero-exit interruption becomes
+`INTERRUPTED_RECOVERABLE`; the task stays enabled and the next fixed wake uses
+the same exact thread ID. `resume --last` remains impossible.
+
+NEW threads still require a clean local/remote-equal checkout. Established
+threads instead checkpoint a deterministic fingerprint covering tracked
+unstaged diff, staged diff, and paths/lengths/content hashes of all non-ignored
+untracked files, plus local and remote HEAD. Unchanged dirty state and an
+unchanged recorded local-ahead `(local, remote)` pair may exact-resume. Any
+between-wake workspace, local-HEAD, or fetched remote-HEAD change fails closed;
+ignored automation/runtime artifacts do not enter the fingerprint.
+
+`WAITING_DETACHED` now records an immutable artifacts-local manifest with job,
+command, process, PID/start-time, completion/result, and exit-status identity.
+Scheduled polling verifies the workspace and job identity without invoking
+Codex while the job runs. Success, explicit failure, or a lost/reused process
+identity is recorded and exact-resumes the original thread once. Existing
+`WAITING_EXTERNAL` and `COMPLETE` disabling semantics are unchanged.
+
+The legacy PreVM JSONL contains one salvageable thread ID,
+`01a07c3d-47bd-7983-8171-90383489ae1f`, although its old state remains
+`LAUNCHER_ERROR` with null `thread_id`. `RecoverInterrupted -AdoptWorkspace`
+can explicitly adopt the current dirty PreVM work as this exact thread's
+checkpoint, preserve the fixed trigger, and optionally add a `-StartNow` wake.
+The runtime/task/prompt/branch/base identities pass a read-only assessment, but
+the repair did not execute recovery, enable the task, start Codex, or modify the
+PreVM work.
+
+Windows PowerShell 5.1 static parsing passes for all framework scripts and the
+focused test file. The single focused suite passes 17 contract groups in 6.504
+seconds, including native stderr/exit handling, thread salvage, dirty/staged/
+untracked fingerprints, unchanged local-ahead continuation, detached running/
+success/failure outcomes, and legacy recovery planning. It created no real
+Scheduled Task and invoked no Codex.
+
+```text
+GENERIC_CODEX_CONTINUATION_CONTRACT=COMPLETE_REPAIRED
+S1M2_PREVM_THREAD_ID=01a07c3d-47bd-7983-8171-90383489ae1f
+S1M2_PREVM_RUNTIME=LEGACY_INTERRUPTED_RECOVERABLE
+S1M2_PREVM_RECOVERY=RESEARCHER_ACTION_REQUIRED
+ACTUAL_PREVM_WAKE_STARTED_BY_REPAIR=NO
+SCIENTIFIC_WORK_MODIFIED_BY_REPAIR=NO
+```

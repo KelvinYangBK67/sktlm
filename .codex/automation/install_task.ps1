@@ -152,10 +152,12 @@ At the end of every response, output exactly one of the following as the final n
 
 AUTOMATION_STATUS=CONTINUE
 AUTOMATION_STATUS=WAITING_EXTERNAL
+AUTOMATION_STATUS=WAITING_DETACHED
 AUTOMATION_STATUS=COMPLETE
 
 Use CONTINUE only when authorized bounded work remains and the next work does not require a researcher-run external workload.
-Use WAITING_EXTERNAL when researcher action or an external workload is required. Before the marker, provide the exact command, code/config/input/output provenance, and pass/fail criteria.
+Use WAITING_EXTERNAL only when researcher action is required. Before the marker, provide the exact command, code/config/input/output provenance, and pass/fail criteria.
+Use WAITING_DETACHED only after successfully starting a detached workload that leaves tracked source unchanged and writes under artifacts/runtime output. Before that marker, provide exactly one AUTOMATION_DETACHED_MANIFEST=<absolute-json-path> line following the current runtime contract.
 Use COMPLETE only when this bounded task is complete and every intended commit is pushed.
 
 Never put text after the marker. Never edit automation config.json, state.json, thread_id, prompt snapshots, logs, or Scheduled Task triggers. Never use codex exec resume --last.
@@ -168,11 +170,12 @@ Continue the existing bounded task in this exact Codex thread.
 
 Read the frozen initial task instructions and the current repository state. Continue only the next authorized unfinished action. Do not redo completed work or broaden scope.
 
-Do not edit automation config.json, state.json, prompt snapshots, logs, thread_id, or Scheduled Task triggers. If researcher action or an external workload is required, report exact provenance and stop with WAITING_EXTERNAL.
+Do not edit automation config.json, state.json, prompt snapshots, logs, thread_id, or Scheduled Task triggers. If researcher action is required, report exact provenance and stop with WAITING_EXTERNAL. A successfully started detached workload may use WAITING_DETACHED only with the required immutable machine-readable manifest and artifacts/runtime-only outputs.
 
 At the end of the response, output exactly one status marker as the final non-empty line:
 AUTOMATION_STATUS=CONTINUE
 AUTOMATION_STATUS=WAITING_EXTERNAL
+AUTOMATION_STATUS=WAITING_DETACHED
 AUTOMATION_STATUS=COMPLETE
 
 Never put text after the marker.
@@ -232,6 +235,10 @@ $State = [ordered]@{
     external_resume_at = $null
     prethread_recovery_at = $null
     prethread_recovery_reason = $null
+    interrupted_recovery_at = $null
+    interrupted_recovery_reason = $null
+    workspace_checkpoint = $null
+    detached_job = $null
 }
 Write-AutomationJsonAtomic -Path $ConfigPath -Value $Config
 Write-AutomationJsonAtomic -Path $StatePath -Value $State

@@ -10,8 +10,11 @@ of:
 
 - `install_task.ps1`: fail-closed preflight, prompt freeze, runtime creation,
   and one fixed Scheduled Task registration.
-- `run_task.ps1`: task- and repository-level single-instance gates, new-thread launch, exact
-  thread-id resume, logging, and status-marker state transitions.
+- `run_task.ps1`: task- and repository-level single-instance gates, new-thread
+  launch, exact thread-id continuation, workspace checkpoints, detached-job
+  polling, logging, and status transitions.
+- `invoke_codex.ps1`: isolated native-process wrapper that preserves Codex
+  stdout, stderr, and the real exit code under Windows PowerShell 5.1.
 - `control_task.ps1`: read-only status, one extra manual wake, controlled
   recovery after an external workload, and restricted pre-thread recovery.
 - `helper.ps1`: shared schema, atomic JSON, schedule, invocation, marker, and
@@ -84,6 +87,9 @@ artifacts/codex_automation/<automation_id>/
     wake_YYYYMMDD_HHMMSS_mmm_PID.jsonl
     wake_YYYYMMDD_HHMMSS_mmm_PID.stderr.txt
     wake_YYYYMMDD_HHMMSS_mmm_PID.last.txt
+    wake_YYYYMMDD_HHMMSS_mmm_PID.prompt.txt
+    wake_YYYYMMDD_HHMMSS_mmm_PID.native.json
+    wake_YYYYMMDD_HHMMSS_mmm_PID.native-result.json
 ```
 
 Do not edit these files manually. The installer freezes both prompts and their
@@ -93,8 +99,11 @@ SHA-256 hashes. State replacement is atomic on the same filesystem.
 
 The first wake runs a new `codex exec` thread and extracts the unique
 `thread.started.thread_id` from JSONL. Every later wake resumes only that exact
-ID and verifies the newly observed ID against stored state. The framework never
-uses or constructs `resume --last`.
+ID and verifies any newly observed ID against stored state. While the native
+process is running, the runner polls JSONL and atomically persists the first
+valid `thread.started` ID as soon as it appears. It salvages JSONL once more
+before handling every abnormal exit. The framework never uses or constructs
+`resume --last`.
 
 Both new and exact-resume invocations use `--approve-for-me` as the unattended
 policy. In supported Codex CLI versions that option already selects the
@@ -106,6 +115,7 @@ The final non-empty response line must be exactly one of:
 ```text
 AUTOMATION_STATUS=CONTINUE
 AUTOMATION_STATUS=WAITING_EXTERNAL
+AUTOMATION_STATUS=WAITING_DETACHED
 AUTOMATION_STATUS=COMPLETE
 ```
 
@@ -116,6 +126,8 @@ The state machine is:
 
 ```text
 READY -> RUNNING -> ACTIVE
+                 -> INTERRUPTED_RECOVERABLE (task remains enabled)
+                 -> WAITING_DETACHED       (task remains enabled; Codex polling suppressed)
                  -> WAITING_EXTERNAL (task disabled)
                  -> COMPLETE         (task disabled permanently)
                  -> fail-closed phase (task disabled)
@@ -126,7 +138,7 @@ Fail-closed phases include `BLOCKED_DIRTY_TREE`, `BLOCKED_WRONG_BRANCH`,
 `FAILED_NO_THREAD_ID`, `THREAD_MISMATCH`, `LAST_WAKE_FAILED`,
 `ACTIVE_NO_MARKER`, and `LAUNCHER_ERROR`.
 
-Before every Codex invocation, the runner fetches origin and requires:
+Before a NEW Codex thread, the runner fetches origin and requires:
 
 - the configured branch;
 - a clean working tree;
@@ -134,8 +146,39 @@ Before every Codex invocation, the runner fetches origin and requires:
 - current HEAD exactly equal to the configured remote branch;
 - unchanged frozen prompt hashes.
 
-It never automatically pulls, rebases, merges, or asks Codex to repair a dirty
-tree.
+After a thread exists, the runner records a deterministic workspace checkpoint
+after each wake. It hashes tracked unstaged and staged binary diffs plus every
+non-ignored untracked path, length, and content hash. Gitignored automation and
+runtime artifacts are naturally excluded. The checkpoint also records local
+and remote HEAD. A later wake may exact-resume a dirty or local-ahead workspace
+only when all three recorded values are unchanged. Any between-wake workspace,
+local-HEAD, or fetched remote-HEAD change fails closed. This permits Codex's own
+unfinished changes and commits to survive quota or transport interruption while
+still rejecting outside edits. The framework never pulls, rebases, merges,
+stashes, resets, or cleans.
+
+Codex runs behind `invoke_codex.ps1`, which keeps native stderr out of the
+PowerShell terminating-error path and writes a machine-readable real exit code.
+A nonzero exit, quota exhaustion, or temporary launcher/transport failure after
+a thread is known becomes `INTERRUPTED_RECOVERABLE`; the task remains enabled
+and the next scheduled wake exact-resumes the same thread and checkpoint.
+Pre-thread failure remains fail closed.
+
+## Detached workload continuation
+
+`WAITING_DETACHED` is for a detached job already started successfully by Codex;
+it is not a request for researcher work. The response must include exactly one
+`AUTOMATION_DETACHED_MANIFEST=<absolute-json-path>` line before the final marker.
+The immutable v1 manifest lives under repository `artifacts/` and records job,
+command, process, PID/start-time, completion marker, result, and exit-status
+identity. The detached wrapper atomically writes a matching exit-status JSON.
+
+Each scheduled wake first verifies the unchanged workspace checkpoint. A
+matching still-running PID/start-time identity keeps `WAITING_DETACHED` and does
+not invoke Codex. A success result/marker or a failed/lost identity is recorded,
+then the runner exact-resumes the original Codex thread once so it can continue
+or handle the failure. Detached output belongs only under ignored
+artifacts/runtime paths and must not modify tracked source.
 
 ## Control commands
 
@@ -195,6 +238,24 @@ automation ID, config, thread ID, anchor, interval, and trigger are never
 rewritten. Unsafe or ambiguous recovery is rejected. `WAITING_EXTERNAL` still
 requires `ResumeExternal`, and `COMPLETE` remains terminal.
 
+For a legacy runtime where JSONL already contains one `thread.started` event
+but old state failed to persist it, the researcher may explicitly adopt the
+current workspace as that thread's checkpoint:
+
+```powershell
+.\.codex\automation\control_task.ps1 `
+  -AutomationId "s1m2_prevm_closure" `
+  -Action RecoverInterrupted `
+  -AdoptWorkspace
+```
+
+This action salvages the unique thread ID from the preserved JSONL; it accepts
+no replacement ID. It validates prompt/task/trigger/repository identity and
+base ancestry, atomically stores the current dirty/local/remote checkpoint,
+sets `INTERRUPTED_RECOVERABLE`, and enables the unchanged task. `-StartNow` is
+an optional extra wake. It does not edit working files, reset/stash/commit,
+rebuild the task, or alter the fixed trigger.
+
 ## Retiring an old task
 
 Retirement is deliberately manual. Inspect the exact task first, then run:
@@ -212,8 +273,9 @@ may be retained as provenance.
 
 - **Access denied:** reopen Windows PowerShell with the rights required by the
   local Task Scheduler policy. Do not weaken framework preflight.
-- **Dirty tree:** inspect and resolve it manually. The runner will not stash,
-  reset, commit, or ask Codex to repair it.
+- **Dirty tree before NEW:** inspect and resolve it manually. After a thread is
+  established, unchanged checkpointed dirty state is expected; only an
+  unrecorded between-wake change is blocked.
 - **Remote divergence:** reconcile local and remote history manually. The
   framework never pulls, rebases, or merges.
 - **THREAD_MISMATCH:** keep the task disabled and inspect `state.json`, JSONL,
@@ -223,5 +285,10 @@ may be retained as provenance.
   is understood.
 - **WAITING_EXTERNAL:** run the exact external command reported by Codex, then
   use `ResumeExternal`; do not edit `state.json`.
+- **WAITING_DETACHED:** do not wake Codex manually while the job is running;
+  scheduled polling consumes no Codex quota and resumes the exact thread when
+  a success/failure result appears.
+- **INTERRUPTED_RECOVERABLE:** leave the task enabled; the next fixed wake
+  retries the exact stored thread against the unchanged checkpoint.
 - **COMPLETE:** the bounded task is permanently stopped. Create a new prompt,
   automation ID, and Scheduled Task for a genuinely new task.

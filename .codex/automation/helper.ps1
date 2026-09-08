@@ -7,6 +7,8 @@ $script:AutomationPhases = @(
     "READY",
     "RUNNING",
     "ACTIVE",
+    "INTERRUPTED_RECOVERABLE",
+    "WAITING_DETACHED",
     "WAITING_EXTERNAL",
     "COMPLETE",
     "BLOCKED_DIRTY_TREE",
@@ -138,7 +140,7 @@ function Assert-AutomationState {
             throw "state.json base_head does not match config.json."
         }
     }
-    if ((@("ACTIVE", "WAITING_EXTERNAL", "COMPLETE") -contains [string]$State.phase) -and
+    if ((@("ACTIVE", "INTERRUPTED_RECOVERABLE", "WAITING_DETACHED", "WAITING_EXTERNAL", "COMPLETE") -contains [string]$State.phase) -and
         [string]::IsNullOrWhiteSpace([string]$State.thread_id)) {
         throw "Phase $($State.phase) requires an exact stored thread_id."
     }
@@ -400,6 +402,133 @@ function Test-FrozenPromptIntegrity {
     return [pscustomobject]@{ Valid = $true; Reason = $null }
 }
 
+function Set-AutomationObjectProperty {
+    param(
+        [Parameter(Mandatory = $true)][object]$Object,
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][AllowNull()][object]$Value
+    )
+
+    if ($Object.PSObject.Properties.Name -contains $Name) {
+        $Object.$Name = $Value
+    }
+    else {
+        $Object | Add-Member -NotePropertyName $Name -NotePropertyValue $Value
+    }
+}
+
+function Get-TextSha256 {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
+
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($Text)
+        return [System.BitConverter]::ToString($sha256.ComputeHash($bytes)).Replace("-", "").ToLowerInvariant()
+    }
+    finally {
+        $sha256.Dispose()
+    }
+}
+
+function Get-AutomationWorkspaceSnapshot {
+    param(
+        [Parameter(Mandatory = $true)][string]$Repo,
+        [Parameter(Mandatory = $true)][string]$GitPath,
+        [Parameter(Mandatory = $true)][string]$RemoteRef
+    )
+
+    $Repo = [System.IO.Path]::GetFullPath($Repo)
+
+    function Invoke-WorkspaceGit {
+        param([Parameter(Mandatory = $true)][string[]]$Arguments)
+
+        $previousPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "Continue"
+            $output = @(& $GitPath -C $Repo @Arguments 2>$null)
+            $exitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousPreference
+        }
+        if ($exitCode -ne 0) {
+            throw "git $($Arguments -join ' ') failed while fingerprinting the workspace."
+        }
+        return @($output)
+    }
+
+    $unstaged = @(Invoke-WorkspaceGit -Arguments @("diff", "--binary", "--no-ext-diff", "--")) -join "`n"
+    $staged = @(Invoke-WorkspaceGit -Arguments @("diff", "--cached", "--binary", "--no-ext-diff", "--")) -join "`n"
+    $untracked = @(
+        Invoke-WorkspaceGit -Arguments @("-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard", "--") |
+            Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+            Sort-Object
+    )
+    $untrackedRecords = @()
+    foreach ($relativePath in $untracked) {
+        $fullPath = [System.IO.Path]::GetFullPath((Join-Path $Repo ([string]$relativePath)))
+        if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
+            throw "Untracked workspace file disappeared while fingerprinting: $relativePath"
+        }
+        $fileHash = (Get-FileHash -LiteralPath $fullPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $length = (Get-Item -LiteralPath $fullPath).Length
+        $untrackedRecords += "$relativePath`t$length`t$fileHash"
+    }
+    $payload = @(
+        "UNSTAGED_SHA256=$(Get-TextSha256 -Text $unstaged)",
+        "STAGED_SHA256=$(Get-TextSha256 -Text $staged)",
+        "UNTRACKED_COUNT=$($untrackedRecords.Count)",
+        ($untrackedRecords -join "`n")
+    ) -join "`n"
+    $status = @(Invoke-WorkspaceGit -Arguments @("-c", "core.quotepath=false", "status", "--porcelain=v1", "--untracked-files=all"))
+    $head = (@(Invoke-WorkspaceGit -Arguments @("rev-parse", "HEAD")) -join "`n").Trim()
+    $remoteHead = (@(Invoke-WorkspaceGit -Arguments @("rev-parse", $RemoteRef)) -join "`n").Trim()
+    return [pscustomobject]@{
+        fingerprint = (Get-TextSha256 -Text $payload)
+        head = $head
+        remote_head = $remoteHead
+        is_clean = ($status.Count -eq 0)
+        unstaged_sha256 = (Get-TextSha256 -Text $unstaged)
+        staged_sha256 = (Get-TextSha256 -Text $staged)
+        untracked_count = $untrackedRecords.Count
+    }
+}
+
+function New-AutomationWorkspaceCheckpoint {
+    param([Parameter(Mandatory = $true)][object]$Snapshot)
+
+    return [pscustomobject]@{
+        fingerprint = [string]$Snapshot.fingerprint
+        head = [string]$Snapshot.head
+        remote_head = [string]$Snapshot.remote_head
+        recorded_at = (Get-Date).ToString("o")
+    }
+}
+
+function Test-AutomationContinuationCheckpoint {
+    param(
+        [Parameter(Mandatory = $true)][object]$Snapshot,
+        [Parameter(Mandatory = $true)][object]$Checkpoint
+    )
+
+    try {
+        Assert-ObjectProperties -Value $Checkpoint -Label "workspace checkpoint" -Names @("fingerprint", "head", "remote_head")
+    }
+    catch {
+        return [pscustomobject]@{ Valid = $false; Reason = $_.Exception.Message }
+    }
+    if ([string]$Snapshot.fingerprint -cne [string]$Checkpoint.fingerprint) {
+        return [pscustomobject]@{ Valid = $false; Reason = "Workspace content changed outside the recorded continuation checkpoint." }
+    }
+    if ([string]$Snapshot.head -cne [string]$Checkpoint.head) {
+        return [pscustomobject]@{ Valid = $false; Reason = "Local HEAD changed outside the recorded continuation checkpoint." }
+    }
+    if ([string]$Snapshot.remote_head -cne [string]$Checkpoint.remote_head) {
+        return [pscustomobject]@{ Valid = $false; Reason = "Remote HEAD changed outside the recorded continuation checkpoint." }
+    }
+    return [pscustomobject]@{ Valid = $true; Reason = $null }
+}
+
 function Test-AutomationRepoSnapshot {
     param(
         [Parameter(Mandatory = $true)][object]$Config,
@@ -503,6 +632,246 @@ function Test-PreThreadRecoveryEligibility {
     return [pscustomobject]@{ Eligible = $true; Reason = $null }
 }
 
+function Test-InterruptedRecoveryEligibility {
+    param([Parameter(Mandatory = $true)][object]$State)
+
+    if (@("LAUNCHER_ERROR", "LAST_WAKE_FAILED") -notcontains [string]$State.phase) {
+        return [pscustomobject]@{ Eligible = $false; ThreadId = $null; Reason = "RecoverInterrupted requires a legacy interrupted phase." }
+    }
+    if (-not [string]::IsNullOrWhiteSpace([string]$State.thread_id)) {
+        return [pscustomobject]@{ Eligible = $false; ThreadId = $null; Reason = "RecoverInterrupted is only for legacy state with an empty thread_id." }
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$State.last_json_log) -or
+        -not (Test-Path -LiteralPath ([string]$State.last_json_log) -PathType Leaf)) {
+        return [pscustomobject]@{ Eligible = $false; ThreadId = $null; Reason = "RecoverInterrupted requires the preserved JSONL log." }
+    }
+    try {
+        $ids = @(Get-SalvageableThreadIdsFromJsonLog -Path ([string]$State.last_json_log))
+    }
+    catch {
+        return [pscustomobject]@{ Eligible = $false; ThreadId = $null; Reason = "Cannot salvage thread identity: $($_.Exception.Message)" }
+    }
+    if ($ids.Count -ne 1) {
+        return [pscustomobject]@{ Eligible = $false; ThreadId = $null; Reason = "RecoverInterrupted requires exactly one JSONL thread.started ID; found $($ids.Count)." }
+    }
+    return [pscustomobject]@{ Eligible = $true; ThreadId = [string]$ids[0]; Reason = $null }
+}
+
+function Add-AutomationRuntimeContract {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$PromptText)
+
+    $overlay = @'
+
+
+# CURRENT AUTOMATION CONTINUATION CONTRACT
+
+This current framework contract supersedes any earlier list of allowed AUTOMATION_STATUS values in the frozen prompt.
+
+End with exactly one status marker as the final non-empty line:
+AUTOMATION_STATUS=CONTINUE
+AUTOMATION_STATUS=WAITING_EXTERNAL
+AUTOMATION_STATUS=WAITING_DETACHED
+AUTOMATION_STATUS=COMPLETE
+
+Use WAITING_EXTERNAL only when the researcher must perform an action; it disables scheduling. Use WAITING_DETACHED only after successfully starting a detached workload whose tracked-source workspace will remain unchanged. Its outputs must be under the repository artifacts/runtime area. Before WAITING_DETACHED, output exactly one line `AUTOMATION_DETACHED_MANIFEST=<absolute-json-path>`. The immutable JSON manifest must contain schema_version `sktlm-codex-detached-job/v1`, job_id, command_identity, process_identity, pid, process_start_time_utc, completion_marker_path, result_path, and exit_status_path. The detached wrapper must atomically write exit_status_path with matching job_id, command_identity, integer exit_code, and completed_at.
+
+Never edit automation config/state/prompt snapshots/logs or Scheduled Task triggers. Never use resume --last.
+'@
+    return $PromptText.TrimEnd() + $overlay + "`r`n"
+}
+
+function Get-ThreadIdsFromJsonLog {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [switch]$AllowIncompleteLastLine
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return @()
+    }
+    $text = [System.IO.File]::ReadAllText($Path)
+    if ([string]::IsNullOrEmpty($text)) {
+        return @()
+    }
+    $lines = @($text -split "\r?\n")
+    if ($AllowIncompleteLastLine -and $text -notmatch "[\r\n]$") {
+        if ($lines.Count -gt 0) {
+            $lines = @($lines | Select-Object -First ($lines.Count - 1))
+        }
+    }
+    $lines = @($lines | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+    if ($lines.Count -eq 0) { return @() }
+    return @(Get-ThreadIdsFromJsonLines -Lines $lines)
+}
+
+function Get-SalvageableThreadIdsFromJsonLog {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return @()
+    }
+    $ids = @()
+    foreach ($line in [System.IO.File]::ReadLines($Path)) {
+        if ([string]::IsNullOrWhiteSpace($line) -or $line -notmatch '"thread\.started"') {
+            continue
+        }
+        try {
+            $event = $line | ConvertFrom-Json -ErrorAction Stop
+        }
+        catch {
+            throw "A candidate thread.started JSONL line is invalid."
+        }
+        if ([string]$event.type -eq "thread.started") {
+            if ([string]::IsNullOrWhiteSpace([string]$event.thread_id)) {
+                throw "thread.started event has no thread_id."
+            }
+            $ids += [string]$event.thread_id
+        }
+    }
+    return @($ids | Select-Object -Unique)
+}
+
+function Resolve-CodexProcessDisposition {
+    param(
+        [Parameter(Mandatory = $true)][bool]$HasThreadId,
+        [AllowNull()][object]$ExitCode,
+        [AllowNull()][string]$LauncherError
+    )
+
+    $abnormal = -not [string]::IsNullOrWhiteSpace($LauncherError) -or $null -eq $ExitCode -or [int]$ExitCode -ne 0
+    if (-not $abnormal) {
+        return [pscustomobject]@{ Disposition = "SUCCESS"; Phase = $null; DisableTask = $false }
+    }
+    if ($HasThreadId) {
+        return [pscustomobject]@{ Disposition = "RECOVERABLE_INTERRUPTION"; Phase = "INTERRUPTED_RECOVERABLE"; DisableTask = $false }
+    }
+    return [pscustomobject]@{ Disposition = "PRETHREAD_FAILURE"; Phase = "LAUNCHER_ERROR"; DisableTask = $true }
+}
+
+function Resolve-AutomationDetachedManifestPath {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
+
+    $matches = [regex]::Matches($Text, '(?m)^AUTOMATION_DETACHED_MANIFEST=([^\r\n]+)\r?$')
+    if ($matches.Count -ne 1) {
+        throw "WAITING_DETACHED requires exactly one AUTOMATION_DETACHED_MANIFEST line; found $($matches.Count)."
+    }
+    $path = $matches[0].Groups[1].Value.Trim()
+    if (-not [System.IO.Path]::IsPathRooted($path)) {
+        throw "AUTOMATION_DETACHED_MANIFEST must be an absolute path."
+    }
+    return [System.IO.Path]::GetFullPath($path)
+}
+
+function Test-AutomationPathWithinRoot {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Root
+    )
+
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $fullRoot = [System.IO.Path]::GetFullPath($Root).TrimEnd([char[]]@('\', '/'))
+    return $fullPath.StartsWith($fullRoot + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Read-AutomationDetachedJobManifest {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Repo
+    )
+
+    $Path = [System.IO.Path]::GetFullPath($Path)
+    $artifactsRoot = Join-Path ([System.IO.Path]::GetFullPath($Repo)) "artifacts"
+    if (-not (Test-AutomationPathWithinRoot -Path $Path -Root $artifactsRoot)) {
+        throw "Detached job manifest must be under the repository artifacts directory."
+    }
+    $manifest = Read-AutomationJson -Path $Path
+    Assert-ObjectProperties -Value $manifest -Label "detached job manifest" -Names @(
+        "schema_version", "job_id", "command_identity", "process_identity", "pid",
+        "process_start_time_utc", "completion_marker_path", "result_path", "exit_status_path"
+    )
+    if ([string]$manifest.schema_version -cne "sktlm-codex-detached-job/v1") {
+        throw "Unsupported detached job manifest schema: $($manifest.schema_version)"
+    }
+    foreach ($name in @("job_id", "command_identity", "process_identity", "process_start_time_utc")) {
+        if ([string]::IsNullOrWhiteSpace([string]$manifest.$name)) {
+            throw "Detached job manifest property '$name' is empty."
+        }
+    }
+    if ([int64]$manifest.pid -le 0) {
+        throw "Detached job manifest pid must be positive."
+    }
+    [void][datetime]::Parse([string]$manifest.process_start_time_utc)
+    $paths = @{}
+    foreach ($name in @("completion_marker_path", "result_path", "exit_status_path")) {
+        $candidate = [System.IO.Path]::GetFullPath([string]$manifest.$name)
+        if (-not (Test-AutomationPathWithinRoot -Path $candidate -Root $artifactsRoot)) {
+            throw "Detached job manifest property '$name' must be under the repository artifacts directory."
+        }
+        $paths[$name] = $candidate
+    }
+    return [pscustomobject]@{
+        manifest_path = $Path
+        manifest_sha256 = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+        job_id = [string]$manifest.job_id
+        command_identity = [string]$manifest.command_identity
+        process_identity = [string]$manifest.process_identity
+        pid = [int64]$manifest.pid
+        process_start_time_utc = ([datetime]::Parse([string]$manifest.process_start_time_utc)).ToUniversalTime().ToString("o")
+        completion_marker_path = [string]$paths["completion_marker_path"]
+        result_path = [string]$paths["result_path"]
+        exit_status_path = [string]$paths["exit_status_path"]
+        status = "RUNNING"
+        observed_at = (Get-Date).ToString("o")
+        exit_code = $null
+        detail = $null
+    }
+}
+
+function Get-AutomationDetachedJobObservation {
+    param([Parameter(Mandatory = $true)][object]$Job)
+
+    if (-not (Test-Path -LiteralPath ([string]$Job.manifest_path) -PathType Leaf)) {
+        return [pscustomobject]@{ State = "COMPLETED_FAILURE"; ExitCode = $null; Detail = "Detached job manifest disappeared." }
+    }
+    $manifestHash = (Get-FileHash -LiteralPath ([string]$Job.manifest_path) -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($manifestHash -cne [string]$Job.manifest_sha256) {
+        return [pscustomobject]@{ State = "COMPLETED_FAILURE"; ExitCode = $null; Detail = "Detached job manifest changed after registration." }
+    }
+    if (Test-Path -LiteralPath ([string]$Job.exit_status_path) -PathType Leaf) {
+        try {
+            $status = Read-AutomationJson -Path ([string]$Job.exit_status_path)
+            Assert-ObjectProperties -Value $status -Label "detached exit status" -Names @("job_id", "command_identity", "exit_code", "completed_at")
+            if ([string]$status.job_id -cne [string]$Job.job_id -or
+                [string]$status.command_identity -cne [string]$Job.command_identity) {
+                throw "Detached exit status identity does not match the manifest."
+            }
+            $exitCode = [int]$status.exit_code
+            [void][datetime]::Parse([string]$status.completed_at)
+            if ($exitCode -eq 0 -and
+                (Test-Path -LiteralPath ([string]$Job.completion_marker_path)) -and
+                (Test-Path -LiteralPath ([string]$Job.result_path))) {
+                return [pscustomobject]@{ State = "COMPLETED_SUCCESS"; ExitCode = 0; Detail = "Detached job completed successfully." }
+            }
+            return [pscustomobject]@{ State = "COMPLETED_FAILURE"; ExitCode = $exitCode; Detail = "Detached job completed without the required successful result/marker." }
+        }
+        catch {
+            return [pscustomobject]@{ State = "COMPLETED_FAILURE"; ExitCode = $null; Detail = $_.Exception.Message }
+        }
+    }
+    $process = Get-Process -Id ([int]$Job.pid) -ErrorAction SilentlyContinue
+    if ($null -ne $process) {
+        try {
+            $actualStart = $process.StartTime.ToUniversalTime()
+            $expectedStart = ([datetime]::Parse([string]$Job.process_start_time_utc)).ToUniversalTime()
+            if ([math]::Abs(($actualStart - $expectedStart).TotalSeconds) -lt 1.0) {
+                return [pscustomobject]@{ State = "RUNNING"; ExitCode = $null; Detail = "Detached process identity is still running." }
+            }
+        }
+        catch {}
+    }
+    return [pscustomobject]@{ State = "COMPLETED_FAILURE"; ExitCode = $null; Detail = "Detached process identity is no longer running and no exit status exists." }
+}
+
 function New-CodexInvocation {
     param(
         [Parameter(Mandatory = $true)][string]$Repo,
@@ -555,7 +924,7 @@ function Resolve-AutomationStatusMarker {
         }
     }
     $status = $matches[0].Groups[1].Value
-    if (@("CONTINUE", "WAITING_EXTERNAL", "COMPLETE") -notcontains $status) {
+    if (@("CONTINUE", "WAITING_EXTERNAL", "WAITING_DETACHED", "COMPLETE") -notcontains $status) {
         return [pscustomobject]@{
             Valid = $false
             Status = $status
@@ -582,6 +951,7 @@ function Resolve-AutomationStatusMarker {
     switch ($status) {
         "CONTINUE" { $phase = "ACTIVE"; $disable = $false }
         "WAITING_EXTERNAL" { $phase = "WAITING_EXTERNAL"; $disable = $true }
+        "WAITING_DETACHED" { $phase = "WAITING_DETACHED"; $disable = $false }
         "COMPLETE" { $phase = "COMPLETE"; $disable = $true }
     }
     return [pscustomobject]@{
@@ -619,7 +989,7 @@ function Get-ThreadIdsFromJsonLines {
 
 function Get-AutomationControlPlan {
     param(
-        [Parameter(Mandatory = $true)][ValidateSet("Status", "Wake", "ResumeExternal", "RecoverPreThread")][string]$Action,
+        [Parameter(Mandatory = $true)][ValidateSet("Status", "Wake", "ResumeExternal", "RecoverPreThread", "RecoverInterrupted")][string]$Action,
         [Parameter(Mandatory = $true)][string]$Phase,
         [AllowNull()][string]$ThreadId,
         [switch]$StartNow
@@ -634,8 +1004,8 @@ function Get-AutomationControlPlan {
         }
     }
     if ($Action -eq "Wake") {
-        if (@("READY", "ACTIVE") -notcontains $Phase) {
-            throw "Wake requires phase READY or ACTIVE; current phase is $Phase."
+        if (@("READY", "ACTIVE", "INTERRUPTED_RECOVERABLE") -notcontains $Phase) {
+            throw "Wake requires phase READY, ACTIVE, or INTERRUPTED_RECOVERABLE; current phase is $Phase."
         }
         return [pscustomobject]@{
             NewPhase = $Phase
@@ -653,6 +1023,20 @@ function Get-AutomationControlPlan {
         }
         return [pscustomobject]@{
             NewPhase = "ACTIVE"
+            EnableTask = $true
+            StartTask = [bool]$StartNow
+            ModifyTrigger = $false
+        }
+    }
+    if ($Action -eq "RecoverInterrupted") {
+        if (@("LAUNCHER_ERROR", "LAST_WAKE_FAILED") -notcontains $Phase) {
+            throw "RecoverInterrupted requires a legacy interrupted phase; current phase is $Phase."
+        }
+        if (-not [string]::IsNullOrWhiteSpace($ThreadId)) {
+            throw "RecoverInterrupted requires legacy state with an empty thread_id."
+        }
+        return [pscustomobject]@{
+            NewPhase = "INTERRUPTED_RECOVERABLE"
             EnableTask = $true
             StartTask = [bool]$StartNow
             ModifyTrigger = $false

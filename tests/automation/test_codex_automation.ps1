@@ -94,6 +94,11 @@ $Complete = Resolve-AutomationStatusMarker -Text "finished`nAUTOMATION_STATUS=CO
 Assert-True $Complete.Valid "COMPLETE marker valid"
 Assert-Equal "COMPLETE" $Complete.Phase "COMPLETE transition"
 Assert-True $Complete.DisableTask "COMPLETE disables task"
+$Detached = Resolve-AutomationStatusMarker -Text "AUTOMATION_DETACHED_MANIFEST=C:\repo\artifacts\job.json`nAUTOMATION_STATUS=WAITING_DETACHED"
+Assert-True $Detached.Valid "WAITING_DETACHED marker valid"
+Assert-Equal "WAITING_DETACHED" $Detached.Phase "WAITING_DETACHED transition"
+Assert-True (-not $Detached.DisableTask) "WAITING_DETACHED keeps task enabled"
+Assert-Equal "C:\repo\artifacts\job.json" (Resolve-AutomationDetachedManifestPath -Text "AUTOMATION_DETACHED_MANIFEST=C:\repo\artifacts\job.json`nAUTOMATION_STATUS=WAITING_DETACHED") "detached manifest path contract"
 foreach ($InvalidText in @(
     "no marker",
     "AUTOMATION_STATUS=CONTINUE`ntext after",
@@ -112,6 +117,14 @@ $ThreadIds = @(Get-ThreadIdsFromJsonLines -Lines @(
 ))
 Assert-Equal 1 $ThreadIds.Count "one observed thread id"
 Assert-Equal $ExactThreadId $ThreadIds[0] "observed thread id"
+
+$SuccessfulDisposition = Resolve-CodexProcessDisposition -HasThreadId $true -ExitCode 0 -LauncherError $null
+Assert-Equal "SUCCESS" $SuccessfulDisposition.Disposition "zero exit is successful"
+$RecoverableDisposition = Resolve-CodexProcessDisposition -HasThreadId $true -ExitCode 23 -LauncherError $null
+Assert-Equal "INTERRUPTED_RECOVERABLE" $RecoverableDisposition.Phase "post-thread nonzero exit is recoverable"
+Assert-True (-not $RecoverableDisposition.DisableTask) "recoverable interruption keeps task enabled"
+$PreThreadDisposition = Resolve-CodexProcessDisposition -HasThreadId $false -ExitCode 23 -LauncherError $null
+Assert-Equal "LAUNCHER_ERROR" $PreThreadDisposition.Phase "pre-thread nonzero exit remains fail-closed"
 
 $WakePlan = Get-AutomationControlPlan -Action Wake -Phase ACTIVE -ThreadId $ExactThreadId
 Assert-True $WakePlan.StartTask "Wake starts existing task once"
@@ -138,6 +151,11 @@ $ThreadedRecoveryRejected = $false
 try { [void](Get-AutomationControlPlan -Action RecoverPreThread -Phase LAUNCHER_ERROR -ThreadId $ExactThreadId) }
 catch { $ThreadedRecoveryRejected = $true }
 Assert-True $ThreadedRecoveryRejected "non-empty thread recovery is rejected"
+$InterruptedPlan = Get-AutomationControlPlan -Action RecoverInterrupted -Phase LAUNCHER_ERROR -ThreadId $null
+Assert-Equal "INTERRUPTED_RECOVERABLE" $InterruptedPlan.NewPhase "RecoverInterrupted returns to recoverable continuation"
+Assert-True $InterruptedPlan.EnableTask "RecoverInterrupted enables existing task"
+Assert-True (-not $InterruptedPlan.StartTask) "RecoverInterrupted without StartNow waits for fixed schedule"
+Assert-True (-not $InterruptedPlan.ModifyTrigger) "RecoverInterrupted preserves trigger"
 
 $FixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) "sktlm_automation_test_$([guid]::NewGuid().ToString('N'))"
 $FixtureRoot = [System.IO.Path]::GetFullPath($FixtureRoot)
@@ -197,6 +215,7 @@ finally {
     Copy-Item -LiteralPath $FrameworkRoot -Destination (Join-Path $FixtureRepo ".codex\automation") -Recurse
     $FixturePrompt = Join-Path $FixtureRepo "bounded_prompt.txt"
     Write-Utf8NoBom -Path $FixturePrompt -Text "Perform one bounded fixture task.`r`n"
+    Write-Utf8NoBom -Path (Join-Path $FixtureRepo ".gitignore") -Text "artifacts/`r`n"
     & git.exe -C $FixtureRepo add .
     & git.exe -C $FixtureRepo -c user.name=AutomationTest -c user.email=automation@example.invalid commit -m fixture | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "fixture commit failed" }
@@ -228,6 +247,8 @@ finally {
     Assert-AutomationState -State $State -Config $Config
     Assert-Equal "READY" $State.phase "initial state phase"
     Assert-Equal $null $State.thread_id "initial thread id"
+    Assert-Equal $null $State.workspace_checkpoint "initial workspace checkpoint"
+    Assert-Equal $null $State.detached_job "initial detached job"
     $State.last_error = "atomic-roundtrip"
     Write-AutomationJsonAtomic -Path (Join-Path $DryRoot "state.json") -Value $State
     $RoundTripState = Read-AutomationJson -Path (Join-Path $DryRoot "state.json")
@@ -259,6 +280,106 @@ finally {
         $RootConflictRejected = $_.Exception.Message.Contains("Automation directory already exists")
     }
     Assert-True $RootConflictRejected "exact same runtime root remains fail-closed"
+
+    $FixtureGitPath = (Get-Command git.exe -ErrorAction Stop).Source
+    $CleanSnapshot = Get-AutomationWorkspaceSnapshot -Repo $FixtureRepo -GitPath $FixtureGitPath -RemoteRef "origin/automation-test"
+    Assert-True $CleanSnapshot.is_clean "fixture begins with a clean workspace"
+    Assert-Equal $CleanSnapshot.head $CleanSnapshot.remote_head "fixture begins local/remote equal"
+
+    $ContinuationFile = Join-Path $FixtureRepo "continuation.txt"
+    Write-Utf8NoBom -Path $ContinuationFile -Text "first interrupted content`r`n"
+    $DirtySnapshot = Get-AutomationWorkspaceSnapshot -Repo $FixtureRepo -GitPath $FixtureGitPath -RemoteRef "origin/automation-test"
+    Assert-True (-not $DirtySnapshot.is_clean) "untracked continuation workspace is dirty"
+    Assert-True ($DirtySnapshot.fingerprint -cne $CleanSnapshot.fingerprint) "untracked file affects workspace fingerprint"
+    Assert-Equal 1 $DirtySnapshot.untracked_count "untracked non-ignored file is counted"
+    $DirtyCheckpoint = New-AutomationWorkspaceCheckpoint -Snapshot $DirtySnapshot
+    $UnchangedDirtySnapshot = Get-AutomationWorkspaceSnapshot -Repo $FixtureRepo -GitPath $FixtureGitPath -RemoteRef "origin/automation-test"
+    Assert-True (Test-AutomationContinuationCheckpoint -Snapshot $UnchangedDirtySnapshot -Checkpoint $DirtyCheckpoint).Valid "unchanged dirty workspace exact-resumes"
+    Write-Utf8NoBom -Path $ContinuationFile -Text "externally changed content`r`n"
+    $ChangedUntrackedSnapshot = Get-AutomationWorkspaceSnapshot -Repo $FixtureRepo -GitPath $FixtureGitPath -RemoteRef "origin/automation-test"
+    Assert-True (-not (Test-AutomationContinuationCheckpoint -Snapshot $ChangedUntrackedSnapshot -Checkpoint $DirtyCheckpoint).Valid) "untracked content change fails closed"
+
+    & git.exe -C $FixtureRepo add continuation.txt
+    if ($LASTEXITCODE -ne 0) { throw "fixture staged fingerprint setup failed" }
+    $StagedSnapshot = Get-AutomationWorkspaceSnapshot -Repo $FixtureRepo -GitPath $FixtureGitPath -RemoteRef "origin/automation-test"
+    Assert-True ($StagedSnapshot.staged_sha256 -cne $CleanSnapshot.staged_sha256) "staged diff affects workspace fingerprint"
+    Write-Utf8NoBom -Path $FixturePrompt -Text "tracked unstaged continuation change`r`n"
+    $MixedSnapshot = Get-AutomationWorkspaceSnapshot -Repo $FixtureRepo -GitPath $FixtureGitPath -RemoteRef "origin/automation-test"
+    Assert-True ($MixedSnapshot.unstaged_sha256 -cne $CleanSnapshot.unstaged_sha256) "tracked unstaged diff affects workspace fingerprint"
+
+    & git.exe -C $FixtureRepo add .
+    & git.exe -C $FixtureRepo -c user.name=AutomationTest -c user.email=automation@example.invalid commit -m local-ahead | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "fixture local-ahead commit failed" }
+    $AheadSnapshot = Get-AutomationWorkspaceSnapshot -Repo $FixtureRepo -GitPath $FixtureGitPath -RemoteRef "origin/automation-test"
+    Assert-True ($AheadSnapshot.head -cne $AheadSnapshot.remote_head) "fixture records a local-ahead checkpoint"
+    $AheadCheckpoint = New-AutomationWorkspaceCheckpoint -Snapshot $AheadSnapshot
+    Assert-True (Test-AutomationContinuationCheckpoint -Snapshot $AheadSnapshot -Checkpoint $AheadCheckpoint).Valid "unchanged local-ahead state exact-resumes"
+    $ExternalRemoteSnapshot = $AheadSnapshot | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $ExternalRemoteSnapshot.remote_head = "externally-changed-remote"
+    Assert-True (-not (Test-AutomationContinuationCheckpoint -Snapshot $ExternalRemoteSnapshot -Checkpoint $AheadCheckpoint).Valid) "unrecorded remote change fails closed"
+
+    $NativePrompt = Join-Path $FixtureRoot "native-prompt.txt"
+    $NativeStdout = Join-Path $FixtureRoot "native.stdout.txt"
+    $NativeStderr = Join-Path $FixtureRoot "native.stderr.txt"
+    $NativeResult = Join-Path $FixtureRoot "native-result.json"
+    $NativeSpec = Join-Path $FixtureRoot "native-spec.json"
+    Write-Utf8NoBom -Path $NativePrompt -Text "fixture stdin`r`n"
+    Write-AutomationJsonAtomic -Path $NativeSpec -Value ([ordered]@{
+        file_path = $env:ComSpec
+        argument_list = @("/d", "/s", "/c", "echo temporary transport failure 1>&2 & exit /b 23")
+        prompt_path = $NativePrompt
+        stdout_path = $NativeStdout
+        stderr_path = $NativeStderr
+        result_path = $NativeResult
+    })
+    $FixtureNativeWrapper = Join-Path $FixtureRepo ".codex\automation\invoke_codex.ps1"
+    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $FixtureNativeWrapper -SpecPath $NativeSpec
+    Assert-Equal 0 $LASTEXITCODE "native wrapper itself completes"
+    $NativeResultPayload = Read-AutomationJson -Path $NativeResult
+    Assert-Equal 23 ([int]$NativeResultPayload.exit_code) "native wrapper preserves true nonzero exit code"
+    Assert-True ([string]::IsNullOrWhiteSpace([string]$NativeResultPayload.launcher_error)) "stderr text is not promoted to launcher exception"
+    Assert-True (([System.IO.File]::ReadAllText($NativeStderr)).Contains("temporary transport failure")) "native stderr is captured"
+
+    $DetachedRoot = Join-Path $FixtureRepo "artifacts\detached-fixture"
+    New-Item -ItemType Directory -Path $DetachedRoot | Out-Null
+    $DetachedManifestPath = Join-Path $DetachedRoot "job.json"
+    $DetachedMarkerPath = Join-Path $DetachedRoot "complete.marker"
+    $DetachedResultPath = Join-Path $DetachedRoot "result.txt"
+    $DetachedExitPath = Join-Path $DetachedRoot "exit.json"
+    $CurrentProcess = Get-Process -Id $PID
+    $DetachedManifest = [ordered]@{
+        schema_version = "sktlm-codex-detached-job/v1"
+        job_id = "fixture-job-1"
+        command_identity = "sha256:fixture-command"
+        process_identity = "fixture-process-$PID"
+        pid = $PID
+        process_start_time_utc = $CurrentProcess.StartTime.ToUniversalTime().ToString("o")
+        completion_marker_path = $DetachedMarkerPath
+        result_path = $DetachedResultPath
+        exit_status_path = $DetachedExitPath
+    }
+    Write-AutomationJsonAtomic -Path $DetachedManifestPath -Value $DetachedManifest
+    $DetachedJob = Read-AutomationDetachedJobManifest -Path $DetachedManifestPath -Repo $FixtureRepo
+    $RunningObservation = Get-AutomationDetachedJobObservation -Job $DetachedJob
+    Assert-Equal "RUNNING" $RunningObservation.State "running detached job skips Codex wake"
+    Write-Utf8NoBom -Path $DetachedMarkerPath -Text "complete`r`n"
+    Write-Utf8NoBom -Path $DetachedResultPath -Text "result`r`n"
+    Write-AutomationJsonAtomic -Path $DetachedExitPath -Value ([ordered]@{
+        job_id = "fixture-job-1"
+        command_identity = "sha256:fixture-command"
+        exit_code = 0
+        completed_at = (Get-Date).ToString("o")
+    })
+    $SuccessfulObservation = Get-AutomationDetachedJobObservation -Job $DetachedJob
+    Assert-Equal "COMPLETED_SUCCESS" $SuccessfulObservation.State "successful detached job resumes exact thread"
+    Write-AutomationJsonAtomic -Path $DetachedExitPath -Value ([ordered]@{
+        job_id = "fixture-job-1"
+        command_identity = "sha256:fixture-command"
+        exit_code = 7
+        completed_at = (Get-Date).ToString("o")
+    })
+    $FailedObservation = Get-AutomationDetachedJobObservation -Job $DetachedJob
+    Assert-Equal "COMPLETED_FAILURE" $FailedObservation.State "failed detached job resumes exact thread for handling"
 
     $GenericTask = [pscustomobject]@{
         TaskName = [string]$Config.task_name
@@ -334,8 +455,18 @@ finally {
     $UnsafeThreadState = $RecoveryState | ConvertTo-Json -Depth 8 | ConvertFrom-Json
     $UnsafeThreadState.thread_id = $ExactThreadId
     Assert-True (-not (Test-PreThreadRecoveryEligibility -State $UnsafeThreadState).Eligible) "existing thread is rejected"
-    Write-Utf8NoBom -Path $RecoveryJsonLog -Text ('{"type":"thread.started","thread_id":"' + $ExactThreadId + '"}' + "`r`n")
+    $InterruptedThreadId = "01a07c3d-47bd-7983-8171-90383489ae1f"
+    Write-Utf8NoBom -Path $RecoveryJsonLog -Text ('{"type":"thread.started","thread_id":"' + $InterruptedThreadId + '"}' + "`r`n")
     Assert-True (-not (Test-PreThreadRecoveryEligibility -State $RecoveryState).Eligible) "observed thread.started event is rejected"
+    $SalvagedIds = @(Get-ThreadIdsFromJsonLog -Path $RecoveryJsonLog)
+    Assert-Equal 1 $SalvagedIds.Count "one interrupted thread ID is salvaged"
+    Assert-Equal $InterruptedThreadId $SalvagedIds[0] "salvage preserves exact interrupted thread ID"
+    $InterruptedEligibility = Test-InterruptedRecoveryEligibility -State $RecoveryState
+    Assert-True $InterruptedEligibility.Eligible "legacy post-thread launcher failure is recoverable"
+    Assert-Equal $InterruptedThreadId $InterruptedEligibility.ThreadId "RecoverInterrupted never injects a replacement thread"
+    $LegacyOverlay = Add-AutomationRuntimeContract -PromptText "legacy three-status frozen prompt"
+    Assert-True $LegacyOverlay.Contains("AUTOMATION_STATUS=WAITING_DETACHED") "runtime overlay extends legacy frozen prompt contract"
+    Assert-True $LegacyOverlay.Contains("Never use resume --last") "runtime overlay preserves exact-resume prohibition"
 }
 finally {
     if ($null -ne $MutexHolder) {
@@ -356,7 +487,7 @@ finally {
 
 $Elapsed = ((Get-Date) - $Started).TotalSeconds
 Write-Host "FOCUSED_VALIDATION=PASS"
-Write-Host "TESTS=12_FOCUSED_CONTRACT_GROUPS"
+Write-Host "TESTS=17_FOCUSED_CONTRACT_GROUPS"
 Write-Host ("VALIDATION_SECONDS={0:N3}" -f $Elapsed)
 Write-Host "ACTUAL_SCHEDULED_TASK_CREATED=NO"
 Write-Host "CODEX_AUTOMATION_STARTED=NO"

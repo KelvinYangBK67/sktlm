@@ -7,8 +7,11 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $HelperPath = Join-Path $PSScriptRoot "helper.ps1"
-if (-not (Test-Path -LiteralPath $HelperPath -PathType Leaf)) {
-    throw "Framework helper not found: $HelperPath"
+$NativeWrapperPath = Join-Path $PSScriptRoot "invoke_codex.ps1"
+foreach ($requiredPath in @($HelperPath, $NativeWrapperPath)) {
+    if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+        throw "Framework file not found: $requiredPath"
+    }
 }
 . $HelperPath
 
@@ -36,6 +39,7 @@ $GitCommand = Get-Command git.exe -ErrorAction SilentlyContinue
 if (-not $GitCommand) { $GitCommand = Get-Command git -ErrorAction SilentlyContinue }
 if (-not $GitCommand) { throw "Git executable not found in PATH." }
 $GitPath = $GitCommand.Source
+$PowerShellPath = (Get-Command powershell.exe -ErrorAction Stop).Source
 $State = $null
 $TaskLock = $null
 $RepoLock = $null
@@ -73,14 +77,67 @@ function Record-RunnerFailure {
     throw $Message
 }
 
+function Record-RecoverableInterruption {
+    param(
+        [Parameter(Mandatory = $true)][string]$Message,
+        [Parameter(Mandatory = $true)][object]$Snapshot
+    )
+
+    if ([string]::IsNullOrWhiteSpace([string]$script:State.thread_id)) {
+        throw "Cannot record a recoverable interruption without an exact thread_id."
+    }
+    Set-AutomationObjectProperty -Object $script:State -Name "workspace_checkpoint" -Value (New-AutomationWorkspaceCheckpoint -Snapshot $Snapshot)
+    $script:State.phase = "INTERRUPTED_RECOVERABLE"
+    $script:State.last_observed_head = [string]$Snapshot.head
+    $script:State.last_wake = (Get-Date).ToString("o")
+    $script:State.last_error = $Message
+    Save-RunnerState
+    $script:FailureRecorded = $true
+    throw $Message
+}
+
 function Invoke-RunnerGit {
     param([Parameter(Mandatory = $true)][string[]]$Arguments)
 
-    $output = @(& $GitPath -C $Repo @Arguments 2>&1)
-    if ($LASTEXITCODE -ne 0) {
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $output = @(& $GitPath -C $Repo @Arguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+    if ($exitCode -ne 0) {
         Record-RunnerFailure -Phase "LAUNCHER_ERROR" -Message "git $($Arguments -join ' ') failed: $($output -join ' ')"
     }
     return ($output -join "`n").Trim()
+}
+
+function Persist-ObservedThreadIds {
+    param([Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Ids)
+
+    if ($Ids.Count -gt 1) {
+        throw "Expected at most one unique thread.started thread_id; found $($Ids.Count)."
+    }
+    if ($Ids.Count -eq 0) { return }
+    $observed = [string]$Ids[0]
+    if ([string]::IsNullOrWhiteSpace([string]$script:State.thread_id)) {
+        $script:State.thread_id = $observed
+        Save-RunnerState
+    }
+    elseif ([string]$script:State.thread_id -cne $observed) {
+        throw "THREAD_MISMATCH: stored=$($script:State.thread_id) observed=$observed"
+    }
+}
+
+function Get-StderrSummary {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf) -or (Get-Item -LiteralPath $Path).Length -eq 0) {
+        return "stderr was empty"
+    }
+    return ((@(Get-Content -LiteralPath $Path -Tail 12) -join " ").Trim())
 }
 
 try {
@@ -109,26 +166,17 @@ try {
         exit 0
     }
     if ([string]$State.phase -eq "RUNNING") {
-        Record-RunnerFailure -Phase "LAST_WAKE_FAILED" -Message "Previous wake left state phase RUNNING; manual inspection is required."
+        Record-RunnerFailure -Phase "LAST_WAKE_FAILED" -Message "Previous wake left state phase RUNNING; explicit recovery is required."
     }
-    if (@("READY", "ACTIVE") -notcontains [string]$State.phase) {
+    if (@("READY", "ACTIVE", "INTERRUPTED_RECOVERABLE", "WAITING_DETACHED") -notcontains [string]$State.phase) {
         [void](Disable-ConfiguredTask)
         $FailureRecorded = $true
         throw "Automation is in fail-closed phase $($State.phase)."
     }
 
-    $PromptChecks = @(
-        [pscustomobject]@{ Path = [string]$Config.initial_prompt_path; Hash = [string]$Config.initial_prompt_sha256 },
-        [pscustomobject]@{ Path = [string]$Config.resume_prompt_path; Hash = [string]$Config.resume_prompt_sha256 }
-    )
-    foreach ($promptCheck in $PromptChecks) {
-        if (-not (Test-Path -LiteralPath $promptCheck.Path -PathType Leaf)) {
-            Record-RunnerFailure -Phase "LAUNCHER_ERROR" -Message "Frozen prompt not found: $($promptCheck.Path)"
-        }
-        $observedHash = (Get-FileHash -LiteralPath $promptCheck.Path -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($observedHash -cne $promptCheck.Hash) {
-            Record-RunnerFailure -Phase "LAUNCHER_ERROR" -Message "Frozen prompt hash mismatch: $($promptCheck.Path)"
-        }
+    $PromptIntegrity = Test-FrozenPromptIntegrity -Config $Config
+    if (-not $PromptIntegrity.Valid) {
+        Record-RunnerFailure -Phase "LAUNCHER_ERROR" -Message ([string]$PromptIntegrity.Reason)
     }
 
     [void](Invoke-RunnerGit -Arguments @("fetch", "--quiet", "origin"))
@@ -136,20 +184,74 @@ try {
     if ($CurrentBranch -cne [string]$Config.expected_branch) {
         Record-RunnerFailure -Phase "BLOCKED_WRONG_BRANCH" -Message "Expected branch '$($Config.expected_branch)', got '$CurrentBranch'."
     }
-    $Dirty = Invoke-RunnerGit -Arguments @("status", "--porcelain")
-    if (-not [string]::IsNullOrWhiteSpace($Dirty)) {
-        Record-RunnerFailure -Phase "BLOCKED_DIRTY_TREE" -Message "Working tree is dirty. The runner will not ask Codex to repair it."
-    }
     $Head = Invoke-RunnerGit -Arguments @("rev-parse", "HEAD")
-    & $GitPath -C $Repo merge-base --is-ancestor ([string]$Config.base_head) $Head 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        & $GitPath -C $Repo merge-base --is-ancestor ([string]$Config.base_head) $Head 2>&1 | Out-Null
+        $BaseIsAncestor = ($LASTEXITCODE -eq 0)
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+    if (-not $BaseIsAncestor) {
         Record-RunnerFailure -Phase "BLOCKED_INCOMPATIBLE_HEAD" -Message "Current HEAD $Head is not descended from base HEAD $($Config.base_head)."
     }
-    $RemoteHead = Invoke-RunnerGit -Arguments @("rev-parse", [string]$Config.remote_ref)
-    if ($Head -cne $RemoteHead) {
-        Record-RunnerFailure -Phase "BLOCKED_REMOTE_DIVERGENCE" -Message "Local HEAD and $($Config.remote_ref) differ. local=$Head remote=$RemoteHead"
+    $Snapshot = Get-AutomationWorkspaceSnapshot -Repo $Repo -GitPath $GitPath -RemoteRef ([string]$Config.remote_ref)
+    $StoredThreadId = [string]$State.thread_id
+    if ([string]::IsNullOrWhiteSpace($StoredThreadId)) {
+        if ([string]$State.phase -cne "READY") {
+            Record-RunnerFailure -Phase "FAILED_NO_THREAD_ID" -Message "Phase $($State.phase) has no stored thread_id."
+        }
+        if (-not [bool]$Snapshot.is_clean) {
+            Record-RunnerFailure -Phase "BLOCKED_DIRTY_TREE" -Message "A NEW automation thread requires a clean working tree."
+        }
+        if ([string]$Snapshot.head -cne [string]$Snapshot.remote_head) {
+            Record-RunnerFailure -Phase "BLOCKED_REMOTE_DIVERGENCE" -Message "A NEW automation thread requires local HEAD to equal $($Config.remote_ref). local=$($Snapshot.head) remote=$($Snapshot.remote_head)"
+        }
     }
-    $State.last_observed_head = $Head
+    else {
+        if ($State.PSObject.Properties.Name -notcontains "workspace_checkpoint" -or $null -eq $State.workspace_checkpoint) {
+            Record-RunnerFailure -Phase "BLOCKED_DIRTY_TREE" -Message "Exact continuation requires a recorded workspace checkpoint."
+        }
+        $Continuation = Test-AutomationContinuationCheckpoint -Snapshot $Snapshot -Checkpoint $State.workspace_checkpoint
+        if (-not $Continuation.Valid) {
+            if ([string]$Snapshot.remote_head -cne [string]$State.workspace_checkpoint.remote_head) {
+                $phase = "BLOCKED_REMOTE_DIVERGENCE"
+            }
+            elseif ([string]$Snapshot.head -cne [string]$State.workspace_checkpoint.head) {
+                $phase = "BLOCKED_INCOMPATIBLE_HEAD"
+            }
+            else {
+                $phase = "BLOCKED_DIRTY_TREE"
+            }
+            Record-RunnerFailure -Phase $phase -Message ([string]$Continuation.Reason)
+        }
+    }
+    $State.last_observed_head = [string]$Snapshot.head
+
+    $DetachedContext = $null
+    if ([string]$State.phase -eq "WAITING_DETACHED") {
+        if ($State.PSObject.Properties.Name -notcontains "detached_job" -or $null -eq $State.detached_job) {
+            Record-RunnerFailure -Phase "LAST_WAKE_FAILED" -Message "WAITING_DETACHED has no stored job identity."
+        }
+        $Observation = Get-AutomationDetachedJobObservation -Job $State.detached_job
+        $State.detached_job.status = [string]$Observation.State
+        $State.detached_job.observed_at = (Get-Date).ToString("o")
+        $State.detached_job.exit_code = $Observation.ExitCode
+        $State.detached_job.detail = [string]$Observation.Detail
+        $State.last_wake = (Get-Date).ToString("o")
+        Save-RunnerState
+        if ([string]$Observation.State -eq "RUNNING") {
+            Write-Host "AUTOMATION_PHASE=WAITING_DETACHED"
+            Write-Host "DETACHED_JOB_ID=$($State.detached_job.job_id)"
+            Write-Host "CODEX_INVOKED=NO"
+            exit 0
+        }
+        $DetachedContext = "Detached job observation: state=$($Observation.State); exit_code=$($Observation.ExitCode); detail=$($Observation.Detail); manifest=$($State.detached_job.manifest_path)"
+        $State.phase = "ACTIVE"
+        Save-RunnerState
+    }
 
     $LogsDir = [string]$Config.logs_dir
     if (-not (Test-Path -LiteralPath $LogsDir -PathType Container)) {
@@ -160,6 +262,9 @@ try {
     $JsonLog = Join-Path $LogsDir "$LogStem.jsonl"
     $StderrLog = Join-Path $LogsDir "$LogStem.stderr.txt"
     $LastMessage = Join-Path $LogsDir "$LogStem.last.txt"
+    $WakePrompt = Join-Path $LogsDir "$LogStem.prompt.txt"
+    $NativeSpecPath = Join-Path $LogsDir "$LogStem.native.json"
+    $NativeResultPath = Join-Path $LogsDir "$LogStem.native-result.json"
 
     $State.phase = "RUNNING"
     $State.last_wake = (Get-Date).ToString("o")
@@ -170,7 +275,6 @@ try {
     $State.last_error = $null
     Save-RunnerState
 
-    $StoredThreadId = [string]$State.thread_id
     $Invocation = New-CodexInvocation `
         -Repo $Repo `
         -LastMessagePath $LastMessage `
@@ -178,35 +282,97 @@ try {
         -ResumePromptPath ([string]$Config.resume_prompt_path) `
         -ThreadId $StoredThreadId
     $PromptText = [System.IO.File]::ReadAllText([string]$Invocation.PromptPath)
-    $CodexArguments = [string[]]$Invocation.ArgumentList
-    $PromptText | & ([string]$Config.codex_path) @CodexArguments 1> $JsonLog 2> $StderrLog
-    $CodexExitCode = $LASTEXITCODE
-    $State.last_exit_code = $CodexExitCode
-
-    if (-not (Test-Path -LiteralPath $JsonLog -PathType Leaf)) {
-        Record-RunnerFailure -Phase "FAILED_NO_THREAD_ID" -Message "Codex produced no JSONL log: $JsonLog"
+    if (-not [string]::IsNullOrWhiteSpace($DetachedContext)) {
+        $PromptText = $PromptText.TrimEnd() + "`r`n`r`n" + $DetachedContext + "`r`n"
     }
+    $PromptText = Add-AutomationRuntimeContract -PromptText $PromptText
+    Write-Utf8NoBom -Path $WakePrompt -Text $PromptText
+    $NativeSpec = [ordered]@{
+        file_path = [string]$Config.codex_path
+        argument_list = [string[]]$Invocation.ArgumentList
+        prompt_path = $WakePrompt
+        stdout_path = $JsonLog
+        stderr_path = $StderrLog
+        result_path = $NativeResultPath
+    }
+    Write-AutomationJsonAtomic -Path $NativeSpecPath -Value $NativeSpec
+
+    $wrapperArguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -SpecPath "{1}"' -f $NativeWrapperPath, $NativeSpecPath
     try {
-        $JsonLines = @([System.IO.File]::ReadLines($JsonLog))
-        $ObservedThreadIds = @(Get-ThreadIdsFromJsonLines -Lines $JsonLines)
+        $NativeProcess = Start-Process -FilePath $PowerShellPath -ArgumentList $wrapperArguments -WindowStyle Hidden -PassThru
     }
     catch {
-        Record-RunnerFailure -Phase "FAILED_NO_THREAD_ID" -Message $_.Exception.Message
+        if (-not [string]::IsNullOrWhiteSpace([string]$State.thread_id)) {
+            $StartFailureSnapshot = Get-AutomationWorkspaceSnapshot -Repo $Repo -GitPath $GitPath -RemoteRef ([string]$Config.remote_ref)
+            Record-RecoverableInterruption -Snapshot $StartFailureSnapshot -Message "Native Codex wrapper could not start; exact thread will be retried: $($_.Exception.Message)"
+        }
+        throw
     }
-    if ($ObservedThreadIds.Count -ne 1) {
-        Record-RunnerFailure -Phase "FAILED_NO_THREAD_ID" -Message "Expected exactly one unique thread.started thread_id; found $($ObservedThreadIds.Count)."
+    while (-not $NativeProcess.HasExited) {
+        if ([string]::IsNullOrWhiteSpace([string]$State.thread_id) -and (Test-Path -LiteralPath $JsonLog -PathType Leaf)) {
+            try {
+                Persist-ObservedThreadIds -Ids @(Get-SalvageableThreadIdsFromJsonLog -Path $JsonLog)
+            }
+            catch {
+                $ThreadObservationError = $_.Exception.Message
+            }
+        }
+        Start-Sleep -Milliseconds 200
+        $NativeProcess.Refresh()
     }
-    $ObservedThreadId = [string]$ObservedThreadIds[0]
-    if ([string]::IsNullOrWhiteSpace($StoredThreadId)) {
-        $State.thread_id = $ObservedThreadId
-        Save-RunnerState
-    }
-    elseif ($ObservedThreadId -cne $StoredThreadId) {
-        Record-RunnerFailure -Phase "THREAD_MISMATCH" -Message "THREAD_MISMATCH: stored=$StoredThreadId observed=$ObservedThreadId"
-    }
+    $NativeProcess.WaitForExit()
 
-    if ($CodexExitCode -ne 0) {
-        Record-RunnerFailure -Phase "LAST_WAKE_FAILED" -Message "Codex wake exited with code $CodexExitCode. See $StderrLog"
+    if (Test-Path -LiteralPath $JsonLog -PathType Leaf) {
+        try {
+            Persist-ObservedThreadIds -Ids @(Get-SalvageableThreadIdsFromJsonLog -Path $JsonLog)
+        }
+        catch {
+            if ($_.Exception.Message -like "THREAD_MISMATCH:*") {
+                Record-RunnerFailure -Phase "THREAD_MISMATCH" -Message $_.Exception.Message
+            }
+            Record-RunnerFailure -Phase "FAILED_NO_THREAD_ID" -Message $_.Exception.Message
+        }
+    }
+    if (-not (Test-Path -LiteralPath $NativeResultPath -PathType Leaf)) {
+        if (-not [string]::IsNullOrWhiteSpace([string]$State.thread_id)) {
+            $PostSnapshot = Get-AutomationWorkspaceSnapshot -Repo $Repo -GitPath $GitPath -RemoteRef ([string]$Config.remote_ref)
+            Record-RecoverableInterruption -Snapshot $PostSnapshot -Message "Native Codex wrapper produced no result file; exact thread will be retried."
+        }
+        Record-RunnerFailure -Phase "LAUNCHER_ERROR" -Message "Native Codex wrapper produced no result file."
+    }
+    $NativeResult = Read-AutomationJson -Path $NativeResultPath
+    Assert-ObjectProperties -Value $NativeResult -Label "native Codex result" -Names @("exit_code", "launcher_error", "completed_at")
+    $CodexExitCode = $NativeResult.exit_code
+    $State.last_exit_code = $CodexExitCode
+    $PostSnapshot = Get-AutomationWorkspaceSnapshot -Repo $Repo -GitPath $GitPath -RemoteRef ([string]$Config.remote_ref)
+    Set-AutomationObjectProperty -Object $State -Name "workspace_checkpoint" -Value (New-AutomationWorkspaceCheckpoint -Snapshot $PostSnapshot)
+    $State.last_observed_head = [string]$PostSnapshot.head
+    Save-RunnerState
+
+    $Disposition = Resolve-CodexProcessDisposition `
+        -HasThreadId (-not [string]::IsNullOrWhiteSpace([string]$State.thread_id)) `
+        -ExitCode $CodexExitCode `
+        -LauncherError ([string]$NativeResult.launcher_error)
+    if ([string]$Disposition.Disposition -eq "SUCCESS") {
+        try {
+            Persist-ObservedThreadIds -Ids @(Get-ThreadIdsFromJsonLog -Path $JsonLog)
+        }
+        catch {
+            if ($_.Exception.Message -like "THREAD_MISMATCH:*") {
+                Record-RunnerFailure -Phase "THREAD_MISMATCH" -Message $_.Exception.Message
+            }
+            Record-RunnerFailure -Phase "FAILED_NO_THREAD_ID" -Message $_.Exception.Message
+        }
+    }
+    if ([string]$Disposition.Disposition -ne "SUCCESS") {
+        $failureText = "Codex interruption: exit_code=$CodexExitCode; launcher_error=$($NativeResult.launcher_error); $(Get-StderrSummary -Path $StderrLog). See $StderrLog"
+        if ([string]$Disposition.Disposition -eq "RECOVERABLE_INTERRUPTION") {
+            Record-RecoverableInterruption -Snapshot $PostSnapshot -Message $failureText
+        }
+        Record-RunnerFailure -Phase "LAUNCHER_ERROR" -Message $failureText
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$State.thread_id)) {
+        Record-RunnerFailure -Phase "FAILED_NO_THREAD_ID" -Message "Codex exited successfully without a thread.started ID."
     }
     if (-not (Test-Path -LiteralPath $LastMessage -PathType Leaf)) {
         Record-RunnerFailure -Phase "ACTIVE_NO_MARKER" -Message "Codex produced no last-message file: $LastMessage"
@@ -217,6 +383,16 @@ try {
         Record-RunnerFailure -Phase "ACTIVE_NO_MARKER" -Message ([string]$Marker.Error)
     }
 
+    if ([string]$Marker.Status -eq "WAITING_DETACHED") {
+        try {
+            $ManifestPath = Resolve-AutomationDetachedManifestPath -Text $LastText
+            $DetachedJob = Read-AutomationDetachedJobManifest -Path $ManifestPath -Repo $Repo
+        }
+        catch {
+            Record-RunnerFailure -Phase "ACTIVE_NO_MARKER" -Message "Invalid WAITING_DETACHED contract: $($_.Exception.Message)"
+        }
+        Set-AutomationObjectProperty -Object $State -Name "detached_job" -Value $DetachedJob
+    }
     $State.phase = [string]$Marker.Phase
     $State.last_error = $null
     Save-RunnerState
