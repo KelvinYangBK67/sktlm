@@ -2368,3 +2368,87 @@ S1M2_PREVM_RECOVERY=RESEARCHER_ACTION_REQUIRED
 ACTUAL_PREVM_WAKE_STARTED_BY_REPAIR=NO
 SCIENTIFIC_WORK_MODIFIED_BY_REPAIR=NO
 ```
+
+## 82. S1M2 pre-VM production interface closed (2026-09-08)
+
+The bounded pre-VM implementation is complete on branch
+`exp/s1m2-reusable-pieces`. Its tested implementation identity is
+`d4da38ce643b77a5e6a6bf207e2d4a1c70b57e1c`; the final published pre-VM
+identity is the later documentation/evidence commit containing this section.
+The authoritative machine-readable contract is
+`configs/production/s1m2_six_cell.json`, with canonical JSON SHA-256
+`5e5591d844e7181a8fc51f405d1ad1c8a73ce99809f24e6096dd75a722e9df29`.
+
+The production universe is frozen at six cells. Five consume frozen M0; IAST
+`continuous` consumes only the validated M0-prime representation through the
+`iast_m0_prime` frontend. Original M0 IAST `continuous` remains excluded and
+cannot be selected through the contract. All cells retain the accepted exact
+S1M2 scoring, candidate, grammar, posterior, and inspection semantics. Worker
+count is engineering-only.
+
+Opt16's cache contract is now operationally closed. Missing archives and
+narrowly classified magic/header/identity/truncation/decompression/record/
+structural failures trigger one deterministic rebuild from frozen input and
+fixed structural configuration, atomically replace only the reconstructible
+archive, reopen, and continue at the same document-local record. Unexpected
+exceptions fail loudly. Focused missing-before-later-pass and
+truncated-before-inspection tests preserve every canonical scientific artifact
+byte-for-byte and confirm that no mutable score or posterior is restored.
+
+The unified `sktlm-s1m2-production` control plane supplies contract validation,
+Round 1/bounded/Round 2/final plan generation, explicit run/resume, audit,
+Round 1 aggregation/winner selection, and Round 2 gate evaluation. Generated
+plans bind a clean Git SHA, branch, contract and input hashes, exact trainer and
+audit/resume commands, scientific/engineering configuration, run/metrics IDs,
+logical host, and output paths. The runner reuses the existing exact trainer
+and Linux `/proc` metrics wrapper. Process-tree/main/worker RSS, sampled CPU
+and I/O, filesystem headroom, and run/SQLite/WAL/SHM/topology/pending-shard
+high-water marks remain engineering-only telemetry.
+
+Round 1 is exactly one frozen Devanagari-continuous representative workload at
+workers 4, 8, 12, 16, 20, and 24, executed sequentially on logical role
+`s1m2-vm-01`. Its aggregator uses the frozen direct >=10% wall winner rule and
+the resource tie rule in Decision 109. Round 2 consumes that result artifact
+and contains exactly the six frozen readiness jobs in Decision 110. Only all
+PASS gates can generate the six-cell full launch plan; plan generation never
+starts production. The tracked cloud registry holds all 18 planned identities
+without real host/IP/credential material.
+
+The final focused gate passes `71 passed in 13.70s`; the full repository gate
+passes `666 passed, 4 warnings in 60.73s`. A clean-SHA Round 1 dry run emits
+exactly six jobs with worker vector `4,8,12,16,20,24`, one scientific
+configuration, and complete launch/resume/audit commands. The clean-SHA bounded
+production-path run executes one frozen document line, one pass, and one worker
+for all six cells in 2.91 seconds. All six artifact audits pass. Its explicit
+script-neutral gate passes all three matched conditions by byte identity of
+piece inventory, lexical diagnostics, and rule usage. This is interface
+evidence only, not representative timing or scientific evidence. Compact
+machine-readable evidence is `evidence/s1m2_prevm_closure_v1.json`.
+
+No representative, stress, VM, cloud, or full-M0 workload was launched. Opt17
+remains unauthorized; no frozen M0/S1M1 byte, rule inventory, candidate support,
+scoring equation, or `notes/**` path changed. The only next action is manual
+Round 1 execution on the VM from the final clean pushed pre-VM SHA.
+
+```text
+S1M1=FROZEN
+M0_PRIME=COMPLETE_VALID
+S1M2_METHOD=COMPLETE
+S1M2_LOCAL_OPTIMIZATION=COMPLETE
+S1M2_OPTIMIZATION_16=ACCEPTED
+OPT16_TOPOLOGY_RECONSTRUCTIBILITY=PASS
+OPT17=NOT_AUTHORIZED
+S1M2_SIX_CELL_CONTRACT=FROZEN
+ROUND1_INTERFACE=READY
+ROUND1_AGGREGATOR=READY
+ROUND2_INTERFACE=READY
+ROUND2_GATES=READY
+PROVENANCE=READY
+FINAL_SIX_CELL_GENERATOR=READY
+S1M2_SIX_CELL_BOUNDED_VALIDATION=PASS
+PRE_VM_INTERFACE_STATE=READY
+ROUND1_STATUS=NOT_STARTED
+ROUND2_STATUS=NOT_STARTED
+FULL_M0_PROCESS_RUNNING=NO
+NEXT_ACTION=MANUAL_VM_ROUND1
+```
