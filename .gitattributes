@@ -1,0 +1,7 @@
+# Production identity hashes are over checkout bytes; make their line endings
+# platform-independent without changing any logical document/rule content.
+data/rules/external_sandhi.tsv text eol=crlf
+configs/benchmarks/latent_smoke_documents.txt text eol=crlf
+configs/benchmarks/s1m2_prevm_bounded_documents.txt text eol=lf
+configs/benchmarks/s1m2_continuous_representative_documents.txt text eol=lf
+configs/benchmarks/s1m2_continuous_stress_documents.txt text eol=lf

@@ -2406,13 +2406,14 @@ and I/O, filesystem headroom, and run/SQLite/WAL/SHM/topology/pending-shard
 high-water marks remain engineering-only telemetry.
 
 Round 1 is exactly one frozen Devanagari-continuous representative workload at
-workers 4, 8, 12, 16, 20, and 24, executed sequentially on logical role
-`s1m2-vm-01`. Its aggregator uses the frozen direct >=10% wall winner rule and
-the resource tie rule in Decision 109. Round 2 consumes that result artifact
-and contains exactly the six frozen readiness jobs in Decision 110. Only all
-PASS gates can generate the six-cell full launch plan; plan generation never
-starts production. The tracked cloud registry holds all 18 planned identities
-without real host/IP/credential material.
+workers 4, 8, 12, 16, 20, and 24, executed concurrently on physical roles
+`core-01` through `core-06` in that order. Its aggregator uses the frozen
+direct >=10% wall winner rule and the resource tie rule in Decision 109. Round
+2 consumes that result artifact and maps its six frozen readiness jobs in
+contract order to the same six roles, all using `WINNER_WORKERS`. Only all PASS
+gates can generate the six-cell full launch plan; plan generation never starts
+production. The tracked cloud registry holds all 18 planned identities without
+real host/IP/credential material.
 
 The final focused gate passes `76 passed in 13.73s`; the full repository gate
 passes `669 passed, 2 warnings in 61.74s`. A clean-SHA Round 1 dry run emits
@@ -2427,8 +2428,9 @@ machine-readable evidence is `evidence/s1m2_prevm_closure_v1.json`.
 
 No representative, stress, VM, cloud, or full-M0 workload was launched. Opt17
 remains unauthorized; no frozen M0/S1M1 byte, rule inventory, candidate support,
-scoring equation, or `notes/**` path changed. The only next action is manual
-Round 1 execution on the VM from the final clean pushed pre-VM SHA.
+scoring equation, or `notes/**` path changed. The only next action is the
+documented manual six-host preflight/deployment sequence from the final clean
+pushed pre-VM SHA, followed by parallel Round 1 launch.
 
 ```text
 S1M1=FROZEN
@@ -2452,3 +2454,25 @@ ROUND2_STATUS=NOT_STARTED
 FULL_M0_PROCESS_RUNNING=NO
 NEXT_ACTION=MANUAL_VM_ROUND1
 ```
+## 83. Generic cloud experiment contract merged into S1M2 (2026-09-08)
+
+The shared cloud control plane is now experiment-neutral without discarding
+the stronger existing SSH argv isolation, filesystem/mount/path guards,
+resumable rsync and collection identity, receipt redaction, remote audit, or
+downloaded hash comparison. `src/sktlm/cloud/contracts.py` owns a strict
+tracked contract for branch, deployment transport, frozen input sets, remote
+roots, audit/completion identity, collection profiles, and host assignments.
+
+The bridge has no default experiment branch. A tracked `--contract` binds the
+branch and refuses conflicting local configuration. `git_remote` keeps the
+legacy clean/published/exact-HEAD fast-forward path; `git_bundle` verifies the
+local bundle and contained HEAD, transfers it below the guarded data mount,
+verifies SHA-256 and `git bundle verify` remotely, and performs only an exact
+fast-forward update. Contract-driven input sync and audited collection reuse
+the established no-delete, deterministic, fail-closed primitives. Baseline
+matrix, baseline audit adapters, baseline configs, and baseline scientific
+logic were not copied into `main`.
+
+Focused contract tests pass (`9 passed`); the complete cloud suite passes
+(`61 passed`). No SSH, SCP, rsync, VM, benchmark, representative, stress, or
+full-M0 operation ran.

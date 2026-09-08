@@ -92,11 +92,42 @@ def test_six_cell_contract_is_exact_and_iast_continuous_is_m0_prime(
         s1m2.load_contract(invalid_path, repo_root=Path("."), verify_files=False)
 
 
+def test_s1m2_deployment_contract_is_bundle_bound_and_branch_explicit() -> None:
+    contract = _contract()
+    assert contract["deployment"] == {
+        "cloud_contract": "configs/cloud/s1m2_prevm.yaml",
+        "branch": "exp/s1m2-reusable-pieces",
+        "mode": "git_bundle",
+    }
+    cloud_contract = s1m2.load_experiment_contract(
+        Path(contract["deployment"]["cloud_contract"])
+    )
+    assert cloud_contract.branch == IDENTITY["branch"]
+    assert cloud_contract.deployment.mode == "git_bundle"
+
+
+def test_production_identity_files_have_platform_independent_checkout_bytes() -> None:
+    attributes = Path(".gitattributes").read_text(encoding="utf-8")
+    assert "data/rules/external_sandhi.tsv text eol=crlf" in attributes
+    assert "configs/benchmarks/latent_smoke_documents.txt text eol=crlf" in attributes
+    for name in (
+        "s1m2_prevm_bounded_documents.txt",
+        "s1m2_continuous_representative_documents.txt",
+        "s1m2_continuous_stress_documents.txt",
+    ):
+        assert f"configs/benchmarks/{name} text eol=lf" in attributes
+
+
 def test_round1_plan_has_six_jobs_and_only_workers_vary() -> None:
     contract = _contract()
     plan = s1m2.build_round1_plan(contract, identity=IDENTITY)
     s1m2._validate_plan(plan, contract)
     assert [job["workers"] for job in plan["jobs"]] == [4, 8, 12, 16, 20, 24]
+    assert [job["host_role"] for job in plan["jobs"]] == list(
+        s1m2.CORE_HOST_ROLES
+    )
+    assert len({job["host_role"] for job in plan["jobs"]}) == 6
+    assert plan["launch_mode"] == "six_way_parallel"
     assert {job["cell_id"] for job in plan["jobs"]} == {
         "s1m2_m0_devanagari_continuous"
     }
@@ -112,6 +143,14 @@ def test_round1_plan_has_six_jobs_and_only_workers_vary() -> None:
     )
     with pytest.raises(ValueError, match="invalid condition"):
         s1m2._validate_plan(tampered, contract)
+
+    wrong_host = copy.deepcopy(plan)
+    wrong_host["jobs"][0]["host_role"] = "core-02"
+    wrong_host["plan_sha256"] = s1m2._canonical_sha256(
+        {key: value for key, value in wrong_host.items() if key != "plan_sha256"}
+    )
+    with pytest.raises(ValueError, match="frozen host mapping"):
+        s1m2._validate_plan(wrong_host, contract)
 
 
 def test_plan_commands_bind_exact_plan_path() -> None:
@@ -204,6 +243,11 @@ def test_round2_and_final_plans_consume_one_winner_artifact() -> None:
     s1m2._validate_plan(round2, contract)
     assert len(round2["jobs"]) == 6
     assert {job["workers"] for job in round2["jobs"]} == {16}
+    assert [job["host_role"] for job in round2["jobs"]] == list(
+        s1m2.CORE_HOST_ROLES
+    )
+    assert len({job["host_role"] for job in round2["jobs"]}) == 6
+    assert round2["launch_mode"] == "six_way_parallel"
     assert [
         (job["cell_id"], job["workload_id"]) for job in round2["jobs"]
     ] == [tuple(item) for item in contract["round2"]["jobs"]]
@@ -364,3 +408,8 @@ def test_cloud_registry_contains_all_prevm_planned_identities() -> None:
     assert registry_ids == generated_ids
     assert registry["s1m2_prevm"]["round1_status"] == "NOT_STARTED"
     assert registry["s1m2_prevm"]["full_m0_process_running"] is False
+    assert registry["s1m2_prevm"]["launch_mode"] == "SIX_WAY_PARALLEL"
+    assert registry["s1m2_prevm"]["host_roles"] == list(s1m2.CORE_HOST_ROLES)
+    for phase in ("round1", "round2", "full"):
+        rows = [row for row in planned if row["phase"] == phase]
+        assert [row["host_role"] for row in rows] == list(s1m2.CORE_HOST_ROLES)

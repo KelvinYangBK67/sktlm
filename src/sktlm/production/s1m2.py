@@ -24,6 +24,7 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any, Iterable
 
+from sktlm.cloud.contracts import load_experiment_contract
 from sktlm.latent.training import S1M2_MODEL, TrainingConfig, run_training
 
 
@@ -40,6 +41,7 @@ SCRIPT_NEUTRAL_ARTIFACTS = (
     "rule_usage.tsv",
 )
 ROUND1_WORKERS = (4, 8, 12, 16, 20, 24)
+CORE_HOST_ROLES = tuple(f"core-{index:02d}" for index in range(1, 7))
 SCIENTIFIC_CONFIG_FIELDS = (
     "lexical_alpha",
     "complexity_weight",
@@ -169,6 +171,13 @@ def load_contract(
         raise ValueError("Production contract must select exact three-pass S1M2.")
     if contract.get("inference", {}).get("approximate_inference_allowed") is not False:
         raise ValueError("Approximate inference is forbidden by the production contract.")
+    deployment = contract.get("deployment", {})
+    if deployment.get("branch") != "exp/s1m2-reusable-pieces":
+        raise ValueError("S1M2 deployment branch is not the production branch.")
+    if deployment.get("mode") != "git_bundle":
+        raise ValueError("S1M2 production deployment must use git_bundle.")
+    if deployment.get("cloud_contract") != "configs/cloud/s1m2_prevm.yaml":
+        raise ValueError("S1M2 cloud contract path is not the frozen path.")
     cells = contract.get("cells", [])
     if len(cells) != 6 or len({item.get("cell_id") for item in cells}) != 6:
         raise ValueError("Production contract must contain six unique cells.")
@@ -192,7 +201,21 @@ def load_contract(
     workers = tuple(contract.get("round1", {}).get("workers", ()))
     if workers != ROUND1_WORKERS:
         raise ValueError("Round 1 worker matrix is not the frozen six-value matrix.")
+    round1_hosts = tuple(contract.get("round1", {}).get("host_roles", ()))
+    round2_hosts = tuple(contract.get("round2", {}).get("host_roles", ()))
+    if round1_hosts != CORE_HOST_ROLES or round2_hosts != CORE_HOST_ROLES:
+        raise ValueError("Round 1 and Round 2 must map exactly to core-01..core-06.")
+    if len(set(round1_hosts)) != 6 or len(set(round2_hosts)) != 6:
+        raise ValueError("Round 1 and Round 2 require six distinct host roles.")
     if verify_files:
+        cloud_contract = load_experiment_contract(
+            _resolve(repo_root, deployment["cloud_contract"])
+        )
+        if (
+            cloud_contract.branch != deployment["branch"]
+            or cloud_contract.deployment.mode != deployment["mode"]
+        ):
+            raise ValueError("Cloud and production deployment identities differ.")
         checks = [
             (
                 contract["corpus"]["m0_manifest"],
@@ -295,6 +318,7 @@ def _job(
     workers: int,
     output_root: Path,
     metrics_root: Path,
+    host_role: str | None = None,
 ) -> dict[str, Any]:
     cell = _cell(contract, cell_id)
     workload = contract["workloads"][workload_id]
@@ -335,9 +359,7 @@ def _job(
         "run_dir": (output_root / run_id).as_posix(),
         "metrics_root": metrics_root.as_posix(),
         "control_dir": (metrics_root / metrics_id).as_posix(),
-        "host_role": (
-            "local-validation" if plan_type == "bounded" else "s1m2-vm-01"
-        ),
+        "host_role": "local-validation" if plan_type == "bounded" else host_role,
         "resolved_config": resolved_config,
         "resume_policy": copy.deepcopy(contract["resume_policy"]),
     }
@@ -387,8 +409,11 @@ def build_round1_plan(
             workers=workers,
             output_root=output_root,
             metrics_root=metrics_root,
+            host_role=host_role,
         )
-        for workers in settings["workers"]
+        for workers, host_role in zip(
+            settings["workers"], settings["host_roles"], strict=True
+        )
     ]
     plan = _base_plan(
         contract,
@@ -400,8 +425,9 @@ def build_round1_plan(
     plan["expected_job_count"] = 6
     plan["scientific_invariant"] = (
         "All jobs share one frozen cell/workload/scientific configuration; "
-        "only engineering worker count differs."
+        "only engineering worker count and physical host assignment differ."
     )
+    plan["launch_mode"] = "six_way_parallel"
     plan["plan_sha256"] = _canonical_sha256(
         {key: value for key, value in plan.items() if key != "plan_sha256"}
     )
@@ -478,8 +504,13 @@ def build_round2_plan(
             workers=winner,
             output_root=output_root,
             metrics_root=metrics_root,
+            host_role=host_role,
         )
-        for cell_id, workload_id in contract["round2"]["jobs"]
+        for (cell_id, workload_id), host_role in zip(
+            contract["round2"]["jobs"],
+            contract["round2"]["host_roles"],
+            strict=True,
+        )
     ]
     plan = _base_plan(
         contract,
@@ -492,6 +523,7 @@ def build_round2_plan(
         "round1_result_sha256": _canonical_sha256(round1),
         "workers": winner,
     }
+    plan["launch_mode"] = "six_way_parallel"
     plan["plan_sha256"] = _canonical_sha256(
         {key: value for key, value in plan.items() if key != "plan_sha256"}
     )
@@ -543,11 +575,12 @@ def build_final_plan(
             workers=winner,
             output_root=output_root,
             metrics_root=metrics_root,
+            host_role=host_role,
         )
-        for cell in contract["cells"]
+        for cell, host_role in zip(
+            contract["cells"], CORE_HOST_ROLES, strict=True
+        )
     ]
-    for index, job in enumerate(jobs, 1):
-        job["host_role"] = f"core-{index:02d}"
     plan = _base_plan(
         contract,
         contract_path=contract_path,
@@ -598,9 +631,17 @@ def _validate_plan(plan: dict[str, Any], contract: dict[str, Any]) -> None:
             job.get("workers") for job in jobs
         ) != ROUND1_WORKERS:
             raise ValueError("Round 1 plan differs from the frozen matrix.")
+        if tuple(job.get("host_role") for job in jobs) != tuple(
+            contract["round1"]["host_roles"]
+        ):
+            raise ValueError("Round 1 plan differs from the frozen host mapping.")
     elif plan_type == "round2":
         if actual_cells != [tuple(item) for item in contract["round2"]["jobs"]]:
             raise ValueError("Round 2 plan differs from the frozen matrix.")
+        if tuple(job.get("host_role") for job in jobs) != tuple(
+            contract["round2"]["host_roles"]
+        ):
+            raise ValueError("Round 2 plan differs from the frozen host mapping.")
     elif plan_type in {"bounded", "full"}:
         workload_id = "bounded_interface" if plan_type == "bounded" else "full"
         expected_cells = [(cell["cell_id"], workload_id) for cell in contract["cells"]]
@@ -831,6 +872,7 @@ def audit_job(
         "workers": job["workers"],
         "run_id": job["run_id"],
         "metrics_id": job["metrics_id"],
+        "host_id": job["host_role"],
     }
     for name, value in expected.items():
         if manifest.get(name) != value:
@@ -874,6 +916,10 @@ def run_job(
     if identity["git_sha"] != plan["git_sha"] or identity["branch"] != plan["branch"]:
         raise RuntimeError("Current Git identity differs from the frozen plan.")
     job = _job_from_plan(plan, job_id)
+    if host_id != job["host_role"]:
+        raise RuntimeError(
+            f"Host role mismatch: plan requires {job['host_role']}, got {host_id}."
+        )
     for relative, expected in (
         (job["manifest"], job["manifest_sha256"]),
         (job.get("document_list"), job.get("document_list_sha256")),

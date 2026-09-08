@@ -1,0 +1,69 @@
+schema_version: sktlm-cloud-experiment-contract/v1
+contract_id: s1m2-pre-vm-v1
+branch: exp/s1m2-reusable-pieces
+
+deployment:
+  mode: git_bundle
+  require_published_head: true
+
+input_sets:
+  - input_id: frozen_m0_canonical
+    paths:
+      - data/canonical/gretil_iast
+      - data/manifests/canonical_corpus.csv
+    validator_argv: [python, scripts/cloud/verify_inputs.py]
+  - input_id: frozen_m0_representations
+    paths:
+      - data/representations/gretil
+      - data/manifests/representations.csv
+    validator_argv: [python, scripts/cloud/verify_inputs.py]
+  - input_id: derived_m0_prime
+    paths:
+      - data/derived/m0_prime/iast/continuous
+      - artifacts/m0_prime/m0_prime_iast_continuous_v1
+    validator_argv: [python, -m, sktlm.production.s1m2, validate-contract]
+
+remote_run_root: artifacts/latent_benchmarks
+optional_metrics_root: artifacts/cloud_metrics
+
+audit:
+  entrypoint_argv:
+    - python
+    - scripts/cloud/audit_latent_run.py
+    - "{artifact_dir}"
+    - --metrics-dir
+    - "{metrics_dir}"
+  inventory_key: scientific_artifacts
+
+collection_profiles:
+  report:
+    - summary.json
+  scientific:
+    - summary.json
+    - iteration_metrics.json
+    - analyses.jsonl
+    - boundary_posteriors.jsonl
+    - piece_inventory.tsv
+    - lexical_diagnostics.tsv
+    - rule_usage.tsv
+  full: null
+
+required_audited_files:
+  - summary.json
+local_collection_root: artifacts/cloud_collected/s1m2
+completion:
+  schema_version: sktlm-s1m2-run-manifest-v1
+
+host_assignments:
+  - {workload_id: s1m2_round1_m0_devanagari_continuous_representative_w4_p3, host_role: core-01}
+  - {workload_id: s1m2_round1_m0_devanagari_continuous_representative_w8_p3, host_role: core-02}
+  - {workload_id: s1m2_round1_m0_devanagari_continuous_representative_w12_p3, host_role: core-03}
+  - {workload_id: s1m2_round1_m0_devanagari_continuous_representative_w16_p3, host_role: core-04}
+  - {workload_id: s1m2_round1_m0_devanagari_continuous_representative_w20_p3, host_role: core-05}
+  - {workload_id: s1m2_round1_m0_devanagari_continuous_representative_w24_p3, host_role: core-06}
+  - {workload_id: s1m2_round2_m0_devanagari_continuous_stress_p3, host_role: core-01}
+  - {workload_id: s1m2_round2_m0_prime_iast_continuous_representative_p3, host_role: core-02}
+  - {workload_id: s1m2_round2_m0_devanagari_continuous_representative_p3, host_role: core-03}
+  - {workload_id: s1m2_round2_m0_devanagari_surface_word_smoke_p3, host_role: core-04}
+  - {workload_id: s1m2_round2_m0_devanagari_legacy_joined_smoke_p3, host_role: core-05}
+  - {workload_id: s1m2_round2_m0_iast_surface_word_smoke_p3, host_role: core-06}

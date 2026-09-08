@@ -791,25 +791,27 @@ metrics_id = "historical"
 state = "DONE"
 
 [s1m2_prevm]
-logical_vm_role = "s1m2-vm-01"
+launch_mode = "SIX_WAY_PARALLEL"
+host_roles = ["core-01", "core-02", "core-03", "core-04", "core-05", "core-06"]
 
 [[s1m2_prevm.planned_runs]]
 run_id = "s1m2_round1_test"
 metrics_id = "round1_test"
+host_role = "core-01"
 state = "PREPARED_NOT_STARTED"
 """.strip(),
         encoding="utf-8",
     )
     config = remote_config(
-        host_profile="s1m2-vm-01",
-        machine_id="s1m2-vm-01",
-        available_host_profiles=("core-01", "s1m2-vm-01"),
+        host_profile="core-01",
+        machine_id="core-01",
+        available_host_profiles=("core-01", "core-02"),
     )
     assignment = bridge.collection_registry_assignment(
         tmp_path, config, "s1m2_round1_test", "round1_test"
     )
     assert assignment is not None
-    assert assignment["host_profile"] == "s1m2-vm-01"
+    assert assignment["host_profile"] == "core-01"
     assert assignment["state_at_collection"] == "PREPARED_NOT_STARTED"
 
 
@@ -833,6 +835,20 @@ def test_rsync_itemized_output_is_parsed_into_receipt_records() -> None:
             "path": "dataset/file with spaces.txt",
         }
     ]
+
+
+def test_contract_input_rsync_can_be_resumable_and_checksum_guarded() -> None:
+    argv = bridge.build_rsync_argv(
+        remote_config(),
+        source=Path("data/manifests/representations.csv"),
+        destination="/mnt/sktlm-data/sktlm/data/manifests",
+        direction="push",
+        append_verify=True,
+        checksum=True,
+    )
+    assert "--partial" in argv
+    assert "--append-verify" in argv
+    assert "--checksum" in argv
 
 
 def _git_callback(head: str, *, dirty: bool = False, deployed: str | None = None):

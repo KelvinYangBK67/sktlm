@@ -18,6 +18,12 @@ The machine-readable source of truth is
 canonical sorted JSON as emitted by `validate-contract`. Worker count is an
 engineering parameter selected only by Round 1.
 
+The deployment/collection source of truth is
+`configs/cloud/s1m2_prevm.yaml`. It fixes the production branch, verified
+Git-bundle transport, frozen input sets, remote roots, collection profiles, and
+the direct run-to-host assignments. The earlier pre-VM SHA is invalidated by
+this control-plane change and must not be deployed.
+
 ## Command surface
 
 Run every command from a clean checkout of
@@ -32,7 +38,7 @@ The control-plane verbs map to the requested lifecycle as follows:
 - resume: `run --resume` (explicit only; never automatic);
 - audit: `audit` and the existing `scripts/cloud/audit_latent_run.py`;
 - collect: the existing `scripts/cloud/sktlm_bridge.py collect`, which resolves
-  the exact tracked S1M2 planned-run identity and logical host role;
+  the exact tracked S1M2 planned-run identity and its assigned core host;
 - summarize: `aggregate-round1` and `evaluate-round2`.
 
 All plan and result writers refuse overwrite. The runner snapshots the plan,
@@ -83,10 +89,61 @@ restore them explicitly alongside the other frozen M0 inputs, then run
 `python -m sktlm.production.s1m2 validate-contract` before preparing Round 1.
 A missing or hash-mismatched frozen manifest is a hard preflight failure.
 
+## Six-host VM operator sequence
+
+Round 1 and Round 2 use six distinct physical core VMs. This engineering
+assignment is accepted from the S1M1 host-equivalence evidence; it does not
+change the scientific contract. Copy `configs/cloud/bridge.example.toml` to the
+ignored `.sktlm-bridge.toml` and fill the six `core-01` through `core-06` SSH
+profiles. Each profile must have the matching `machine_id`, and all six SSH
+endpoints and observed `/etc/machine-id` values must be distinct.
+
+The tracked operator script runs each phase concurrently across all six
+profiles and writes a machine-readable receipt below `artifacts/`. Replace the
+angle-bracket values with the final handoff identities:
+
+```text
+python scripts/cloud/s1m2_vm_ops.py --config .sktlm-bridge.toml preflight --output artifacts/s1m2_vm/preflight.json
+python scripts/cloud/s1m2_vm_ops.py --config .sktlm-bridge.toml deploy --bundle artifacts/deployment_bundles/s1m2_prevm/<BUNDLE> --bundle-sha256 <BUNDLE_SHA256> --expected-head <PRE_VM_S1M2_SHA> --output artifacts/s1m2_vm/deploy.json
+python scripts/cloud/s1m2_vm_ops.py --config .sktlm-bridge.toml environment --expected-head <PRE_VM_S1M2_SHA> --output artifacts/s1m2_vm/environment.json
+python scripts/cloud/s1m2_vm_ops.py --config .sktlm-bridge.toml sync-inputs --expected-head <PRE_VM_S1M2_SHA> --output artifacts/s1m2_vm/input_sync.json
+python scripts/cloud/s1m2_vm_ops.py --config .sktlm-bridge.toml validate --expected-head <PRE_VM_S1M2_SHA> --output artifacts/s1m2_vm/remote_validate.json
+python -m sktlm.production.s1m2 plan-round1 --output artifacts/s1m2_production/round1_plan.json
+python scripts/cloud/s1m2_vm_ops.py --config .sktlm-bridge.toml launch-round1 --plan artifacts/s1m2_production/round1_plan.json --expected-head <PRE_VM_S1M2_SHA> --output artifacts/s1m2_vm/round1_launch.json
+```
+
+`preflight` checks SSH reachability, hostname, physical/boot identity, CPU,
+RAM, filesystem and free space, the data mount, repository/HEAD/clean state,
+active S1M2 processes, Python environment, and M0/M0-prime presence. `deploy`
+transfers the already verified bundle, verifies its SHA-256 remotely, fetches
+only the contained branch, checks out the exact published SHA, and requires a
+clean worktree. `environment` reuses a valid Python 3.11 venv and otherwise
+creates one on the data mount, installs the repository once, and ends with
+`pip check`.
+
+`sync-inputs` first runs all authoritative validators. It skips a host whose
+frozen inputs are already valid; otherwise it uses partial, append-verified,
+checksum-guarded rsync and validates again. Identical frozen files are not
+rewritten. `validate` then checks exact SHA/branch/clean state, physical host
+separation, host role, the non-root data mount, free-space gate, Python 3.11,
+`pip check`, frozen inputs, and the production contract. Every phase fails
+closed if any host fails. None of these commands should be run by Codex during
+pre-VM closure; they are the operator's explicit network phase.
+
 ## Round 1: VM worker scaling
 
-Round 1 is six sequential executions of the same frozen Devanagari-continuous
-representative job. Only worker count changes: 4, 8, 12, 16, 20, 24.
+Round 1 is six simultaneous executions of the same frozen
+Devanagari-continuous representative job. Scientific inputs and configuration
+are identical; only engineering worker count and physical host differ:
+
+```text
+core-01 -> workers=4
+core-02 -> workers=8
+core-03 -> workers=12
+core-04 -> workers=16
+core-05 -> workers=20
+core-06 -> workers=24
+```
 
 Prepare the immutable plan:
 
@@ -94,10 +151,13 @@ Prepare the immutable plan:
 python -m sktlm.production.s1m2 plan-round1 --output artifacts/s1m2_production/round1_plan.json
 ```
 
-Execute each `launch_command_shell` in plan order on the logical
-`s1m2-vm-01` role. A representative job is an external workload and is not a
-Codex-local validation. Each job must have a distinct absent run directory and
-metrics identity. Do not run worker variants concurrently on one host.
+Use `s1m2_vm_ops.py launch-round1` so the machine-readable plan—not a manually
+copied trainer command—starts all six jobs in parallel on their assigned core
+hosts. A representative job is an external workload and is not a Codex-local
+validation. Each job must have a distinct absent run directory and metrics
+identity. The launcher records PID, process start ticks, machine and boot
+identity, command hash, completion marker, result path, logs, and exit-status
+path for detached monitoring.
 
 If interrupted, use the exact generated launch command with `--resume`. The
 runner creates a new metrics attempt, retains earlier attempt evidence, and
@@ -133,14 +193,18 @@ worker count independently.
 python -m sktlm.production.s1m2 plan-round2 --round1-result artifacts/s1m2_production/round1_result.json --output artifacts/s1m2_production/round2_plan.json
 ```
 
-The generated plan contains exactly:
+The generated six-way-parallel plan contains exactly:
 
-1. Devanagari continuous / stress;
-2. M0-prime IAST continuous / representative;
-3. Devanagari continuous / representative;
-4. Devanagari surface_word / smoke;
-5. Devanagari legacy_joined / smoke;
-6. IAST surface_word / smoke.
+1. `core-01`: Devanagari continuous / stress;
+2. `core-02`: M0-prime IAST continuous / representative;
+3. `core-03`: Devanagari continuous / representative;
+4. `core-04`: Devanagari surface_word / smoke;
+5. `core-05`: Devanagari legacy_joined / smoke;
+6. `core-06`: IAST surface_word / smoke.
+
+All six jobs use the same `WINNER_WORKERS` selected by Round 1 and launch on
+their six hosts concurrently. A shared single-VM execution is not a valid
+production plan.
 
 Execute the six generated commands, then evaluate:
 
