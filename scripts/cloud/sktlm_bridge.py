@@ -14,7 +14,7 @@ import shlex
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Mapping, Sequence
@@ -25,9 +25,14 @@ try:
 except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib  # type: ignore[import-not-found]
 
+from sktlm.cloud.contracts import (
+    ContractError,
+    ExperimentContract,
+    load_experiment_contract,
+)
+
 
 SCHEMA_VERSION = "sktlm-cloud-transfer-receipt/v1"
-DEFAULT_BRANCH = "exp/m0-core-methods"
 DEFAULT_REPOSITORY_URL = "https://github.com/KelvinYangBK67/sktlm.git"
 DEFAULT_DATA_MOUNT = "/mnt/sktlm-data"
 DEFAULT_CLOUD_ROOT = "/mnt/sktlm-data/sktlm"
@@ -124,7 +129,7 @@ class BridgeConfig:
     remote_repo: str | None = None
     remote_data_mount: str = DEFAULT_DATA_MOUNT
     remote_cloud_root: str = DEFAULT_CLOUD_ROOT
-    branch: str = DEFAULT_BRANCH
+    branch: str | None = None
     repository_url: str = DEFAULT_REPOSITORY_URL
     host_profile: str | None = None
     machine_id: str | None = None
@@ -188,14 +193,15 @@ def validate_config(config: BridgeConfig) -> BridgeConfig:
         raise BridgeError("SSH user contains unsupported characters")
     if not 1 <= config.port <= 65_535:
         raise BridgeError("SSH port must be between 1 and 65535")
-    if (
-        not re.fullmatch(r"[A-Za-z0-9._/-]+", config.branch)
-        or config.branch.startswith(("-", "/"))
-        or config.branch.endswith((".", "/"))
-        or ".." in config.branch
-        or "@{" in config.branch
-    ):
-        raise BridgeError("branch is not a supported Git branch name")
+    if config.branch is not None:
+        if (
+            not re.fullmatch(r"[A-Za-z0-9._/-]+", config.branch)
+            or config.branch.startswith(("-", "/"))
+            or config.branch.endswith((".", "/"))
+            or ".." in config.branch
+            or "@{" in config.branch
+        ):
+            raise BridgeError("branch is not a supported Git branch name")
     parsed_url = urlsplit(config.repository_url)
     if parsed_url.scheme and (parsed_url.username or parsed_url.password):
         raise BridgeError("repository_url may not contain embedded credentials")
@@ -232,6 +238,29 @@ def validate_config(config: BridgeConfig) -> BridgeConfig:
         host_role=config.host_role,
         available_host_profiles=config.available_host_profiles,
     )
+
+
+def bind_experiment_contract(
+    config: BridgeConfig,
+    contract: ExperimentContract,
+) -> BridgeConfig:
+    """Bind tracked experiment identity without allowing config drift."""
+
+    if config.branch is not None and config.branch != contract.branch:
+        raise BridgeError(
+            f"bridge branch {config.branch!r} conflicts with contract branch "
+            f"{contract.branch!r}"
+        )
+    return replace(config, branch=contract.branch)
+
+
+def require_branch(config: BridgeConfig) -> str:
+    if config.branch is None:
+        raise BridgeError(
+            "branch is not configured; supply a tracked --contract or an explicit "
+            "bridge branch"
+        )
+    return config.branch
 
 
 def load_config(
@@ -658,6 +687,78 @@ def verify_remote_inputs(
     return payload
 
 
+def _validator_payload(result: subprocess.CompletedProcess[str], label: str) -> dict[str, Any]:
+    if result.returncode != 0:
+        raise _controlled_failure(result, label)
+    if not result.stdout.strip():
+        return {"valid": True, "return_code": 0}
+    try:
+        payload = parse_json_output(result.stdout, label)
+    except BridgeError:
+        return {"valid": True, "return_code": 0, "stdout": result.stdout.strip()}
+    if payload.get("valid") is False:
+        raise BridgeError(f"{label} reported valid=false")
+    return payload
+
+
+def validate_contract_inputs_local(
+    repo_root: Path,
+    contract: ExperimentContract,
+    runner: SystemRunner,
+) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for input_set in contract.input_sets:
+        missing = [path for path in input_set.paths if not (repo_root / path).exists()]
+        if missing:
+            raise BridgeError(
+                f"contract input set {input_set.input_id} is missing paths: {missing}"
+            )
+        result = runner.run(input_set.validator_argv, cwd=repo_root)
+        results.append(
+            {
+                "input_id": input_set.input_id,
+                "validator": list(input_set.validator_argv),
+                "result": _validator_payload(
+                    result, f"local validator for {input_set.input_id}"
+                ),
+            }
+        )
+    return results
+
+
+def build_contract_remote_validator_script(
+    config: BridgeConfig,
+    contract: ExperimentContract,
+) -> str:
+    require_remote_config(config)
+    commands = [shlex.join(item.validator_argv) for item in contract.input_sets]
+    return "\n".join(
+        [
+            "set -eu",
+            f"repo={shlex.quote(config.remote_repo or '')}",
+            'if [ ! -d "$repo/.git" ]; then printf \'remote repository: MISSING\\n\' >&2; exit 4; fi',
+            'cd "$repo"',
+            *commands,
+        ]
+    )
+
+
+def verify_contract_remote_inputs(
+    config: BridgeConfig,
+    contract: ExperimentContract,
+    runner: SystemRunner,
+) -> dict[str, Any]:
+    require_tool("ssh")
+    result = run_ssh(config, build_contract_remote_validator_script(config, contract), runner)
+    payload = _validator_payload(result, "remote contract input validation")
+    return {
+        "valid": True,
+        "contract_id": contract.contract_id,
+        "validator_count": len(contract.input_sets),
+        "result": payload,
+    }
+
+
 def build_remote_head_script(config: BridgeConfig) -> str:
     require_remote_config(config)
     return f"""
@@ -817,7 +918,10 @@ def build_rsync_argv(
         base.append("--exclude=*")
     endpoint = _remote_endpoint(config)
     if direction == "push":
-        local_source = str(Path(source).resolve()).replace(os.sep, "/").rstrip("/") + "/"
+        resolved_source = Path(source).resolve()
+        local_source = str(resolved_source).replace(os.sep, "/")
+        if resolved_source.is_dir():
+            local_source = local_source.rstrip("/") + "/"
         remote_destination = normalized_remote_path.rstrip("/") + "/"
         operands = [local_source, f"{endpoint}:{remote_destination}"]
     else:
@@ -935,6 +1039,7 @@ def base_receipt(
     repo_root: Path,
     config: BridgeConfig,
     runner: SystemRunner,
+    contract: ExperimentContract | None = None,
 ) -> dict[str, Any]:
     git = local_git_status(repo_root, runner)
     return {
@@ -957,6 +1062,9 @@ def base_receipt(
         "valid": False,
         "failures": [],
         "warnings": [],
+        "experiment_contract": (
+            contract.deployment_identity if contract is not None else None
+        ),
     }
 
 
@@ -967,8 +1075,11 @@ def execute_receipted(
     config: BridgeConfig,
     runner: SystemRunner,
     action: Callable[[dict[str, Any]], Mapping[str, Any]],
+    contract: ExperimentContract | None = None,
 ) -> tuple[dict[str, Any], Path, BridgeError | None]:
-    receipt = base_receipt(operation, direction, repo_root, config, runner)
+    receipt = base_receipt(
+        operation, direction, repo_root, config, runner, contract=contract
+    )
     error: BridgeError | None = None
     try:
         details = dict(action(receipt))
@@ -994,6 +1105,7 @@ def execute_receipted(
 
 def build_deploy_script(config: BridgeConfig, expected_head: str) -> str:
     require_remote_config(config)
+    branch = require_branch(config)
     if not re.fullmatch(r"[0-9a-f]{40}", expected_head):
         raise BridgeError("expected deploy HEAD must be a full lowercase SHA-1")
     remote_repo = config.remote_repo or ""
@@ -1002,7 +1114,7 @@ def build_deploy_script(config: BridgeConfig, expected_head: str) -> str:
 set -eu
 repo={shlex.quote(remote_repo)}
 parent={shlex.quote(parent)}
-branch={shlex.quote(config.branch)}
+branch={shlex.quote(branch)}
 url={shlex.quote(config.repository_url)}
 expected={shlex.quote(expected_head)}
 if ! command -v git >/dev/null 2>&1; then printf 'git: MISSING\\n' >&2; exit 127; fi
@@ -1046,12 +1158,13 @@ def deploy_code_action(
     require_remote_config(config)
     require_tool("git")
     require_tool("ssh")
+    branch = require_branch(config)
     local = local_git_status(repo_root, runner)
     if not local.get("available"):
         raise BridgeError("local Git repository is unavailable")
-    if local.get("branch") != config.branch:
+    if local.get("branch") != branch:
         raise BridgeError(
-            f"local branch is {local.get('branch')!r}, expected {config.branch!r}"
+            f"local branch is {local.get('branch')!r}, expected {branch!r}"
         )
     if local.get("dirty") and not allow_dirty:
         raise BridgeError("local repository is dirty; commit/stash changes before deploy-code")
@@ -1059,13 +1172,13 @@ def deploy_code_action(
         receipt["warnings"].append("diagnostic override: local repository was dirty")
     local_head = str(local.get("head"))
     remote_ref = runner.run(
-        ["git", "ls-remote", "--heads", config.repository_url, f"refs/heads/{config.branch}"],
+        ["git", "ls-remote", "--heads", config.repository_url, f"refs/heads/{branch}"],
         cwd=repo_root,
         env={"GIT_TERMINAL_PROMPT": "0"},
     )
     if remote_ref.returncode != 0:
         raise _controlled_failure(remote_ref, "GitHub branch query")
-    pushed_head = _parse_ls_remote_head(remote_ref.stdout, config.branch)
+    pushed_head = _parse_ls_remote_head(remote_ref.stdout, branch)
     if pushed_head != local_head and not allow_unpushed:
         raise BridgeError(
             f"local HEAD {local_head} is not the published branch HEAD {pushed_head or 'MISSING'}"
@@ -1089,6 +1202,192 @@ def deploy_code_action(
         "deployed_head": deployed,
         "remote_repo_head": deployed,
         "published_branch_head": pushed_head,
+    }
+
+
+def scp_argv(config: BridgeConfig, source: Path, destination: str) -> list[str]:
+    require_remote_config(config)
+    argv = [
+        "scp",
+        "-P",
+        str(config.port),
+        "-o",
+        "BatchMode=yes",
+    ]
+    if config.identity_file:
+        argv.extend(["-i", config.identity_file])
+    argv.extend(["--", str(source.resolve()), f"{_remote_endpoint(config)}:{destination}"])
+    return argv
+
+
+def build_bundle_deploy_script(
+    config: BridgeConfig,
+    *,
+    expected_head: str,
+    remote_bundle: str,
+    bundle_sha256: str,
+) -> str:
+    """Build the fixed remote verify/fetch/fast-forward bundle workflow."""
+
+    require_remote_config(config)
+    branch = require_branch(config)
+    if not re.fullmatch(r"[0-9a-f]{40}", expected_head):
+        raise BridgeError("expected deploy HEAD must be a full lowercase SHA-1")
+    if not re.fullmatch(r"[0-9a-f]{64}", bundle_sha256):
+        raise BridgeError("bundle SHA-256 must be 64 lowercase hexadecimal characters")
+    remote_bundle = _normalize_remote_path(remote_bundle, "remote bundle path")
+    if not _is_remote_child(remote_bundle, config.remote_cloud_root):
+        raise BridgeError("remote bundle path must be below remote_cloud_root")
+    remote_repo = config.remote_repo or ""
+    repo_parent = str(PurePosixPath(remote_repo).parent)
+    return f"""
+set -eu
+repo={shlex.quote(remote_repo)}
+repo_parent={shlex.quote(repo_parent)}
+bundle={shlex.quote(remote_bundle)}
+branch={shlex.quote(branch)}
+expected={shlex.quote(expected_head)}
+expected_bundle_sha256={shlex.quote(bundle_sha256)}
+url={shlex.quote(config.repository_url)}
+if ! command -v git >/dev/null 2>&1; then printf 'git: MISSING\\n' >&2; exit 127; fi
+if ! command -v sha256sum >/dev/null 2>&1; then printf 'sha256sum: MISSING\\n' >&2; exit 126; fi
+if [ ! -f "$bundle" ]; then printf 'bundle: MISSING\\n' >&2; exit 20; fi
+actual_bundle_sha256=$(sha256sum "$bundle" | awk '{{print $1}}')
+if [ "$actual_bundle_sha256" != "$expected_bundle_sha256" ]; then printf 'bundle SHA-256 mismatch\\n' >&2; exit 21; fi
+if [ -e "$repo" ] && [ ! -d "$repo/.git" ]; then printf 'remote repo path exists but is not a Git repository\\n' >&2; exit 22; fi
+if [ ! -d "$repo/.git" ]; then
+  mkdir -p "$repo_parent"
+  git init "$repo"
+  git -C "$repo" remote add origin "$url"
+fi
+if [ -n "$(git -C "$repo" status --porcelain)" ]; then printf 'remote repository is dirty\\n' >&2; exit 23; fi
+git -C "$repo" bundle verify "$bundle"
+git -C "$repo" fetch "$bundle" "refs/heads/$branch:refs/remotes/sktlm-bundle/$branch"
+fetched=$(git -C "$repo" rev-parse "refs/remotes/sktlm-bundle/$branch")
+if [ "$fetched" != "$expected" ]; then printf 'bundle does not resolve to expected HEAD\\n' >&2; exit 24; fi
+if git -C "$repo" show-ref --verify --quiet "refs/heads/$branch"; then
+  git -C "$repo" switch "$branch"
+  git -C "$repo" merge --ff-only "$expected"
+else
+  git -C "$repo" switch -c "$branch" "$expected"
+fi
+actual=$(git -C "$repo" rev-parse HEAD)
+if [ "$actual" != "$expected" ]; then printf 'HEAD mismatch: expected %s found %s\\n' "$expected" "$actual" >&2; exit 25; fi
+if [ -n "$(git -C "$repo" status --porcelain)" ]; then printf 'remote repository became dirty\\n' >&2; exit 26; fi
+printf 'bundle_sha256=%s\\n' "$actual_bundle_sha256"
+printf 'deployed_head=%s\\n' "$actual"
+""".strip()
+
+
+def deploy_bundle_action(
+    receipt: dict[str, Any],
+    config: BridgeConfig,
+    contract: ExperimentContract,
+    repo_root: Path,
+    runner: SystemRunner,
+    *,
+    bundle_path: Path,
+    expected_bundle_sha256: str | None,
+) -> Mapping[str, Any]:
+    """Deploy one already-created local bundle under a tracked bundle contract."""
+
+    if contract.deployment.mode != "git_bundle":
+        raise BridgeError("experiment contract does not select git_bundle deployment")
+    require_remote_config(config)
+    require_tool("git")
+    require_tool("ssh")
+    require_tool("scp")
+    branch = require_branch(config)
+    local = local_git_status(repo_root, runner)
+    if not local.get("available"):
+        raise BridgeError("local Git repository is unavailable")
+    if local.get("dirty"):
+        raise BridgeError("bundle deployment requires a clean local repository")
+    if local.get("branch") != branch:
+        raise BridgeError(
+            f"local branch is {local.get('branch')!r}, expected {branch!r}"
+        )
+    head = str(local.get("head"))
+    if not re.fullmatch(r"[0-9a-f]{40}", head):
+        raise BridgeError("local HEAD is not a full SHA-1")
+    if not bundle_path.is_absolute():
+        bundle_path = (repo_root / bundle_path).resolve()
+    if not bundle_path.is_file():
+        raise BridgeError(f"local Git bundle is missing: {bundle_path}")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,191}", bundle_path.name):
+        raise BridgeError("local Git bundle filename contains unsupported characters")
+    bundle_sha256 = file_sha256(bundle_path)
+    if expected_bundle_sha256 is not None and expected_bundle_sha256 != bundle_sha256:
+        raise BridgeError("local Git bundle SHA-256 does not match the declared value")
+
+    verified = runner.run(["git", "bundle", "verify", str(bundle_path)], cwd=repo_root)
+    if verified.returncode != 0:
+        raise _controlled_failure(verified, "local Git bundle verification")
+    heads = runner.run(["git", "bundle", "list-heads", str(bundle_path)], cwd=repo_root)
+    if heads.returncode != 0:
+        raise _controlled_failure(heads, "local Git bundle head inventory")
+    if not any(line.split(maxsplit=1)[0] == head for line in heads.stdout.splitlines() if line):
+        raise BridgeError("local Git bundle does not contain the exact local HEAD")
+
+    published_head: str | None = None
+    if contract.deployment.require_published_head:
+        remote_ref = runner.run(
+            ["git", "ls-remote", "--heads", config.repository_url, f"refs/heads/{branch}"],
+            cwd=repo_root,
+            env={"GIT_TERMINAL_PROMPT": "0"},
+        )
+        if remote_ref.returncode != 0:
+            raise _controlled_failure(remote_ref, "published branch query")
+        published_head = _parse_ls_remote_head(remote_ref.stdout, branch)
+        if published_head != head:
+            raise BridgeError("local HEAD must equal the published contract branch HEAD")
+
+    remote_directory = posixpath.join(
+        config.remote_cloud_root, "deployment_bundles", contract.contract_id
+    )
+    remote_bundle = posixpath.join(remote_directory, bundle_path.name)
+    prepare_script = (
+        "set -eu\n"
+        + _remote_mount_guard(config)
+        + f"\nmkdir -p -- {shlex.quote(remote_directory)}"
+    )
+    prepared = run_ssh(config, prepare_script, runner)
+    if prepared.returncode != 0:
+        raise _controlled_failure(prepared, "remote bundle destination preparation")
+    transfer_command = scp_argv(config, bundle_path, remote_bundle)
+    receipt["command"] = public_argv(transfer_command)
+    transferred = runner.run(transfer_command)
+    receipt["scp_return_code"] = transferred.returncode
+    if transferred.returncode != 0:
+        raise _controlled_failure(transferred, "Git bundle transfer")
+    deployed_result = run_ssh(
+        config,
+        build_bundle_deploy_script(
+            config,
+            expected_head=head,
+            remote_bundle=remote_bundle,
+            bundle_sha256=bundle_sha256,
+        ),
+        runner,
+    )
+    receipt["ssh_return_code"] = deployed_result.returncode
+    if deployed_result.returncode != 0:
+        raise _controlled_failure(deployed_result, "remote Git bundle deployment")
+    values = _parse_key_values(deployed_result.stdout)
+    if values.get("bundle_sha256") != bundle_sha256:
+        raise BridgeError("remote deployment did not verify the transferred bundle hash")
+    if values.get("deployed_head") != head:
+        raise BridgeError("remote deployment did not verify the exact contract HEAD")
+    return {
+        "valid": True,
+        "deployed_head": head,
+        "remote_repo_head": head,
+        "published_branch_head": published_head,
+        "bundle": {
+            "local_path": str(bundle_path),
+            "remote_path": remote_bundle,
+            "sha256": bundle_sha256,
+        },
     }
 
 
@@ -1147,14 +1446,15 @@ def push_inputs_action(
     require_tool("git")
     require_tool("ssh")
     require_tool("rsync")
+    branch = require_branch(config)
     local = local_git_status(repo_root, runner)
     if not local.get("available"):
         raise BridgeError("local Git repository is unavailable")
     if local.get("dirty"):
         raise BridgeError("local repository is dirty; tracked manifests must match deployed code")
-    if local.get("branch") != config.branch:
+    if local.get("branch") != branch:
         raise BridgeError(
-            f"local branch is {local.get('branch')!r}, expected {config.branch!r}"
+            f"local branch is {local.get('branch')!r}, expected {branch!r}"
         )
     local_head = str(local.get("head"))
     remote_head = remote_repo_head(config, runner)
@@ -1223,6 +1523,98 @@ def push_inputs_action(
         receipt["warnings"].append("remote validation skipped by --no-verify")
     return {
         "valid": True,
+        "remote_repo_head": remote_head,
+        "remote_validator_result": remote_validation,
+    }
+
+
+def push_contract_inputs_action(
+    receipt: dict[str, Any],
+    config: BridgeConfig,
+    contract: ExperimentContract,
+    repo_root: Path,
+    runner: SystemRunner,
+    *,
+    verify_after: bool,
+) -> Mapping[str, Any]:
+    """Validate and transfer only the input sets declared by the contract."""
+
+    require_remote_config(config)
+    require_transfer_platform()
+    require_tool("git")
+    require_tool("ssh")
+    require_tool("rsync")
+    branch = require_branch(config)
+    local = local_git_status(repo_root, runner)
+    if not local.get("available"):
+        raise BridgeError("local Git repository is unavailable")
+    if local.get("dirty"):
+        raise BridgeError("local repository is dirty; contract inputs require exact code")
+    if local.get("branch") != branch:
+        raise BridgeError(
+            f"local branch is {local.get('branch')!r}, expected {branch!r}"
+        )
+    local_head = str(local.get("head"))
+    remote_head = remote_repo_head(config, runner)
+    receipt["remote_repo_head"] = remote_head
+    if remote_head != local_head:
+        raise BridgeError(
+            f"remote repo HEAD {remote_head} does not match local HEAD {local_head}; deploy-code first"
+        )
+
+    receipt["local_input_validation"] = validate_contract_inputs_local(
+        repo_root, contract, runner
+    )
+    receipt["remote_mount"] = check_remote_data_mount(config, runner)
+
+    transfers: list[dict[str, Any]] = []
+    for input_set in contract.input_sets:
+        for relative in input_set.paths:
+            source = repo_root / relative
+            destination = posixpath.join(config.remote_cloud_root, relative)
+            if not _is_remote_child(destination, config.remote_cloud_root):
+                raise BridgeError(f"contract input destination escapes cloud root: {relative}")
+            destination_directory = (
+                destination if source.is_dir() else posixpath.dirname(destination)
+            )
+            prepare_script = (
+                "set -eu\n"
+                + _remote_mount_guard(config)
+                + f"\nmkdir -p -- {shlex.quote(destination_directory)}"
+            )
+            prepared = run_ssh(config, prepare_script, runner)
+            if prepared.returncode != 0:
+                raise _controlled_failure(
+                    prepared, f"remote input destination for {relative}"
+                )
+            command = build_rsync_argv(
+                config,
+                source=source,
+                destination=destination_directory,
+                direction="push",
+                append_verify=True,
+            )
+            records = _run_rsync(
+                command, runner, receipt, f"{input_set.input_id}:{relative}"
+            )
+            transfers.append(
+                {
+                    "input_id": input_set.input_id,
+                    "path": relative,
+                    "destination": destination,
+                    "records": records,
+                }
+            )
+
+    remote_validation: dict[str, Any] | None = None
+    if verify_after:
+        remote_validation = verify_contract_remote_inputs(config, contract, runner)
+    else:
+        receipt["warnings"].append("remote validation skipped by --no-verify")
+    return {
+        "valid": True,
+        "contract_id": contract.contract_id,
+        "input_sets": transfers,
         "remote_repo_head": remote_head,
         "remote_validator_result": remote_validation,
     }
@@ -1672,8 +2064,212 @@ def collect_action(
     }
 
 
+def contract_host_assignment(
+    repo_root: Path,
+    config: BridgeConfig,
+    contract: ExperimentContract,
+    workload_id: str,
+) -> Mapping[str, Any] | None:
+    """Resolve a direct contract assignment or its declared tracked registry."""
+
+    direct_role = contract.host_role_for(workload_id)
+    if direct_role is not None:
+        selected = config.host_role or config.machine_id or config.host_profile
+        if selected != direct_role:
+            raise BridgeError(
+                f"workload {workload_id!r} is assigned to host role {direct_role!r}, "
+                f"not {selected!r}"
+            )
+        return {
+            "source": "experiment_contract",
+            "workload_id": workload_id,
+            "host_role": direct_role,
+        }
+    if contract.host_registry is None:
+        return None
+    registry_path = repo_root / contract.host_registry
+    if not registry_path.is_file():
+        raise BridgeError(f"contract host registry is missing: {registry_path}")
+    raw = tomllib.loads(registry_path.read_text(encoding="utf-8"))
+    candidates = raw.get("assignments", raw.get("runs", []))
+    if not isinstance(candidates, list):
+        raise BridgeError("contract host registry must contain assignments or runs")
+    matches = [
+        row
+        for row in candidates
+        if isinstance(row, dict)
+        and row.get("workload_id", row.get("run_id", row.get("condition_id")))
+        == workload_id
+    ]
+    if len(matches) != 1:
+        raise BridgeError(
+            f"workload must have exactly one contract registry assignment: {workload_id}"
+        )
+    row = matches[0]
+    expected = row.get("host_role", row.get("host_profile", row.get("machine_id")))
+    selected = config.host_role or config.host_profile or config.machine_id
+    if expected != selected:
+        raise BridgeError(
+            f"workload {workload_id!r} is assigned to {expected!r}, not {selected!r}"
+        )
+    return {"source": contract.host_registry, **dict(row)}
+
+
+def remote_contract_audit(
+    config: BridgeConfig,
+    contract: ExperimentContract,
+    workload_id: str,
+    runner: SystemRunner,
+) -> tuple[dict[str, Any], str]:
+    require_remote_config(config)
+    workload_id = validate_run_id(workload_id)
+    artifact_dir = posixpath.join(
+        config.remote_repo or "", contract.remote_run_root, workload_id
+    )
+    metrics_dir = (
+        posixpath.join(
+            config.remote_repo or "", contract.optional_metrics_root, workload_id
+        )
+        if contract.optional_metrics_root is not None
+        else ""
+    )
+    values = {
+        "condition_id": workload_id,
+        "workload_id": workload_id,
+        "artifact_dir": artifact_dir,
+        "metrics_dir": metrics_dir,
+    }
+    try:
+        argv = [part.format_map(values) for part in contract.audit_argv]
+    except KeyError as exc:
+        raise BridgeError(f"unknown audit placeholder: {exc.args[0]}") from exc
+    script = f"cd {shlex.quote(config.remote_repo or '')} && {shlex.join(argv)}"
+    result = run_ssh(config, script, runner)
+    if not result.stdout.strip():
+        raise _controlled_failure(result, "remote contract audit")
+    payload = parse_json_output(result.stdout, "remote contract audit")
+    if result.returncode != 0 or payload.get("valid") is not True:
+        raise BridgeError("remote contract audit rejected the result")
+    return payload, artifact_dir
+
+
+def validate_contract_downloaded_hashes(
+    collection: Path,
+    audit: Mapping[str, Any],
+    contract: ExperimentContract,
+    profile: str,
+) -> list[str]:
+    inventory = audit.get(contract.audit_inventory_key)
+    if not isinstance(inventory, Mapping):
+        raise BridgeError(
+            f"remote audit lacks inventory key {contract.audit_inventory_key!r}"
+        )
+    selected = contract.profile_files(profile)
+    expected = set(inventory) if selected is None else set(selected)
+    expected.update(contract.required_audited_files)
+    failures: list[str] = []
+    for relative in sorted(expected):
+        row = inventory.get(relative)
+        if not isinstance(row, Mapping):
+            failures.append(f"remote audit lacks required item: {relative}")
+            continue
+        path = collection / relative
+        if not path.is_file():
+            failures.append(f"downloaded file is missing: {relative}")
+            continue
+        if path.stat().st_size != int(row.get("bytes", -1)):
+            failures.append(f"downloaded size mismatch: {relative}")
+        if file_sha256(path) != row.get("sha256"):
+            failures.append(f"downloaded SHA-256 mismatch: {relative}")
+    return failures
+
+
+def collect_contract_action(
+    receipt: dict[str, Any],
+    config: BridgeConfig,
+    contract: ExperimentContract,
+    repo_root: Path,
+    runner: SystemRunner,
+    *,
+    workload_id: str,
+    profile: str,
+    output_root: Path | None,
+) -> Mapping[str, Any]:
+    require_transfer_platform()
+    require_tool("ssh")
+    require_tool("rsync")
+    workload_id = validate_run_id(workload_id)
+    assignment = contract_host_assignment(
+        repo_root, config, contract, workload_id
+    )
+    if assignment is not None:
+        receipt["host_assignment"] = assignment
+    audit, artifact_dir = remote_contract_audit(
+        config, contract, workload_id, runner
+    )
+    receipt["remote_audit"] = audit
+    audit_digest = hashlib.sha256(
+        json.dumps(audit, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+    default_root = repo_root / contract.local_collection_root
+    collection = _local_collection_root(
+        repo_root,
+        output_root or default_root,
+        workload_id,
+        resume_identity={
+            "contract_id": contract.contract_id,
+            "workload_id": workload_id,
+            "profile": profile,
+            "host_profile": config.host_profile,
+            "audit_sha256": audit_digest,
+        },
+    )
+    selected = contract.profile_files(profile)
+    command = build_rsync_argv(
+        config,
+        source=artifact_dir,
+        destination=collection,
+        direction="pull",
+        includes=selected,
+        compress=profile in {"scientific", "full"},
+        append_verify=True,
+    )
+    _run_rsync(command, runner, receipt, f"contract:{profile}")
+    failures = validate_contract_downloaded_hashes(
+        collection, audit, contract, profile
+    )
+    if failures:
+        receipt["failures"].extend(failures)
+        raise BridgeError("downloaded contract artifacts failed audit comparison")
+    audit_path = collection / "remote_audit.json"
+    if audit_path.exists():
+        raise BridgeError("collection unexpectedly contains remote_audit.json")
+    audit_path.write_text(
+        json.dumps(audit, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="",
+    )
+    _complete_collection(collection)
+    return {
+        "valid": True,
+        "contract_id": contract.contract_id,
+        "workload_id": workload_id,
+        "transfer_profile": profile,
+        "local_destination": str(collection),
+        "remote_audit_sha256": audit_digest,
+        "remote_repo_head": remote_repo_head(config, runner),
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--contract",
+        type=Path,
+        help="tracked experiment contract supplying branch and deployment identity",
+    )
     parser.add_argument(
         "--config",
         type=Path,
@@ -1721,6 +2317,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--allow-unpushed",
         action="store_true",
         help="diagnostic override; remote fetch must still be able to obtain HEAD",
+    )
+    deploy.add_argument(
+        "--bundle",
+        type=Path,
+        help="verified local bundle required when the contract selects git_bundle",
+    )
+    deploy.add_argument(
+        "--bundle-sha256",
+        help="optional expected lowercase SHA-256 for the local bundle",
     )
 
     push = commands.add_parser(
@@ -1853,6 +2458,7 @@ def _run_receipted_cli(
     config: BridgeConfig,
     runner: SystemRunner,
     action: Callable[[dict[str, Any]], Mapping[str, Any]],
+    contract: ExperimentContract | None = None,
 ) -> int:
     receipt, path, error = execute_receipted(
         operation,
@@ -1861,6 +2467,7 @@ def _run_receipted_cli(
         config,
         runner,
         action,
+        contract,
     )
     safe_receipt = _redact_payload(receipt, config_sensitive_values(config))
     _print_receipt_result(safe_receipt, path)
@@ -1876,8 +2483,14 @@ def main(
     args = parser.parse_args(argv)
     active_runner = runner or SystemRunner()
     config: BridgeConfig | None = None
+    contract: ExperimentContract | None = None
     try:
         repo_root = discover_repo_root(active_runner)
+        if args.contract is not None:
+            contract_path = args.contract
+            if not contract_path.is_absolute():
+                contract_path = (repo_root / contract_path).resolve()
+            contract = load_experiment_contract(contract_path)
         config_path = args.config
         explicit_config = config_path is not None
         if config_path is None:
@@ -1890,16 +2503,25 @@ def main(
             explicit=explicit_config,
             host_profile=args.host_profile,
         )
+        if contract is not None:
+            config = bind_experiment_contract(config, contract)
 
         if args.command == "status":
             snapshot = status_snapshot(repo_root, config, active_runner)
+            snapshot["experiment_contract"] = (
+                contract.deployment_identity if contract is not None else None
+            )
             if args.json:
                 print(json.dumps(snapshot, ensure_ascii=False, indent=2, sort_keys=True))
             else:
                 _print_human_status(snapshot)
             return 0
         if args.command == "verify-remote":
-            result = verify_remote_inputs(config, active_runner)
+            result = (
+                verify_contract_remote_inputs(config, contract, active_runner)
+                if contract is not None
+                else verify_remote_inputs(config, active_runner)
+            )
             if args.json:
                 print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
             else:
@@ -1910,6 +2532,36 @@ def main(
                 )
             return 0
         if args.command == "deploy-code":
+            if contract is not None and contract.deployment.mode == "git_bundle":
+                if args.bundle is None:
+                    raise BridgeError(
+                        "git_bundle deployment requires deploy-code --bundle PATH"
+                    )
+                if args.allow_dirty or args.allow_unpushed:
+                    raise BridgeError(
+                        "git_bundle deployment does not permit diagnostic deploy overrides"
+                    )
+                return _run_receipted_cli(
+                    "deploy-code",
+                    "verified_bundle_to_remote",
+                    repo_root,
+                    config,
+                    active_runner,
+                    lambda receipt: deploy_bundle_action(
+                        receipt,
+                        config,
+                        contract,
+                        repo_root,
+                        active_runner,
+                        bundle_path=args.bundle,
+                        expected_bundle_sha256=args.bundle_sha256,
+                    ),
+                    contract,
+                )
+            if args.bundle is not None or args.bundle_sha256 is not None:
+                raise BridgeError(
+                    "bundle arguments require a git_bundle experiment contract"
+                )
             return _run_receipted_cli(
                 "deploy-code",
                 "github_to_remote",
@@ -1924,6 +2576,7 @@ def main(
                     allow_dirty=args.allow_dirty,
                     allow_unpushed=args.allow_unpushed,
                 ),
+                contract,
             )
         if args.command == "push-inputs":
             return _run_receipted_cli(
@@ -1932,15 +2585,31 @@ def main(
                 repo_root,
                 config,
                 active_runner,
-                lambda receipt: push_inputs_action(
-                    receipt,
-                    config,
-                    repo_root,
-                    active_runner,
-                    verify_after=not args.no_verify,
+                (
+                    lambda receipt: push_contract_inputs_action(
+                        receipt,
+                        config,
+                        contract,
+                        repo_root,
+                        active_runner,
+                        verify_after=not args.no_verify,
+                    )
+                    if contract is not None
+                    else lambda receipt: push_inputs_action(
+                        receipt,
+                        config,
+                        repo_root,
+                        active_runner,
+                        verify_after=not args.no_verify,
+                    )
                 ),
+                contract,
             )
         if args.command == "pull-results":
+            if contract is not None:
+                raise BridgeError(
+                    "contract-driven retrieval requires collect so remote audit runs first"
+                )
             metrics_id = args.metrics_id or args.run_id
             return _run_receipted_cli(
                 "pull-results",
@@ -1958,9 +2627,33 @@ def main(
                     profile=args.profile,
                     output_root=args.output_root,
                 ),
+                contract,
             )
         if args.command == "collect":
             metrics_id = args.metrics_id or args.run_id
+            if contract is not None:
+                if args.metrics_id is not None:
+                    raise BridgeError(
+                        "contract controls remote roots; --metrics-id is not accepted"
+                    )
+                return _run_receipted_cli(
+                    "collect",
+                    "remote_to_local",
+                    repo_root,
+                    config,
+                    active_runner,
+                    lambda receipt: collect_contract_action(
+                        receipt,
+                        config,
+                        contract,
+                        repo_root,
+                        active_runner,
+                        workload_id=args.run_id,
+                        profile=args.profile,
+                        output_root=args.output_root,
+                    ),
+                    contract,
+                )
             return _run_receipted_cli(
                 "collect",
                 "remote_to_local",
@@ -1977,9 +2670,10 @@ def main(
                     profile=args.profile,
                     output_root=args.output_root,
                 ),
+                contract,
             )
         parser.error(f"unsupported command: {args.command}")
-    except BridgeError as exc:
+    except (BridgeError, ContractError) as exc:
         message = str(exc)
         if config is not None:
             for sensitive in config_sensitive_values(config):

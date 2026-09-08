@@ -12,8 +12,11 @@ remote_repo = "/home/ubuntu/sktlm"
 remote_data_mount = "/mnt/sktlm-data"
 remote_cloud_root = "/mnt/sktlm-data/sktlm"
 
-branch = "exp/m0-core-methods"
 repository_url = "https://github.com/KelvinYangBK67/sktlm.git"
+
+# Supply scientific branch/deployment identity with the tracked experiment
+# contract passed as `--contract`. A local `branch = "..."` is supported only
+# for legacy status/diagnostic use and must agree exactly when a contract is used.
 
 # Optional multi-host overlays. The [bridge] table above remains the
 # backward-compatible single-host configuration. Copy this file to the ignored

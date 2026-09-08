@@ -25,19 +25,9 @@ checked out, or force-added.
 
 ## Next task
 
-Commit and push the tracked M0-prime formal checkpoint on `main`. Then build a
-clean S1M2 branch from updated `main` and preserve the existing P0 and P1a/P1b
-work by cherry-picking commits `f95bc5f` and `3d4c512`. Do not check out or
-carry forward the old branch's historically tracked `notes/reviewer/*` files;
-the two S1M2 commits themselves do not touch `notes/**`.
-
-Resolve durable state and `pyproject.toml` against current `main`, run the
-focused P0/P1a/P1b and M0-prime interface tests, audit the untyped exact-
-concatenation/no-morphology contract, and push the synchronized branch. Do not
-implement P1c and do not launch an S1M2 full-corpus experiment.
-
-The exact stop condition remains:
-
-```text
-S1M2 P1c READY TO START
-```
+The generic cloud experiment contract and configurable Git deployment
+transport are complete on `main`. Merge the published `main` into
+`exp/s1m2-reusable-pieces`, retain S1M2 scientific semantics and bundle
+deployment, and replace the obsolete single-VM Round 1/Round 2 control plane
+with the researcher-decided six-host parallel mapping. Do not run any VM,
+representative, stress, Round 1, Round 2, Final, or full-M0 workload.

@@ -1270,3 +1270,26 @@ check. Generated text and execution artifacts remain ignored; the tracked
 formal checkpoint records the permanent interface/provenance. M0-prime is
 complete and validated. S1M2 synchronization/readiness is next; P1c has not
 started.
+
+## 45. Generic cloud experiment contract (2026-09-08)
+
+The shared cloud control plane is now experiment-neutral without discarding
+the stronger existing SSH argv isolation, filesystem/mount/path guards,
+resumable rsync and collection identity, receipt redaction, remote audit, or
+downloaded hash comparison. `src/sktlm/cloud/contracts.py` owns a strict
+tracked contract for branch, deployment transport, frozen input sets, remote
+roots, audit/completion identity, collection profiles, and host assignments.
+
+The bridge has no default experiment branch. A tracked `--contract` binds the
+branch and refuses conflicting local configuration. `git_remote` keeps the
+legacy clean/published/exact-HEAD fast-forward path; `git_bundle` verifies the
+local bundle and contained HEAD, transfers it below the guarded data mount,
+verifies SHA-256 and `git bundle verify` remotely, and performs only an exact
+fast-forward update. Contract-driven input sync and audited collection reuse
+the established no-delete, deterministic, fail-closed primitives. Baseline
+matrix, baseline audit adapters, baseline configs, and baseline scientific
+logic were not copied into `main`.
+
+Focused contract tests pass (`9 passed`); the complete cloud suite passes
+(`61 passed`). No SSH, SCP, rsync, VM, benchmark, representative, stress, or
+full-M0 operation ran.
