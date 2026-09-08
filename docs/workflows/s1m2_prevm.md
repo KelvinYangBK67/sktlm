@@ -55,8 +55,10 @@ The bounded validation uses one frozen document, one line, one pass, one worker,
 exact training, and exact inspection for all six cells. It must emit
 `bounded_validation.json` with `cell_count=6`, `status=PASS`, and a valid
 checkpoint/config/provenance/storage/scientific-artifact audit for every cell.
-It is an interface check only and must not be cited as representative timing or
-scientific evidence.
+The machine-readable `script_neutral_production_path` gate must also compare
+piece inventory, lexical diagnostics, and rule usage across each matched
+IAST/Devanagari condition and pass. It is an interface check only and must not
+be cited as representative timing or scientific evidence.
 
 If any check exceeds five minutes, stop it, preserve its output, and report the
 exact unfinished command as an external gate. Never replace it with a larger

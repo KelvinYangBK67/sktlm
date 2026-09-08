@@ -34,6 +34,11 @@ RUN_SCHEMA = "sktlm-s1m2-run-manifest/v1"
 ROUND1_SCHEMA = "sktlm-s1m2-round1-result/v1"
 ROUND2_SCHEMA = "sktlm-s1m2-round2-result/v1"
 BOUND_VALIDATION_SCHEMA = "sktlm-s1m2-bounded-validation/v1"
+SCRIPT_NEUTRAL_ARTIFACTS = (
+    "piece_inventory.tsv",
+    "lexical_diagnostics.tsv",
+    "rule_usage.tsv",
+)
 ROUND1_WORKERS = (4, 8, 12, 16, 20, 24)
 SCIENTIFIC_CONFIG_FIELDS = (
     "lexical_alpha",
@@ -1195,6 +1200,58 @@ def evaluate_round2(
     }
 
 
+def _script_neutral_bounded_gate(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    by_cell = {row["cell_id"]: row for row in rows}
+    pairs = (
+        (
+            "surface_word",
+            "s1m2_m0_iast_surface_word",
+            "s1m2_m0_devanagari_surface_word",
+        ),
+        (
+            "legacy_joined",
+            "s1m2_m0_iast_legacy_joined",
+            "s1m2_m0_devanagari_legacy_joined",
+        ),
+        (
+            "continuous",
+            "s1m2_m0_prime_iast_continuous",
+            "s1m2_m0_devanagari_continuous",
+        ),
+    )
+    comparisons = []
+    for condition, iast_id, devanagari_id in pairs:
+        left = by_cell.get(iast_id, {})
+        right = by_cell.get(devanagari_id, {})
+        artifacts = {}
+        for name in SCRIPT_NEUTRAL_ARTIFACTS:
+            left_identity = left.get("scientific_artifacts", {}).get(name)
+            right_identity = right.get("scientific_artifacts", {}).get(name)
+            artifacts[name] = {
+                "equal": left_identity is not None and left_identity == right_identity,
+                "iast": left_identity,
+                "devanagari": right_identity,
+            }
+        comparisons.append(
+            {
+                "condition": condition,
+                "iast_cell_id": iast_id,
+                "devanagari_cell_id": devanagari_id,
+                "artifacts": artifacts,
+                "valid": all(item["equal"] for item in artifacts.values()),
+            }
+        )
+    return {
+        "status": "PASS" if all(row["valid"] for row in comparisons) else "FAIL",
+        "scope": (
+            "bounded_same-canonical-content dispatcher/frontend check; "
+            "not a representative scientific result"
+        ),
+        "compared_artifacts": list(SCRIPT_NEUTRAL_ARTIFACTS),
+        "comparisons": comparisons,
+    }
+
+
 def run_bounded_validation(
     contract: dict[str, Any],
     *,
@@ -1229,6 +1286,7 @@ def run_bounded_validation(
                 "scientific_artifacts": audit.get("scientific_artifacts", {}),
             }
         )
+    script_neutral_gate = _script_neutral_bounded_gate(rows)
     payload = {
         "schema_version": BOUND_VALIDATION_SCHEMA,
         "git_sha": identity["git_sha"],
@@ -1236,8 +1294,15 @@ def run_bounded_validation(
         "dirty_worktree_at_start": identity["dirty_worktree"],
         "production_contract_sha256": _canonical_sha256(contract),
         "cell_count": len(rows),
-        "status": "PASS" if len(rows) == 6 and all(row["valid"] for row in rows) else "FAIL",
+        "status": (
+            "PASS"
+            if len(rows) == 6
+            and all(row["valid"] for row in rows)
+            and script_neutral_gate["status"] == "PASS"
+            else "FAIL"
+        ),
         "classification": "BOUNDED_INTERFACE_NOT_SCIENTIFIC_OR_REPRESENTATIVE",
+        "script_neutral_production_path": script_neutral_gate,
         "cells": rows,
     }
     _write_json(output_root / "bounded_validation.json", payload)

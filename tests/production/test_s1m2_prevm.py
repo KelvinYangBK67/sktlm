@@ -211,6 +211,32 @@ def test_round2_gates_are_machine_readable(monkeypatch: pytest.MonkeyPatch) -> N
     assert result["S1M2_SIX_CELL_INTERFACE_GATE"] == "PASS"
 
 
+def test_bounded_script_neutral_gate_covers_all_three_conditions() -> None:
+    contract = _contract()
+    rows = []
+    for cell in contract["cells"]:
+        rows.append(
+            {
+                "cell_id": cell["cell_id"],
+                "scientific_artifacts": {
+                    name: {"bytes": 1, "sha256": f"same-{name}"}
+                    for name in s1m2.SCRIPT_NEUTRAL_ARTIFACTS
+                },
+            }
+        )
+    gate = s1m2._script_neutral_bounded_gate(rows)
+    assert gate["status"] == "PASS"
+    assert [row["condition"] for row in gate["comparisons"]] == [
+        "surface_word", "legacy_joined", "continuous"
+    ]
+
+    rows[0]["scientific_artifacts"]["piece_inventory.tsv"] = {
+        "bytes": 2,
+        "sha256": "different",
+    }
+    assert s1m2._script_neutral_bounded_gate(rows)["status"] == "FAIL"
+
+
 def test_final_plan_fails_closed_before_round2_passes() -> None:
     contract = _contract()
     failed = _round2_result(status="FAIL", workers=8)
