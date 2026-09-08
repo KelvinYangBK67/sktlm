@@ -51,4 +51,4 @@ continuous workload selected only from the frozen static structure scan, with
 both stress documents excluded, three passes, and 256 lines per document.
 Remote formal audits reduce to compact attestations; local winner aggregation
 downloads no full run directory. The 10% direct-wall/practical-tie rule is
-unchanged. These corrections remain uncommitted pending researcher review.
+unchanged. These corrections are committed and published as the current S1M2 pre-VM state.
