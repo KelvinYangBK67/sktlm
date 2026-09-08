@@ -1,7 +1,7 @@
 {
   "schema_version": "sktlm-s1m2-pre-vm-closure-evidence/v1",
   "status": "READY_FOR_MANUAL_VM_ROUND1",
-  "tested_implementation_git_sha": "c2297253d373943768652f0ee7430992d27d80b0",
+  "tested_implementation_git_sha": "dd19b3bfea314ff83f3298dba46d4bc6b1d1f7de",
   "branch": "exp/s1m2-reusable-pieces",
   "production_contract": {
     "path": "configs/production/s1m2_six_cell.json",
@@ -18,13 +18,13 @@
     "truncated_archive_scientific_identity": "PASS"
   },
   "focused_gate": {
-    "command": "python -m pytest tests/production/test_s1m2_prevm.py tests/pieces/test_s1m2_training.py tests/cloud/test_audit_latent_run.py tests/cloud/test_sktlm_bridge.py -q",
-    "result": "72 passed in 16.92s",
+    "command": "python -m pytest tests/production/test_s1m2_prevm.py tests/latent/test_s1m2_benchmark_contract.py tests/pieces/test_s1m2_training.py tests/cloud/test_audit_latent_run.py tests/cloud/test_sktlm_bridge.py -q",
+    "result": "76 passed in 13.73s",
     "status": "PASS"
   },
   "full_repository_gate": {
     "command": "python -m pytest -q",
-    "result": "667 passed, 4 warnings in 83.65s",
+    "result": "669 passed, 2 warnings in 61.74s",
     "status": "PASS",
     "warnings": "Two known PyTorch nested-tensor warnings and two SentencePiece SWIG deprecation warnings; no test failures."
   },
@@ -36,7 +36,14 @@
     "artifact_sha256": "e5fbcb50f827910f04f630876c4418e46bfdb0c959c79399c5192444a2649e61",
     "embedded_plan_sha256": "9f3d618c7c4e6c506df7a1f7165e7f85a7014ab827b2816bfb16d21b643c2ac6",
     "jobs": 6,
-    "workers": [4, 8, 12, 16, 20, 24],
+    "workers": [
+      4,
+      8,
+      12,
+      16,
+      20,
+      24
+    ],
     "one_scientific_configuration": true,
     "dirty_worktree": false,
     "status": "PASS"

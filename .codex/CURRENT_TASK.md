@@ -20,7 +20,7 @@ ROUND2_GATES=READY
 PROVENANCE=READY
 FINAL_SIX_CELL_GENERATOR=READY
 S1M2_SIX_CELL_BOUNDED_VALIDATION=PASS
-FULL_REPO_GATE=PASS_667_TESTS
+FULL_REPO_GATE=PASS_669_TESTS
 PRE_VM_INTERFACE_STATE=READY
 ROUND1_STATUS=NOT_STARTED
 ROUND2_STATUS=NOT_STARTED
@@ -32,11 +32,11 @@ The authoritative machine-readable contract is
 `configs/production/s1m2_six_cell.json` (canonical SHA-256
 `5e5591d844e7181a8fc51f405d1ad1c8a73ce99809f24e6096dd75a722e9df29`).
 The implementation/config/interface candidate was tested cleanly at
-`c2297253d373943768652f0ee7430992d27d80b0`; use the final pushed HEAD
+`dd19b3bfea314ff83f3298dba46d4bc6b1d1f7de`; use the final pushed HEAD
 reported by the closing session as `PRE_VM_S1M2_SHA`.
 
-Focused validation: `72 passed in 16.92s`. Full repository validation:
-`667 passed, 4 warnings in 83.65s`. The clean bounded six-cell run passed all
+Focused validation: `76 passed in 13.73s`. Full repository validation:
+`669 passed, 2 warnings in 61.74s`. The clean bounded six-cell run passed all
 six artifact/config/checkpoint/provenance/storage audits and all three matched
 script-neutral production-path comparisons. Evidence is
 `evidence/s1m2_prevm_closure_v1.json`. No representative, stress, VM, cloud,
