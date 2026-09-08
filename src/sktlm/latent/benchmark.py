@@ -66,7 +66,12 @@ def _checked_file(repo_root: Path, path: Path, expected_sha256: str) -> None:
         )
 
 
-def _load_benchmark_spec(benchmark: str, repo_root: Path) -> BenchmarkSpec:
+def _load_benchmark_spec(
+    benchmark: str,
+    repo_root: Path,
+    *,
+    verify_files: bool = True,
+) -> BenchmarkSpec:
     if benchmark in LEGACY_BENCHMARK_LISTS:
         return BenchmarkSpec(
             model=S1M1_MODEL,
@@ -112,8 +117,9 @@ def _load_benchmark_spec(benchmark: str, repo_root: Path) -> BenchmarkSpec:
         raise ValueError("max_lines_per_document must be positive when present.")
     assert spec.manifest_sha256 is not None
     assert spec.document_list_sha256 is not None
-    _checked_file(repo_root, spec.manifest, spec.manifest_sha256)
-    _checked_file(repo_root, spec.document_list, spec.document_list_sha256)
+    if verify_files:
+        _checked_file(repo_root, spec.manifest, spec.manifest_sha256)
+        _checked_file(repo_root, spec.document_list, spec.document_list_sha256)
     return spec
 
 

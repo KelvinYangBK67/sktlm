@@ -1175,11 +1175,17 @@ def evaluate_round2(
             peak = resources["peak_process_tree_rss_bytes"]
             host = resources["host_memory_bytes"]
             memory_ok &= peak is not None and host is not None and peak <= host * contract["gates"]["memory_max_host_fraction"]
+            peak_storage = resources["peak_watched_run_bytes"]
             free_end = resources["filesystem_free_bytes_end"]
-            storage_ok &= free_end is not None and free_end >= contract["gates"]["storage_min_free_bytes_end"]
+            storage_ok &= (
+                peak_storage is not None
+                and peak_storage <= contract["gates"]["storage_max_bytes"]
+                and free_end is not None
+                and free_end >= contract["gates"]["storage_min_free_bytes_end"]
+            )
             if job["workload_id"] == "representative":
                 wall_projection = float(resources["wall_seconds"]) * representative_scale
-                storage_projection = float(resources["peak_watched_run_bytes"]) * representative_scale
+                storage_projection = float(peak_storage) * representative_scale
                 projections[job["cell_id"]] = wall_projection
                 runtime_ok &= wall_projection <= contract["gates"]["continuous_runtime_target_seconds_full_projection"]
                 storage_ok &= storage_projection <= contract["gates"]["storage_max_bytes"]

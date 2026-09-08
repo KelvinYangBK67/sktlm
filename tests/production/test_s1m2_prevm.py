@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import copy
 import json
-import tomllib
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10
+    import tomli as tomllib
 
 import pytest
 
@@ -18,7 +22,7 @@ IDENTITY = {
 
 
 def _contract() -> dict[str, object]:
-    return s1m2.load_contract(repo_root=Path("."))
+    return s1m2.load_contract(repo_root=Path("."), verify_files=False)
 
 
 def _round1_result(workers: int = 16) -> dict[str, object]:
@@ -250,6 +254,56 @@ def test_round2_gates_are_machine_readable(monkeypatch: pytest.MonkeyPatch) -> N
     assert result["PRODUCTION_RESUME_GATE"] == "PASS"
     assert result["PRODUCTION_PROVENANCE_GATE"] == "PASS"
     assert result["S1M2_SIX_CELL_INTERFACE_GATE"] == "PASS"
+
+
+@pytest.mark.parametrize("target_workload", ["stress", "smoke"])
+def test_round2_storage_gate_fails_closed_on_actual_peak_for_all_job_classes(
+    monkeypatch: pytest.MonkeyPatch,
+    target_workload: str,
+) -> None:
+    contract = _contract()
+    plan = s1m2.build_round2_plan(
+        contract, _round1_result(12), identity=IDENTITY
+    )
+    storage_max = int(contract["gates"]["storage_max_bytes"])
+    target_job_id = next(
+        job["job_id"]
+        for job in plan["jobs"]
+        if job["workload_id"] == target_workload
+    )
+
+    def fake_audit(
+        _plan: object,
+        job: dict[str, object],
+        _contract_value: object,
+        *,
+        repo_root: Path,
+    ) -> dict[str, object]:
+        peak_storage = (
+            storage_max + 1 if job["job_id"] == target_job_id else 1024
+        )
+        return {
+            "valid": True,
+            "failures": [],
+            "artifact_audit": {
+                "run_dir": str(repo_root / "missing-test-run-dir"),
+                "metrics": {
+                    "wall_seconds": 100.0,
+                    "peak_process_tree_rss_bytes": 1024,
+                    "peak_watched_run_bytes": peak_storage,
+                    "sampled_process_tree_cpu_seconds": 50.0,
+                    "sampled_process_tree_read_bytes": 10,
+                    "sampled_process_tree_write_bytes": 20,
+                    "host_memory_bytes": 32768,
+                    "filesystem_free_bytes_end": 30 * 1024**3,
+                },
+            },
+        }
+
+    monkeypatch.setattr(s1m2, "audit_job", fake_audit)
+    result = s1m2.evaluate_round2(plan, contract, repo_root=Path("."))
+    assert result["PRODUCTION_STORAGE_GATE"] == "FAIL"
+    assert result["ROUND2_STATUS"] == "FAIL"
 
 
 def test_bounded_script_neutral_gate_covers_all_three_conditions() -> None:

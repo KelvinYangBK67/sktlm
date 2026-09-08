@@ -45,7 +45,7 @@ code. A failed job is resumable only by an explicit `--resume` invocation.
 
 ```text
 python -m sktlm.production.s1m2 validate-contract
-python -m pytest tests/production/test_s1m2_prevm.py tests/pieces/test_s1m2_training.py tests/cloud/test_audit_latent_run.py tests/cloud/test_sktlm_bridge.py -q
+python -m pytest tests/production/test_s1m2_prevm.py tests/latent/test_s1m2_benchmark_contract.py tests/pieces/test_s1m2_training.py tests/cloud/test_audit_latent_run.py tests/cloud/test_sktlm_bridge.py -q
 python -m sktlm.production.s1m2 validate-bounded --output-root artifacts/s1m2_prevm_validation/pre_vm_<SHA>
 python -m pytest -q
 git diff --check
@@ -63,6 +63,25 @@ be cited as representative timing or scientific evidence.
 If any check exceeds five minutes, stop it, preserve its output, and report the
 exact unfinished command as an external gate. Never replace it with a larger
 benchmark.
+
+## Frozen M0-prime v1 deployment
+
+M0-prime v1 is a frozen historical derived representation. Its frozen paths are
+retained verbatim for provenance stability. Do not move, rename, regenerate,
+overwrite, or rewrite it to normalize repository layout.
+
+Before VM execution, copy the already-frozen package verbatim so that both of
+these repository-relative paths exist on the VM:
+
+```text
+data/derived/m0_prime/iast/continuous/
+artifacts/m0_prime/m0_prime_iast_continuous_v1/
+```
+
+The Git repository does not carry those payloads. VM bootstrap must therefore
+restore them explicitly alongside the other frozen M0 inputs, then run
+`python -m sktlm.production.s1m2 validate-contract` before preparing Round 1.
+A missing or hash-mismatched frozen manifest is a hard preflight failure.
 
 ## Round 1: VM worker scaling
 
@@ -131,8 +150,10 @@ python -m sktlm.production.s1m2 evaluate-round2 --plan artifacts/s1m2_production
 
 PASS requires all artifact audits, zero candidate overflow, exact provenance,
 the explicit resume-capable interface, aggregate RSS at or below 80% of host
-RAM, at least 20 GiB free at completion, and projected representative peak
-storage below 300 GiB. Both continuous representative wall times are scaled by
+RAM, at least 20 GiB free at completion, and actual watched peak storage at
+or below 300 GiB for every Round 2 job. Representative jobs additionally require
+their full-corpus projected peak storage to remain at or below 300 GiB. Both
+continuous representative wall times are scaled by
 the frozen phoneme ratio `46,255,133 / 456,891`; both projections must meet the
 existing approximately-three-hour engineering target (10,800 seconds). Stress
 must complete/audit but is not linearly projected. The result emits each named

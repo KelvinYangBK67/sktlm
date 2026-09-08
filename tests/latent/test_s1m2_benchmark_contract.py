@@ -21,7 +21,10 @@ S1M2_IDS = (
 
 
 def test_s1m2_continuous_benchmark_contract_excludes_original_iast() -> None:
-    specs = tuple(_load_benchmark_spec(item, Path(".").resolve()) for item in S1M2_IDS)
+    specs = tuple(
+        _load_benchmark_spec(item, Path(".").resolve(), verify_files=False)
+        for item in S1M2_IDS
+    )
 
     assert all(spec.model == S1M2_MODEL for spec in specs)
     assert all(spec.condition == "continuous" for spec in specs)
