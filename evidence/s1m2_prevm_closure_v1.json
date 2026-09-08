@@ -1,11 +1,11 @@
 {
   "schema_version": "sktlm-s1m2-pre-vm-closure-evidence/v1",
   "status": "READY_FOR_MANUAL_VM_ROUND1",
-  "tested_implementation_git_sha": "dd19b3bfea314ff83f3298dba46d4bc6b1d1f7de",
+  "tested_implementation_git_sha": "baa14f7ce1fed04397a68dd41c9c299c07a50100",
   "branch": "exp/s1m2-reusable-pieces",
   "production_contract": {
     "path": "configs/production/s1m2_six_cell.json",
-    "canonical_sha256": "5e5591d844e7181a8fc51f405d1ad1c8a73ce99809f24e6096dd75a722e9df29",
+    "canonical_sha256": "59d276c96adb08da9715dd872edb284bd776be7b412aee3822204613f68a9631",
     "cell_count": 6,
     "status": "FROZEN_PRE_VM",
     "iast_continuous_substrate": "M0-prime",
@@ -19,22 +19,22 @@
   },
   "focused_gate": {
     "command": "python -m pytest tests/production/test_s1m2_prevm.py tests/latent/test_s1m2_benchmark_contract.py tests/pieces/test_s1m2_training.py tests/cloud/test_audit_latent_run.py tests/cloud/test_sktlm_bridge.py -q",
-    "result": "76 passed in 13.73s",
+    "result": "94 passed in 11.66s",
     "status": "PASS"
   },
   "full_repository_gate": {
     "command": "python -m pytest -q",
-    "result": "669 passed, 2 warnings in 61.74s",
+    "result": "687 passed, 2 warnings in 50.52s",
     "status": "PASS",
     "warnings": "Two known PyTorch nested-tensor warnings; no test failures."
   },
   "round1_dry_run": {
-    "command": "python -m sktlm.production.s1m2 plan-round1 --output artifacts/s1m2_prevm_validation/round1_plan_d4da38c.json",
-    "artifact_path": "artifacts/s1m2_prevm_validation/round1_plan_d4da38c.json",
+    "command": "python -m sktlm.production.s1m2 plan-round1 --output artifacts/s1m2_prevm_validation/round1_plan_baa14f7.json",
+    "artifact_path": "artifacts/s1m2_prevm_validation/round1_plan_baa14f7.json",
     "artifact_classification": "ignored local validation artifact; regenerate at the final pushed pre-VM SHA",
-    "artifact_bytes": 39460,
-    "artifact_sha256": "e5fbcb50f827910f04f630876c4418e46bfdb0c959c79399c5192444a2649e61",
-    "embedded_plan_sha256": "9f3d618c7c4e6c506df7a1f7165e7f85a7014ab827b2816bfb16d21b643c2ac6",
+    "artifact_bytes": 39435,
+    "artifact_sha256": "89b1827f22d7b1e32aac5a034b4534a06a3b53709e1477af7aed1a3b1ce0696d",
+    "embedded_plan_sha256": "eda0732026e6be5a0f82225966a99561060cb22dd2d36af6e159b8c65581763f",
     "jobs": 6,
     "workers": [
       4,

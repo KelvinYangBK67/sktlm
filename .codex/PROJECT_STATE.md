@@ -2373,11 +2373,11 @@ SCIENTIFIC_WORK_MODIFIED_BY_REPAIR=NO
 
 The bounded pre-VM implementation is complete on branch
 `exp/s1m2-reusable-pieces`. Its tested implementation identity is
-`dd19b3bfea314ff83f3298dba46d4bc6b1d1f7de`; the final published pre-VM
+`baa14f7ce1fed04397a68dd41c9c299c07a50100`; the final published pre-VM
 identity is the later documentation/evidence commit containing this section.
 The authoritative machine-readable contract is
 `configs/production/s1m2_six_cell.json`, with canonical JSON SHA-256
-`5e5591d844e7181a8fc51f405d1ad1c8a73ce99809f24e6096dd75a722e9df29`.
+`59d276c96adb08da9715dd872edb284bd776be7b412aee3822204613f68a9631`.
 
 The production universe is frozen at six cells. Five consume frozen M0; IAST
 `continuous` consumes only the validated M0-prime representation through the
@@ -2415,8 +2415,8 @@ gates can generate the six-cell full launch plan; plan generation never starts
 production. The tracked cloud registry holds all 18 planned identities without
 real host/IP/credential material.
 
-The final focused gate passes `76 passed in 13.73s`; the full repository gate
-passes `669 passed, 2 warnings in 61.74s`. A clean-SHA Round 1 dry run emits
+The final focused gate passes `94 passed in 11.66s`; the full repository gate
+passes `687 passed, 2 warnings in 50.52s`. A clean-SHA Round 1 dry run emits
 exactly six jobs with worker vector `4,8,12,16,20,24`, one scientific
 configuration, and complete launch/resume/audit commands. The clean-SHA bounded
 production-path run executes one frozen document line, one pass, and one worker
