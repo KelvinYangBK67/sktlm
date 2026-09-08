@@ -222,6 +222,186 @@ metrics_location = "artifacts/cloud_metrics/full_m0_iast_legacy_joined_p10_w8_p3
 scientific_checkpoint = "375178ba50bd1a1644d65525907692b31413b33d"
 notes = "Manually bundle-deployed and launched; immediate PID/process-sample verification passed. Completion and final audit remain pending."
 
+# S1M2 pre-VM identities are plans, not result claims. They remain in a separate
+# table so gate-blocked future jobs cannot be mistaken for completed historical
+# results; the bridge resolves them only by exact run ID and logical host role.
+
+[s1m2_prevm]
+schema_version = 1
+production_contract = "configs/production/s1m2_six_cell.json"
+round1_status = "NOT_STARTED"
+round2_status = "NOT_STARTED"
+full_m0_process_running = false
+logical_vm_role = "s1m2-vm-01"
+
+[[s1m2_prevm.planned_runs]]
+phase = "round1"
+run_id = "s1m2_round1_m0_devanagari_continuous_representative_w4_p3"
+metrics_id = "round1_m0_devanagari_continuous_representative_w4_p3"
+cell_id = "s1m2_m0_devanagari_continuous"
+workload_id = "representative"
+workers = 4
+state = "PREPARED_NOT_STARTED"
+
+[[s1m2_prevm.planned_runs]]
+phase = "round1"
+run_id = "s1m2_round1_m0_devanagari_continuous_representative_w8_p3"
+metrics_id = "round1_m0_devanagari_continuous_representative_w8_p3"
+cell_id = "s1m2_m0_devanagari_continuous"
+workload_id = "representative"
+workers = 8
+state = "PREPARED_NOT_STARTED"
+
+[[s1m2_prevm.planned_runs]]
+phase = "round1"
+run_id = "s1m2_round1_m0_devanagari_continuous_representative_w12_p3"
+metrics_id = "round1_m0_devanagari_continuous_representative_w12_p3"
+cell_id = "s1m2_m0_devanagari_continuous"
+workload_id = "representative"
+workers = 12
+state = "PREPARED_NOT_STARTED"
+
+[[s1m2_prevm.planned_runs]]
+phase = "round1"
+run_id = "s1m2_round1_m0_devanagari_continuous_representative_w16_p3"
+metrics_id = "round1_m0_devanagari_continuous_representative_w16_p3"
+cell_id = "s1m2_m0_devanagari_continuous"
+workload_id = "representative"
+workers = 16
+state = "PREPARED_NOT_STARTED"
+
+[[s1m2_prevm.planned_runs]]
+phase = "round1"
+run_id = "s1m2_round1_m0_devanagari_continuous_representative_w20_p3"
+metrics_id = "round1_m0_devanagari_continuous_representative_w20_p3"
+cell_id = "s1m2_m0_devanagari_continuous"
+workload_id = "representative"
+workers = 20
+state = "PREPARED_NOT_STARTED"
+
+[[s1m2_prevm.planned_runs]]
+phase = "round1"
+run_id = "s1m2_round1_m0_devanagari_continuous_representative_w24_p3"
+metrics_id = "round1_m0_devanagari_continuous_representative_w24_p3"
+cell_id = "s1m2_m0_devanagari_continuous"
+workload_id = "representative"
+workers = 24
+state = "PREPARED_NOT_STARTED"
+
+[[s1m2_prevm.planned_runs]]
+phase = "round2"
+run_id = "s1m2_round2_m0_devanagari_continuous_stress_p3"
+metrics_id = "round2_m0_devanagari_continuous_stress_p3"
+cell_id = "s1m2_m0_devanagari_continuous"
+workload_id = "stress"
+workers_source = "ROUND1.WINNER_WORKERS"
+state = "GATE_BLOCKED"
+
+[[s1m2_prevm.planned_runs]]
+phase = "round2"
+run_id = "s1m2_round2_m0_prime_iast_continuous_representative_p3"
+metrics_id = "round2_m0_prime_iast_continuous_representative_p3"
+cell_id = "s1m2_m0_prime_iast_continuous"
+workload_id = "representative"
+workers_source = "ROUND1.WINNER_WORKERS"
+state = "GATE_BLOCKED"
+
+[[s1m2_prevm.planned_runs]]
+phase = "round2"
+run_id = "s1m2_round2_m0_devanagari_continuous_representative_p3"
+metrics_id = "round2_m0_devanagari_continuous_representative_p3"
+cell_id = "s1m2_m0_devanagari_continuous"
+workload_id = "representative"
+workers_source = "ROUND1.WINNER_WORKERS"
+state = "GATE_BLOCKED"
+
+[[s1m2_prevm.planned_runs]]
+phase = "round2"
+run_id = "s1m2_round2_m0_devanagari_surface_word_smoke_p3"
+metrics_id = "round2_m0_devanagari_surface_word_smoke_p3"
+cell_id = "s1m2_m0_devanagari_surface_word"
+workload_id = "smoke"
+workers_source = "ROUND1.WINNER_WORKERS"
+state = "GATE_BLOCKED"
+
+[[s1m2_prevm.planned_runs]]
+phase = "round2"
+run_id = "s1m2_round2_m0_devanagari_legacy_joined_smoke_p3"
+metrics_id = "round2_m0_devanagari_legacy_joined_smoke_p3"
+cell_id = "s1m2_m0_devanagari_legacy_joined"
+workload_id = "smoke"
+workers_source = "ROUND1.WINNER_WORKERS"
+state = "GATE_BLOCKED"
+
+[[s1m2_prevm.planned_runs]]
+phase = "round2"
+run_id = "s1m2_round2_m0_iast_surface_word_smoke_p3"
+metrics_id = "round2_m0_iast_surface_word_smoke_p3"
+cell_id = "s1m2_m0_iast_surface_word"
+workload_id = "smoke"
+workers_source = "ROUND1.WINNER_WORKERS"
+state = "GATE_BLOCKED"
+
+[[s1m2_prevm.planned_runs]]
+phase = "full"
+run_id = "s1m2_full_m0_iast_surface_word_full_p3"
+metrics_id = "full_m0_iast_surface_word_full_p3"
+cell_id = "s1m2_m0_iast_surface_word"
+workload_id = "full"
+workers_source = "ROUND1.WINNER_WORKERS"
+host_role = "core-01"
+state = "GATE_BLOCKED"
+
+[[s1m2_prevm.planned_runs]]
+phase = "full"
+run_id = "s1m2_full_m0_iast_legacy_joined_full_p3"
+metrics_id = "full_m0_iast_legacy_joined_full_p3"
+cell_id = "s1m2_m0_iast_legacy_joined"
+workload_id = "full"
+workers_source = "ROUND1.WINNER_WORKERS"
+host_role = "core-02"
+state = "GATE_BLOCKED"
+
+[[s1m2_prevm.planned_runs]]
+phase = "full"
+run_id = "s1m2_full_m0_prime_iast_continuous_full_p3"
+metrics_id = "full_m0_prime_iast_continuous_full_p3"
+cell_id = "s1m2_m0_prime_iast_continuous"
+workload_id = "full"
+workers_source = "ROUND1.WINNER_WORKERS"
+host_role = "core-03"
+state = "GATE_BLOCKED"
+
+[[s1m2_prevm.planned_runs]]
+phase = "full"
+run_id = "s1m2_full_m0_devanagari_surface_word_full_p3"
+metrics_id = "full_m0_devanagari_surface_word_full_p3"
+cell_id = "s1m2_m0_devanagari_surface_word"
+workload_id = "full"
+workers_source = "ROUND1.WINNER_WORKERS"
+host_role = "core-04"
+state = "GATE_BLOCKED"
+
+[[s1m2_prevm.planned_runs]]
+phase = "full"
+run_id = "s1m2_full_m0_devanagari_legacy_joined_full_p3"
+metrics_id = "full_m0_devanagari_legacy_joined_full_p3"
+cell_id = "s1m2_m0_devanagari_legacy_joined"
+workload_id = "full"
+workers_source = "ROUND1.WINNER_WORKERS"
+host_role = "core-05"
+state = "GATE_BLOCKED"
+
+[[s1m2_prevm.planned_runs]]
+phase = "full"
+run_id = "s1m2_full_m0_devanagari_continuous_full_p3"
+metrics_id = "full_m0_devanagari_continuous_full_p3"
+cell_id = "s1m2_m0_devanagari_continuous"
+workload_id = "full"
+workers_source = "ROUND1.WINNER_WORKERS"
+host_role = "core-06"
+state = "GATE_BLOCKED"
+
 [[runs]]
 machine_id = "core-02"
 machine_name = "sktlm-m0-core-02"

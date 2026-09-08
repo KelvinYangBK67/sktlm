@@ -1,0 +1,118 @@
+{
+  "schema_version": "sktlm-s1m2-production-contract/v1",
+  "contract_id": "s1m2-six-cell-pre-vm-v1",
+  "status": "FROZEN_PRE_VM",
+  "model": "reusable_pieces_v1",
+  "passes": 3,
+  "inference": {
+    "training": "exact_composed_marginals",
+    "inspection": "exact_composed_marginals_with_bounded_top_k_presentation",
+    "approximate_inference_allowed": false
+  },
+  "corpus": {
+    "freeze_id": "9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40",
+    "m0_manifest": "data/manifests/representations.csv",
+    "m0_manifest_sha256": "c04124b2bc4909750ebedc4e7ec939df3c18edecf1598345ab3f662a21fbc520",
+    "m0_prime_manifest": "artifacts/m0_prime/m0_prime_iast_continuous_v1/manifest.csv",
+    "m0_prime_manifest_sha256": "3a8cbb3359ce8cce2a7d551281a8faf50b9fed33f9b8d4bce3425d28237ae922"
+  },
+  "grammar": {
+    "path": "data/rules/external_sandhi.tsv",
+    "sha256": "76f00baca78f97472731ff6ba1e24fca56985bc229523fb2dcc7a2018fa73f00",
+    "rule_count": 1218,
+    "fixed": true
+  },
+  "scientific_config": {
+    "lexical_alpha": 0.1,
+    "complexity_weight": 0.5,
+    "complexity_tau": 1.0,
+    "whitespace_merge_penalty": 8.0,
+    "allow_whitespace_merge": true,
+    "max_internal_matches": 512,
+    "max_segment_tokens": 128,
+    "analysis_top_k": 8,
+    "usage_posterior_threshold": 0.01,
+    "high_confidence_threshold": 0.8,
+    "low_count_threshold": 1.0,
+    "seed": 0,
+    "piece_max_length": 8,
+    "piece_boundary_probability": 0.5,
+    "piece_alpha": 0.1,
+    "piece_complexity_weight": 0.5,
+    "piece_complexity_kappa": 1.0,
+    "piece_complexity_beta": 0.25,
+    "piece_complexity_tau": 1.0,
+    "piece_base_stop_probability": 0.5,
+    "piece_min_reuse_occurrences": 2,
+    "piece_support_epsilon": 0.0
+  },
+  "engineering_config": {
+    "lexicon_cache_size": 100000,
+    "flush_types": 50000,
+    "piece_score_cache_entries": 65536,
+    "piece_score_cache_bytes": 33554432,
+    "piece_form_cache_entries": 8192,
+    "piece_form_cache_bytes": 268435456,
+    "piece_shared_token_marginals": true,
+    "piece_shared_prefix_nodes": 262144,
+    "piece_shared_top_k_piece_references": 4194304,
+    "worker_count_classification": "engineering_only_selected_by_round1"
+  },
+  "cells": [
+    {"cell_id": "s1m2_m0_iast_surface_word", "substrate": "M0", "script": "iast", "condition": "surface_word", "manifest_key": "m0_manifest"},
+    {"cell_id": "s1m2_m0_iast_legacy_joined", "substrate": "M0", "script": "iast", "condition": "legacy_joined", "manifest_key": "m0_manifest"},
+    {"cell_id": "s1m2_m0_prime_iast_continuous", "substrate": "M0-prime", "script": "iast_m0_prime", "condition": "continuous", "manifest_key": "m0_prime_manifest"},
+    {"cell_id": "s1m2_m0_devanagari_surface_word", "substrate": "M0", "script": "devanagari", "condition": "surface_word", "manifest_key": "m0_manifest"},
+    {"cell_id": "s1m2_m0_devanagari_legacy_joined", "substrate": "M0", "script": "devanagari", "condition": "legacy_joined", "manifest_key": "m0_manifest"},
+    {"cell_id": "s1m2_m0_devanagari_continuous", "substrate": "M0", "script": "devanagari", "condition": "continuous", "manifest_key": "m0_manifest"}
+  ],
+  "workloads": {
+    "bounded_interface": {"document_list": "configs/benchmarks/s1m2_prevm_bounded_documents.txt", "document_list_sha256": "a4e3e637e8c9c870db592c8b145454c2a16687ea0f3e8a5f40b108d9e6a75976", "max_lines_per_document": 1, "passes": 1, "classification": "bounded_interface_only"},
+    "smoke": {"document_list": "configs/benchmarks/latent_smoke_documents.txt", "document_list_sha256": "0ea7aaa132186c749e1505e058ea57ea78a4971d9e0d440f5b684c9e14fa9ce9", "max_lines_per_document": 2, "classification": "production_path_smoke"},
+    "representative": {"document_list": "configs/benchmarks/s1m2_continuous_representative_documents.txt", "document_list_sha256": "7bf936025ce28c43cdae0407d532c461b50726a28275fa40062a8a6889296ed3", "max_lines_per_document": null, "phonemes": 456891, "classification": "frozen_continuous_representative"},
+    "stress": {"document_list": "configs/benchmarks/s1m2_continuous_stress_documents.txt", "document_list_sha256": "904e105eddc45cff3e63c171ad016c056628f1040bc37c881850cb8ad2a988d9", "max_lines_per_document": null, "phonemes": 62748, "classification": "frozen_continuous_long_span_stress"},
+    "full": {"document_list": null, "document_list_sha256": null, "max_lines_per_document": null, "phonemes": 46255133, "classification": "full_frozen_corpus_one_cell"}
+  },
+  "round1": {
+    "cell_id": "s1m2_m0_devanagari_continuous",
+    "workload_id": "representative",
+    "workers": [4, 8, 12, 16, 20, 24],
+    "winner_rule": {
+      "minimum_direct_wall_advantage_fraction": 0.1,
+      "practical_tie_wall_fraction": 0.1,
+      "tie_break_order": ["peak_process_tree_rss_bytes", "peak_watched_run_bytes", "sampled_process_tree_cpu_seconds", "canonical_reducer_stall_seconds", "workers"]
+    }
+  },
+  "round2": {
+    "jobs": [
+      ["s1m2_m0_devanagari_continuous", "stress"],
+      ["s1m2_m0_prime_iast_continuous", "representative"],
+      ["s1m2_m0_devanagari_continuous", "representative"],
+      ["s1m2_m0_devanagari_surface_word", "smoke"],
+      ["s1m2_m0_devanagari_legacy_joined", "smoke"],
+      ["s1m2_m0_iast_surface_word", "smoke"]
+    ]
+  },
+  "gates": {
+    "continuous_runtime_target_seconds_full_projection": 10800,
+    "memory_max_host_fraction": 0.8,
+    "storage_max_bytes": 322122547200,
+    "storage_min_free_bytes_end": 21474836480,
+    "require_zero_candidate_overflow": true,
+    "require_exact_provenance": true,
+    "require_resume_capable_interface": true
+  },
+  "resume_policy": {
+    "mode": "explicit_only",
+    "flag": "--resume",
+    "authoritative_mutable_state": "learner.sqlite plus transactionally coupled checkpoint",
+    "topology_archive": "reconstructible engineering cache",
+    "automatic_retry": false
+  },
+  "artifact_contract": {
+    "scientific": ["iteration_metrics.json", "piece_inventory.tsv", "lexical_diagnostics.tsv", "analyses.jsonl", "boundary_posteriors.jsonl", "rule_usage.tsv", "summary.json"],
+    "operational": ["checkpoint.json", "config.json", "provenance.json", "timing_metrics.json", "storage_manifest.json", "learner.sqlite", "inspection_report.md"],
+    "topology_glob": "topology/document_*.bin"
+  },
+  "provenance_required_fields": ["schema_version", "git_sha", "branch", "dirty_worktree", "cell_id", "workload_id", "corpus_freeze_id", "input_manifest_sha256", "representation_manifest_sha256", "grammar_sha256", "production_contract_sha256", "scientific_config", "engineering_config", "workers", "run_id", "metrics_id", "host_id", "runtime_versions", "start_time", "end_time", "resume_history", "result_status"]
+}

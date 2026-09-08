@@ -1,0 +1,3 @@
+# S1M2 pre-VM bounded six-cell interface fixture.
+# This is an execution-path check, not a representative or scientific sample.
+6_sastra/7_ayur/bhavpr_u.txt

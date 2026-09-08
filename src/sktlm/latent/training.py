@@ -65,7 +65,7 @@ from sktlm.pieces.composed import (
 from sktlm.pieces.model import PieceModelConfig
 from sktlm.pieces.scorer import NeutralPieceScorer
 from sktlm.pieces.topology_archive import (
-    TopologyArchiveReader,
+    ReconstructibleTopologyArchiveReader,
     TopologyArchiveWriter,
     archive_header,
 )
@@ -908,6 +908,100 @@ def _topology_archive_header(
     )
 
 
+def _rebuild_topology_archive(
+    *,
+    document: CorpusDocument,
+    document_index: int,
+    config: TrainingConfig,
+    run_dir: Path,
+    config_signature: str,
+    grammar: StructuredSandhiGrammar,
+    piece_engine: ComposedPieceInference,
+    telemetry: RuntimeTelemetry,
+    error: BaseException,
+) -> None:
+    """Reconstruct one score-free archive without touching scientific state."""
+
+    path = _topology_archive_path(run_dir, document_index)
+    temporary = path.with_suffix(path.suffix + ".rebuild.tmp")
+    if isinstance(error, FileNotFoundError):
+        telemetry.increment("topology_archive_cache_misses", 1)
+    else:
+        telemetry.increment("topology_archive_cache_invalid", 1)
+    if temporary.exists():
+        temporary.unlink()
+    writer: TopologyArchiveWriter | None = None
+    try:
+        writer = TopologyArchiveWriter(
+            temporary,
+            _topology_archive_header(
+                config_signature, document_index, document
+            ),
+        )
+        for line_number, segment_index, segment in _iter_document_segments(
+            document, config
+        ):
+            graph = build_lazy_candidate_graph(
+                segment,
+                grammar,
+                config.candidate_config,
+            )
+            writer.write(
+                line_number,
+                segment_index,
+                compile_composed_segment_topology(graph, piece_engine),
+            )
+        writer.close()
+        _replace_file(temporary, path)
+    except BaseException:
+        if writer is not None:
+            writer.close()
+        if temporary.exists():
+            temporary.unlink()
+        raise
+    telemetry.increment("topology_archives_regenerated", 1)
+    telemetry.increment("topology_records_regenerated", writer.records)
+    telemetry.increment(
+        "topology_regenerated_uncompressed_bytes", writer.uncompressed_bytes
+    )
+    telemetry.maximum("topology_archive_bytes", path.stat().st_size)
+
+
+def _open_reconstructible_topology_archive(
+    *,
+    document: CorpusDocument,
+    document_index: int,
+    config: TrainingConfig,
+    run_dir: Path,
+    config_signature: str,
+    grammar: StructuredSandhiGrammar,
+    piece_engine: ComposedPieceInference,
+    telemetry: RuntimeTelemetry,
+) -> ReconstructibleTopologyArchiveReader:
+    header = _topology_archive_header(
+        config_signature, document_index, document
+    )
+
+    def rebuild(error: BaseException) -> None:
+        _rebuild_topology_archive(
+            document=document,
+            document_index=document_index,
+            config=config,
+            run_dir=run_dir,
+            config_signature=config_signature,
+            grammar=grammar,
+            piece_engine=piece_engine,
+            telemetry=telemetry,
+            error=error,
+        )
+
+    return ReconstructibleTopologyArchiveReader(
+        _topology_archive_path(run_dir, document_index),
+        header,
+        rebuild,
+    )
+
+
 def _profiled_document_segments_with_topology(
     document: CorpusDocument,
     document_index: int,
@@ -917,14 +1011,21 @@ def _profiled_document_segments_with_topology(
     *,
     phase: str,
     config_signature: str,
+    grammar: StructuredSandhiGrammar,
+    piece_engine: ComposedPieceInference | None,
 ) -> Iterator[tuple[int, int, ObservedSegment, CompiledSegmentTopology | None]]:
     reader = None
     if config.model == S1M2_MODEL:
-        reader = TopologyArchiveReader(
-            _topology_archive_path(run_dir, document_index),
-            _topology_archive_header(
-                config_signature, document_index, document
-            ),
+        assert piece_engine is not None
+        reader = _open_reconstructible_topology_archive(
+            document=document,
+            document_index=document_index,
+            config=config,
+            run_dir=run_dir,
+            config_signature=config_signature,
+            grammar=grammar,
+            piece_engine=piece_engine,
+            telemetry=telemetry,
         )
     try:
         for line_number, segment_index, segment in _profiled_document_segments(
@@ -1080,7 +1181,7 @@ def _write_training_shard(
     topology_path = _topology_archive_path(run_dir, document_index)
     topology_temporary = topology_path.with_suffix(topology_path.suffix + ".tmp")
     topology_writer: TopologyArchiveWriter | None = None
-    topology_reader: TopologyArchiveReader | None = None
+    topology_reader: ReconstructibleTopologyArchiveReader | None = None
     with ExitStack() as resources:
         handle = resources.enter_context(
             temporary.open('w', encoding='utf-8', newline='')
@@ -1096,8 +1197,19 @@ def _write_training_shard(
                     TopologyArchiveWriter(topology_temporary, header)
                 )
             else:
+                assert _WORKER_GRAMMAR is not None
+                assert _WORKER_PIECE_ENGINE is not None
                 topology_reader = resources.enter_context(
-                    TopologyArchiveReader(topology_path, header)
+                    _open_reconstructible_topology_archive(
+                        document=document,
+                        document_index=document_index,
+                        config=config,
+                        run_dir=run_dir,
+                        config_signature=config_signature,
+                        grammar=_WORKER_GRAMMAR,
+                        piece_engine=_WORKER_PIECE_ENGINE,
+                        telemetry=engineering,
+                    )
                 )
         iterator = _iter_document_segments(document, config)
         while True:
@@ -1621,7 +1733,7 @@ def _training_pass(
             topology_path.suffix + ".tmp"
         )
         topology_writer: TopologyArchiveWriter | None = None
-        topology_reader: TopologyArchiveReader | None = None
+        topology_reader: ReconstructibleTopologyArchiveReader | None = None
         store.begin_document_counts()
         try:
             if config.model == S1M2_MODEL:
@@ -1635,8 +1747,16 @@ def _training_pass(
                         topology_temporary, header
                     )
                 else:
-                    topology_reader = TopologyArchiveReader(
-                        topology_path, header
+                    assert piece_engine is not None
+                    topology_reader = _open_reconstructible_topology_archive(
+                        document=document,
+                        document_index=document_index,
+                        config=config,
+                        run_dir=run_dir,
+                        config_signature=_config_signature(config),
+                        grammar=grammar,
+                        piece_engine=piece_engine,
+                        telemetry=telemetry,
                     )
             for line_number, segment_index, segment in _profiled_document_segments(
                 document,
@@ -2213,7 +2333,7 @@ def _write_inspection_shard(
         shard_database_seconds += time.perf_counter() - started
 
     handles: dict[str, Any] = {}
-    topology_reader: TopologyArchiveReader | None = None
+    topology_reader: ReconstructibleTopologyArchiveReader | None = None
     try:
         stream_kinds = (
             _INSPECTION_STREAM_SHARD_KINDS
@@ -2227,11 +2347,17 @@ def _write_inspection_shard(
                 newline="",
             )
         if config.model == S1M2_MODEL:
-            topology_reader = TopologyArchiveReader(
-                _topology_archive_path(run_dir, document_index),
-                _topology_archive_header(
-                    config_signature, document_index, document
-                ),
+            assert _WORKER_GRAMMAR is not None
+            assert _WORKER_PIECE_ENGINE is not None
+            topology_reader = _open_reconstructible_topology_archive(
+                document=document,
+                document_index=document_index,
+                config=config,
+                run_dir=run_dir,
+                config_signature=config_signature,
+                grammar=_WORKER_GRAMMAR,
+                piece_engine=_WORKER_PIECE_ENGINE,
+                telemetry=engineering,
             )
         iterator = _iter_document_segments(document, config)
         while True:
@@ -3242,6 +3368,8 @@ def _inspection_pass(
                 telemetry,
                 phase='inspection',
                 config_signature=signature,
+                grammar=grammar,
+                piece_engine=piece_engine,
             ):
                 seen_lines.add(line_number)
                 started = telemetry.now()

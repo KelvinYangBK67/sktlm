@@ -62,6 +62,14 @@ SCIENTIFIC_FILES = (
     "latent_lexicon.tsv",
     "rule_usage.tsv",
 )
+S1M2_SCIENTIFIC_FILES = (
+    "iteration_metrics.json",
+    "analyses.jsonl",
+    "boundary_posteriors.jsonl",
+    "piece_inventory.tsv",
+    "lexical_diagnostics.tsv",
+    "rule_usage.tsv",
+)
 AUDITED_SCIENTIFIC_FILES = ("summary.json", *SCIENTIFIC_FILES)
 COLLECTION_STATE_FILE = ".sktlm-collection.json"
 CONFIG_FIELDS = {
@@ -559,12 +567,20 @@ def collection_registry_assignment(
     runs = raw.get("runs")
     if not isinstance(runs, list):
         raise BridgeError("experiment registry must contain [[runs]] entries")
+    prevm = raw.get("s1m2_prevm", {})
+    planned = prevm.get("planned_runs", []) if isinstance(prevm, dict) else []
+    if planned and not isinstance(planned, list):
+        raise BridgeError("s1m2_prevm.planned_runs must be an array of tables")
+    runs = [*runs, *planned]
     matches = [row for row in runs if isinstance(row, dict) and row.get("run_id") == run_id]
     if len(matches) != 1:
         raise BridgeError(f"run ID must have exactly one registry assignment: {run_id}")
     assignment = matches[0]
-    expected_profile = assignment.get("host_profile")
-    expected_machine = assignment.get("machine_id")
+    planned_role = assignment.get("host_role") or (
+        prevm.get("logical_vm_role") if isinstance(prevm, dict) else None
+    )
+    expected_profile = assignment.get("host_profile", planned_role)
+    expected_machine = assignment.get("machine_id", planned_role)
     expected_metrics = assignment.get("metrics_id")
     if expected_profile != config.host_profile:
         raise BridgeError(
@@ -1228,11 +1244,29 @@ def push_inputs_action(
     }
 
 
-def profile_files(profile: str) -> tuple[tuple[str, ...] | None, tuple[str, ...] | None]:
+def profile_files(
+    profile: str,
+    *,
+    scientific_files: Sequence[str] = SCIENTIFIC_FILES,
+) -> tuple[tuple[str, ...] | None, tuple[str, ...] | None]:
+    report_files = REPORT_RUN_FILES
+    if "piece_inventory.tsv" in scientific_files:
+        s1m2_report_files = tuple(
+            name for name in REPORT_RUN_FILES if name != "benchmark_metrics.json"
+        )
+        report_files = tuple(
+            dict.fromkeys(
+                (
+                    *s1m2_report_files,
+                    "storage_manifest.json",
+                    "production_run_manifest.json",
+                )
+            )
+        )
     if profile == "report":
-        return REPORT_RUN_FILES, REPORT_METRICS_FILES
+        return report_files, REPORT_METRICS_FILES
     if profile == "scientific":
-        run_files = tuple(dict.fromkeys((*REPORT_RUN_FILES, *SCIENTIFIC_FILES)))
+        run_files = tuple(dict.fromkeys((*report_files, *scientific_files)))
         return run_files, REPORT_METRICS_FILES
     if profile == "full":
         return None, None
@@ -1327,7 +1361,12 @@ def _complete_collection(destination: Path) -> None:
 
 def _inventory_collected_files(root: Path, profile: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    hash_names = set(REPORT_RUN_FILES) | set(REPORT_METRICS_FILES) | set(SCIENTIFIC_FILES)
+    hash_names = (
+        set(REPORT_RUN_FILES)
+        | set(REPORT_METRICS_FILES)
+        | set(SCIENTIFIC_FILES)
+        | set(S1M2_SCIENTIFIC_FILES)
+    )
     for path in sorted(item for item in root.rglob("*") if item.is_file()):
         relative = path.relative_to(root).as_posix()
         if relative == COLLECTION_STATE_FILE:
@@ -1359,7 +1398,12 @@ def transfer_results(
     require_tool("rsync")
     run_id = validate_run_id(run_id)
     metrics_id = validate_run_id(metrics_id)
-    run_files, metrics_files = profile_files(profile)
+    scientific_files = tuple(
+        receipt.get("audited_scientific_files", SCIENTIFIC_FILES)
+    )
+    run_files, metrics_files = profile_files(
+        profile, scientific_files=scientific_files
+    )
     remote_head = remote_repo_head(config, runner)
     receipt["remote_repo_head"] = remote_head
     probe = run_ssh(config, build_result_probe_script(config, run_id, metrics_id), runner)
@@ -1618,6 +1662,13 @@ def collect_action(
     require_tool("ssh")
     audit = remote_audit_result(config, runner, run_id, metrics_id)
     receipt["remote_audit"] = audit
+    audited_names = tuple(
+        name
+        for name in audit.get("scientific_artifacts", {})
+        if name != "summary.json"
+    )
+    scientific_files = audited_names or SCIENTIFIC_FILES
+    receipt["audited_scientific_files"] = list(scientific_files)
     collection, details = transfer_results(
         receipt,
         config,
@@ -1639,7 +1690,7 @@ def collect_action(
     }
     files = [*details["files"], audit_file]
     required_audit_names = (
-        AUDITED_SCIENTIFIC_FILES
+        ("summary.json", *scientific_files)
         if profile in {"scientific", "full"}
         else ("summary.json",)
     )
@@ -1649,11 +1700,13 @@ def collect_action(
         details["files"],
         required_audit_names,
     )
-    selected_run_files, _selected_metrics_files = profile_files(profile)
+    selected_run_files, _selected_metrics_files = profile_files(
+        profile, scientific_files=scientific_files
+    )
     remote_only = (
         []
         if selected_run_files is None
-        else [name for name in SCIENTIFIC_FILES if name not in selected_run_files]
+        else [name for name in scientific_files if name not in selected_run_files]
     )
     valid = audit.get("valid") is True and not hash_failures
     if audit.get("valid") is not True:

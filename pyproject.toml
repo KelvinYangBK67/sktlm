@@ -64,6 +64,7 @@ sktlm-benchmark-latent = "sktlm.latent.benchmark:main"
 sktlm-compare-latent-runs = "sktlm.latent.equivalence:main"
 sktlm-profile-m1 = "sktlm.latent.profiling:main"
 sktlm-scan-s1m2-continuous = "sktlm.latent.continuous_structure:main"
+sktlm-s1m2-production = "sktlm.production.s1m2:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

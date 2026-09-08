@@ -100,15 +100,24 @@ def healthy_database(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         audit,
         "audit_database",
-        lambda path: {
-            "quick_check": "ok",
-            "lexicon_rows": 2,
-            "lexicon_expected_count": 2.0,
-            "inspection_rows": 2,
-            "inspection_expected_count": 2.0,
-            "surface_usage_rows": 2,
-            "context_usage_rows": 2,
-        },
+        lambda path, model="latent_lexicon_v1": (
+            {
+                "quick_check": "ok",
+                "piece_lexicon_rows": 2,
+                "piece_lexicon_expected_count": 2.0,
+                "tables": ["metadata", "piece_lexicon"],
+            }
+            if model == "reusable_pieces_v1"
+            else {
+                "quick_check": "ok",
+                "lexicon_rows": 2,
+                "lexicon_expected_count": 2.0,
+                "inspection_rows": 2,
+                "inspection_expected_count": 2.0,
+                "surface_usage_rows": 2,
+                "context_usage_rows": 2,
+            }
+        ),
     )
 
 
@@ -140,6 +149,53 @@ def test_benchmark_contract_remains_supported(tmp_path: Path) -> None:
     result = audit.audit_run(run_dir, None)
     assert result["valid"] is True
     assert result["run_kind"] == "benchmark_harness"
+
+
+def test_s1m2_production_manifest_is_required_to_be_complete(tmp_path: Path) -> None:
+    run_dir, config, _checkpoint, _summary = _run_fixture(
+        tmp_path,
+        script="iast_m0_prime",
+        condition="continuous",
+        scoped=True,
+    )
+    config.update({"model": "reusable_pieces_v1", "run_id": "s1m2-test"})
+    config.update(audit.EXPECTED_S1M2_HYPERPARAMETERS)
+    _write_json(run_dir / "config.json", config)
+    provenance = json.loads((run_dir / "provenance.json").read_text(encoding="utf-8"))
+    provenance["git_commit"] = "a" * 40
+    _write_json(run_dir / "provenance.json", provenance)
+    for name in audit.S1M2_SCIENTIFIC_FILES:
+        path = run_dir / name
+        if not path.exists():
+            path.write_text(f"{name}\n", encoding="utf-8")
+    _write_json(
+        run_dir / "storage_manifest.json",
+        {
+            "status": "COMPACT",
+            "compiled_topology": {"mutable_scores_or_posteriors_stored": False},
+        },
+    )
+    topology = run_dir / "topology"
+    topology.mkdir()
+    (topology / "document_00000000.bin").write_bytes(b"topology")
+    production = {
+        "schema_version": "sktlm-s1m2-run-manifest/v1",
+        "dirty_worktree": False,
+        "run_id": "s1m2-test",
+        "git_sha": "a" * 40,
+        "result_status": "PASS",
+        "plan_sha256": "b" * 64,
+        "production_contract_sha256": "c" * 64,
+        "final_audit": {"valid": True},
+    }
+    _write_json(run_dir / "production_run_manifest.json", production)
+
+    assert audit.audit_run(run_dir, None)["valid"] is True
+    production["result_status"] = "AUDITING"
+    _write_json(run_dir / "production_run_manifest.json", production)
+    result = audit.audit_run(run_dir, None)
+    assert result["valid"] is False
+    assert "production run manifest result_status differs" in result["failures"]
 
 
 def test_metrics_directory_requires_successful_process_summary(tmp_path: Path) -> None:

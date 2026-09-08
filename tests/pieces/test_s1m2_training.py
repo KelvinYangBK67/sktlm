@@ -341,6 +341,89 @@ def test_s1m2_resume_after_durable_pass_diagnostics_retired(
     _assert_same_science(reference, resumed)
 
 
+def test_s1m2_resume_regenerates_missing_topology_before_later_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = _write_fixture(tmp_path)
+    reference = run_training(
+        _config(tmp_path, manifest, "missing-topology-reference"),
+        repo_root=Path("."),
+    ).run_dir
+    original_training_pass = latent_training._training_pass
+    interrupted = False
+
+    def stop_after_pass_one(**kwargs: object) -> dict[str, object]:
+        nonlocal interrupted
+        result = original_training_pass(**kwargs)  # type: ignore[arg-type]
+        if not interrupted and kwargs["pass_index"] == 1:
+            interrupted = True
+            raise RuntimeError("simulated interruption after pass one")
+        return result
+
+    monkeypatch.setattr(latent_training, "_training_pass", stop_after_pass_one)
+    with pytest.raises(RuntimeError, match="after pass one"):
+        run_training(
+            _config(tmp_path, manifest, "missing-topology-resumed"),
+            repo_root=Path("."),
+        )
+    run_dir = tmp_path / "artifacts" / "missing-topology-resumed"
+    (run_dir / "topology" / "document_00000000.bin").unlink()
+
+    monkeypatch.setattr(latent_training, "_training_pass", original_training_pass)
+    result = run_training(
+        _config(
+            tmp_path,
+            manifest,
+            "missing-topology-resumed",
+            resume=True,
+        ),
+        repo_root=Path("."),
+    )
+    _assert_same_science(reference, result.run_dir)
+    assert result.runtime["counters"]["topology_archive_cache_misses"] == 1
+    assert result.runtime["counters"]["topology_archives_regenerated"] == 1
+
+
+def test_s1m2_resume_regenerates_corrupt_topology_before_inspection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = _write_fixture(tmp_path)
+    reference = run_training(
+        _config(tmp_path, manifest, "corrupt-topology-reference"),
+        repo_root=Path("."),
+    ).run_dir
+    original_inspection = latent_training._inspection_pass
+
+    def crash_before_inspection(**_: object) -> dict[str, object]:
+        raise RuntimeError("simulated interruption before corrupt inspection")
+
+    monkeypatch.setattr(latent_training, "_inspection_pass", crash_before_inspection)
+    with pytest.raises(RuntimeError, match="before corrupt inspection"):
+        run_training(
+            _config(tmp_path, manifest, "corrupt-topology-resumed"),
+            repo_root=Path("."),
+        )
+    run_dir = tmp_path / "artifacts" / "corrupt-topology-resumed"
+    archive = run_dir / "topology" / "document_00000000.bin"
+    archive.write_bytes(archive.read_bytes()[:-7])
+
+    monkeypatch.setattr(latent_training, "_inspection_pass", original_inspection)
+    result = run_training(
+        _config(
+            tmp_path,
+            manifest,
+            "corrupt-topology-resumed",
+            resume=True,
+        ),
+        repo_root=Path("."),
+    )
+    _assert_same_science(reference, result.run_dir)
+    assert result.runtime["counters"]["topology_archive_cache_invalid"] == 1
+    assert result.runtime["counters"]["topology_archives_regenerated"] == 1
+
+
 def test_s1m2_resume_regenerates_retired_inspection_shard(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

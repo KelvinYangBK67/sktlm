@@ -1,0 +1,245 @@
+from __future__ import annotations
+
+import copy
+import json
+import tomllib
+from pathlib import Path
+
+import pytest
+
+from sktlm.production import s1m2
+
+
+IDENTITY = {
+    "git_sha": "a" * 40,
+    "branch": "exp/s1m2-reusable-pieces",
+    "dirty_worktree": False,
+}
+
+
+def _contract() -> dict[str, object]:
+    return s1m2.load_contract(repo_root=Path("."))
+
+
+def _round1_result(workers: int = 16) -> dict[str, object]:
+    contract = _contract()
+    return {
+        "schema_version": s1m2.ROUND1_SCHEMA,
+        "plan_sha256": "b" * 64,
+        "production_contract_sha256": s1m2._canonical_sha256(contract),
+        "ROUND1_STATUS": "PASS",
+        "WINNER_WORKERS": workers,
+        "WORKER_RANKING": [
+            {"workers": value} for value in s1m2.ROUND1_WORKERS
+        ],
+        "jobs": [
+            {"workers": value, "valid": True} for value in s1m2.ROUND1_WORKERS
+        ],
+    }
+
+
+def _round2_result(*, status: str = "PASS", workers: int = 16) -> dict[str, object]:
+    contract = _contract()
+    gate_status = "PASS" if status == "PASS" else "FAIL"
+    return {
+        "schema_version": s1m2.ROUND2_SCHEMA,
+        "plan_sha256": "c" * 64,
+        "production_contract_sha256": s1m2._canonical_sha256(contract),
+        "ROUND2_STATUS": status,
+        "WINNER_WORKERS": workers,
+        "CONTINUOUS_RUNTIME_TARGET": gate_status,
+        "PRODUCTION_MEMORY_GATE": gate_status,
+        "PRODUCTION_STORAGE_GATE": gate_status,
+        "PRODUCTION_RESUME_GATE": gate_status,
+        "PRODUCTION_PROVENANCE_GATE": gate_status,
+        "S1M2_SIX_CELL_INTERFACE_GATE": gate_status,
+        "jobs": [
+            {"valid": status == "PASS", "workers": workers} for _ in range(6)
+        ],
+    }
+
+
+def test_six_cell_contract_is_exact_and_iast_continuous_is_m0_prime(
+    tmp_path: Path,
+) -> None:
+    contract = _contract()
+    cells = contract["cells"]
+    assert len(cells) == 6
+    continuous = [
+        cell
+        for cell in cells
+        if cell["condition"] == "continuous" and cell["script"].startswith("iast")
+    ]
+    assert continuous == [
+        {
+            "cell_id": "s1m2_m0_prime_iast_continuous",
+            "substrate": "M0-prime",
+            "script": "iast_m0_prime",
+            "condition": "continuous",
+            "manifest_key": "m0_prime_manifest",
+        }
+    ]
+
+    invalid = copy.deepcopy(contract)
+    invalid["cells"][2] = dict(continuous[0], script="iast", substrate="M0")
+    invalid_path = tmp_path / "invalid.json"
+    invalid_path.write_text(json.dumps(invalid), encoding="utf-8")
+    with pytest.raises(ValueError):
+        s1m2.load_contract(invalid_path, repo_root=Path("."), verify_files=False)
+
+
+def test_round1_plan_has_six_jobs_and_only_workers_vary() -> None:
+    contract = _contract()
+    plan = s1m2.build_round1_plan(contract, identity=IDENTITY)
+    s1m2._validate_plan(plan, contract)
+    assert [job["workers"] for job in plan["jobs"]] == [4, 8, 12, 16, 20, 24]
+    assert {job["cell_id"] for job in plan["jobs"]} == {
+        "s1m2_m0_devanagari_continuous"
+    }
+    assert {job["workload_id"] for job in plan["jobs"]} == {"representative"}
+    assert len({str(job["resolved_config"]) for job in plan["jobs"]}) == 1
+    assert all("--model" in job["training_command"] for job in plan["jobs"])
+    assert all("--resume" not in job["training_command"] for job in plan["jobs"])
+
+    tampered = copy.deepcopy(plan)
+    tampered["jobs"][0]["condition"] = "surface_word"
+    tampered["plan_sha256"] = s1m2._canonical_sha256(
+        {key: value for key, value in tampered.items() if key != "plan_sha256"}
+    )
+    with pytest.raises(ValueError, match="invalid condition"):
+        s1m2._validate_plan(tampered, contract)
+
+
+def test_plan_commands_bind_exact_plan_path() -> None:
+    contract = _contract()
+    plan = s1m2.build_round1_plan(contract, identity=IDENTITY)
+    plan_path = Path("artifacts/s1m2_production/round1_plan.json")
+    s1m2._write_plan_commands(plan, plan_path)
+    s1m2._validate_plan(plan, contract)
+    for job in plan["jobs"]:
+        assert job["launch_command"][4:6] == ["--plan", plan_path.as_posix()]
+        assert job["resume_command"] == [*job["launch_command"], "--resume"]
+        assert job["audit_command"][4:6] == ["--plan", plan_path.as_posix()]
+
+
+def test_round1_winner_rule_uses_resources_for_practical_tie() -> None:
+    contract = _contract()
+    rows = []
+    for workers, wall, rss in (
+        (4, 108.0, 2.0),
+        (8, 100.0, 4.0),
+        (12, 101.0, 3.0),
+        (16, 120.0, 2.5),
+        (20, 130.0, 2.5),
+        (24, 140.0, 2.5),
+    ):
+        rows.append(
+            {
+                "workers": workers,
+                "wall_seconds": wall,
+                "peak_process_tree_rss_bytes": rss,
+                "peak_watched_run_bytes": 1.0,
+                "sampled_process_tree_cpu_seconds": wall,
+                "canonical_reducer_stall_seconds": 0.0,
+            }
+        )
+    winner, reason, ranking = s1m2.select_round1_winner(
+        rows, contract["round1"]["winner_rule"]
+    )
+    assert ranking[0]["workers"] == 8
+    assert winner == 4
+    assert reason == "practical_tie_resource_rule"
+
+
+def test_round2_and_final_plans_consume_one_winner_artifact() -> None:
+    contract = _contract()
+    round2 = s1m2.build_round2_plan(
+        contract, _round1_result(16), identity=IDENTITY
+    )
+    s1m2._validate_plan(round2, contract)
+    assert len(round2["jobs"]) == 6
+    assert {job["workers"] for job in round2["jobs"]} == {16}
+    assert [
+        (job["cell_id"], job["workload_id"]) for job in round2["jobs"]
+    ] == [tuple(item) for item in contract["round2"]["jobs"]]
+
+    passed = _round2_result(workers=16)
+    final = s1m2.build_final_plan(contract, passed, identity=IDENTITY)
+    s1m2._validate_plan(final, contract)
+    assert len(final["jobs"]) == 6
+    assert {job["workload_id"] for job in final["jobs"]} == {"full"}
+    assert {job["workers"] for job in final["jobs"]} == {16}
+    assert final["FULL_M0_PROCESS_RUNNING"] == "NO"
+    assert [job["host_role"] for job in final["jobs"]] == [
+        "core-01", "core-02", "core-03", "core-04", "core-05", "core-06"
+    ]
+
+
+def test_round2_gates_are_machine_readable(monkeypatch: pytest.MonkeyPatch) -> None:
+    contract = _contract()
+    plan = s1m2.build_round2_plan(
+        contract, _round1_result(12), identity=IDENTITY
+    )
+
+    def fake_audit(*args: object, **kwargs: object) -> dict[str, object]:
+        return {
+            "valid": True,
+            "failures": [],
+            "artifact_audit": {
+                "run_dir": "missing-test-run-dir",
+                "metrics": {
+                    "wall_seconds": 100.0,
+                    "peak_process_tree_rss_bytes": 1024,
+                    "peak_watched_run_bytes": 1024,
+                    "sampled_process_tree_cpu_seconds": 50.0,
+                    "sampled_process_tree_read_bytes": 10,
+                    "sampled_process_tree_write_bytes": 20,
+                    "host_memory_bytes": 32768,
+                    "filesystem_free_bytes_end": 30 * 1024**3,
+                },
+            },
+        }
+
+    monkeypatch.setattr(s1m2, "audit_job", fake_audit)
+    result = s1m2.evaluate_round2(plan, contract, repo_root=Path("."))
+    assert result["ROUND2_STATUS"] == "PASS"
+    assert result["CONTINUOUS_RUNTIME_TARGET"] == "PASS"
+    assert result["PRODUCTION_MEMORY_GATE"] == "PASS"
+    assert result["PRODUCTION_STORAGE_GATE"] == "PASS"
+    assert result["PRODUCTION_RESUME_GATE"] == "PASS"
+    assert result["PRODUCTION_PROVENANCE_GATE"] == "PASS"
+    assert result["S1M2_SIX_CELL_INTERFACE_GATE"] == "PASS"
+
+
+def test_final_plan_fails_closed_before_round2_passes() -> None:
+    contract = _contract()
+    failed = _round2_result(status="FAIL", workers=8)
+    with pytest.raises(RuntimeError, match="before Round 2 passes"):
+        s1m2.build_final_plan(contract, failed, identity=IDENTITY)
+
+
+def test_cloud_registry_contains_all_prevm_planned_identities() -> None:
+    contract = _contract()
+    round1 = s1m2.build_round1_plan(contract, identity=IDENTITY)
+    round2 = s1m2.build_round2_plan(
+        contract, _round1_result(12), identity=IDENTITY
+    )
+    final = s1m2.build_final_plan(
+        contract,
+        _round2_result(workers=12),
+        identity=IDENTITY,
+    )
+    registry = tomllib.loads(
+        Path("configs/cloud/experiment_registry.toml").read_text(encoding="utf-8")
+    )
+    planned = registry["s1m2_prevm"]["planned_runs"]
+    registry_ids = {row["run_id"] for row in planned}
+    generated_ids = {
+        job["run_id"]
+        for plan in (round1, round2, final)
+        for job in plan["jobs"]
+    }
+    assert len(planned) == 18
+    assert registry_ids == generated_ids
+    assert registry["s1m2_prevm"]["round1_status"] == "NOT_STARTED"
+    assert registry["s1m2_prevm"]["full_m0_process_running"] is False

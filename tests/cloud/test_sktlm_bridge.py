@@ -776,6 +776,43 @@ state = "RUNNING"
         )
 
 
+def test_collection_registry_resolves_exact_s1m2_planned_identity(
+    tmp_path: Path,
+) -> None:
+    registry = tmp_path / bridge.REGISTRY_RELATIVE_PATH
+    registry.parent.mkdir(parents=True)
+    registry.write_text(
+        """
+[[runs]]
+machine_id = "core-01"
+host_profile = "core-01"
+run_id = "historical"
+metrics_id = "historical"
+state = "DONE"
+
+[s1m2_prevm]
+logical_vm_role = "s1m2-vm-01"
+
+[[s1m2_prevm.planned_runs]]
+run_id = "s1m2_round1_test"
+metrics_id = "round1_test"
+state = "PREPARED_NOT_STARTED"
+""".strip(),
+        encoding="utf-8",
+    )
+    config = remote_config(
+        host_profile="s1m2-vm-01",
+        machine_id="s1m2-vm-01",
+        available_host_profiles=("core-01", "s1m2-vm-01"),
+    )
+    assignment = bridge.collection_registry_assignment(
+        tmp_path, config, "s1m2_round1_test", "round1_test"
+    )
+    assert assignment is not None
+    assert assignment["host_profile"] == "s1m2-vm-01"
+    assert assignment["state_at_collection"] == "PREPARED_NOT_STARTED"
+
+
 def test_tracked_registry_has_unique_logical_assignments() -> None:
     registry_path = BRIDGE_PATH.parents[2] / bridge.REGISTRY_RELATIVE_PATH
     assert bridge.tomllib is not None

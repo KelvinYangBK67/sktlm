@@ -8,6 +8,7 @@ import csv
 import json
 import os
 import signal
+import shutil
 import subprocess
 import sys
 import time
@@ -24,6 +25,7 @@ class ProcessSample:
     rss_bytes: int
     read_bytes: int
     write_bytes: int
+    io_wait_ticks: int
 
     @property
     def identity(self) -> tuple[int, int]:
@@ -38,6 +40,7 @@ def read_process(pid: int, page_size: int) -> ProcessSample | None:
         cpu_ticks = int(fields[11]) + int(fields[12])
         start_ticks = int(fields[19])
         rss_bytes = int(fields[21]) * page_size
+        io_wait_ticks = int(fields[39]) if len(fields) > 39 else 0
         io_values: dict[str, int] = {}
         for line in Path(f"/proc/{pid}/io").read_text(encoding="utf-8").splitlines():
             key, value = line.split(":", 1)
@@ -52,6 +55,7 @@ def read_process(pid: int, page_size: int) -> ProcessSample | None:
         rss_bytes=rss_bytes,
         read_bytes=io_values.get("read_bytes", 0),
         write_bytes=io_values.get("write_bytes", 0),
+        io_wait_ticks=io_wait_ticks,
     )
 
 
@@ -81,10 +85,60 @@ def process_tree(root_pid: int, page_size: int) -> tuple[ProcessSample, ...]:
     return tuple(selected)
 
 
+def watched_storage(path: Path) -> dict[str, int]:
+    """Measure the bounded production run tree by operational category."""
+
+    values = {
+        "run_bytes": 0,
+        "sqlite_bytes": 0,
+        "sqlite_wal_bytes": 0,
+        "sqlite_shm_bytes": 0,
+        "topology_bytes": 0,
+        "inspection_shard_bytes": 0,
+        "completed_artifact_bytes": 0,
+    }
+    if not path.exists():
+        return values
+    for item in path.rglob("*"):
+        if not item.is_file():
+            continue
+        try:
+            size = item.stat().st_size
+        except FileNotFoundError:
+            continue
+        values["run_bytes"] += size
+        relative = item.relative_to(path)
+        if item.name == "learner.sqlite":
+            values["sqlite_bytes"] += size
+        elif item.name == "learner.sqlite-wal":
+            values["sqlite_wal_bytes"] += size
+        elif item.name == "learner.sqlite-shm":
+            values["sqlite_shm_bytes"] += size
+        elif relative.parts and relative.parts[0] == "topology":
+            values["topology_bytes"] += size
+        elif relative.parts[:2] == ("shards", "inspection"):
+            values["inspection_shard_bytes"] += size
+        elif not (relative.parts and relative.parts[0] == "shards"):
+            values["completed_artifact_bytes"] += size
+    return values
+
+
+def filesystem_usage(path: Path):
+    candidate = path.resolve()
+    while not candidate.exists() and candidate != candidate.parent:
+        candidate = candidate.parent
+    return shutil.disk_usage(candidate)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--interval", type=float, default=1.0)
+    parser.add_argument(
+        "--watch-dir",
+        type=Path,
+        help="Run directory whose storage high-water marks should be sampled.",
+    )
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if args.command and args.command[0] == "--":
@@ -119,14 +173,27 @@ def main() -> None:
     signal.signal(signal.SIGINT, forward)
     signal.signal(signal.SIGTERM, forward)
 
-    previous: dict[tuple[int, int], tuple[int, int, int]] = {}
+    previous: dict[tuple[int, int], tuple[int, int, int, int]] = {}
     cumulative_cpu_ticks = 0
     cumulative_read_bytes = 0
     cumulative_write_bytes = 0
     peak_rss_bytes = 0
+    peak_main_rss_bytes = 0
+    peak_worker_rss_bytes = 0
     peak_processes = 0
+    cumulative_io_wait_ticks = 0
+    storage_peaks: dict[str, int] = {}
     started = time.monotonic()
     previous_sample_time = started
+    filesystem_before = (
+        filesystem_usage(args.watch_dir) if args.watch_dir is not None else None
+    )
+    filesystem_free_min = (
+        None if filesystem_before is None else filesystem_before.free
+    )
+    filesystem_used_peak = (
+        None if filesystem_before is None else filesystem_before.used
+    )
 
     fieldnames = (
         "wall_seconds",
@@ -138,6 +205,14 @@ def main() -> None:
         "cpu_percent_capacity",
         "cumulative_read_bytes",
         "cumulative_write_bytes",
+        "cumulative_io_wait_seconds",
+        "watched_run_bytes",
+        "sqlite_bytes",
+        "sqlite_wal_bytes",
+        "topology_bytes",
+        "inspection_shard_bytes",
+        "filesystem_free_bytes",
+        "filesystem_used_bytes",
         "load_average_1m",
     )
     with samples_path.open("w", encoding="utf-8", newline="") as handle:
@@ -148,20 +223,55 @@ def main() -> None:
             samples = process_tree(process.pid, page_size)
             rss_bytes = sum(item.rss_bytes for item in samples)
             peak_rss_bytes = max(peak_rss_bytes, rss_bytes)
+            root_sample = next((item for item in samples if item.pid == process.pid), None)
+            if root_sample is not None:
+                peak_main_rss_bytes = max(peak_main_rss_bytes, root_sample.rss_bytes)
+            peak_worker_rss_bytes = max(
+                peak_worker_rss_bytes,
+                max(
+                    (item.rss_bytes for item in samples if item.pid != process.pid),
+                    default=0,
+                ),
+            )
             peak_processes = max(peak_processes, len(samples))
             delta_cpu_ticks = 0
             for item in samples:
-                current = (item.cpu_ticks, item.read_bytes, item.write_bytes)
-                old = previous.get(item.identity, (0, 0, 0))
+                current = (
+                    item.cpu_ticks,
+                    item.read_bytes,
+                    item.write_bytes,
+                    item.io_wait_ticks,
+                )
+                old = previous.get(item.identity, (0, 0, 0, 0))
                 delta_cpu_ticks += max(0, current[0] - old[0])
                 cumulative_read_bytes += max(0, current[1] - old[1])
                 cumulative_write_bytes += max(0, current[2] - old[2])
+                cumulative_io_wait_ticks += max(0, current[3] - old[3])
                 previous[item.identity] = current
             cumulative_cpu_ticks += delta_cpu_ticks
             elapsed = max(now - previous_sample_time, 1e-9)
             cpu_percent_one_core = (
                 delta_cpu_ticks / clock_ticks / elapsed * 100.0
             )
+            storage = (
+                watched_storage(args.watch_dir)
+                if args.watch_dir is not None
+                else watched_storage(Path("__sktlm_metrics_no_watch__"))
+            )
+            for key, value in storage.items():
+                storage_peaks[key] = max(storage_peaks.get(key, 0), value)
+            filesystem_sample = (
+                filesystem_usage(args.watch_dir)
+                if args.watch_dir is not None
+                else None
+            )
+            if filesystem_sample is not None:
+                filesystem_free_min = min(
+                    filesystem_free_min, filesystem_sample.free
+                )
+                filesystem_used_peak = max(
+                    filesystem_used_peak, filesystem_sample.used
+                )
             writer.writerow(
                 {
                     "wall_seconds": now - started,
@@ -173,6 +283,18 @@ def main() -> None:
                     "cpu_percent_capacity": cpu_percent_one_core / logical_cpus,
                     "cumulative_read_bytes": cumulative_read_bytes,
                     "cumulative_write_bytes": cumulative_write_bytes,
+                    "cumulative_io_wait_seconds": cumulative_io_wait_ticks / clock_ticks,
+                    "watched_run_bytes": storage["run_bytes"],
+                    "sqlite_bytes": storage["sqlite_bytes"],
+                    "sqlite_wal_bytes": storage["sqlite_wal_bytes"],
+                    "topology_bytes": storage["topology_bytes"],
+                    "inspection_shard_bytes": storage["inspection_shard_bytes"],
+                    "filesystem_free_bytes": (
+                        None if filesystem_sample is None else filesystem_sample.free
+                    ),
+                    "filesystem_used_bytes": (
+                        None if filesystem_sample is None else filesystem_sample.used
+                    ),
                     "load_average_1m": os.getloadavg()[0],
                 }
             )
@@ -184,6 +306,14 @@ def main() -> None:
 
     return_code = process.wait()
     finished = time.monotonic()
+    filesystem_end = (
+        filesystem_usage(args.watch_dir) if args.watch_dir is not None else None
+    )
+    host_memory_bytes = None
+    try:
+        host_memory_bytes = os.sysconf("SC_PHYS_PAGES") * page_size
+    except (AttributeError, OSError, ValueError):
+        pass
     summary = {
         "command": args.command,
         "return_code": return_code,
@@ -193,9 +323,46 @@ def main() -> None:
         "logical_cpu_count": logical_cpus,
         "peak_process_count": peak_processes,
         "peak_process_tree_rss_bytes": peak_rss_bytes,
+        "peak_main_process_rss_bytes": peak_main_rss_bytes,
+        "peak_worker_rss_bytes": peak_worker_rss_bytes,
+        "host_memory_bytes": host_memory_bytes,
         "sampled_process_tree_cpu_seconds": cumulative_cpu_ticks / clock_ticks,
+        "mean_process_tree_cpu_capacity_fraction": (
+            cumulative_cpu_ticks
+            / clock_ticks
+            / max(finished - started, 1e-9)
+            / logical_cpus
+        ),
         "sampled_process_tree_read_bytes": cumulative_read_bytes,
         "sampled_process_tree_write_bytes": cumulative_write_bytes,
+        "sampled_process_tree_io_wait_seconds": cumulative_io_wait_ticks / clock_ticks,
+        "watch_dir": None if args.watch_dir is None else str(args.watch_dir),
+        "peak_watched_run_bytes": storage_peaks.get("run_bytes"),
+        "peak_sqlite_bytes": storage_peaks.get("sqlite_bytes"),
+        "peak_sqlite_wal_bytes": storage_peaks.get("sqlite_wal_bytes"),
+        "peak_sqlite_shm_bytes": storage_peaks.get("sqlite_shm_bytes"),
+        "peak_topology_archive_bytes": storage_peaks.get("topology_bytes"),
+        "peak_pending_inspection_shard_bytes": storage_peaks.get(
+            "inspection_shard_bytes"
+        ),
+        "completed_artifact_bytes": storage_peaks.get("completed_artifact_bytes"),
+        "filesystem_total_bytes": (
+            None if filesystem_before is None else filesystem_before.total
+        ),
+        "filesystem_free_bytes_before": (
+            None if filesystem_before is None else filesystem_before.free
+        ),
+        "filesystem_used_bytes_before": (
+            None if filesystem_before is None else filesystem_before.used
+        ),
+        "filesystem_free_bytes_min": filesystem_free_min,
+        "peak_filesystem_used_bytes": filesystem_used_peak,
+        "filesystem_free_bytes_end": (
+            None if filesystem_end is None else filesystem_end.free
+        ),
+        "filesystem_used_bytes_end": (
+            None if filesystem_end is None else filesystem_end.used
+        ),
         "caveat": (
             "One-second /proc sampling can undercount processes that start and "
             "exit between samples; RSS is the simultaneous sum for observed "
