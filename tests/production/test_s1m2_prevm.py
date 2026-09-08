@@ -151,6 +151,47 @@ def test_round1_winner_rule_uses_resources_for_practical_tie() -> None:
     assert reason == "practical_tie_resource_rule"
 
 
+def test_round1_aggregator_fails_closed_on_filesystem_headroom(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contract = _contract()
+    plan = s1m2.build_round1_plan(contract, identity=IDENTITY)
+
+    def fake_audit(
+        _plan: object,
+        job: dict[str, object],
+        _contract_value: object,
+        *,
+        repo_root: Path,
+    ) -> dict[str, object]:
+        workers = int(job["workers"])
+        return {
+            "valid": True,
+            "failures": [],
+            "artifact_audit": {
+                "run_dir": str(repo_root / "missing-test-run-dir"),
+                "metrics": {
+                    "wall_seconds": 100.0 + workers,
+                    "peak_process_tree_rss_bytes": 1024,
+                    "peak_watched_run_bytes": 1024,
+                    "sampled_process_tree_cpu_seconds": 50.0,
+                    "sampled_process_tree_read_bytes": 10,
+                    "sampled_process_tree_write_bytes": 20,
+                    "host_memory_bytes": 32768,
+                    "filesystem_free_bytes_end": 1,
+                },
+            },
+        }
+
+    monkeypatch.setattr(s1m2, "audit_job", fake_audit)
+    result = s1m2.aggregate_round1(plan, contract, repo_root=Path("."))
+    assert result["ROUND1_STATUS"] == "FAIL"
+    assert all(
+        "filesystem free-space safety gate failed" in row["failures"]
+        for row in result["jobs"]
+    )
+
+
 def test_round2_and_final_plans_consume_one_winner_artifact() -> None:
     contract = _contract()
     round2 = s1m2.build_round2_plan(

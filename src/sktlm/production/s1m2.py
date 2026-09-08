@@ -1095,6 +1095,7 @@ def aggregate_round1(
             memory = resources["peak_process_tree_rss_bytes"]
             host_memory = resources["host_memory_bytes"]
             storage = resources["peak_watched_run_bytes"]
+            free_end = resources["filesystem_free_bytes_end"]
             if memory is None or host_memory is None:
                 row["valid"] = False
                 row["failures"].append("aggregate process-tree/host memory is missing")
@@ -1107,6 +1108,12 @@ def aggregate_round1(
             elif storage > contract["gates"]["storage_max_bytes"]:
                 row["valid"] = False
                 row["failures"].append("storage safety gate failed")
+            if free_end is None:
+                row["valid"] = False
+                row["failures"].append("filesystem free-space telemetry is missing")
+            elif free_end < contract["gates"]["storage_min_free_bytes_end"]:
+                row["valid"] = False
+                row["failures"].append("filesystem free-space safety gate failed")
         if row["valid"]:
             eligible.append(row)
         audits.append(row)
