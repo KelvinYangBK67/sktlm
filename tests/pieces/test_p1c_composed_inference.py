@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import pytest
 
+import sktlm.pieces.composed as composed_module
 from sktlm.latent.candidates import CandidateBuildProfile
 from sktlm.latent.frontend import iter_observed_segments, parse_surface
 from sktlm.latent.grammar import StructuredSandhiGrammar
@@ -381,6 +382,39 @@ def test_shared_token_marginals_match_legacy_exact_path(surface: str) -> None:
     )
     assert observed.counters.composed_transition_count < (
         reference.counters.composed_transition_count
+    )
+
+
+def test_shared_zero_epsilon_occurrences_stay_form_compact() -> None:
+    grammar = StructuredSandhiGrammar.from_default_inventory()
+    segment = next(iter_observed_segments('tattvamasi'))
+    graph = build_lazy_candidate_graph(segment, grammar)
+    factor = next(item for item in graph.factors if item.lattice is not None)
+    summary = composed_module._evaluate_lazy_token_shared(
+        factor.lattice,
+        ComposedPieceInference(
+            _production_scorer(),
+            model_config=PieceModelConfig(max_piece_length=3),
+        ),
+    )
+
+    assert summary is not None
+    assert summary.piece_occurrences == {}
+    assert summary.shared_occurrences
+    stored_occurrences = sum(
+        len(support.occurrence_ids)
+        for support in summary.shared_occurrences
+    )
+    expanded_occurrences = sum(
+        len(support.occurrence_ids) * len(support.pieces)
+        for support in summary.shared_occurrences
+    )
+    assert stored_occurrences > 0
+    assert expanded_occurrences > stored_occurrences
+    assert all(
+        isinstance(occurrence_id, int)
+        for support in summary.shared_occurrences
+        for occurrence_id in support.occurrence_ids
     )
 
 

@@ -11,10 +11,10 @@ S1M2_METHOD=COMPLETE
 S1M2_LOCAL_OPTIMIZATION=COMPLETE
 S1M2_OPTIMIZATION_16=ACCEPTED
 OPT16_TOPOLOGY_RECONSTRUCTIBILITY=PASS
-OPT17=AUTHORIZED
+OPT17=IMPLEMENTED_AWAITING_MANUAL_VALIDATION
 POST_OPT16_ENGINEERING_OPTIMIZATION=AUTHORIZED
 SINGLE_WORKER_PEAK_RSS_TARGET=<10GiB
-CURRENT_OPTIMIZATION=OPT17_COMPACT_OCCURRENCE_SUPPORT
+CURRENT_OPTIMIZATION=COMPLETE_AWAITING_MANUAL_VALIDATION
 S1M2_SIX_CELL_CONTRACT=FROZEN
 ROUND1_INTERFACE=READY
 ROUND1_AGGREGATOR=READY
@@ -28,7 +28,7 @@ PRE_VM_INTERFACE_STATE=READY
 ROUND1_STATUS=FAILED_OOM
 ROUND2_STATUS=NOT_STARTED
 FULL_M0_PROCESS_RUNNING=NO
-NEXT_ACTION=IMPLEMENT_OPT17_THEN_DETACH_FOR_MANUAL_VALIDATION
+NEXT_ACTION=COLLABORATOR_RUN_EXACTNESS_AND_SINGLE_WORKER_MEMORY_PROBES
 ```
 
 The authoritative machine-readable contract is
@@ -37,11 +37,12 @@ The authoritative machine-readable contract is
 on `core-01` through `core-06`; S1M2 production deployment is verified
 `git_bundle` at the explicit branch and SHA.
 
-Round 1 stopped on single-worker OOM. The authorized next step is only Opt17:
-compact the production shared zero-epsilon occurrence-support representation
-without changing candidate support, scoring, posterior equations, support
-semantics, or observable output.
+Round 1 stopped on single-worker OOM. Opt17 now keeps shared zero-epsilon
+occurrences as compact form-level integer support and defers per-piece
+cardinality aggregation. The weighted legacy threshold route and merged-word
+support remain unchanged.
 
-Do not run Round 1, Round 2, VM/cloud, representative, stress, full-M0, or a
-production-like RAM probe in this session. After one focused local test, commit
-and push Opt17, then detach for collaborator-run exactness and memory validation.
+The one focused local command passed four selected tests. No Round 1, Round 2,
+VM/cloud, representative, stress, full-M0, or production-like RAM probe ran.
+After push, the collaborator must run the fixed artifact exactness and
+single-worker memory probes; the less-than-10-GiB target is not yet validated.

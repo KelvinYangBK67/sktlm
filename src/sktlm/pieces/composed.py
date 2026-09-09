@@ -218,6 +218,14 @@ class _ComposedPath:
 
 
 @dataclass(frozen=True, slots=True)
+class _SharedFormOccurrenceSupport:
+    form: PhonologicalForm
+    pieces: tuple[PhonologicalForm, ...]
+    surface_base: int
+    occurrence_ids: set[int]
+
+
+@dataclass(frozen=True, slots=True)
 class _TokenSummary:
     log_partition: float
     expected_log_weight: float
@@ -233,6 +241,7 @@ class _TokenSummary:
     boundary_meta: dict[str, LexicalBoundary]
     rule_usage: dict[str, float]
     piece_occurrences: dict[PhonologicalForm, dict[str, float]]
+    shared_occurrences: tuple[_SharedFormOccurrenceSupport, ...]
     top_paths: tuple[_ComposedPath, ...]
 
 
@@ -253,6 +262,7 @@ class _FactorSummary:
     boundary_meta: dict[str, LexicalBoundary]
     rule_usage: dict[str, float]
     piece_occurrences: dict[PhonologicalForm, dict[str, float]]
+    shared_occurrences: tuple[_SharedFormOccurrenceSupport, ...]
     top_paths: tuple[_ComposedPath, ...]
 
 
@@ -1288,6 +1298,7 @@ def _evaluate_lazy_token_legacy(
             piece: dict(occurrences)
             for piece, occurrences in piece_occurrences.items()
         },
+        shared_occurrences=(),
         top_paths=top_paths,
     )
 
@@ -1353,7 +1364,8 @@ def _evaluate_lazy_token_shared(
     boundary_meta: dict[str, LexicalBoundary] = {}
     rule_usage: dict[str, float] = defaultdict(float)
     endpoint_masses: dict[str, float] = defaultdict(float)
-    form_occurrences: dict[str, set[str]] = defaultdict(set)
+    form_occurrences: dict[str, set[int]] = defaultdict(set)
+    surface_base = len(lattice.token.units) + 1
     expected_prior_log_z = 0.0
     mass_weighted_raw_log_z = 0.0
     expected_whole_form_uses = 0.0
@@ -1384,8 +1396,8 @@ def _evaluate_lazy_token_shared(
             expected_multi_piece_uses += mass * (1.0 - whole_mass)
             if mass > 0.0:
                 form_occurrences[span.word.key].add(
-                    f"{lattice.nodes[span.start].surface_end}:"
-                    f"{lattice.nodes[span.end].surface_start}:{span.word.key}"
+                    lattice.nodes[span.start].surface_end * surface_base
+                    + lattice.nodes[span.end].surface_start
                 )
             if span.boundary is not None:
                 boundary_mass[span.boundary.boundary_id] += mass
@@ -1396,17 +1408,23 @@ def _evaluate_lazy_token_shared(
     piece_counts, expected_raw_score = (
         engine._aggregate_shared_piece_marginals(batch, endpoint_masses)
     )
-    piece_occurrences: dict[
-        PhonologicalForm, dict[str, float]
-    ] = defaultdict(dict)
     # The shared route is used only for support_epsilon == 0. Every legal
     # transition has finite weight, so structural membership is exactly the
-    # positive-posterior support event; the numeric sentinel is never used as
-    # an expected count.
-    for form_key, occurrences in form_occurrences.items():
-        for piece in engine._shared_legal_pieces(batch, batch.forms[form_key]):
-            for occurrence_id in occurrences:
-                piece_occurrences[piece][occurrence_id] = 1.0
+    # positive-posterior support event. Keep the form-to-occurrence and
+    # form-to-piece relations compact; expanding their Cartesian product is
+    # unnecessary because occurrence identities include the lexical form.
+    shared_occurrences = tuple(
+        _SharedFormOccurrenceSupport(
+            form=batch.forms[form_key].form,
+            pieces=engine._shared_legal_pieces(
+                batch,
+                batch.forms[form_key],
+            ),
+            surface_base=surface_base,
+            occurrence_ids=occurrences,
+        )
+        for form_key, occurrences in form_occurrences.items()
+    )
 
     identity = lattice.span(0, node_count - 1)
     identity_log_score = -math.inf
@@ -1475,10 +1493,8 @@ def _evaluate_lazy_token_shared(
         boundary_mass=dict(boundary_mass),
         boundary_meta=boundary_meta,
         rule_usage=dict(rule_usage),
-        piece_occurrences={
-            piece: dict(occurrences)
-            for piece, occurrences in piece_occurrences.items()
-        },
+        piece_occurrences={},
+        shared_occurrences=shared_occurrences,
         top_paths=top_paths,
     )
 
@@ -1562,6 +1578,7 @@ def _evaluate_factor(
                 for piece, conditional_mass in evaluation.expected_piece_counts.items()
                 if conditional_mass > 0.0
             },
+            shared_occurrences=(),
             top_paths=top_paths,
         )
     assert factor.lattice is not None
@@ -1593,6 +1610,7 @@ def _evaluate_factor(
         boundary_meta=token.boundary_meta,
         rule_usage=token.rule_usage,
         piece_occurrences=token.piece_occurrences,
+        shared_occurrences=token.shared_occurrences,
         top_paths=token.top_paths,
     )
 
@@ -1812,6 +1830,15 @@ def infer_composed_segment(
     boundary_mass: dict[str, float] = defaultdict(float)
     boundary_meta: dict[str, LexicalBoundary] = {}
     piece_occurrences: dict[PhonologicalForm, set[str]] = defaultdict(set)
+    shared_form_occurrences: dict[PhonologicalForm, set[int]] = defaultdict(set)
+    shared_form_pieces: dict[
+        PhonologicalForm, tuple[PhonologicalForm, ...]
+    ] = {}
+    support_piece_order: dict[PhonologicalForm, None] = {}
+    token_base = len(graph.segment.tokens) + 1
+    surface_base = (
+        max((len(token.units) for token in graph.segment.tokens), default=0) + 1
+    )
     expected_log_weight = 0.0
     expected_piece_tokens = 0.0
     piece_segmentation_entropy = 0.0
@@ -1848,8 +1875,41 @@ def infer_composed_segment(
         for piece, occurrences in evaluation.piece_occurrences.items():
             for occurrence_id, conditional_mass in occurrences.items():
                 if factor_mass * conditional_mass > support_epsilon:
+                    support_piece_order.setdefault(piece, None)
                     piece_occurrences[piece].add(
                         f"{factor.start_token}:{factor.end_token}:{occurrence_id}"
+                    )
+        if factor_mass > 0.0:
+            for support in evaluation.shared_occurrences:
+                if support_epsilon != 0.0:
+                    raise AssertionError(
+                        'Structural occurrence support requires zero epsilon.'
+                    )
+                existing_pieces = shared_form_pieces.setdefault(
+                    support.form,
+                    support.pieces,
+                )
+                if existing_pieces != support.pieces:
+                    raise AssertionError(
+                        'Legal piece support changed for one lexical form.'
+                    )
+                for piece in support.pieces:
+                    support_piece_order.setdefault(piece, None)
+                factor_prefix = (
+                    factor.start_token * token_base + factor.end_token
+                )
+                target = shared_form_occurrences[support.form]
+                for occurrence_id in support.occurrence_ids:
+                    left_surface_end, right_surface_start = divmod(
+                        occurrence_id,
+                        support.surface_base,
+                    )
+                    target.add(
+                        (
+                            factor_prefix * surface_base + left_surface_end
+                        )
+                        * surface_base
+                        + right_surface_start
                     )
 
         if factor.end_token < len(graph.segment.tokens):
@@ -1915,6 +1975,35 @@ def infer_composed_segment(
         )
         for path in decoded
     )
+    piece_occurrence_support = {
+        piece: len(piece_occurrences.get(piece, ()))
+        for piece in support_piece_order
+    }
+    for form, occurrence_ids in shared_form_occurrences.items():
+        for piece in shared_form_pieces[form]:
+            added = len(occurrence_ids)
+            legacy_occurrences = piece_occurrences.get(piece)
+            if legacy_occurrences:
+                for occurrence_id in occurrence_ids:
+                    prefix, right_surface_start = divmod(
+                        occurrence_id,
+                        surface_base,
+                    )
+                    factor_prefix, left_surface_end = divmod(
+                        prefix,
+                        surface_base,
+                    )
+                    factor_start, factor_end = divmod(
+                        factor_prefix,
+                        token_base,
+                    )
+                    if (
+                        f"{factor_start}:{factor_end}:{left_surface_end}:"
+                        f"{right_surface_start}:{form.key}"
+                        in legacy_occurrences
+                    ):
+                        added -= 1
+            piece_occurrence_support[piece] += added
     return ComposedSegmentInference(
         log_partition=log_z,
         entropy=max(0.0, log_z - expected_log_weight),
@@ -1932,10 +2021,7 @@ def infer_composed_segment(
         boundary_posteriors=boundaries,
         top_analyses=analyses,
         top_analysis_mass=sum(item.probability for item in analyses),
-        piece_occurrence_support={
-            piece: len(occurrences)
-            for piece, occurrences in piece_occurrences.items()
-        },
+        piece_occurrence_support=piece_occurrence_support,
         total_posterior_mass=posterior_mass,
         counters=engine.counter_delta(before),
         timings=engine.timing_delta(timing_before),

@@ -2480,3 +2480,29 @@ logic were not copied into `main`.
 Focused contract tests pass (`9 passed`); the complete cloud suite passes
 (`61 passed`). No SSH, SCP, rsync, VM, benchmark, representative, stress, or
 full-M0 operation ran.
+
+## 84. Opt17 compact occurrence support implemented (2026-09-09)
+
+After external Round 1 stopped on single-worker OOM, Opt17 was explicitly
+authorized as a representation-only change. The shared zero-epsilon route now
+stores each positive form occurrence once as packed integer surface
+coordinates plus the form's legal-piece relation, then computes exact
+per-piece cardinalities after segment-level form/coordinate deduplication. The
+legacy nonzero-epsilon weighted occurrence maps are unchanged, merged-word
+support stays on that path, and mixed shared/legacy fallback unions preserve
+the former string identity exactly.
+
+The only local validation command selected four focused tests and passed
+(`4 passed, 19 deselected in 0.40s`). No benchmark, representative, stress,
+VM/cloud, Round 1/2, production-like RAM probe, or full-M0 workload ran.
+Scientific artifact comparison and the less-than-10-GiB single-worker target
+remain pending collaborator validation.
+
+```text
+ROUND1_STATUS=FAILED_OOM
+POST_OPT16_ENGINEERING_OPTIMIZATION=AUTHORIZED
+SINGLE_WORKER_PEAK_RSS_TARGET=<10GiB
+OPT17=IMPLEMENTED_AWAITING_MANUAL_VALIDATION
+FULL_M0_PROCESS_RUNNING=NO
+NEXT_ACTION=COLLABORATOR_RUN_EXACTNESS_AND_SINGLE_WORKER_MEMORY_PROBES
+```
