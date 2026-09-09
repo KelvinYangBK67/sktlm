@@ -26,10 +26,15 @@ S1M2_SIX_CELL_BOUNDED_VALIDATION=PASS
 FULL_REPO_GATE=PENDING_ONE_FINAL_RUN
 PRE_VM_INTERFACE_STATE=READY
 PRE_VM_ENGINEERING_STATE=READY
-ROUND1_STATUS=FAILED_OOM
+ROUND1_STATUS=MANUALLY_TERMINATED_AFTER_DIAGNOSTIC_CONVERGENCE
+ROUND1_FORMAL_WINNER=UNRESOLVED
+ROUND1_WORKER_SEARCH_LOWER_BOUND=12
+ROUND1_NEXT_WORKER_CANDIDATES=12_16_24
+ROUND1_STRAGGLER=DOCUMENT_INDEX_50_CONFIRMED
+ROUND1_EVIDENCE_CLASSIFICATION=DIAGNOSTIC_VALID
 ROUND2_STATUS=NOT_STARTED
 FULL_M0_PROCESS_RUNNING=NO
-NEXT_ACTION=VM_ROUND1
+NEXT_ACTION=PRE_FULL_UNIT_GRANULARITY_AUDIT
 ```
 
 The authoritative machine-readable contract is
@@ -100,4 +105,9 @@ with profiling while Opt19 did not, so this closes an engineering runtime gate
 rather than constituting a rigorously isolated speedup measurement.
 
 Opt19 conclusion: `local exactness PASS / RAM gate PASS / runtime gate PASS`.
-The pre-VM engineering state is `READY`; the sole next action is VM Round 1.
+The pre-VM engineering state was `READY`. Round1 was subsequently terminated
+normally after diagnostic convergence without selecting a formal worker
+winner. Its evidence is valid for engineering diagnosis: workers 4 and 8 are
+below the retained search range, while document index 50 repeatedly blocked
+canonical reduction for higher-worker configurations. The current next action
+is an independent pre-full unit-granularity audit.
