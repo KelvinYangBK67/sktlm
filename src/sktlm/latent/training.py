@@ -14,7 +14,7 @@ import sqlite3
 import subprocess
 import time
 from collections import Counter
-from concurrent.futures import Future, ProcessPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
 from contextlib import ExitStack
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -28,6 +28,11 @@ from sktlm.latent.candidates import (
     candidate_graph_statistics,
 )
 from sktlm.latent.frontend import ObservedSegment, iter_observed_segments
+from sktlm.latent.execution_bundles import (
+    ExecutionBundle,
+    ExecutionBundlePlan,
+    load_execution_bundle_plan,
+)
 from sktlm.latent.grammar import StructuredSandhiGrammar
 from sktlm.latent.inference import (
     AnalysisPosterior,
@@ -67,6 +72,7 @@ from sktlm.pieces.model import PieceModelConfig
 from sktlm.pieces.scorer import NeutralPieceScorer
 from sktlm.pieces.topology_archive import (
     ReconstructibleTopologyArchiveReader,
+    TopologyArchiveReader,
     TopologyArchiveWriter,
     archive_header,
 )
@@ -134,6 +140,7 @@ class TrainingConfig:
     piece_shared_prefix_nodes: int = 262_144
     piece_shared_top_k_piece_references: int = 4_194_304
     inspection_retained_factor_bytes: int = 320 * 1024 * 1024
+    execution_bundle_plan: Path | None = None
     resume: bool = False
 
     def __post_init__(self) -> None:
@@ -155,6 +162,10 @@ class TrainingConfig:
             raise ValueError("vocab_budget is an S1M1-only comparison condition")
         if self.workers < 1:
             raise ValueError('workers must be >= 1')
+        if self.execution_bundle_plan is not None and self.model != S1M2_MODEL:
+            raise ValueError("execution_bundle_plan is supported only for S1M2")
+        if self.execution_bundle_plan is not None and self.workers < 2:
+            raise ValueError("execution_bundle_plan requires at least two workers")
         if self.lexical_alpha <= 0.0:
             raise ValueError("lexical_alpha must be > 0")
         if self.complexity_weight < 0.0:
@@ -213,6 +224,7 @@ class TrainingConfig:
         # Inspection admission is execution-only.  Changing its memory/runtime
         # tradeoff must not invalidate or rename an existing learned state.
         payload.pop("inspection_retained_factor_bytes")
+        payload.pop("execution_bundle_plan")
         if self.vocab_budget is None:
             payload.pop("vocab_budget")
         if self.model == S1M1_MODEL:
@@ -903,6 +915,100 @@ def _training_shard_paths(
     return root / f'{stem}.counts.tsv', root / f'{stem}.complete.json'
 
 
+def _training_bundle_paths(
+    run_dir: Path,
+    pass_index: int,
+    bundle: ExecutionBundle,
+) -> dict[str, Path]:
+    root = run_dir / "shards" / f"pass_{pass_index:04d}" / "bundles"
+    stem = (
+        f"document_{bundle.document_index:08d}."
+        f"bundle_{bundle.bundle_index:06d}"
+    )
+    return {
+        "segments": root / f"{stem}.segments.jsonl",
+        "marker": root / f"{stem}.complete.json",
+        "topology": root / f"{stem}.topology.bin",
+    }
+
+
+def _iter_execution_bundle_segments(
+    document: CorpusDocument,
+    config: TrainingConfig,
+    bundle: ExecutionBundle,
+) -> Iterator[tuple[int, int, ObservedSegment]]:
+    """Yield exactly one canonical contiguous range of atomic segments."""
+
+    first_identity = (bundle.first_line_number, bundle.first_segment_index)
+    last_identity = (bundle.last_line_number, bundle.last_segment_index)
+    seen = 0
+    first_seen: tuple[int, int] | None = None
+    last_seen: tuple[int, int] | None = None
+    phonemes = 0
+    pressure = 0
+    with document.path.open("r", encoding="utf-8") as handle:
+        for line_number, line in enumerate(handle, 1):
+            if (
+                config.max_lines_per_document is not None
+                and line_number > config.max_lines_per_document
+            ):
+                break
+            if line_number < bundle.first_line_number:
+                continue
+            if line_number > bundle.last_line_number:
+                break
+            if not line.strip():
+                continue
+            for segment_index, segment in enumerate(
+                iter_observed_segments(
+                    line.rstrip("\r\n"),
+                    max_tokens=config.max_segment_tokens,
+                    script=config.script,
+                )
+            ):
+                identity = (line_number, segment_index)
+                if identity < first_identity:
+                    continue
+                if identity > last_identity:
+                    break
+                segment_phonemes = sum(
+                    len(token.phonemes) for token in segment.tokens
+                )
+                if first_seen is None:
+                    first_seen = identity
+                last_seen = identity
+                seen += 1
+                phonemes += segment_phonemes
+                pressure += segment_phonemes * segment_phonemes
+                yield line_number, segment_index, segment
+    if (
+        first_seen != first_identity
+        or last_seen != last_identity
+        or seen != bundle.segment_count
+        or phonemes != bundle.phonemes
+        or pressure != bundle.pressure
+    ):
+        raise RuntimeError(
+            "Execution bundle no longer matches canonical ObservedSegments: "
+            f"{document.relative_path} bundle {bundle.bundle_index}."
+        )
+
+
+def _exact_metrics_payload(metrics: PassMetrics) -> dict[str, int | str]:
+    return {
+        name: value.hex() if isinstance(value, float) else int(value)
+        for name, value in asdict(metrics).items()
+    }
+
+
+def _metrics_from_exact_payload(payload: dict[str, Any]) -> PassMetrics:
+    decoded = {
+        name: float.fromhex(value) if isinstance(value, str) else int(value)
+        for name, value in payload.items()
+    }
+    return PassMetrics(**decoded)
+
+
 def _topology_archive_path(run_dir: Path, document_index: int) -> Path:
     return run_dir / "topology" / f"document_{document_index:08d}.bin"
 
@@ -1012,6 +1118,40 @@ def _open_reconstructible_topology_archive(
         header,
         rebuild,
     )
+
+
+def _validate_bundle_topology_archive(
+    *,
+    document: CorpusDocument,
+    document_index: int,
+    config: TrainingConfig,
+    run_dir: Path,
+    config_signature: str,
+    grammar: StructuredSandhiGrammar,
+    piece_engine: ComposedPieceInference,
+    telemetry: RuntimeTelemetry,
+) -> None:
+    """Validate or reconstruct once before concurrent range readers start."""
+
+    reader = _open_reconstructible_topology_archive(
+        document=document,
+        document_index=document_index,
+        config=config,
+        run_dir=run_dir,
+        config_signature=config_signature,
+        grammar=grammar,
+        piece_engine=piece_engine,
+        telemetry=telemetry,
+    )
+    try:
+        for line_number, segment_index, _segment in _iter_document_segments(
+            document, config
+        ):
+            reader.read(line_number, segment_index)
+        reader.close()
+    finally:
+        reader.close(require_eof=False)
+    telemetry.increment("training_bundle_topology_archives_validated", 1)
 
 
 def _profiled_document_segments_with_topology(
@@ -1392,6 +1532,470 @@ def _write_training_shard(
     return payload
 
 
+def _write_training_bundle_shard(
+    bundle: ExecutionBundle,
+    document: CorpusDocument,
+    config: TrainingConfig,
+    pass_index: int,
+    run_dir: Path,
+    config_signature: str,
+    plan_sha256: str,
+) -> dict[str, Any]:
+    """Compute bundle segments without changing their canonical reduction order."""
+
+    if _WORKER_GRAMMAR is None or _WORKER_PIECE_ENGINE is None:
+        raise RuntimeError("S1M2 bundle worker was not initialized.")
+    paths = _training_bundle_paths(run_dir, pass_index, bundle)
+    paths["segments"].parent.mkdir(parents=True, exist_ok=True)
+    segment_temporary = paths["segments"].with_suffix(".jsonl.tmp")
+    topology_temporary = paths["topology"].with_suffix(".bin.tmp")
+    wall_started = time.perf_counter()
+    cpu_started = time.process_time()
+    candidate_seconds = 0.0
+    inference_seconds = 0.0
+    aggregation_seconds = 0.0
+    frontend_seconds = 0.0
+    active_scorer = _WORKER_PIECE_ENGINE.scorer
+    scorer_calls_before = int(getattr(active_scorer, "score_calls", 0))
+    sqlite_selects_before = int(getattr(active_scorer, "sqlite_selects", 0))
+    sqlite_seconds_before = float(getattr(active_scorer, "sqlite_seconds", 0.0))
+    piece_counters_before = _WORKER_PIECE_ENGINE.counter_snapshot()
+    engineering = RuntimeTelemetry()
+    records = 0
+
+    try:
+        with ExitStack() as resources:
+            handle = resources.enter_context(
+                segment_temporary.open("w", encoding="utf-8", newline="")
+            )
+            topology_writer: TopologyArchiveWriter | None = None
+            topology_reader: TopologyArchiveReader | None = None
+            header = _topology_archive_header(
+                config_signature, bundle.document_index, document
+            )
+            if pass_index == 1:
+                topology_writer = resources.enter_context(
+                    TopologyArchiveWriter(topology_temporary, header)
+                )
+            else:
+                topology_reader = TopologyArchiveReader(
+                    _topology_archive_path(run_dir, bundle.document_index),
+                    header,
+                )
+                topology_reader.skip_records(bundle.first_segment_ordinal)
+                resources.callback(topology_reader.close, require_eof=False)
+
+            iterator = _iter_execution_bundle_segments(document, config, bundle)
+            while True:
+                started = time.perf_counter()
+                try:
+                    line_number, segment_index, segment = next(iterator)
+                except StopIteration:
+                    frontend_seconds += time.perf_counter() - started
+                    break
+                frontend_seconds += time.perf_counter() - started
+                _observe_segment_telemetry(
+                    engineering, segment, config, phase="training"
+                )
+                started = time.perf_counter()
+                candidate_profile = CandidateBuildProfile()
+                graph = build_lazy_candidate_graph(
+                    segment,
+                    _WORKER_GRAMMAR,
+                    config.candidate_config,
+                    profile=candidate_profile,
+                )
+                candidate_seconds += time.perf_counter() - started
+                candidate_counts = lazy_candidate_graph_statistics(graph)
+                _record_candidate_telemetry(
+                    engineering,
+                    candidate_profile,
+                    candidate_counts,
+                    phase="training",
+                )
+                if topology_writer is not None:
+                    topology = compile_composed_segment_topology(
+                        graph, _WORKER_PIECE_ENGINE
+                    )
+                    topology_writer.write(line_number, segment_index, topology)
+                else:
+                    assert topology_reader is not None
+                    topology = topology_reader.read(line_number, segment_index)
+
+                started = time.perf_counter()
+                inference = infer_composed_segment(
+                    graph,
+                    _WORKER_PIECE_ENGINE,
+                    whitespace_merge_penalty=config.whitespace_merge_penalty,
+                    support_epsilon=config.piece_support_epsilon,
+                    topology=topology,
+                )
+                _record_composed_timings(
+                    engineering, inference.timings, phase="training"
+                )
+                inference_seconds += time.perf_counter() - started
+                started = time.perf_counter()
+                segment_metrics = PassMetrics()
+                segment_metrics.update(
+                    segment,
+                    inference,
+                    overflowed_tokens=graph.overflowed_tokens,
+                    candidate_factors=candidate_counts["factors"],
+                    candidate_nodes=candidate_counts["lattice_nodes"],
+                    candidate_edges=candidate_counts["lexical_span_hypotheses"],
+                )
+                record = {
+                    "schema_version": "sktlm-s1m2-training-segment-result/v1",
+                    "line_number": line_number,
+                    "segment_index": segment_index,
+                    "lexical_counts": [
+                        (form.key, float(value).hex())
+                        for form, value in sorted(
+                            inference.lexical_expected_counts.items(),
+                            key=lambda item: item[0].key,
+                        )
+                    ],
+                    "piece_counts": [
+                        (
+                            piece.key,
+                            float(value).hex(),
+                            int(inference.piece_occurrence_support[piece]),
+                        )
+                        for piece, value in sorted(
+                            inference.piece_expected_counts.items(),
+                            key=lambda item: item[0].key,
+                        )
+                    ],
+                    "metrics": _exact_metrics_payload(segment_metrics),
+                }
+                aggregation_seconds += time.perf_counter() - started
+                handle.write(
+                    json.dumps(
+                        record,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                    + "\n"
+                )
+                records += 1
+            handle.flush()
+            os.fsync(handle.fileno())
+        _replace_file(segment_temporary, paths["segments"])
+        topology_name = None
+        topology_sha = None
+        if pass_index == 1:
+            _replace_file(topology_temporary, paths["topology"])
+            topology_name = paths["topology"].name
+            topology_sha = _file_sha256(paths["topology"])
+        payload = {
+            "schema_version": "sktlm-s1m2-training-bundle-shard/v1",
+            "config_signature": config_signature,
+            "plan_sha256": plan_sha256,
+            "pass_index": pass_index,
+            "document_index": bundle.document_index,
+            "relative_path": document.relative_path,
+            "bundle_index": bundle.bundle_index,
+            "first_segment_ordinal": bundle.first_segment_ordinal,
+            "last_segment_ordinal_exclusive": (
+                bundle.last_segment_ordinal_exclusive
+            ),
+            "segment_count": records,
+            "segment_shard": paths["segments"].name,
+            "segment_shard_sha256": _file_sha256(paths["segments"]),
+            "topology_shard": topology_name,
+            "topology_shard_sha256": topology_sha,
+            "runtime": {
+                "training_candidate_generation": candidate_seconds,
+                "training_inference": inference_seconds,
+                "training_count_aggregation": aggregation_seconds,
+                "training_frontend_io": frontend_seconds,
+                "training_worker_document_total": (
+                    time.perf_counter() - wall_started
+                ),
+                "training_worker_cpu": time.process_time() - cpu_started,
+                "lexical_score_calls": (
+                    int(getattr(active_scorer, "score_calls", 0))
+                    - scorer_calls_before
+                ),
+                "sqlite_selects": (
+                    int(getattr(active_scorer, "sqlite_selects", 0))
+                    - sqlite_selects_before
+                ),
+                "sqlite_seconds": (
+                    float(getattr(active_scorer, "sqlite_seconds", 0.0))
+                    - sqlite_seconds_before
+                ),
+                "composed_counters": asdict(
+                    _WORKER_PIECE_ENGINE.counter_delta(piece_counters_before)
+                ),
+                "engineering_telemetry": engineering.payload(),
+            },
+        }
+        _write_json(paths["marker"], payload)
+        return payload
+    except BaseException:
+        for temporary in (segment_temporary, topology_temporary):
+            if temporary.exists():
+                temporary.unlink()
+        raise
+
+
+def _load_training_bundle_shard(
+    *,
+    run_dir: Path,
+    pass_index: int,
+    bundle: ExecutionBundle,
+    document: CorpusDocument,
+    config_signature: str,
+    plan_sha256: str,
+) -> dict[str, Any] | None:
+    paths = _training_bundle_paths(run_dir, pass_index, bundle)
+    if not paths["segments"].is_file() or not paths["marker"].is_file():
+        return None
+    payload = json.loads(paths["marker"].read_text(encoding="utf-8"))
+    expected = (
+        payload.get("schema_version")
+        == "sktlm-s1m2-training-bundle-shard/v1"
+        and payload.get("config_signature") == config_signature
+        and payload.get("plan_sha256") == plan_sha256
+        and int(payload.get("pass_index", -1)) == pass_index
+        and int(payload.get("document_index", -1)) == bundle.document_index
+        and payload.get("relative_path") == document.relative_path
+        and int(payload.get("bundle_index", -1)) == bundle.bundle_index
+        and int(payload.get("first_segment_ordinal", -1))
+        == bundle.first_segment_ordinal
+        and int(payload.get("last_segment_ordinal_exclusive", -1))
+        == bundle.last_segment_ordinal_exclusive
+        and int(payload.get("segment_count", -1)) == bundle.segment_count
+    )
+    if not expected:
+        raise RuntimeError(f"Stale or mismatched bundle shard: {paths['marker']}")
+    if payload.get("segment_shard_sha256") != _file_sha256(paths["segments"]):
+        raise RuntimeError(f"Bundle shard checksum mismatch: {paths['segments']}")
+    if pass_index == 1:
+        if not paths["topology"].is_file() or (
+            payload.get("topology_shard_sha256")
+            != _file_sha256(paths["topology"])
+        ):
+            raise RuntimeError(
+                f"Bundle topology checksum mismatch: {paths['topology']}"
+            )
+    return payload
+
+
+def _coalesce_training_bundle_shards(
+    *,
+    bundles: tuple[ExecutionBundle, ...],
+    payloads: dict[tuple[int, int], dict[str, Any]],
+    document: CorpusDocument,
+    config: TrainingConfig,
+    pass_index: int,
+    run_dir: Path,
+    config_signature: str,
+) -> dict[str, Any]:
+    """Recreate the legacy document shard with its original left-fold order."""
+
+    document_index = bundles[0].document_index
+    shard_path, marker_path = _training_shard_paths(
+        run_dir, pass_index, document_index
+    )
+    shard_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = shard_path.with_suffix(shard_path.suffix + ".tmp")
+    topology_path = _topology_archive_path(run_dir, document_index)
+    topology_temporary = topology_path.with_suffix(topology_path.suffix + ".tmp")
+    counts: Counter[PhonologicalForm] = Counter()
+    piece_counts: Counter[PhonologicalForm] = Counter()
+    piece_support: Counter[PhonologicalForm] = Counter()
+    metrics = PassMetrics()
+    seen_lines: set[int] = set()
+    row_count = 0
+    runtime_totals: Counter[str] = Counter()
+    composed_totals: Counter[str] = Counter()
+    engineering = RuntimeTelemetry()
+
+    def flush(handle: Any) -> None:
+        nonlocal row_count
+        if not counts and not piece_counts:
+            return
+        for form, value in sorted(counts.items(), key=lambda item: item[0].key):
+            handle.write(f"L\t{form.key}\t{float(value).hex()}\n")
+            row_count += 1
+        for piece, value in sorted(
+            piece_counts.items(), key=lambda item: item[0].key
+        ):
+            handle.write(
+                f"P\t{piece.key}\t{float(value).hex()}\t"
+                f"{piece_support[piece]}\n"
+            )
+            row_count += 1
+        counts.clear()
+        piece_counts.clear()
+        piece_support.clear()
+
+    topology_writer: TopologyArchiveWriter | None = None
+    try:
+        with temporary.open("w", encoding="utf-8", newline="") as handle:
+            if pass_index == 1:
+                topology_writer = TopologyArchiveWriter(
+                    topology_temporary,
+                    _topology_archive_header(
+                        config_signature, document_index, document
+                    ),
+                )
+            for bundle in bundles:
+                payload = payloads[bundle.key]
+                paths = _training_bundle_paths(run_dir, pass_index, bundle)
+                topology_reader = None
+                if pass_index == 1:
+                    topology_reader = TopologyArchiveReader(
+                        paths["topology"],
+                        _topology_archive_header(
+                            config_signature, document_index, document
+                        ),
+                    )
+                record_count = 0
+                first_identity: tuple[int, int] | None = None
+                last_identity: tuple[int, int] | None = None
+                try:
+                    with paths["segments"].open(encoding="utf-8") as source:
+                        for line in source:
+                            record = json.loads(line)
+                            if (
+                                record.get("schema_version")
+                                != "sktlm-s1m2-training-segment-result/v1"
+                            ):
+                                raise RuntimeError(
+                                    f"Invalid bundle segment record: {paths['segments']}"
+                                )
+                            identity = (
+                                int(record["line_number"]),
+                                int(record["segment_index"]),
+                            )
+                            if first_identity is None:
+                                first_identity = identity
+                            last_identity = identity
+                            seen_lines.add(identity[0])
+                            for key, value in record["lexical_counts"]:
+                                counts[PhonologicalForm.from_key(key)] += (
+                                    float.fromhex(value)
+                                )
+                            for key, value, support in record["piece_counts"]:
+                                piece = PhonologicalForm.from_key(key)
+                                piece_counts[piece] += float.fromhex(value)
+                                piece_support[piece] += int(support)
+                            metrics = metrics.merged(
+                                _metrics_from_exact_payload(record["metrics"])
+                            )
+                            if topology_reader is not None:
+                                assert topology_writer is not None
+                                topology_writer.write(
+                                    identity[0],
+                                    identity[1],
+                                    topology_reader.read(*identity),
+                                )
+                            record_count += 1
+                            if len(counts) + len(piece_counts) >= config.flush_types:
+                                flush(handle)
+                finally:
+                    if topology_reader is not None:
+                        topology_reader.close()
+                if (
+                    record_count != bundle.segment_count
+                    or first_identity
+                    != (bundle.first_line_number, bundle.first_segment_index)
+                    or last_identity
+                    != (bundle.last_line_number, bundle.last_segment_index)
+                ):
+                    raise RuntimeError(
+                        f"Bundle segment order mismatch: {paths['segments']}"
+                    )
+                runtime = payload["runtime"]
+                for label in (
+                    "training_candidate_generation",
+                    "training_inference",
+                    "training_count_aggregation",
+                    "training_frontend_io",
+                    "training_worker_document_total",
+                    "training_worker_cpu",
+                    "lexical_score_calls",
+                    "sqlite_selects",
+                    "sqlite_seconds",
+                ):
+                    runtime_totals[label] += runtime[label]
+                composed_totals.update(runtime.get("composed_counters", {}))
+                if runtime.get("engineering_telemetry"):
+                    engineering.merge_payload(runtime["engineering_telemetry"])
+            flush(handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        _replace_file(temporary, shard_path)
+        if topology_writer is not None:
+            topology_writer.close()
+            _replace_file(topology_temporary, topology_path)
+            engineering.increment("topology_archives_compiled", 1)
+            engineering.increment(
+                "topology_records_compiled", topology_writer.records
+            )
+            engineering.increment(
+                "topology_uncompressed_bytes", topology_writer.uncompressed_bytes
+            )
+            engineering.maximum("topology_archive_bytes", topology_path.stat().st_size)
+        metrics.documents = 1
+        metrics.lines = len(seen_lines)
+        payload = {
+            "schema_version": 2,
+            "config_signature": config_signature,
+            "pass_index": pass_index,
+            "document_index": document_index,
+            "relative_path": document.relative_path,
+            "count_shard": shard_path.name,
+            "count_shard_sha256": _file_sha256(shard_path),
+            "count_rows": row_count,
+            "metrics": asdict(metrics),
+            "runtime": {
+                **{
+                    label: float(runtime_totals[label])
+                    for label in (
+                        "training_candidate_generation",
+                        "training_inference",
+                        "training_count_aggregation",
+                        "training_frontend_io",
+                        "training_worker_document_total",
+                        "training_worker_cpu",
+                        "sqlite_seconds",
+                    )
+                },
+                "lexical_score_calls": int(
+                    runtime_totals["lexical_score_calls"]
+                ),
+                "sqlite_selects": int(runtime_totals["sqlite_selects"]),
+                "composed_counters": dict(composed_totals),
+                "engineering_telemetry": engineering.payload(),
+            },
+        }
+        _write_json(marker_path, payload)
+        return payload
+    except BaseException:
+        if topology_writer is not None:
+            topology_writer.close()
+        for path in (temporary, topology_temporary):
+            if path.exists():
+                path.unlink()
+        raise
+
+
+def _retire_training_bundle_shards(
+    run_dir: Path,
+    pass_index: int,
+    bundles: tuple[ExecutionBundle, ...],
+) -> None:
+    for bundle in bundles:
+        for path in _training_bundle_paths(run_dir, pass_index, bundle).values():
+            if path.is_file():
+                path.unlink()
+
+
 def _flush_piece_training_counts(
     store: LexiconStore,
     lexical_counts: Counter[PhonologicalForm],
@@ -1654,6 +2258,184 @@ def _parallel_training_documents(
     return metrics
 
 
+def _parallel_training_bundles(
+    *,
+    pass_index: int,
+    documents: tuple[CorpusDocument, ...],
+    grammar: StructuredSandhiGrammar,
+    store: LexiconStore,
+    config: TrainingConfig,
+    run_dir: Path,
+    checkpoint: dict[str, Any],
+    telemetry: RuntimeTelemetry,
+    start_document: int,
+    metrics: PassMetrics,
+    vocabulary: FrozenVocabulary | None,
+    plan: ExecutionBundlePlan,
+) -> PassMetrics:
+    """Run true inflight bundles while reducing documents canonically."""
+
+    signature = _config_signature(config)
+    parallel_started = telemetry.now()
+    for document_index in range(start_document):
+        _retire_training_bundle_shards(
+            run_dir, pass_index, plan.by_document[document_index]
+        )
+        for path in _training_shard_paths(run_dir, pass_index, document_index):
+            if path.is_file():
+                path.unlink()
+
+    existing_documents: dict[int, dict[str, Any]] = {}
+    for document_index in range(start_document, len(documents)):
+        payload = _load_training_shard(
+            run_dir,
+            pass_index,
+            document_index,
+            documents[document_index],
+            signature,
+        )
+        if payload is not None:
+            existing_documents[document_index] = payload
+
+    todo = tuple(
+        bundle
+        for document_index in range(start_document, len(documents))
+        if document_index not in existing_documents
+        for bundle in plan.by_document[document_index]
+    )
+    repair_engine = ComposedPieceInference(
+        NeutralPieceScorer(),
+        model_config=config.piece_model_config,
+        cache_config=config.piece_cache_config,
+    )
+    context = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(
+        max_workers=config.workers,
+        mp_context=context,
+        initializer=_initialize_training_worker,
+        initargs=(pass_index, store.path, config, vocabulary),
+    ) as executor:
+        max_inflight = config.workers * 2
+        telemetry.maximum("training_pending_shard_limit", max_inflight)
+        telemetry.maximum("training_bundle_inflight_limit", max_inflight)
+        inflight: dict[Future[dict[str, Any]], ExecutionBundle] = {}
+        ready: dict[tuple[int, int], dict[str, Any]] = {}
+        validated_topology: set[int] = set()
+        next_submit = 0
+
+        def fill_inflight() -> None:
+            nonlocal next_submit
+            while next_submit < len(todo) and len(inflight) < max_inflight:
+                bundle = todo[next_submit]
+                document = documents[bundle.document_index]
+                existing = _load_training_bundle_shard(
+                    run_dir=run_dir,
+                    pass_index=pass_index,
+                    bundle=bundle,
+                    document=document,
+                    config_signature=signature,
+                    plan_sha256=plan.plan_sha256,
+                )
+                if existing is not None:
+                    ready[bundle.key] = existing
+                    telemetry.increment("training_bundle_shards_resumed", 1)
+                    next_submit += 1
+                    continue
+                if (
+                    pass_index > 1
+                    and bundle.document_index not in validated_topology
+                ):
+                    _validate_bundle_topology_archive(
+                        document=document,
+                        document_index=bundle.document_index,
+                        config=config,
+                        run_dir=run_dir,
+                        config_signature=signature,
+                        grammar=grammar,
+                        piece_engine=repair_engine,
+                        telemetry=telemetry,
+                    )
+                    validated_topology.add(bundle.document_index)
+                future = executor.submit(
+                    _write_training_bundle_shard,
+                    bundle,
+                    document,
+                    config,
+                    pass_index,
+                    run_dir,
+                    signature,
+                    plan.plan_sha256,
+                )
+                inflight[future] = bundle
+                next_submit += 1
+            telemetry.maximum("training_pending_shards", len(inflight))
+            telemetry.maximum("training_bundle_true_inflight", len(inflight))
+            telemetry.maximum("training_bundle_ready_shards", len(ready))
+
+        def collect_completed() -> None:
+            if not inflight:
+                return
+            wait(tuple(inflight), return_when=FIRST_COMPLETED)
+            completed = tuple(future for future in inflight if future.done())
+            for future in completed:
+                bundle = inflight.pop(future)
+                ready[bundle.key] = future.result()
+            telemetry.observe("training_bundle_true_inflight", len(inflight))
+            telemetry.observe("training_bundle_ready_shards", len(ready))
+            fill_inflight()
+
+        fill_inflight()
+        for document_index in range(start_document, len(documents)):
+            document_bundles = plan.by_document[document_index]
+            if document_index in existing_documents:
+                payload = existing_documents[document_index]
+                telemetry.add_seconds("training_reducer_stall", 0.0)
+            else:
+                expected_keys = tuple(bundle.key for bundle in document_bundles)
+                wait_started = telemetry.now()
+                while any(key not in ready for key in expected_keys):
+                    if not inflight:
+                        raise RuntimeError(
+                            "Bundle scheduler exhausted inflight work before "
+                            f"document {document_index} became ready."
+                        )
+                    collect_completed()
+                telemetry.add_seconds(
+                    "training_reducer_stall",
+                    time.perf_counter() - wait_started,
+                )
+                payload = _coalesce_training_bundle_shards(
+                    bundles=document_bundles,
+                    payloads=ready,
+                    document=documents[document_index],
+                    config=config,
+                    pass_index=pass_index,
+                    run_dir=run_dir,
+                    config_signature=signature,
+                )
+            metrics = _apply_training_shard(
+                payload=payload,
+                store=store,
+                config=config,
+                checkpoint=checkpoint,
+                metrics=metrics,
+                run_dir=run_dir,
+                telemetry=telemetry,
+            )
+            _retire_training_bundle_shards(
+                run_dir, pass_index, document_bundles
+            )
+            for bundle in document_bundles:
+                ready.pop(bundle.key, None)
+            telemetry.observe("training_bundle_ready_shards", len(ready))
+            fill_inflight()
+
+    parallel_seconds = time.perf_counter() - parallel_started
+    telemetry.add_seconds("training_parallel_wall", parallel_seconds)
+    telemetry.add_seconds("training_document_total", parallel_seconds)
+    return metrics
+
+
 def _training_pass(
     *,
     pass_index: int,
@@ -1664,6 +2446,7 @@ def _training_pass(
     run_dir: Path,
     checkpoint: dict[str, Any],
     telemetry: RuntimeTelemetry,
+    execution_plan: ExecutionBundlePlan | None = None,
 ) -> dict[str, Any]:
     resuming = checkpoint.get("active_pass") == pass_index
     start_document = int(checkpoint.get("next_document_index", 0)) if resuming else 0
@@ -1718,18 +2501,34 @@ def _training_pass(
     _timed_checkpoint(run_dir, checkpoint, telemetry)
 
     if config.workers > 1:
-        metrics = _parallel_training_documents(
-            pass_index=pass_index,
-            documents=documents,
-            store=store,
-            config=config,
-            run_dir=run_dir,
-            checkpoint=checkpoint,
-            telemetry=telemetry,
-            start_document=start_document,
-            metrics=metrics,
-            vocabulary=vocabulary,
-        )
+        if execution_plan is None:
+            metrics = _parallel_training_documents(
+                pass_index=pass_index,
+                documents=documents,
+                store=store,
+                config=config,
+                run_dir=run_dir,
+                checkpoint=checkpoint,
+                telemetry=telemetry,
+                start_document=start_document,
+                metrics=metrics,
+                vocabulary=vocabulary,
+            )
+        else:
+            metrics = _parallel_training_bundles(
+                pass_index=pass_index,
+                documents=documents,
+                grammar=grammar,
+                store=store,
+                config=config,
+                run_dir=run_dir,
+                checkpoint=checkpoint,
+                telemetry=telemetry,
+                start_document=start_document,
+                metrics=metrics,
+                vocabulary=vocabulary,
+                plan=execution_plan,
+            )
         start_document = len(documents)
 
     for document_index in range(start_document, len(documents)):
@@ -4082,6 +4881,18 @@ def run_training(
                 )
             ),
         )
+        execution_plan = None
+        if config.execution_bundle_plan is not None and not inspection_only:
+            execution_plan = load_execution_bundle_plan(
+                config.execution_bundle_plan,
+                repo_root=repo_root,
+                manifest=manifest,
+                documents=documents,
+                script=config.script,
+                condition=config.condition,
+                max_segment_tokens=config.max_segment_tokens,
+                max_lines_per_document=config.max_lines_per_document,
+            )
         grammar = StructuredSandhiGrammar.from_default_inventory()
         rules_path = repo_root / "data" / "rules" / "external_sandhi.tsv"
         current_git_commit = _git_commit(repo_root)
@@ -4125,6 +4936,10 @@ def run_training(
         if config.vocab_budget is not None:
             expected_provenance["vocabulary_budget"] = _pending_vocabulary_payload(
                 config.vocab_budget
+            )
+        if execution_plan is not None:
+            expected_provenance["training_execution_bundle_plan"] = (
+                execution_plan.provenance_payload()
             )
         config_path = run_dir / "config.json"
         provenance_path = run_dir / "provenance.json"
@@ -4205,6 +5020,39 @@ def run_training(
         else:
             checkpoint = disk_checkpoint
             store.save_training_checkpoint(checkpoint)
+        completed_before_training = int(checkpoint.get("completed_passes", 0))
+        active_pass = checkpoint.get("active_pass")
+        stored_execution_plan = checkpoint.get("execution_bundle_plan")
+        requested_execution_plan = (
+            None
+            if execution_plan is None
+            else execution_plan.checkpoint_payload()
+        )
+        training_incomplete = completed_before_training < config.passes
+        fresh_training_state = (
+            completed_before_training == 0
+            and active_pass is None
+            and int(checkpoint.get("next_document_index", 0)) == 0
+            and not checkpoint.get("history")
+        )
+        if not inspection_only and training_incomplete:
+            if stored_execution_plan is None and requested_execution_plan is not None:
+                if not fresh_training_state:
+                    raise RuntimeError(
+                        "Cannot introduce an execution bundle plan after training started."
+                    )
+                checkpoint["execution_bundle_plan"] = requested_execution_plan
+                store.save_training_checkpoint(checkpoint)
+                _save_checkpoint(run_dir, checkpoint)
+            elif stored_execution_plan is not None:
+                if requested_execution_plan is None:
+                    raise RuntimeError(
+                        "Active bundled training requires its original execution plan."
+                    )
+                if stored_execution_plan != requested_execution_plan:
+                    raise RuntimeError(
+                        "Execution bundle plan does not match the active checkpoint."
+                    )
         frozen_vocabulary = store.load_frozen_vocabulary()
         if config.vocab_budget is None:
             if frozen_vocabulary is not None:
@@ -4273,6 +5121,7 @@ def run_training(
                     run_dir=run_dir,
                     checkpoint=checkpoint,
                     telemetry=telemetry,
+                    execution_plan=execution_plan,
                 )
             _write_json(
                 run_dir / "iteration_metrics.json",

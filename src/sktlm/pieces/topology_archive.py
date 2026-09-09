@@ -292,6 +292,21 @@ class TopologyArchiveReader:
             raise TopologyArchiveError(f"Truncated topology archive: {self.path}")
         return _UINT32.unpack(payload)[0]
 
+    def skip_records(self, count: int) -> None:
+        """Seek over complete framed records without decoding their payloads."""
+
+        if count < 0:
+            raise ValueError("Topology record skip count must be nonnegative.")
+        file_size = os.fstat(self._handle.fileno()).st_size
+        for _ in range(count):
+            compressed_size = self._read_size()
+            next_offset = self._handle.tell() + compressed_size
+            if next_offset > file_size:
+                raise TopologyArchiveError(
+                    f"Truncated topology record: {self.path}"
+                )
+            self._handle.seek(compressed_size, os.SEEK_CUR)
+
     def read(
         self,
         line_number: int,

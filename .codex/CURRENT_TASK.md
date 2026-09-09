@@ -32,9 +32,13 @@ ROUND1_WORKER_SEARCH_LOWER_BOUND=12
 ROUND1_NEXT_WORKER_CANDIDATES=12_16_24
 ROUND1_STRAGGLER=DOCUMENT_INDEX_50_CONFIRMED
 ROUND1_EVIDENCE_CLASSIFICATION=DIAGNOSTIC_VALID
+S1M2_EXECUTION_BUNDLE_AUDIT=PASS
+S1M2_EXECUTION_BUNDLE_SCHEDULER=IMPLEMENTED_TINY_VALIDATION_PASS
+S1M2_EXECUTION_BUNDLE_PLAN=CANDIDATE_008192
+S1M2_EXECUTION_BUNDLE_PLAN_SHA256=7acf4b292adffe35dcdbdf3755c18d699b5659bb806ad2c7342a03db5d4279c9
 ROUND2_STATUS=NOT_STARTED
 FULL_M0_PROCESS_RUNNING=NO
-NEXT_ACTION=PRE_FULL_UNIT_GRANULARITY_AUDIT
+NEXT_ACTION=RESEARCHER_MANUAL_EXECUTION_BUNDLE_VALIDATION
 ```
 
 The authoritative machine-readable contract is
@@ -111,3 +115,27 @@ winner. Its evidence is valid for engineering diagnosis: workers 4 and 8 are
 below the retained search range, while document index 50 repeatedly blocked
 canonical reduction for higher-worker configurations. The current next action
 is an independent pre-full unit-granularity audit.
+
+## Execution bundle scheduler handoff
+
+The pre-full unit-granularity audit passed without changing frontend or
+scientific segmentation: the existing ObservedSegment is the atomic unit.
+The trainer can now consume a validated execution-only bundle plan for S1M2
+parallel training. Candidate 008192 remains selected at plan SHA-256
+7acf4b292adffe35dcdbdf3755c18d699b5659bb806ad2c7342a03db5d4279c9.
+
+Workers write bundle-local segment results and pass-1 topology fragments.
+Completed futures leave true inflight state immediately and refill the pool;
+ready results wait on disk. A canonical coalescer restores the original
+document/segment left fold, document topology archive, document transaction,
+next_document_index, and checkpoint contract. Pass 2+ validates and reuses
+the pass-1 document topology rather than recompiling it. Current-attempt bundle
+markers are plan-bound and reusable after interruption; plan changes fail
+closed. Legacy scheduling remains unchanged when no plan is supplied, and the
+plan is excluded from scientific training identity.
+
+Tiny validation covers exact planner/trainer segment identity, complete
+contiguous coverage, legacy-vs-bundle scientific state and topology equality,
+out-of-order refill, partial-bundle resume, and plan mismatch rejection. No
+representative, stress, Round1, Round2, VM, full-M0, RAM, or runtime workload
+has run. The next action is researcher-run execution-bundle validation.

@@ -2648,3 +2648,54 @@ ROUND1_STATUS=FAILED_OOM
 FULL_M0_PROCESS_RUNNING=NO
 NEXT_ACTION=VM_ROUND1
 ```
+
+## 87. S1M2 segment-bundle execution scheduler (2026-09-09)
+
+The pre-full unit-granularity audit confirmed that the existing trainer
+ObservedSegment can remain the indivisible scientific unit. The tracked
+planner now calls the trainer's canonical document-segment iterator directly
+and records a stable planner implementation identity. The selected full
+M0/Devanagari/continuous plan remains candidate_008192, with 8,479 bundles,
+scan signature
+73ea0638684ba1fa249fa9c802837c26f334b4efa0657efb18ad3f2bcc5e252e,
+and plan SHA-256
+7acf4b292adffe35dcdbdf3755c18d699b5659bb806ad2c7342a03db5d4279c9.
+
+S1M2 parallel training may explicitly consume a validated execution-only plan;
+omission preserves the legacy document scheduler. Bundle workers process only
+complete contiguous ObservedSegment ranges. They emit per-segment exact float
+records and temporary pass-1 topology fragments. Completed futures are removed
+from true inflight state immediately and trigger refill, while completed
+results wait independently in ready state. The parent coalescer restores the
+original canonical segment left fold into the existing document shard, forms
+the unchanged document topology archive in line_number/segment_index order,
+and then uses the existing document transaction, apply, and checkpoint path.
+Pass 2+ validates or reconstructs the immutable document archive before
+concurrent range reads and reuses its pass-1 topology without recompilation.
+
+Current-attempt bundle markers bind the config signature, materialized plan
+identity, pass, document, bundle range, and checksums. Resume reuses valid
+completed bundles for the current document, never reapplies a committed
+document, and rejects changed plans or stale bundle shards. The plan path and
+retention mechanics are excluded from scientific training identity but are
+recorded in execution provenance and the durable active checkpoint.
+
+Tiny tests establish planner/trainer segment identity, exact-once contiguous
+coverage, legacy-vs-bundle exact learned state and pass metrics, identical
+decoded topology contents/order, refill past an early incomplete future, reuse
+of completed bundle shards after interruption, single document application,
+and fail-closed plan mismatch. The first targeted invocation exposed only a
+missing required fixture argument; the second exposed only an over-strong test
+comparison of run-specific topology headers. After those test-only corrections,
+all four targeted gates passed. No representative, stress, Round1, Round2, VM,
+full-M0, profiling, RAM, or runtime workload ran.
+
+    ROUND1_STATUS=MANUALLY_TERMINATED_AFTER_DIAGNOSTIC_CONVERGENCE
+    ROUND1_FORMAL_WINNER=UNRESOLVED
+    S1M2_EXECUTION_BUNDLE_AUDIT=PASS
+    S1M2_EXECUTION_BUNDLE_SCHEDULER=IMPLEMENTED_TINY_VALIDATION_PASS
+    S1M2_EXECUTION_BUNDLE_PLAN=CANDIDATE_008192
+    S1M2_EXECUTION_BUNDLE_PLAN_SHA256=7acf4b292adffe35dcdbdf3755c18d699b5659bb806ad2c7342a03db5d4279c9
+    ROUND2_STATUS=NOT_STARTED
+    FULL_M0_PROCESS_RUNNING=NO
+    NEXT_ACTION=RESEARCHER_MANUAL_EXECUTION_BUNDLE_VALIDATION

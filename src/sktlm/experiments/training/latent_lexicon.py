@@ -57,6 +57,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument('--workers', type=int, default=1)
+    parser.add_argument(
+        "--execution-bundle-plan",
+        type=Path,
+        help=(
+            "Execution-only S1M2 bundle-plan directory; omitted from the "
+            "scientific training identity."
+        ),
+    )
     parser.add_argument("--lexical-alpha", type=float, default=0.1)
     parser.add_argument("--complexity-weight", type=float, default=0.5)
     parser.add_argument("--complexity-tau", type=float, default=1.0)
@@ -151,6 +159,7 @@ def main(argv: list[str] | None = None) -> None:
         passes=args.passes,
         vocab_budget=args.vocab_budget,
         workers=args.workers,
+        execution_bundle_plan=args.execution_bundle_plan,
         lexical_alpha=args.lexical_alpha,
         complexity_weight=args.complexity_weight,
         complexity_tau=args.complexity_tau,
