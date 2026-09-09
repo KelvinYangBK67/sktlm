@@ -110,6 +110,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Finite per-token shared inspection top-K piece-reference bound.",
     )
     parser.add_argument("--resume", action="store_true")
+    phases = parser.add_mutually_exclusive_group()
+    phases.add_argument(
+        "--stop-after-training",
+        action="store_true",
+        help="Commit all requested training passes and exit before inspection.",
+    )
+    phases.add_argument(
+        "--inspection-only",
+        action="store_true",
+        help="Validate and inspect an existing completed training state only.",
+    )
+    parser.add_argument(
+        "--inspection-workers",
+        type=int,
+        help="Execution-only inspection worker count; does not change training identity.",
+    )
     return parser
 
 
@@ -164,11 +180,19 @@ def main(argv: list[str] | None = None) -> None:
         piece_shared_top_k_piece_references=(
             args.piece_shared_top_k_piece_references
         ),
-        resume=args.resume,
+        resume=args.resume or args.inspection_only,
     )
-    result = run_training(config)
+    result = run_training(
+        config,
+        stop_after_training=args.stop_after_training,
+        inspection_only=args.inspection_only,
+        inspection_workers=args.inspection_workers,
+    )
     print(f"run artifacts: {result.run_dir}")
     print(f"passes: {len(result.history)}")
+    if not result.inspection_complete:
+        print("inspection: pending (--stop-after-training)")
+        return
     if args.model == S1M1_MODEL:
         print(
             "latent lexical types: "

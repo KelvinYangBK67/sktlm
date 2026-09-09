@@ -303,7 +303,7 @@ def _compare_outer(surface: str, *, script: str = "iast") -> None:
         "tattvamasi",  # continuous-like no-space span
     ),
 )
-def test_lazy_composed_outer_matches_materialized_oracle(surface: str) -> None:
+def test_opt18_lazy_composed_outer_matches_materialized_oracle(surface: str) -> None:
     _compare_outer(surface)
 
 
@@ -502,7 +502,7 @@ def test_compiled_topology_reweights_changed_piece_parameters_exactly() -> None:
 
 
 @pytest.mark.parametrize("surface", ("devo'pi", "tattvamasi"))
-def test_shared_inspection_paths_match_legacy_exact_path(surface: str) -> None:
+def test_opt18_shared_inspection_paths_match_legacy_exact_path(surface: str) -> None:
     grammar = StructuredSandhiGrammar.from_default_inventory()
     segment = next(iter_observed_segments(surface))
     graph = build_lazy_candidate_graph(segment, grammar)
@@ -578,6 +578,46 @@ def test_shared_inspection_paths_match_legacy_exact_path(surface: str) -> None:
     assert observed.counters.shared_top_k_paths >= (
         observed.counters.shared_top_k_states
     )
+
+
+def test_opt18_shared_top_k_retains_compact_exact_backpointers() -> None:
+    forms = tuple(
+        parse_iast_form(text)
+        for text in ("dakani", "dakaniva", "dakanitara")
+    )
+    config = PieceModelConfig(max_piece_length=3, rho=0.41)
+    engine = ComposedPieceInference(
+        _production_scorer(),
+        model_config=config,
+        inspection_top_k=5,
+    )
+    batch = engine._build_shared_form_batch(forms)
+
+    assert batch is not None
+    assert batch.top_paths is not None
+    assert all(
+        path.piece is None or isinstance(path.piece, PhonologicalForm)
+        for paths in batch.top_paths
+        for path in paths
+    )
+    assert any(
+        path.parent is not None and path.parent.piece is not None
+        for paths in batch.top_paths
+        for path in paths
+    )
+    for form in forms:
+        shared = engine._shared_top_segmentations(batch, batch.forms[form.key])
+        reference = engine.evaluate_form(form).top_segmentations
+        assert tuple(
+            tuple(piece.key for piece in item.pieces) for item in shared
+        ) == tuple(
+            tuple(piece.key for piece in item.pieces) for item in reference
+        )
+        assert tuple(item.log_weight for item in shared) == pytest.approx(
+            tuple(item.log_weight for item in reference),
+            rel=1e-10,
+            abs=1e-12,
+        )
 
 
 def test_shared_inspection_piece_reference_bound_falls_back() -> None:

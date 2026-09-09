@@ -3093,6 +3093,7 @@ def _parallel_inspection_pass(
     grammar: StructuredSandhiGrammar,
     store: LexiconStore,
     config: TrainingConfig,
+    inspection_workers: int,
     run_dir: Path,
     telemetry: RuntimeTelemetry,
 ) -> dict[str, Any]:
@@ -3108,12 +3109,12 @@ def _parallel_inspection_pass(
     with analyses_tmp.open("wb") as analyses_handle, boundaries_tmp.open(
         "wb"
     ) as boundaries_handle, ProcessPoolExecutor(
-        max_workers=config.workers,
+        max_workers=inspection_workers,
         mp_context=context,
         initializer=_initialize_inspection_worker,
         initargs=(store.path, config, vocabulary),
     ) as executor:
-        max_pending = config.workers * 2
+        max_pending = inspection_workers * 2
         telemetry.maximum("inspection_pending_shard_limit", max_pending)
         pending: dict[int, Future[dict[str, Any]] | dict[str, Any]] = {}
         next_submit = 0
@@ -3288,6 +3289,7 @@ def _inspection_pass(
     grammar: StructuredSandhiGrammar,
     store: LexiconStore,
     config: TrainingConfig,
+    inspection_workers: int,
     run_dir: Path,
     telemetry: RuntimeTelemetry,
 ) -> dict[str, Any]:
@@ -3295,12 +3297,13 @@ def _inspection_pass(
         store.begin_inspection()
     else:
         store.begin_piece_inspection()
-    if config.workers > 1:
+    if inspection_workers > 1:
         return _parallel_inspection_pass(
             documents=documents,
             grammar=grammar,
             store=store,
             config=config,
+            inspection_workers=inspection_workers,
             run_dir=run_dir,
             telemetry=telemetry,
         )
@@ -3872,14 +3875,148 @@ class TrainingResult:
     history: tuple[dict[str, Any], ...]
     summary: dict[str, Any]
     runtime: dict[str, Any]
+    inspection_complete: bool = True
+
+
+def _validate_inspection_only_state(
+    *,
+    store: LexiconStore,
+    checkpoint: dict[str, Any],
+    config: TrainingConfig,
+    run_dir: Path,
+) -> None:
+    """Fail closed unless the requested final training state is authoritative."""
+
+    completed = int(checkpoint.get("completed_passes", 0))
+    history = checkpoint.get("history")
+    if completed != config.passes:
+        raise RuntimeError(
+            "Inspection-only requires completed_passes to equal requested passes."
+        )
+    if checkpoint.get("active_pass") is not None:
+        raise RuntimeError("Inspection-only refuses an active training pass.")
+    if int(checkpoint.get("next_document_index", 0)) != 0:
+        raise RuntimeError("Inspection-only refuses partial document progress.")
+    if checkpoint.get("active_metrics") is not None:
+        raise RuntimeError("Inspection-only refuses active pass metrics.")
+    if not isinstance(history, list) or len(history) != config.passes:
+        raise RuntimeError("Inspection-only checkpoint history is incomplete.")
+    metrics_path = run_dir / "iteration_metrics.json"
+    if not metrics_path.is_file() or json.loads(
+        metrics_path.read_text(encoding="utf-8")
+    ) != history:
+        raise RuntimeError(
+            "Inspection-only iteration metrics do not match the checkpoint."
+        )
+    for table in (
+        "counts_next",
+        "piece_counts_next",
+        "lexical_diagnostics_next",
+    ):
+        if store.has_table(table):
+            raise RuntimeError(
+                f"Inspection-only refuses unfinished training table: {table}."
+            )
+    final = history[-1]
+    if config.model == S1M2_MODEL:
+        if not store.has_table("piece_lexicon"):
+            raise RuntimeError(
+                "Inspection-only requires the final learned piece_lexicon."
+            )
+        row = store.connection.execute(
+            "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) "
+            "FROM piece_lexicon"
+        ).fetchone()
+        assert row is not None
+        if (
+            int(row[0]) != int(final.get("active_piece_types", -1))
+            or float(row[1])
+            != float(final.get("active_piece_count_total", -1.0))
+        ):
+            raise RuntimeError(
+                "Inspection-only learned piece state differs from checkpoint history."
+            )
+    else:
+        if not store.has_table("lexicon"):
+            raise RuntimeError(
+                "Inspection-only requires the final learned lexicon."
+            )
+        row = store.connection.execute("SELECT COUNT(*) FROM lexicon").fetchone()
+        assert row is not None
+        if int(row[0]) != int(final.get("lexicon_types", -1)):
+            raise RuntimeError(
+                "Inspection-only learned lexicon differs from checkpoint history."
+            )
+
+
+def _begin_inspection_provenance(
+    *,
+    run_dir: Path,
+    training_provenance: dict[str, Any],
+    inspection_git_commit: str,
+    training_workers: int,
+    inspection_workers: int,
+    inspection_only: bool,
+) -> dict[str, Any]:
+    path = run_dir / "inspection_provenance.json"
+    attempt = 1
+    if path.is_file():
+        previous = json.loads(path.read_text(encoding="utf-8"))
+        attempt = int(previous.get("attempt", 0)) + 1
+    payload = {
+        "schema_version": "sktlm-inspection-execution/v1",
+        "status": "running",
+        "attempt": attempt,
+        "mode": "inspection_only" if inspection_only else "train_then_inspect",
+        "config_signature": training_provenance["config_signature"],
+        "training_git_commit": training_provenance["git_commit"],
+        "training_provenance_sha256": _file_sha256(
+            run_dir / "provenance.json"
+        ),
+        "inspection_git_commit": inspection_git_commit,
+        "training_workers": training_workers,
+        "inspection_workers": inspection_workers,
+    }
+    _write_json(path, payload)
+    return payload
+
+
+def _complete_inspection_provenance(
+    *,
+    run_dir: Path,
+    payload: dict[str, Any],
+) -> None:
+    completed = dict(payload)
+    completed["status"] = "complete"
+    completed["checkpoint_sha256"] = _file_sha256(run_dir / "checkpoint.json")
+    completed["canonical_artifact_sha256"] = {
+        name: _file_sha256(run_dir / name)
+        for name in _S1M2_CANONICAL_SCIENTIFIC_ARTIFACTS
+        if (run_dir / name).is_file()
+    }
+    _write_json(run_dir / "inspection_provenance.json", completed)
 
 
 def run_training(
     config: TrainingConfig,
     *,
     repo_root: Path = Path("."),
+    stop_after_training: bool = False,
+    inspection_only: bool = False,
+    inspection_workers: int | None = None,
 ) -> TrainingResult:
-    """Train with streaming passes, then write a final posterior inspection."""
+    """Train and inspect, or execute either durable phase independently."""
+
+    if stop_after_training and inspection_only:
+        raise ValueError(
+            "stop_after_training and inspection_only are mutually exclusive"
+        )
+    actual_inspection_workers = (
+        config.workers if inspection_workers is None else inspection_workers
+    )
+    if actual_inspection_workers < 1:
+        raise ValueError("inspection_workers must be >= 1")
+    continuing = config.resume or inspection_only
 
     repo_root = repo_root.resolve()
     manifest = (
@@ -3892,7 +4029,7 @@ def run_training(
         if config.output_root.is_absolute()
         else repo_root / config.output_root
     ) / _run_id(config)
-    if run_dir.exists() and not config.resume:
+    if run_dir.exists() and not continuing:
         raise FileExistsError(
             f"Run directory already exists; pass --resume to continue: {run_dir}"
         )
@@ -3906,7 +4043,12 @@ def run_training(
             raise ValueError(
                 "Checkpoint config does not match the requested configuration."
             )
-        store.set_metadata("config_signature", signature)
+        if inspection_only and stored_signature is None:
+            raise RuntimeError(
+                "Inspection-only requires a durable configuration signature."
+            )
+        if stored_signature is None:
+            store.set_metadata("config_signature", signature)
         documents = load_documents(
             manifest,
             repo_root=repo_root,
@@ -3925,11 +4067,14 @@ def run_training(
         )
         grammar = StructuredSandhiGrammar.from_default_inventory()
         rules_path = repo_root / "data" / "rules" / "external_sandhi.tsv"
-        provenance = {
+        current_git_commit = _git_commit(repo_root)
+        expected_provenance = {
             "implementation": (
                 IMPLEMENTATION if config.model == S1M1_MODEL else S1M2_MODEL
             ),
-            "git_commit": _git_commit(repo_root),
+            "git_commit": current_git_commit,
+            "training_git_commit": current_git_commit,
+            "training_workers": config.workers,
             "freeze_id": EXPECTED_FREEZE_ID,
             "manifest": manifest.as_posix(),
             "manifest_sha256": _file_sha256(manifest),
@@ -3961,14 +4106,54 @@ def run_training(
             ),
         }
         if config.vocab_budget is not None:
-            provenance["vocabulary_budget"] = _pending_vocabulary_payload(
+            expected_provenance["vocabulary_budget"] = _pending_vocabulary_payload(
                 config.vocab_budget
             )
-        _write_json(run_dir / "config.json", config.payload())
-        _write_json(run_dir / "provenance.json", provenance)
+        config_path = run_dir / "config.json"
+        provenance_path = run_dir / "provenance.json"
+        if continuing and config_path.is_file() and provenance_path.is_file():
+            stored_config = json.loads(config_path.read_text(encoding="utf-8"))
+            if stored_config != config.payload():
+                raise ValueError(
+                    "Stored config does not match the requested training identity."
+                )
+            provenance = json.loads(
+                provenance_path.read_text(encoding="utf-8")
+            )
+            identity_fields = (
+                "implementation",
+                "freeze_id",
+                "manifest_sha256",
+                "rules_sha256",
+                "external_rule_count",
+                "script",
+                "condition",
+                "document_count",
+                "document_list_sha256",
+                "config_signature",
+                "seed",
+            )
+            mismatches = tuple(
+                name
+                for name in identity_fields
+                if provenance.get(name) != expected_provenance.get(name)
+            )
+            if mismatches:
+                raise RuntimeError(
+                    "Stored training provenance does not match frozen inputs: "
+                    + ", ".join(mismatches)
+                )
+        elif inspection_only:
+            raise RuntimeError(
+                "Inspection-only requires existing config and training provenance."
+            )
+        else:
+            provenance = expected_provenance
+            _write_json(config_path, config.payload())
+            _write_json(provenance_path, provenance)
         disk_checkpoint = _load_checkpoint(run_dir)
         database_checkpoint = store.load_training_checkpoint()
-        if config.resume:
+        if continuing:
             unsafe_legacy_progress = (
                 database_checkpoint is None
                 and (
@@ -3986,7 +4171,19 @@ def run_training(
                     "start a new run ID."
                 )
             checkpoint = database_checkpoint or disk_checkpoint
-            if database_checkpoint is not None and database_checkpoint != disk_checkpoint:
+            if inspection_only:
+                if database_checkpoint is None:
+                    raise RuntimeError(
+                        "Inspection-only requires a durable database checkpoint."
+                    )
+                if database_checkpoint != disk_checkpoint:
+                    raise RuntimeError(
+                        "Inspection-only database and JSON checkpoints differ."
+                    )
+            elif (
+                database_checkpoint is not None
+                and database_checkpoint != disk_checkpoint
+            ):
                 _save_checkpoint(run_dir, database_checkpoint)
         else:
             checkpoint = disk_checkpoint
@@ -4041,18 +4238,29 @@ def run_training(
         completed = int(checkpoint.get("completed_passes", 0))
         if completed > config.passes:
             raise ValueError("Checkpoint has more passes than requested.")
-        for pass_index in range(completed + 1, config.passes + 1):
-            _training_pass(
-                pass_index=pass_index,
-                documents=documents,
-                grammar=grammar,
+        if inspection_only:
+            _validate_inspection_only_state(
                 store=store,
+                checkpoint=checkpoint,
                 config=config,
                 run_dir=run_dir,
-                checkpoint=checkpoint,
-                telemetry=telemetry,
             )
-        _write_json(run_dir / "iteration_metrics.json", checkpoint["history"])
+        else:
+            for pass_index in range(completed + 1, config.passes + 1):
+                _training_pass(
+                    pass_index=pass_index,
+                    documents=documents,
+                    grammar=grammar,
+                    store=store,
+                    config=config,
+                    run_dir=run_dir,
+                    checkpoint=checkpoint,
+                    telemetry=telemetry,
+                )
+            _write_json(
+                run_dir / "iteration_metrics.json",
+                checkpoint["history"],
+            )
         if checkpoint.get("inspection_complete"):
             summary = json.loads(
                 (run_dir / "summary.json").read_text(encoding="utf-8")
@@ -4061,17 +4269,46 @@ def run_training(
                 (run_dir / "timing_metrics.json").read_text(encoding="utf-8")
             )
             _cleanup_inspection_shards(run_dir)
+            inspection_provenance_path = run_dir / "inspection_provenance.json"
+            if inspection_provenance_path.is_file():
+                inspection_provenance = json.loads(
+                    inspection_provenance_path.read_text(encoding="utf-8")
+                )
+                if inspection_provenance.get("status") != "complete":
+                    _complete_inspection_provenance(
+                        run_dir=run_dir,
+                        payload=inspection_provenance,
+                    )
             return TrainingResult(
                 run_dir=run_dir,
                 history=tuple(checkpoint["history"]),
                 summary=summary,
                 runtime=runtime,
             )
+        if stop_after_training:
+            runtime = store.runtime_payload()
+            runtime["grammar_cache"] = grammar.cache_statistics()
+            return TrainingResult(
+                run_dir=run_dir,
+                history=tuple(checkpoint["history"]),
+                summary=dict(checkpoint["history"][-1]),
+                runtime=runtime,
+                inspection_complete=False,
+            )
+        inspection_provenance = _begin_inspection_provenance(
+            run_dir=run_dir,
+            training_provenance=provenance,
+            inspection_git_commit=current_git_commit,
+            training_workers=config.workers,
+            inspection_workers=actual_inspection_workers,
+            inspection_only=inspection_only,
+        )
         summary = _inspection_pass(
             documents=documents,
             grammar=grammar,
             store=store,
             config=config,
+            inspection_workers=actual_inspection_workers,
             run_dir=run_dir,
             telemetry=telemetry,
         )
@@ -4110,6 +4347,10 @@ def run_training(
             store.save_training_checkpoint(checkpoint)
             _timed_checkpoint(run_dir, checkpoint, telemetry)
             _cleanup_inspection_shards(run_dir)
+        _complete_inspection_provenance(
+            run_dir=run_dir,
+            payload=inspection_provenance,
+        )
         return TrainingResult(
             run_dir=run_dir,
             history=tuple(checkpoint["history"]),

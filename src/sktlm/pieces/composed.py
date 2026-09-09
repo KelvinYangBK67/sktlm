@@ -220,7 +220,6 @@ class _ComposedPath:
 @dataclass(frozen=True, slots=True)
 class _SharedFormOccurrenceSupport:
     form: PhonologicalForm
-    pieces: tuple[PhonologicalForm, ...]
     surface_base: int
     occurrence_ids: set[int]
 
@@ -267,10 +266,19 @@ class _FactorSummary:
 
 
 @dataclass(frozen=True, slots=True)
+class _FactorScore:
+    """Outer-DP state without factor-local posterior payloads."""
+
+    factor: LazySegmentFactor
+    log_score: float
+    identity_log_score: float
+
+
+@dataclass(frozen=True, slots=True)
 class _SharedInnerPath:
     score: float
-    pieces: tuple[PhonologicalForm, ...]
-    piece_keys: tuple[str, ...]
+    parent: _SharedInnerPath | None
+    piece: PhonologicalForm | None
 
 
 @dataclass(slots=True)
@@ -328,6 +336,22 @@ class _SharedFormBatch:
     singleton_scores: list[float]
     top_paths: list[tuple[_SharedInnerPath, ...]] | None
     forms: dict[str, _SharedFormScore]
+
+
+def _shared_inner_pieces(
+    path: _SharedInnerPath,
+) -> tuple[PhonologicalForm, ...]:
+    pieces: list[PhonologicalForm] = []
+    cursor: _SharedInnerPath | None = path
+    while cursor is not None and cursor.piece is not None:
+        pieces.append(cursor.piece)
+        cursor = cursor.parent
+    pieces.reverse()
+    return tuple(pieces)
+
+
+def _shared_inner_piece_keys(path: _SharedInnerPath) -> tuple[str, ...]:
+    return tuple(piece.key for piece in _shared_inner_pieces(path))
 
 
 def _estimated_form_bytes(form: PhonologicalForm) -> int:
@@ -737,6 +761,44 @@ class ComposedPieceInference:
         self._form_bytes += size
         return evaluation
 
+    def _score_form(self, form: PhonologicalForm) -> float:
+        """Compute only the exact normalized form score for an outer prepass."""
+
+        cached = self._forms.get(form.key)
+        if cached is not None:
+            return cached[0].log_score
+        length = len(form.symbols)
+        prior_alpha = [-math.inf] * (length + 1)
+        alpha = [-math.inf] * (length + 1)
+        prior_alpha[0] = 0.0
+        alpha[0] = 0.0
+        for start in range(length):
+            for end in _piece_ends(
+                length,
+                start,
+                self.model_config.max_piece_length,
+            ):
+                prior = _raw_prior_score(
+                    start,
+                    end,
+                    rho=self.model_config.rho,
+                )
+                _piece, piece_score = self._piece_and_score(
+                    form.symbols[start:end]
+                )
+                raw_score = prior + piece_score
+                prior_alpha[end] = logaddexp(
+                    prior_alpha[end],
+                    prior_alpha[start] + prior,
+                )
+                alpha[end] = logaddexp(
+                    alpha[end],
+                    alpha[start] + raw_score,
+                )
+        if prior_alpha[-1] == -math.inf or alpha[-1] == -math.inf:
+            raise ValueError("Lexical form has no complete piece segmentation.")
+        return alpha[-1] - prior_alpha[-1]
+
     def _compile_shared_form_topology(
         self,
         forms: tuple[PhonologicalForm, ...],
@@ -831,6 +893,7 @@ class ComposedPieceInference:
         *,
         topology: CompiledSharedFormTopology | None = None,
         topology_reused: bool = False,
+        materialize_top_paths: bool = True,
     ) -> _SharedFormBatch | None:
         """Compile or exactly reweight one bounded shared prefix DAG."""
 
@@ -856,7 +919,7 @@ class ComposedPieceInference:
         if topology.form_keys != form_keys:
             raise ValueError("Compiled piece topology does not match lexical forms.")
         if self.inspection_top_k is not None and (
-            self.inspection_top_k * sum(topology.depth)
+            self.inspection_top_k * len(topology.parent)
             > self.cache_config.shared_top_k_piece_references
         ):
             self._events["shared_batch_fallbacks"] += 1
@@ -960,10 +1023,10 @@ class ComposedPieceInference:
                 singleton_score=singleton_scores[node_index],
             )
         top_paths: list[tuple[_SharedInnerPath, ...]] | None = None
-        if self.inspection_top_k is not None:
+        if self.inspection_top_k is not None and materialize_top_paths:
             top_k_started = time.perf_counter()
             top_paths = [() for _ in topology.parent]
-            top_paths[0] = (_SharedInnerPath(0.0, (), ()),)
+            top_paths[0] = (_SharedInnerPath(0.0, None, None),)
             for node_index in range(1, len(topology.parent)):
                 candidates: list[_SharedInnerPath] = []
                 for transition_index in range(
@@ -978,13 +1041,13 @@ class ComposedPieceInference:
                     candidates.extend(
                         _SharedInnerPath(
                             score=prefix.score + raw_score,
-                            pieces=prefix.pieces + (piece,),
-                            piece_keys=prefix.piece_keys + (piece.key,),
+                            parent=prefix,
+                            piece=piece,
                         )
                         for prefix in top_paths[source]
                     )
                 candidates.sort(
-                    key=lambda item: (-item.score, item.piece_keys)
+                    key=lambda item: (-item.score, _shared_inner_piece_keys(item))
                 )
                 top_paths[node_index] = tuple(
                     candidates[: self.inspection_top_k]
@@ -1090,6 +1153,23 @@ class ComposedPieceInference:
         pieces.setdefault(score.whole_piece.key, score.whole_piece)
         return tuple(pieces[key] for key in sorted(pieces))
 
+    def _legal_pieces(
+        self,
+        form: PhonologicalForm,
+    ) -> tuple[PhonologicalForm, ...]:
+        """Reconstruct exact P0 support without retaining a form-piece relation."""
+
+        pieces: dict[str, PhonologicalForm] = {}
+        for start in range(len(form.symbols)):
+            for end in _piece_ends(
+                len(form.symbols),
+                start,
+                self.model_config.max_piece_length,
+            ):
+                piece = PhonologicalForm(form.symbols[start:end])
+                pieces.setdefault(piece.key, piece)
+        return tuple(pieces[key] for key in sorted(pieces))
+
     def _shared_top_segmentations(
         self,
         batch: _SharedFormBatch,
@@ -1105,15 +1185,17 @@ class ComposedPieceInference:
             candidates.append(
                 _SharedInnerPath(
                     score=score.whole_raw_score,
-                    pieces=(score.whole_piece,),
-                    piece_keys=(score.whole_piece.key,),
+                    parent=None,
+                    piece=score.whole_piece,
                 )
             )
-        candidates.sort(key=lambda item: (-item.score, item.piece_keys))
+        candidates.sort(
+            key=lambda item: (-item.score, _shared_inner_piece_keys(item))
+        )
         del candidates[self.inspection_top_k :]
         result = tuple(
             PieceSegmentation(
-                pieces=path.pieces,
+                pieces=_shared_inner_pieces(path),
                 log_weight=path.score - score.prior_log_normalizer,
                 probability=math.exp(path.score - score.raw_log_partition),
             )
@@ -1416,10 +1498,6 @@ def _evaluate_lazy_token_shared(
     shared_occurrences = tuple(
         _SharedFormOccurrenceSupport(
             form=batch.forms[form_key].form,
-            pieces=engine._shared_legal_pieces(
-                batch,
-                batch.forms[form_key],
-            ),
             surface_base=surface_base,
             occurrence_ids=occurrences,
         )
@@ -1435,18 +1513,22 @@ def _evaluate_lazy_token_shared(
     top_paths: tuple[_ComposedPath, ...] = ()
     if engine.inspection_top_k is not None:
         started = time.perf_counter()
-        top_segmentations: dict[
+        top_segmentations: OrderedDict[
             str,
-            tuple[tuple[PieceSegmentation, tuple[str, ...]], ...],
-        ] = {}
+            tuple[
+                tuple[tuple[PieceSegmentation, tuple[str, ...]], ...],
+                int,
+            ],
+        ] = OrderedDict()
+        top_segmentation_bytes = 0
         paths: list[list[_ComposedPath]] = [[] for _ in range(node_count)]
         paths[0] = [_ComposedPath(0.0, (), (), (), (), ((), (), ()))]
         for start, spans in enumerate(spans_by_start):
             if not paths[start]:
                 continue
             for span in spans:
-                keyed_segmentations = top_segmentations.get(span.word.key)
-                if keyed_segmentations is None:
+                cached_segmentations = top_segmentations.get(span.word.key)
+                if cached_segmentations is None:
                     segmentations = engine._shared_top_segmentations(
                         batch,
                         batch.forms[span.word.key],
@@ -1460,7 +1542,31 @@ def _evaluate_lazy_token_shared(
                         )
                         for segmentation in segmentations
                     )
-                    top_segmentations[span.word.key] = keyed_segmentations
+                    cache_size = 96 + sum(
+                        64
+                        + 16 * len(segmentation.pieces)
+                        + sum(len(key.encode("utf-8")) for key in keys)
+                        for segmentation, keys in keyed_segmentations
+                    )
+                    if cache_size <= engine.cache_config.form_bytes:
+                        while top_segmentations and (
+                            len(top_segmentations)
+                            >= engine.cache_config.form_entries
+                            or top_segmentation_bytes + cache_size
+                            > engine.cache_config.form_bytes
+                        ):
+                            _old_key, (_old_value, old_size) = (
+                                top_segmentations.popitem(last=False)
+                            )
+                            top_segmentation_bytes -= old_size
+                        top_segmentations[span.word.key] = (
+                            keyed_segmentations,
+                            cache_size,
+                        )
+                        top_segmentation_bytes += cache_size
+                else:
+                    keyed_segmentations, _cache_size = cached_segmentations
+                    top_segmentations.move_to_end(span.word.key)
                 candidates = paths[span.end]
                 candidates.extend(
                     _top_token_path_extensions(
@@ -1524,6 +1630,104 @@ def _evaluate_lazy_token(
         if shared is not None:
             return shared
     return _evaluate_lazy_token_legacy(lattice, engine)
+
+
+def _score_lazy_token(
+    lattice: LazyTokenLattice,
+    engine: ComposedPieceInference,
+    *,
+    support_epsilon: float,
+    topology: CompiledSharedFormTopology | None = None,
+    topology_available: bool = False,
+    topology_reused: bool = False,
+) -> tuple[float, float]:
+    """Return outer and identity scores without retaining posterior payloads."""
+
+    node_count = len(lattice.nodes)
+    spans_by_start = tuple(
+        tuple(lattice.iter_spans_from(start))
+        for start in range(node_count - 1)
+    )
+    batch: _SharedFormBatch | None = None
+    if engine.cache_config.shared_token_marginals and support_epsilon == 0.0:
+        if not (topology_available and topology is None):
+            unique_forms: dict[str, PhonologicalForm] = {}
+            for spans in spans_by_start:
+                for span in spans:
+                    unique_forms.setdefault(span.word.key, span.word)
+            batch = engine._build_shared_form_batch(
+                tuple(unique_forms.values()),
+                topology=topology,
+                topology_reused=topology_reused,
+                materialize_top_paths=False,
+            )
+
+    form_scores: dict[str, float] = {}
+
+    def score(form: PhonologicalForm) -> float:
+        if batch is not None:
+            return batch.forms[form.key].log_score
+        cached = form_scores.get(form.key)
+        if cached is None:
+            cached = engine._score_form(form)
+            form_scores[form.key] = cached
+        return cached
+
+    alpha = [-math.inf] * node_count
+    alpha[0] = 0.0
+    for start, spans in enumerate(spans_by_start):
+        if alpha[start] == -math.inf:
+            continue
+        for span in spans:
+            alpha[span.end] = logaddexp(
+                alpha[span.end],
+                alpha[start] + score(span.word),
+            )
+    log_z = alpha[-1]
+    if log_z == -math.inf:
+        raise ValueError("Lazy token lattice has no complete lexical analysis.")
+    identity = lattice.span(0, node_count - 1)
+    identity_log_score = (
+        -math.inf if identity is None else score(identity.word)
+    )
+    return log_z, identity_log_score
+
+
+def _score_factor(
+    factor: LazySegmentFactor,
+    engine: ComposedPieceInference,
+    *,
+    whitespace_merge_penalty: float,
+    support_epsilon: float,
+    topology: CompiledSharedFormTopology | None = None,
+    topology_available: bool = False,
+    topology_reused: bool = False,
+) -> _FactorScore:
+    if factor.merged_word is not None:
+        return _FactorScore(
+            factor=factor,
+            log_score=(
+                engine._score_form(factor.merged_word)
+                - whitespace_merge_penalty * factor.ignored_whitespace
+            ),
+            identity_log_score=-math.inf,
+        )
+    assert factor.lattice is not None
+    log_score, identity_log_score = _score_lazy_token(
+        factor.lattice,
+        engine,
+        support_epsilon=support_epsilon,
+        topology=topology,
+        topology_available=topology_available,
+        topology_reused=topology_reused,
+    )
+    if factor.incoming.transformed or factor.outgoing.transformed:
+        identity_log_score = -math.inf
+    return _FactorScore(
+        factor=factor,
+        log_score=log_score,
+        identity_log_score=identity_log_score,
+    )
 
 
 def _evaluate_factor(
@@ -1617,7 +1821,7 @@ def _evaluate_factor(
 
 def _outer_forward(
     graph: LazyCandidateGraph,
-    evaluations: tuple[_FactorSummary, ...],
+    evaluations: tuple[_FactorScore, ...],
     *,
     identity_only: bool = False,
 ) -> tuple[dict[str, float], ...]:
@@ -1625,7 +1829,7 @@ def _outer_forward(
         {} for _ in range(len(graph.segment.tokens) + 1)
     ]
     states[0]["START"] = 0.0
-    by_start: dict[int, list[_FactorSummary]] = defaultdict(list)
+    by_start: dict[int, list[_FactorScore]] = defaultdict(list)
     for evaluation in evaluations:
         by_start[evaluation.factor.start_token].append(evaluation)
     for position in range(len(graph.segment.tokens)):
@@ -1648,12 +1852,12 @@ def _outer_forward(
 
 def _outer_backward(
     graph: LazyCandidateGraph,
-    evaluations: tuple[_FactorSummary, ...],
+    evaluations: tuple[_FactorScore, ...],
 ) -> tuple[dict[str, float], ...]:
     token_count = len(graph.segment.tokens)
     states: list[dict[str, float]] = [{} for _ in range(token_count + 1)]
     states[-1]["END"] = 0.0
-    by_start: dict[int, list[_FactorSummary]] = defaultdict(list)
+    by_start: dict[int, list[_FactorScore]] = defaultdict(list)
     for evaluation in evaluations:
         by_start[evaluation.factor.start_token].append(evaluation)
     for position in range(token_count - 1, -1, -1):
@@ -1671,7 +1875,8 @@ def _outer_backward(
 
 def _outer_top_paths(
     graph: LazyCandidateGraph,
-    evaluations: tuple[_FactorSummary, ...],
+    evaluations: tuple[_FactorScore, ...],
+    factor_top_paths: tuple[tuple[_ComposedPath, ...], ...],
     *,
     top_k: int,
 ) -> tuple[_ComposedPath, ...]:
@@ -1679,11 +1884,16 @@ def _outer_top_paths(
         {} for _ in range(len(graph.segment.tokens) + 1)
     ]
     states[0]["START"] = [_ComposedPath(0.0, (), (), (), (), ((), (), ()))]
-    by_start: dict[int, list[_FactorSummary]] = defaultdict(list)
-    for evaluation in evaluations:
-        by_start[evaluation.factor.start_token].append(evaluation)
+    by_start: dict[
+        int,
+        list[tuple[_FactorScore, tuple[_ComposedPath, ...]]],
+    ] = defaultdict(list)
+    for evaluation, local_paths in zip(evaluations, factor_top_paths):
+        by_start[evaluation.factor.start_token].append(
+            (evaluation, local_paths)
+        )
     for position in range(len(graph.segment.tokens)):
-        for evaluation in by_start[position]:
+        for evaluation, local_paths in by_start[position]:
             factor = evaluation.factor
             prefixes = states[position].get(factor.incoming.key, ())
             if not prefixes:
@@ -1707,7 +1917,7 @@ def _outer_top_paths(
                 factor.outgoing.key, []
             )
             for prefix in prefixes:
-                for local in evaluation.top_paths:
+                for local in local_paths:
                     candidates.append(
                         _ComposedPath(
                             score=prefix.score + local.score,
@@ -1788,9 +1998,6 @@ def infer_composed_segment(
         raise ValueError("whitespace_merge_penalty must be >= 0")
     if support_epsilon < 0.0:
         raise ValueError("support_epsilon must be >= 0")
-    before = engine.counter_snapshot()
-    timing_before = engine.timing_snapshot()
-    engine.record_graph(graph)
     if topology is not None and topology.factor_ids != tuple(
         factor.factor_id for factor in graph.factors
     ):
@@ -1800,20 +2007,65 @@ def infer_composed_segment(
         if topology is not None
         else (None,) * len(graph.factors)
     )
-    started = time.perf_counter()
-    evaluations = tuple(
-        _evaluate_factor(
-            factor,
-            engine,
-            whitespace_merge_penalty=whitespace_merge_penalty,
-            support_epsilon=support_epsilon,
-            topology=factor_topology,
-            topology_available=topology is not None,
-            topology_reused=topology.reused if topology is not None else False,
+    retained_evaluations: list[_FactorSummary | None] | None = None
+    if engine.inspection_top_k is None:
+        # Training does not retain presentation top-K payloads, so preserve its
+        # single evaluation pass and avoid trading corpus-scale CPU for RAM.
+        before = engine.counter_snapshot()
+        timing_before = engine.timing_snapshot()
+        engine.record_graph(graph)
+        started = time.perf_counter()
+        retained_evaluations = list(
+            _evaluate_factor(
+                factor,
+                engine,
+                whitespace_merge_penalty=whitespace_merge_penalty,
+                support_epsilon=support_epsilon,
+                topology=factor_topology,
+                topology_available=topology is not None,
+                topology_reused=(
+                    topology.reused if topology is not None else False
+                ),
+            )
+            for factor, factor_topology in zip(
+                graph.factors,
+                factor_topologies,
+            )
         )
-        for factor, factor_topology in zip(graph.factors, factor_topologies)
-    )
-    engine.add_timing("piece_composition_seconds", started)
+        engine.add_timing("piece_composition_seconds", started)
+        evaluations = tuple(
+            _FactorScore(
+                factor=item.factor,
+                log_score=item.log_score,
+                identity_log_score=item.identity_log_score,
+            )
+            for item in retained_evaluations
+            if item is not None
+        )
+    else:
+        # Inspection needs only two scalar scores for its outer DP.  Compute
+        # those first; posterior maps are then recomputed, consumed, and
+        # released one factor at a time below.
+        evaluations = tuple(
+            _score_factor(
+                factor,
+                engine,
+                whitespace_merge_penalty=whitespace_merge_penalty,
+                support_epsilon=support_epsilon,
+                topology=factor_topology,
+                topology_available=topology is not None,
+                topology_reused=(
+                    topology.reused if topology is not None else False
+                ),
+            )
+            for factor, factor_topology in zip(
+                graph.factors,
+                factor_topologies,
+            )
+        )
+        before = engine.counter_snapshot()
+        timing_before = engine.timing_snapshot()
+        engine.record_graph(graph)
     started = time.perf_counter()
     forward = _outer_forward(graph, evaluations)
     engine.add_timing("outer_forward_seconds", started)
@@ -1831,10 +2083,8 @@ def infer_composed_segment(
     boundary_meta: dict[str, LexicalBoundary] = {}
     piece_occurrences: dict[PhonologicalForm, set[str]] = defaultdict(set)
     shared_form_occurrences: dict[PhonologicalForm, set[int]] = defaultdict(set)
-    shared_form_pieces: dict[
-        PhonologicalForm, tuple[PhonologicalForm, ...]
-    ] = {}
     support_piece_order: dict[PhonologicalForm, None] = {}
+    factor_top_paths: list[tuple[_ComposedPath, ...]] = []
     token_base = len(graph.segment.tokens) + 1
     surface_base = (
         max((len(token.units) for token in graph.segment.tokens), default=0) + 1
@@ -1846,13 +2096,43 @@ def infer_composed_segment(
     expected_singleton_path_uses = 0.0
     expected_multi_piece_uses = 0.0
     started = time.perf_counter()
-    for evaluation in evaluations:
-        factor = evaluation.factor
+    for factor_index, (factor_score, factor_topology) in enumerate(
+        zip(evaluations, factor_topologies)
+    ):
+        if retained_evaluations is None:
+            composition_started = time.perf_counter()
+            evaluation = _evaluate_factor(
+                factor_score.factor,
+                engine,
+                whitespace_merge_penalty=whitespace_merge_penalty,
+                support_epsilon=support_epsilon,
+                topology=factor_topology,
+                topology_available=topology is not None,
+                topology_reused=(
+                    topology.reused if topology is not None else False
+                ),
+            )
+            engine.add_timing("piece_composition_seconds", composition_started)
+        else:
+            retained = retained_evaluations[factor_index]
+            assert retained is not None
+            evaluation = retained
+            retained_evaluations[factor_index] = None
+        if (
+            evaluation.log_score != factor_score.log_score
+            or evaluation.identity_log_score != factor_score.identity_log_score
+        ):
+            raise AssertionError(
+                "Factor score prepass disagrees with posterior evaluation."
+            )
+        factor_top_paths.append(evaluation.top_paths)
+        factor = factor_score.factor
         prefix = forward[factor.start_token].get(factor.incoming.key, -math.inf)
         suffix = backward[factor.end_token].get(factor.outgoing.key, -math.inf)
         if prefix == -math.inf or suffix == -math.inf:
+            del evaluation
             continue
-        factor_mass = math.exp(prefix + evaluation.log_score + suffix - log_z)
+        factor_mass = math.exp(prefix + factor_score.log_score + suffix - log_z)
         expected_log_weight += factor_mass * evaluation.expected_log_weight
         expected_piece_tokens += factor_mass * evaluation.expected_piece_tokens
         piece_segmentation_entropy += (
@@ -1885,15 +2165,7 @@ def infer_composed_segment(
                     raise AssertionError(
                         'Structural occurrence support requires zero epsilon.'
                     )
-                existing_pieces = shared_form_pieces.setdefault(
-                    support.form,
-                    support.pieces,
-                )
-                if existing_pieces != support.pieces:
-                    raise AssertionError(
-                        'Legal piece support changed for one lexical form.'
-                    )
-                for piece in support.pieces:
+                for piece in engine._legal_pieces(support.form):
                     support_piece_order.setdefault(piece, None)
                 factor_prefix = (
                     factor.start_token * token_base + factor.end_token
@@ -1926,6 +2198,7 @@ def infer_composed_segment(
             )
             for rule_id in factor.outgoing.rule_ids:
                 rule_usage[rule_id] += factor_mass / len(factor.outgoing.rule_ids)
+        del evaluation
     engine.add_timing("outer_posterior_seconds", started)
 
     started = time.perf_counter()
@@ -1959,6 +2232,7 @@ def infer_composed_segment(
         else _outer_top_paths(
             graph,
             evaluations,
+            tuple(factor_top_paths),
             top_k=engine.inspection_top_k,
         )
     )
@@ -1980,7 +2254,7 @@ def infer_composed_segment(
         for piece in support_piece_order
     }
     for form, occurrence_ids in shared_form_occurrences.items():
-        for piece in shared_form_pieces[form]:
+        for piece in engine._legal_pieces(form):
             added = len(occurrence_ids)
             legacy_occurrences = piece_occurrences.get(piece)
             if legacy_occurrences:

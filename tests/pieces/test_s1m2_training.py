@@ -515,3 +515,149 @@ def test_s1m2_parallel_and_serial_scientific_outputs_match(tmp_path: Path) -> No
     assert not tuple((parallel / "shards" / "inspection").glob("*"))
     assert runtime["timings_seconds"]["training_reducer_stall"] >= 0.0
     assert runtime["timings_seconds"]["inspection_reducer_stall"] >= 0.0
+
+
+def _piece_state(run_dir: Path) -> tuple[tuple[str, float, int], ...]:
+    store = LexiconStore(run_dir / "learner.sqlite")
+    try:
+        return tuple(
+            (str(key), float(count), int(support))
+            for key, count, support in store.connection.execute(
+                "SELECT form_key, expected_count, occurrence_support "
+                "FROM piece_lexicon ORDER BY form_key"
+            )
+        )
+    finally:
+        store.close()
+
+
+def test_opt18_training_and_inspection_are_exact_restartable_phases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = _write_fixture(tmp_path)
+    reference = run_training(
+        _config(
+            tmp_path,
+            manifest,
+            "opt18-reference",
+            passes=1,
+            workers=1,
+        ),
+        repo_root=Path("."),
+    ).run_dir
+
+    split_config = _config(
+        tmp_path,
+        manifest,
+        "opt18-split",
+        passes=1,
+        workers=1,
+    )
+    stopped = run_training(
+        split_config,
+        repo_root=Path("."),
+        stop_after_training=True,
+    )
+    assert stopped.inspection_complete is False
+    assert not (stopped.run_dir / "summary.json").exists()
+    split_piece_state = _piece_state(stopped.run_dir)
+    split_training_provenance = (
+        stopped.run_dir / "provenance.json"
+    ).read_bytes()
+
+    def fail_if_training_repeats(**_: object) -> dict[str, object]:
+        raise AssertionError("inspection-only repeated training")
+
+    monkeypatch.setattr(latent_training, "_training_pass", fail_if_training_repeats)
+    inspected = run_training(
+        split_config,
+        repo_root=Path("."),
+        inspection_only=True,
+        inspection_workers=2,
+    )
+    assert inspected.inspection_complete is True
+    _assert_same_science(reference, inspected.run_dir)
+    assert _piece_state(inspected.run_dir) == split_piece_state
+    assert (
+        inspected.run_dir / "provenance.json"
+    ).read_bytes() == split_training_provenance
+    inspection_provenance = json.loads(
+        (inspected.run_dir / "inspection_provenance.json").read_text("utf-8")
+    )
+    training_provenance = json.loads(split_training_provenance)
+    assert inspection_provenance["status"] == "complete"
+    assert inspection_provenance["mode"] == "inspection_only"
+    assert inspection_provenance["training_git_commit"] == training_provenance[
+        "git_commit"
+    ]
+    assert inspection_provenance["training_workers"] == 1
+    assert inspection_provenance["inspection_workers"] == 2
+
+    restart_config = _config(
+        tmp_path,
+        manifest,
+        "opt18-restart",
+        passes=1,
+        workers=1,
+    )
+    monkeypatch.undo()
+    stopped = run_training(
+        restart_config,
+        repo_root=Path("."),
+        stop_after_training=True,
+    )
+    restart_piece_state = _piece_state(stopped.run_dir)
+    restart_training_provenance = (
+        stopped.run_dir / "provenance.json"
+    ).read_bytes()
+    original_apply = latent_training._apply_inspection_shard
+    crashed = False
+
+    def interrupt_inspection(**kwargs: object) -> None:
+        nonlocal crashed
+        if not crashed:
+            crashed = True
+            raise RuntimeError("simulated Opt18 inspection interruption")
+        original_apply(**kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(latent_training, "_training_pass", fail_if_training_repeats)
+    monkeypatch.setattr(
+        latent_training,
+        "_apply_inspection_shard",
+        interrupt_inspection,
+    )
+    with pytest.raises(RuntimeError, match="Opt18 inspection interruption"):
+        run_training(
+            restart_config,
+            repo_root=Path("."),
+            inspection_only=True,
+            inspection_workers=2,
+        )
+    interrupted_provenance = json.loads(
+        (stopped.run_dir / "inspection_provenance.json").read_text("utf-8")
+    )
+    assert interrupted_provenance["status"] == "running"
+    assert _piece_state(stopped.run_dir) == restart_piece_state
+    assert (
+        stopped.run_dir / "provenance.json"
+    ).read_bytes() == restart_training_provenance
+
+    monkeypatch.setattr(
+        latent_training,
+        "_apply_inspection_shard",
+        original_apply,
+    )
+    restarted = run_training(
+        restart_config,
+        repo_root=Path("."),
+        inspection_only=True,
+        inspection_workers=1,
+    )
+    _assert_same_science(reference, restarted.run_dir)
+    assert _piece_state(restarted.run_dir) == restart_piece_state
+    restarted_provenance = json.loads(
+        (restarted.run_dir / "inspection_provenance.json").read_text("utf-8")
+    )
+    assert restarted_provenance["status"] == "complete"
+    assert restarted_provenance["attempt"] == 2

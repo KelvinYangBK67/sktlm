@@ -2506,3 +2506,92 @@ OPT17=IMPLEMENTED_AWAITING_MANUAL_VALIDATION
 FULL_M0_PROCESS_RUNNING=NO
 NEXT_ACTION=COLLABORATOR_RUN_EXACTNESS_AND_SINGLE_WORKER_MEMORY_PROBES
 ```
+
+## 85. Opt18 training/inspection split and inspection working-set bound (2026-09-09)
+
+The collaborator's Opt17 exact artifact comparison passed, so no scientific
+blocker was found. Its single-worker Devanagari-continuous stress run completed
+one requested training pass and entered final inspection, where RSS exceeded
+6.5 GiB and continued rising until manual interruption. A read-only audit found
+identical database and JSON checkpoints, `completed_passes=1`, no active pass or
+next-pass table, and exact agreement between `piece_lexicon` count/total and the
+final checkpoint history. Partial `.tmp` inspection streams and reconstructible
+inspection tables exist, while no canonical completion is claimed. The learned
+Opt17 state is reusable without another training pass.
+
+Opt18A adds phase-separated execution to both trainer and benchmark CLIs:
+`--stop-after-training`, `--inspection-only`, and `--inspection-workers N`.
+Inspection worker count is deliberately absent from `TrainingConfig.payload()`
+and its signature; the original `--workers` remains the training identity. The
+inspection-only route requires an existing exact config signature and training
+provenance, identical SQLite/JSON checkpoints, completed requested passes, no
+active progress, matching iteration history, no next-pass tables, and a final
+learned table whose count/total matches the checkpoint. It never calls the
+training pass. Existing `provenance.json` is retained byte-for-byte, while
+atomic `inspection_provenance.json` records the training commit, inspection
+implementation commit, both worker counts, mode, attempt, status, and final
+artifact hashes. Interrupted inspection tables/streams are reset or regenerated
+through the existing reconstructible shard/topology path; checkpoint completion
+is written only after canonical artifacts and S1M2 compaction succeed.
+
+Opt18B removes the observed inspection retention multipliers without changing
+scoring or support. Shared inner top-K states now retain one piece plus a shared
+predecessor backpointer instead of duplicating complete piece/key tuples at
+every prefix; the existing bound now counts the actual live one-piece path
+records. Token-local endpoint segmentation caching is explicitly entry/byte
+bounded. Structural occurrence summaries retain form plus packed coordinates,
+not a materialized legal-piece tuple per form; exact legal support is cheaply
+reconstructed one form at a time during cardinality reduction. During
+inspection, the outer DP first retains only factor/scalar scores, then exactly
+recomputes, consumes, and releases each factor posterior immediately, retaining
+only bounded local presentation paths for final top-K. Training has no
+presentation top-K and retains its original single evaluation pass, preventing
+a corpus-scale CPU regression.
+
+A raw read-only audit of the topology record immediately after the 19 emitted
+inspection rows identifies the concrete stress trigger. Document 0 line 39 has
+one factor, 88,398 prefix nodes, 34,602 lexical forms, and prefix-depth sum
+16,069,373. The old eager top-K representation projected 128,554,984 piece
+references, exceeded its 4,194,304 bound, and forced exact legacy inference;
+that route rematerialized the large occurrence/top-K payload Opt17 had avoided
+on the shared route. Compact backpointers need only 707,184 actual one-piece
+path records for this topology, remain below the same bound, and preserve the
+shared path. The retained all-factor summary tuple was also corrected as a
+general risk, but was not the stress-specific multiplier because the failing
+continuous segment contains only one factor.
+
+A raw read-only audit of the topology record immediately after the 19 emitted
+inspection rows identifies the concrete stress trigger. Document 0 line 39 has
+one factor, 88,398 prefix nodes, 34,602 lexical forms, and prefix-depth sum
+16,069,373. The old eager top-K representation projected 128,554,984 piece
+references, exceeded its 4,194,304 bound, and forced exact legacy inference;
+that route rematerialized the large occurrence/top-K payload Opt17 had avoided
+on the shared route. Compact backpointers need only 707,184 actual one-piece
+path records for this topology, remain below the same bound, and preserve the
+shared path. The retained all-factor summary tuple was also corrected as a
+general risk, but was not the stress-specific multiplier because the failing
+continuous segment contains only one factor.
+
+Exactly one allowed focused pytest command ran. It reported `6 passed, 2 failed,
+25 deselected in 2.23s`; both failures were the same new fail-closed scalar-score
+assertion. The score-only helper had evaluated `alpha + prior + piece_score`
+with a different floating-point association than the original
+`alpha + (prior + piece_score)`. That operation was corrected to reuse the
+original `raw_score = prior + piece_score` order. Per instruction, pytest was
+not invoked a second time. Post-correction Python compilation and Git diff
+checks pass. No artifact comparator was rerun, and no stress, representative,
+72-document, three-pass, VM/cloud, Round 1/2, production-like, or full-M0 run
+was launched.
+
+```text
+OPT17=EXACTNESS_PASS_RAM_FAIL_DURING_INSPECTION
+OPT17_TRAINING_STATE=REUSABLE
+OPT18A=IMPLEMENTED
+OPT18B=IMPLEMENTED
+TRAINING_INSPECTION_PROVENANCE=SEPARATE
+SINGLE_WORKER_PEAK_RSS_TARGET=<10GiB
+SINGLE_WORKER_PEAK_RSS_VALIDATION=PENDING_COLLABORATOR
+ROUND1_STATUS=FAILED_OOM
+FULL_M0_PROCESS_RUNNING=NO
+NEXT_ACTION=COLLABORATOR_RESUME_EXISTING_OPT17_STATE_INSPECTION_ONLY_W1
+```

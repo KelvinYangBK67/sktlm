@@ -207,6 +207,9 @@ def run_benchmark(
     workers: int,
     profile: bool,
     repo_root: Path,
+    stop_after_training: bool = False,
+    inspection_only: bool = False,
+    inspection_workers: int | None = None,
 ) -> dict[str, Any]:
     spec = _load_benchmark_spec(benchmark, repo_root)
     config = TrainingConfig(
@@ -221,14 +224,28 @@ def run_benchmark(
         workers=workers,
         max_lines_per_document=spec.max_lines_per_document,
         equivalence_diagnostics=spec.model == S1M1_MODEL,
+        resume=inspection_only,
     )
     profiler = cProfile.Profile() if profile else None
     wall_start = time.perf_counter()
     cpu_start = time.process_time()
     if profiler is None:
-        result = run_training(config, repo_root=repo_root)
+        result = run_training(
+            config,
+            repo_root=repo_root,
+            stop_after_training=stop_after_training,
+            inspection_only=inspection_only,
+            inspection_workers=inspection_workers,
+        )
     else:
-        result = profiler.runcall(run_training, config, repo_root=repo_root)
+        result = profiler.runcall(
+            run_training,
+            config,
+            repo_root=repo_root,
+            stop_after_training=stop_after_training,
+            inspection_only=inspection_only,
+            inspection_workers=inspection_workers,
+        )
     runtime_timings = result.runtime.get('timings_seconds', {})
     cpu_seconds = (
         time.process_time()
@@ -237,13 +254,23 @@ def run_benchmark(
         + float(runtime_timings.get('inspection_worker_cpu', 0.0))
     )
     wall_seconds = time.perf_counter() - wall_start
-    training_characters = sum(
+    trained_state_characters = sum(
         int(item["characters"]) for item in result.history
     )
-    inspection_characters = int(result.summary["characters"])
+    training_characters = 0 if inspection_only else trained_state_characters
+    inspection_characters = (
+        int(result.summary["characters"])
+        if result.inspection_complete
+        else 0
+    )
     character_visits = training_characters + inspection_characters
-    training_segments = sum(int(item["segments"]) for item in result.history)
-    inspection_segments = int(result.summary["segments"])
+    trained_state_segments = sum(int(item["segments"]) for item in result.history)
+    training_segments = 0 if inspection_only else trained_state_segments
+    inspection_segments = (
+        int(result.summary["segments"])
+        if result.inspection_complete
+        else 0
+    )
     segment_visits = training_segments + inspection_segments
     metrics = {
         'runtime': result.runtime,
@@ -259,12 +286,25 @@ def run_benchmark(
         "max_lines_per_document": spec.max_lines_per_document,
         "passes": passes,
         "workers": workers,
+        "inspection_workers": (
+            workers if inspection_workers is None else inspection_workers
+        ),
+        "execution_mode": (
+            "stop_after_training"
+            if stop_after_training
+            else "inspection_only"
+            if inspection_only
+            else "train_then_inspect"
+        ),
+        "inspection_complete": result.inspection_complete,
         "wall_seconds": wall_seconds,
         "cpu_seconds": cpu_seconds,
         "training_characters": training_characters,
+        "trained_state_characters": trained_state_characters,
         "inspection_characters": inspection_characters,
         "character_visits": character_visits,
         "training_segments": training_segments,
+        "trained_state_segments": trained_state_segments,
         "inspection_segments": inspection_segments,
         "segment_visits": segment_visits,
         "chars_per_second": character_visits / max(wall_seconds, 1e-12),
@@ -307,6 +347,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--passes", type=int, default=1)
     parser.add_argument('--workers', type=int, default=1)
+    phases = parser.add_mutually_exclusive_group()
+    phases.add_argument("--stop-after-training", action="store_true")
+    phases.add_argument("--inspection-only", action="store_true")
+    parser.add_argument("--inspection-workers", type=int)
     parser.add_argument("--profile", action="store_true")
     return parser
 
@@ -321,6 +365,9 @@ def main(argv: list[str] | None = None) -> None:
         workers=args.workers,
         profile=args.profile,
         repo_root=Path(".").resolve(),
+        stop_after_training=args.stop_after_training,
+        inspection_only=args.inspection_only,
+        inspection_workers=args.inspection_workers,
     )
     print(json.dumps(metrics, ensure_ascii=False, indent=2, sort_keys=True))
 
