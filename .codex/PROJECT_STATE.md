@@ -2560,18 +2560,6 @@ shared path. The retained all-factor summary tuple was also corrected as a
 general risk, but was not the stress-specific multiplier because the failing
 continuous segment contains only one factor.
 
-A raw read-only audit of the topology record immediately after the 19 emitted
-inspection rows identifies the concrete stress trigger. Document 0 line 39 has
-one factor, 88,398 prefix nodes, 34,602 lexical forms, and prefix-depth sum
-16,069,373. The old eager top-K representation projected 128,554,984 piece
-references, exceeded its 4,194,304 bound, and forced exact legacy inference;
-that route rematerialized the large occurrence/top-K payload Opt17 had avoided
-on the shared route. Compact backpointers need only 707,184 actual one-piece
-path records for this topology, remain below the same bound, and preserve the
-shared path. The retained all-factor summary tuple was also corrected as a
-general risk, but was not the stress-specific multiplier because the failing
-continuous segment contains only one factor.
-
 Exactly one allowed focused pytest command ran. It reported `6 passed, 2 failed,
 25 deselected in 2.23s`; both failures were the same new fail-closed scalar-score
 assertion. The score-only helper had evaluated `alpha + prior + piece_score`
@@ -2596,14 +2584,19 @@ FULL_M0_PROCESS_RUNNING=NO
 NEXT_ACTION=COLLABORATOR_RESUME_EXISTING_OPT17_STATE_INSPECTION_ONLY_W1
 ```
 
-## 86. Opt19 adaptive inspection factor retention (2026-09-09)
+## 86. Consolidated Opt17 / Opt18 / Opt19 engineering closure (2026-09-09)
 
-Manual Opt18 evidence closes the observed RAM failure: pathological stress line
-39 completed at about 0.747 GiB peak process-tree RSS and memory later returned
-to about 0.438 GiB. The attempt was stopped after more than two hours before its
-first stress document completed while using about 96% of one CPU core. Opt18 is
-therefore bounded-memory but its universal scalar-prepass/posterior-recompute
-inspection route is not production-runtime acceptable.
+Opt17 solved training RAM: the Devanagari-continuous stress run stayed around
+0.2--0.3 GiB RSS with a transient peak around 0.79 GiB. Inspection nevertheless
+continued rising past 6.5 GiB and was manually interrupted. Its completed,
+internally consistent training state remains directly reusable.
+
+Opt18 decoupled training and inspection and repaired the inspection working set
+with bounded memory. Pathological stress line 39 completed. At line 47,
+elapsed time was 00:22:33, RSS was 0.708 GiB, and peak process-tree RSS was
+0.747 GiB; memory later returned to about 0.44 GiB. The attempt was stopped
+after more than two hours before its first stress document completed. Opt18
+therefore closes the RAM gate but fails the runtime gate.
 
 Opt19 retains exact one-pass `_FactorSummary` payloads adaptively. Admission is
 deterministic canonical factor order under a 320 MiB segment-local cumulative
@@ -2632,12 +2625,26 @@ missing-topology behavior, unchanged training identity, and inspection-only
 provenance/restart. Python compilation and `git diff --check` passed afterward.
 No stress, representative, full-M0, VM/cloud, or training workload ran.
 
+Subsequent manual synthetic mixed-path exactness validation passed with
+factors=4, fast_path=1, two_pass=3, recomputed=3, budget=32678, and
+retained_budget_peak=32678. All scientific outputs were exactly equal to the
+forced two-pass route.
+
+The targeted stress run reached line 47 at elapsed=00:10:39, RSS=0.362 GiB,
+and peak RSS=0.659 GiB. Relative to Opt18 at line 47, observed wall time fell
+by about 52.8%. Opt18 ran with profiling while Opt19 did not, so this is an
+engineering runtime gate rather than a rigorously isolated speedup measurement.
+Opt19 closes local exactness, RAM, and runtime gates. The pre-VM engineering
+state is ready, and the sole next action is VM Round 1.
+
 ```text
+OPT17=TRAINING_RAM_PASS_INSPECTION_RAM_FAIL_STATE_REUSABLE
 OPT18=RAM_PASS_RUNTIME_FAIL
-OPT19=IMPLEMENTED_AWAITING_MANUAL_RAM_RUNTIME_VALIDATION
+OPT19=LOCAL_EXACTNESS_PASS_RAM_GATE_PASS_RUNTIME_GATE_PASS
 OPT19_DEFAULT_SEGMENT_RETAINED_BUDGET_BYTES=335544320
 OPT19_TRAINING_IDENTITY_UNCHANGED=PASS
+PRE_VM_ENGINEERING_STATE=READY
 ROUND1_STATUS=FAILED_OOM
 FULL_M0_PROCESS_RUNNING=NO
-NEXT_ACTION=COLLABORATOR_VALIDATE_OPT19_INSPECTION_ONLY_W1
+NEXT_ACTION=VM_ROUND1
 ```
