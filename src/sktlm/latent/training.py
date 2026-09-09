@@ -59,6 +59,7 @@ from sktlm.pieces.composed import (
     ComposedPieceInference,
     ComposedSegmentInference,
     CompiledSegmentTopology,
+    INSPECTION_RETENTION_FORMULA,
     compile_composed_segment_topology,
     infer_composed_segment,
 )
@@ -132,6 +133,7 @@ class TrainingConfig:
     piece_shared_token_marginals: bool = True
     piece_shared_prefix_nodes: int = 262_144
     piece_shared_top_k_piece_references: int = 4_194_304
+    inspection_retained_factor_bytes: int = 320 * 1024 * 1024
     resume: bool = False
 
     def __post_init__(self) -> None:
@@ -195,6 +197,9 @@ class TrainingConfig:
             shared_top_k_piece_references=(
                 self.piece_shared_top_k_piece_references
             ),
+            inspection_retained_factor_bytes=(
+                self.inspection_retained_factor_bytes
+            ),
         )
 
     def payload(self) -> dict[str, Any]:
@@ -205,6 +210,9 @@ class TrainingConfig:
         )
         payload["output_root"] = self.output_root.as_posix()
         payload.pop("resume")
+        # Inspection admission is execution-only.  Changing its memory/runtime
+        # tradeoff must not invalidate or rename an existing learned state.
+        payload.pop("inspection_retained_factor_bytes")
         if self.vocab_budget is None:
             payload.pop("vocab_budget")
         if self.model == S1M1_MODEL:
@@ -266,6 +274,9 @@ class TrainingConfig:
             shared_prefix_nodes=self.piece_shared_prefix_nodes,
             shared_top_k_piece_references=(
                 self.piece_shared_top_k_piece_references
+            ),
+            inspection_retained_factor_bytes=(
+                self.inspection_retained_factor_bytes
             ),
         )
 
@@ -440,6 +451,7 @@ def _record_composed_telemetry(
         "piece_score_cache_estimated_bytes",
         "form_cache_entries",
         "form_cache_estimated_bytes",
+        "retained_budget_peak_bytes",
     }
     for name, value in asdict(counters).items():
         label = f"{phase}_{name}"
@@ -3956,6 +3968,7 @@ def _begin_inspection_provenance(
     inspection_git_commit: str,
     training_workers: int,
     inspection_workers: int,
+    inspection_retained_factor_bytes: int,
     inspection_only: bool,
 ) -> dict[str, Any]:
     path = run_dir / "inspection_provenance.json"
@@ -3976,6 +3989,10 @@ def _begin_inspection_provenance(
         "inspection_git_commit": inspection_git_commit,
         "training_workers": training_workers,
         "inspection_workers": inspection_workers,
+        "adaptive_factor_retention": {
+            "formula": INSPECTION_RETENTION_FORMULA,
+            "segment_budget_bytes": inspection_retained_factor_bytes,
+        },
     }
     _write_json(path, payload)
     return payload
@@ -4301,6 +4318,9 @@ def run_training(
             inspection_git_commit=current_git_commit,
             training_workers=config.workers,
             inspection_workers=actual_inspection_workers,
+            inspection_retained_factor_bytes=(
+                config.inspection_retained_factor_bytes
+            ),
             inspection_only=inspection_only,
         )
         summary = _inspection_pass(

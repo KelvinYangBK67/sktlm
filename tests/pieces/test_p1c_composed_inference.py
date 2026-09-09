@@ -620,6 +620,90 @@ def test_opt18_shared_top_k_retains_compact_exact_backpointers() -> None:
         )
 
 
+def test_opt19_adaptive_factor_retention_is_exact_and_cumulatively_bounded() -> None:
+    grammar = StructuredSandhiGrammar.from_default_inventory()
+    segment = next(iter_observed_segments("devo'pi api ca"))
+    graph = build_lazy_candidate_graph(segment, grammar)
+    config = PieceModelConfig(max_piece_length=3, rho=0.41)
+    topology = compile_composed_segment_topology(
+        graph,
+        ComposedPieceInference(_production_scorer(), model_config=config),
+    )
+    estimator = ComposedPieceInference(
+        _production_scorer(),
+        model_config=config,
+        inspection_top_k=5,
+    )
+    estimates = tuple(
+        composed_module._factor_retention_estimate(
+            factor,
+            factor_topology,
+            estimator,
+            support_epsilon=0.0,
+        )
+        for factor, factor_topology in zip(graph.factors, topology.factors)
+    )
+    assert all(item is not None for item in estimates)
+    full_budget = sum(item.retained_bytes for item in estimates if item is not None)
+
+    def run(budget: int):
+        return infer_composed_segment(
+            graph,
+            ComposedPieceInference(
+                _production_scorer(),
+                model_config=config,
+                cache_config=ComposedCacheConfig(
+                    inspection_retained_factor_bytes=budget,
+                ),
+                inspection_top_k=5,
+            ),
+            whitespace_merge_penalty=8.0,
+            topology=topology,
+        )
+
+    one_pass = run(full_budget)
+    two_pass = run(1)
+
+    for name in (
+        "log_partition",
+        "entropy",
+        "identity_mass",
+        "latent_mass",
+        "expected_lexical_tokens",
+        "expected_piece_tokens",
+        "piece_segmentation_entropy",
+        "expected_whole_form_uses",
+        "expected_singleton_path_uses",
+        "expected_multi_piece_uses",
+        "lexical_expected_counts",
+        "piece_expected_counts",
+        "rule_usage",
+        "boundary_posteriors",
+        "top_analyses",
+        "top_analysis_mass",
+        "piece_occurrence_support",
+        "total_posterior_mass",
+    ):
+        assert getattr(one_pass, name) == getattr(two_pass, name)
+    assert one_pass.counters.fast_path_factors == len(graph.factors)
+    assert one_pass.counters.two_pass_factors == 0
+    assert one_pass.counters.recomputed_factors == 0
+    assert one_pass.counters.retained_budget_peak_bytes == full_budget
+    assert two_pass.counters.fast_path_factors == 0
+    assert two_pass.counters.two_pass_factors == len(graph.factors)
+    assert two_pass.counters.recomputed_factors == len(graph.factors)
+    assert two_pass.counters.retained_budget_peak_bytes == 0
+    nonmerged_index = next(
+        index for index, factor in enumerate(graph.factors) if factor.lattice is not None
+    )
+    assert composed_module._factor_retention_estimate(
+        graph.factors[nonmerged_index],
+        None,
+        estimator,
+        support_epsilon=0.0,
+    ) is None
+
+
 def test_shared_inspection_piece_reference_bound_falls_back() -> None:
     grammar = StructuredSandhiGrammar.from_default_inventory()
     segment = next(iter_observed_segments("devo'pi"))

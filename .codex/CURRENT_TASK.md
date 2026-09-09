@@ -12,11 +12,12 @@ S1M2_LOCAL_OPTIMIZATION=COMPLETE
 S1M2_OPTIMIZATION_16=ACCEPTED
 OPT16_TOPOLOGY_RECONSTRUCTIBILITY=PASS
 OPT17=EXACTNESS_PASS_RAM_FAIL_DURING_INSPECTION
-OPT18A=IMPLEMENTED
-OPT18B=IMPLEMENTED
+OPT18A=RAM_VALIDATED
+OPT18B=RAM_VALIDATED_RUNTIME_FAIL
+OPT19=IMPLEMENTED_AWAITING_MANUAL_RAM_RUNTIME_VALIDATION
 POST_OPT16_ENGINEERING_OPTIMIZATION=AUTHORIZED
-SINGLE_WORKER_PEAK_RSS_TARGET=<10GiB
-CURRENT_OPTIMIZATION=COMPLETE_AWAITING_MANUAL_RAM_VALIDATION
+SINGLE_WORKER_PEAK_RSS_TARGET=IDEAL_LE_1.25_GIB_PRIMARY_LE_1.5_GIB
+CURRENT_OPTIMIZATION=OPT19_COMPLETE_AWAITING_MANUAL_VALIDATION
 S1M2_SIX_CELL_CONTRACT=FROZEN
 ROUND1_INTERFACE=READY
 ROUND1_AGGREGATOR=READY
@@ -30,7 +31,7 @@ PRE_VM_INTERFACE_STATE=READY
 ROUND1_STATUS=FAILED_OOM
 ROUND2_STATUS=NOT_STARTED
 FULL_M0_PROCESS_RUNNING=NO
-NEXT_ACTION=COLLABORATOR_RESUME_EXISTING_OPT17_STATE_INSPECTION_ONLY_W1
+NEXT_ACTION=COLLABORATOR_VALIDATE_OPT19_INSPECTION_ONLY_W1
 ```
 
 The authoritative machine-readable contract is
@@ -93,10 +94,41 @@ respect the one-invocation cap. Static compilation and diff checks pass after
 the correction. No stress, representative, Round 1/2, VM/cloud, 72-document,
 three-pass, production-like, or full-M0 workload ran in this session.
 
-After the Opt18 commit is pushed, the sole next action is the documented
-single-worker inspection-only benchmark command against the preserved Opt17
-run. The less-than-10-GiB target remains unvalidated until that command finishes.
+The collaborator's Opt18 inspection-only attempt completed pathological line
+39 with peak process-tree RSS about 0.747 GiB and later RSS about 0.438 GiB,
+confirming the bounded-memory repair. It was manually stopped after more than
+two hours before the first stress document completed; the active process used
+about 96% of one CPU core. Opt18 is therefore RAM-valid but runtime-invalid.
+
+Opt19 implements deterministic adaptive factor retention. During inspection,
+each factor with a trusted structural estimate is fully evaluated once and its
+`_FactorSummary` retained when it fits the remaining segment-local 320 MiB
+logical budget. The retained payload is limited to final factor scalar and
+posterior summaries, compact form/coordinate occurrence support, boundary/rule
+maps, and bounded final top paths. Shared-batch alpha/transition arrays, prefix
+backpointers, and span tables remain factor-local and are released before the
+summary returns. Factors with missing/untrusted topology, incompatible shared
+conditions, arithmetic overflow, or insufficient remaining budget use the
+unchanged Opt18 score-only prepass followed by exact posterior recomputation
+and immediate release.
+
+The fixed `sktlm-opt19-factor-summary/v1` estimate is:
+
+`4096 + 8*Nprefix + 4*Ntransition + Dprefix + 320*Nform + 160*Npiece + 80*Noccurrence_upper + 192*Nlattice_node + 64*K*(1+max_form_depth)` bytes.
+
+Admission is canonical factor order with `estimate <= 320 MiB - cumulative`.
+The budget is execution-only and absent from `TrainingConfig.payload()`, so the
+existing Opt17 final learned state remains directly reusable. Inspection
+provenance records the formula and budget. Telemetry records fast-path,
+two-pass, recomputed factors, and retained-budget peak.
+
+The sole focused pytest invocation passed (`3 passed in 2.49s`). Post-test
+Python compilation and `git diff --check` passed. No stress, representative,
+full-M0, VM/cloud, training, or other long workload ran.
+
+The sole next action is the single-worker inspection-only RAM/runtime benchmark
+against the preserved Opt17 training state:
 
 ```powershell
-.\.venv\Scripts\python.exe -m sktlm.latent.benchmark --benchmark s1m2_continuous_stress_m0_devanagari --run-id s1m2_continuous_stress_m0_devanagari_opt17_2369312_w1_p1_a01 --output-root artifacts/s1m2_benchmarks --passes 1 --workers 1 --inspection-only --inspection-workers 1 --profile
+.\.venv\Scripts\python.exe -m sktlm.latent.benchmark --benchmark s1m2_continuous_stress_m0_devanagari --run-id s1m2_continuous_stress_m0_devanagari_opt17_2369312_w1_p1_a01 --output-root artifacts/s1m2_benchmarks --passes 1 --workers 1 --inspection-only --inspection-workers 1 --inspection-retained-factor-bytes 335544320
 ```

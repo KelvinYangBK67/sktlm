@@ -210,6 +210,7 @@ def run_benchmark(
     stop_after_training: bool = False,
     inspection_only: bool = False,
     inspection_workers: int | None = None,
+    inspection_retained_factor_bytes: int = 320 * 1024 * 1024,
 ) -> dict[str, Any]:
     spec = _load_benchmark_spec(benchmark, repo_root)
     config = TrainingConfig(
@@ -224,6 +225,7 @@ def run_benchmark(
         workers=workers,
         max_lines_per_document=spec.max_lines_per_document,
         equivalence_diagnostics=spec.model == S1M1_MODEL,
+        inspection_retained_factor_bytes=inspection_retained_factor_bytes,
         resume=inspection_only,
     )
     profiler = cProfile.Profile() if profile else None
@@ -289,6 +291,7 @@ def run_benchmark(
         "inspection_workers": (
             workers if inspection_workers is None else inspection_workers
         ),
+        "inspection_retained_factor_bytes": inspection_retained_factor_bytes,
         "execution_mode": (
             "stop_after_training"
             if stop_after_training
@@ -351,6 +354,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     phases.add_argument("--stop-after-training", action="store_true")
     phases.add_argument("--inspection-only", action="store_true")
     parser.add_argument("--inspection-workers", type=int)
+    parser.add_argument(
+        "--inspection-retained-factor-bytes",
+        type=int,
+        default=320 * 1024 * 1024,
+    )
     parser.add_argument("--profile", action="store_true")
     return parser
 
@@ -368,6 +376,7 @@ def main(argv: list[str] | None = None) -> None:
         stop_after_training=args.stop_after_training,
         inspection_only=args.inspection_only,
         inspection_workers=args.inspection_workers,
+        inspection_retained_factor_bytes=args.inspection_retained_factor_bytes,
     )
     print(json.dumps(metrics, ensure_ascii=False, indent=2, sort_keys=True))
 

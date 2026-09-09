@@ -41,6 +41,7 @@ class ComposedCacheConfig:
     shared_token_marginals: bool = True
     shared_prefix_nodes: int = 262_144
     shared_top_k_piece_references: int = 4_194_304
+    inspection_retained_factor_bytes: int = 320 * 1024 * 1024
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -52,6 +53,10 @@ class ComposedCacheConfig:
             (
                 "shared_top_k_piece_references",
                 self.shared_top_k_piece_references,
+            ),
+            (
+                "inspection_retained_factor_bytes",
+                self.inspection_retained_factor_bytes,
             ),
         ):
             if value < 1:
@@ -102,6 +107,9 @@ class ComposedInferenceCounters:
     shared_batch_fallbacks: int = 0
     shared_top_k_states: int = 0
     shared_top_k_paths: int = 0
+    fast_path_factors: int = 0
+    two_pass_factors: int = 0
+    recomputed_factors: int = 0
     topology_compiles: int = 0
     topology_reuses: int = 0
     store_lookups: int = 0
@@ -109,6 +117,7 @@ class ComposedInferenceCounters:
     piece_score_cache_estimated_bytes: int = 0
     form_cache_entries: int = 0
     form_cache_estimated_bytes: int = 0
+    retained_budget_peak_bytes: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,6 +166,9 @@ _EVENT_COUNTERS = (
     "shared_batch_fallbacks",
     "shared_top_k_states",
     "shared_top_k_paths",
+    "fast_path_factors",
+    "two_pass_factors",
+    "recomputed_factors",
     "topology_compiles",
     "topology_reuses",
     "store_lookups",
@@ -272,6 +284,18 @@ class _FactorScore:
     factor: LazySegmentFactor
     log_score: float
     identity_log_score: float
+
+
+@dataclass(frozen=True, slots=True)
+class _FactorRetentionEstimate:
+    """Deterministic logical-size estimate for a retained factor summary."""
+
+    retained_records: int
+    retained_bytes: int
+    prefix_nodes: int
+    transitions: int
+    forms: int
+    depth_sum: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -529,6 +553,9 @@ class ComposedPieceInference:
                 "piece_score_cache_estimated_bytes": self._piece_score_bytes,
                 "form_cache_entries": len(self._forms),
                 "form_cache_estimated_bytes": self._form_bytes,
+                "retained_budget_peak_bytes": self._events[
+                    "retained_budget_peak_bytes"
+                ],
             }
         )
         return ComposedInferenceCounters(**payload)
@@ -550,6 +577,9 @@ class ComposedPieceInference:
                 ),
                 "form_cache_entries": after.form_cache_entries,
                 "form_cache_estimated_bytes": after.form_cache_estimated_bytes,
+                "retained_budget_peak_bytes": (
+                    after.retained_budget_peak_bytes
+                ),
             }
         )
         return ComposedInferenceCounters(**payload)
@@ -1385,6 +1415,146 @@ def _evaluate_lazy_token_legacy(
     )
 
 
+_RETENTION_ESTIMATE_MAX = (1 << 63) - 1
+INSPECTION_RETENTION_FORMULA = "sktlm-opt19-factor-summary/v1"
+
+
+def _checked_retention_total(
+    terms: tuple[tuple[int, int], ...],
+) -> int | None:
+    total = 4_096
+    for count, unit_bytes in terms:
+        if count < 0 or unit_bytes < 0:
+            return None
+        contribution = count * unit_bytes
+        if contribution > _RETENTION_ESTIMATE_MAX - total:
+            return None
+        total += contribution
+    return total
+
+
+def _factor_retention_estimate(
+    factor: LazySegmentFactor,
+    topology: CompiledSharedFormTopology | None,
+    engine: ComposedPieceInference,
+    *,
+    support_epsilon: float,
+) -> _FactorRetentionEstimate | None:
+    """Estimate only payload that would remain live through the outer DP.
+
+    Missing or structurally suspect inputs deliberately return ``None`` so
+    inspection keeps Opt18's score-only/recompute path.
+    """
+
+    top_k = engine.inspection_top_k
+    if top_k is None or top_k < 1:
+        return None
+    if factor.merged_word is not None:
+        length = len(factor.merged_word.symbols)
+        if length < 1:
+            return None
+        transitions = sum(
+            len(
+                _piece_ends(
+                    length,
+                    start,
+                    engine.model_config.max_piece_length,
+                )
+            )
+            for start in range(length)
+        )
+        prefix_nodes = length + 1
+        depth_sum = length * (length + 1) // 2
+        forms = 1
+        pieces = transitions
+        occurrence_slots = 1
+        lattice_nodes = 2
+        max_form_depth = length
+    else:
+        lattice = factor.lattice
+        if (
+            lattice is None
+            or topology is None
+            or support_epsilon != 0.0
+            or not engine.cache_config.shared_token_marginals
+        ):
+            return None
+        prefix_nodes = len(topology.parent)
+        transitions = len(topology.transition_sources)
+        forms = len(topology.form_keys)
+        pieces = len(topology.pieces)
+        if (
+            prefix_nodes < 1
+            or forms < 1
+            or pieces < 1
+            or topology.max_piece_length
+            != engine.model_config.max_piece_length
+            or len(topology.depth) != prefix_nodes
+            or len(topology.transition_offsets) != prefix_nodes
+            or len(topology.transition_piece_ids) != transitions
+            or len(topology.endpoint_nodes) != forms
+            or len(topology.whole_piece_ids) != forms
+            or topology.transition_offsets[-1] != transitions
+            or top_k * prefix_nodes
+            > engine.cache_config.shared_top_k_piece_references
+        ):
+            return None
+        try:
+            endpoint_depths = tuple(
+                int(topology.depth[node]) for node in topology.endpoint_nodes
+            )
+        except (IndexError, OverflowError, TypeError):
+            return None
+        if len(endpoint_depths) != forms or any(
+            depth < 1 for depth in endpoint_depths
+        ):
+            return None
+        depth_sum = sum(int(depth) for depth in topology.depth)
+        lattice_nodes = len(lattice.nodes)
+        if lattice_nodes < 2 or depth_sum < 0:
+            return None
+        occurrence_slots = lattice_nodes * (lattice_nodes - 1) // 2
+        max_form_depth = max(endpoint_depths, default=0)
+        transitions += sum(
+            depth > topology.max_piece_length for depth in endpoint_depths
+        )
+
+    top_path_records = top_k * (1 + max_form_depth)
+    retained_records = (
+        prefix_nodes
+        + transitions
+        + forms
+        + pieces
+        + occurrence_slots
+        + 2 * lattice_nodes
+        + top_path_records
+    )
+    if retained_records > _RETENTION_ESTIMATE_MAX:
+        return None
+    retained_bytes = _checked_retention_total(
+        (
+            (prefix_nodes, 8),
+            (transitions, 4),
+            (depth_sum, 1),
+            (forms, 320),
+            (pieces, 160),
+            (occurrence_slots, 80),
+            (lattice_nodes, 192),
+            (top_path_records, 64),
+        )
+    )
+    if retained_bytes is None:
+        return None
+    return _FactorRetentionEstimate(
+        retained_records=retained_records,
+        retained_bytes=retained_bytes,
+        prefix_nodes=prefix_nodes,
+        transitions=transitions,
+        forms=forms,
+        depth_sum=depth_sum,
+    )
+
+
 def _evaluate_lazy_token_shared(
     lattice: LazyTokenLattice,
     engine: ComposedPieceInference,
@@ -2043,28 +2213,70 @@ def infer_composed_segment(
             if item is not None
         )
     else:
-        # Inspection needs only two scalar scores for its outer DP.  Compute
-        # those first; posterior maps are then recomputed, consumed, and
-        # released one factor at a time below.
-        evaluations = tuple(
-            _score_factor(
-                factor,
-                engine,
-                whitespace_merge_penalty=whitespace_merge_penalty,
-                support_epsilon=support_epsilon,
-                topology=factor_topology,
-                topology_available=topology is not None,
-                topology_reused=(
-                    topology.reused if topology is not None else False
-                ),
-            )
-            for factor, factor_topology in zip(
-                graph.factors,
-                factor_topologies,
-            )
-        )
+        # Opt19 admits structurally small factors to one-pass evaluation while
+        # keeping Opt18's score-only/recompute path for untrusted or expensive
+        # factors.  The budget is cumulative for this segment because every
+        # admitted summary remains live until the outer DP is complete.
         before = engine.counter_snapshot()
         timing_before = engine.timing_snapshot()
+        retained_evaluations = [None] * len(graph.factors)
+        retained_bytes = 0
+        factor_scores: list[_FactorScore] = []
+        for factor_index, (factor, factor_topology) in enumerate(
+            zip(graph.factors, factor_topologies)
+        ):
+            estimate = _factor_retention_estimate(
+                factor,
+                factor_topology,
+                engine,
+                support_epsilon=support_epsilon,
+            )
+            remaining = (
+                engine.cache_config.inspection_retained_factor_bytes
+                - retained_bytes
+            )
+            if estimate is not None and estimate.retained_bytes <= remaining:
+                evaluation = _evaluate_factor(
+                    factor,
+                    engine,
+                    whitespace_merge_penalty=whitespace_merge_penalty,
+                    support_epsilon=support_epsilon,
+                    topology=factor_topology,
+                    topology_available=topology is not None,
+                    topology_reused=(
+                        topology.reused if topology is not None else False
+                    ),
+                )
+                retained_evaluations[factor_index] = evaluation
+                retained_bytes += estimate.retained_bytes
+                engine._events["fast_path_factors"] += 1
+                engine._events["retained_budget_peak_bytes"] = max(
+                    engine._events["retained_budget_peak_bytes"],
+                    retained_bytes,
+                )
+                factor_scores.append(
+                    _FactorScore(
+                        factor=evaluation.factor,
+                        log_score=evaluation.log_score,
+                        identity_log_score=evaluation.identity_log_score,
+                    )
+                )
+            else:
+                engine._events["two_pass_factors"] += 1
+                factor_scores.append(
+                    _score_factor(
+                        factor,
+                        engine,
+                        whitespace_merge_penalty=whitespace_merge_penalty,
+                        support_epsilon=support_epsilon,
+                        topology=factor_topology,
+                        topology_available=topology is not None,
+                        topology_reused=(
+                            topology.reused if topology is not None else False
+                        ),
+                    )
+                )
+        evaluations = tuple(factor_scores)
         engine.record_graph(graph)
     started = time.perf_counter()
     forward = _outer_forward(graph, evaluations)
@@ -2099,7 +2311,14 @@ def infer_composed_segment(
     for factor_index, (factor_score, factor_topology) in enumerate(
         zip(evaluations, factor_topologies)
     ):
-        if retained_evaluations is None:
+        retained = (
+            None
+            if retained_evaluations is None
+            else retained_evaluations[factor_index]
+        )
+        if retained is None:
+            if engine.inspection_top_k is not None:
+                engine._events["recomputed_factors"] += 1
             composition_started = time.perf_counter()
             evaluation = _evaluate_factor(
                 factor_score.factor,
@@ -2114,8 +2333,6 @@ def infer_composed_segment(
             )
             engine.add_timing("piece_composition_seconds", composition_started)
         else:
-            retained = retained_evaluations[factor_index]
-            assert retained is not None
             evaluation = retained
             retained_evaluations[factor_index] = None
         if (

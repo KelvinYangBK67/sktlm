@@ -88,6 +88,7 @@ def test_s1m2_configuration_identity_includes_piece_model_and_cache_bounds(
     assert payload["piece_shared_token_marginals"] is True
     assert payload["piece_shared_prefix_nodes"] == 262_144
     assert payload["piece_shared_top_k_piece_references"] == 4_194_304
+    assert "inspection_retained_factor_bytes" not in payload
 
 
 def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(
@@ -593,6 +594,10 @@ def test_opt18_training_and_inspection_are_exact_restartable_phases(
     ]
     assert inspection_provenance["training_workers"] == 1
     assert inspection_provenance["inspection_workers"] == 2
+    assert inspection_provenance["adaptive_factor_retention"] == {
+        "formula": "sktlm-opt19-factor-summary/v1",
+        "segment_budget_bytes": 320 * 1024 * 1024,
+    }
 
     restart_config = _config(
         tmp_path,

@@ -126,6 +126,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=int,
         help="Execution-only inspection worker count; does not change training identity.",
     )
+    parser.add_argument(
+        "--inspection-retained-factor-bytes",
+        type=int,
+        default=320 * 1024 * 1024,
+        help=(
+            "Execution-only segment-local budget for one-pass retained factor "
+            "summaries; does not change training identity."
+        ),
+    )
     return parser
 
 
@@ -180,6 +189,7 @@ def main(argv: list[str] | None = None) -> None:
         piece_shared_top_k_piece_references=(
             args.piece_shared_top_k_piece_references
         ),
+        inspection_retained_factor_bytes=args.inspection_retained_factor_bytes,
         resume=args.resume or args.inspection_only,
     )
     result = run_training(

@@ -2595,3 +2595,49 @@ ROUND1_STATUS=FAILED_OOM
 FULL_M0_PROCESS_RUNNING=NO
 NEXT_ACTION=COLLABORATOR_RESUME_EXISTING_OPT17_STATE_INSPECTION_ONLY_W1
 ```
+
+## 86. Opt19 adaptive inspection factor retention (2026-09-09)
+
+Manual Opt18 evidence closes the observed RAM failure: pathological stress line
+39 completed at about 0.747 GiB peak process-tree RSS and memory later returned
+to about 0.438 GiB. The attempt was stopped after more than two hours before its
+first stress document completed while using about 96% of one CPU core. Opt18 is
+therefore bounded-memory but its universal scalar-prepass/posterior-recompute
+inspection route is not production-runtime acceptable.
+
+Opt19 retains exact one-pass `_FactorSummary` payloads adaptively. Admission is
+deterministic canonical factor order under a 320 MiB segment-local cumulative
+logical budget. The fixed `sktlm-opt19-factor-summary/v1` formula charges prefix
+nodes, transitions, prefix-depth sum, forms, pieces, an upper bound on occurrence
+slots, lattice nodes, and bounded top-path records. Missing or structurally
+inconsistent topology, non-shared/nonzero-epsilon conditions, arithmetic
+overflow, the existing shared top-K bound, and insufficient remaining budget
+all fail closed to Opt18 score-only prepass plus exact posterior recomputation
+and immediate release.
+
+Only the returned factor scalar/posterior summary, compact form/coordinate
+support, boundary/rule maps, and bounded final top paths may survive through the
+outer DP. Shared-batch alpha and transition arrays, prefix backpointers, and
+span tables remain factor-local. Scoring, posterior, support, expected counts,
+boundary mass, top-K ordering, and floating-point association are unchanged.
+The budget is excluded from the scientific training payload/signature and is
+recorded only in inspection execution provenance and benchmark metrics, so the
+preserved Opt17 learned state remains directly reusable.
+
+Telemetry now reports inspection fast-path factors, two-pass factors,
+recomputed factors, and retained-budget peak bytes. The one focused pytest
+invocation passed (`3 passed in 2.49s`), including exact equality between the
+all-fast and all-two-pass routes, cumulative-budget behavior, fail-closed
+missing-topology behavior, unchanged training identity, and inspection-only
+provenance/restart. Python compilation and `git diff --check` passed afterward.
+No stress, representative, full-M0, VM/cloud, or training workload ran.
+
+```text
+OPT18=RAM_PASS_RUNTIME_FAIL
+OPT19=IMPLEMENTED_AWAITING_MANUAL_RAM_RUNTIME_VALIDATION
+OPT19_DEFAULT_SEGMENT_RETAINED_BUDGET_BYTES=335544320
+OPT19_TRAINING_IDENTITY_UNCHANGED=PASS
+ROUND1_STATUS=FAILED_OOM
+FULL_M0_PROCESS_RUNNING=NO
+NEXT_ACTION=COLLABORATOR_VALIDATE_OPT19_INSPECTION_ONLY_W1
+```
