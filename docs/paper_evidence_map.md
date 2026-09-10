@@ -3,7 +3,8 @@
 This map connects likely paper claims or sections to the tracked repository
 record. It is not a paper draft, a new result, or permission to strengthen a
 claim. Status describes the evidence available at this documentation
-checkpoint; S1M2 has no final scientific result.
+checkpoint. S1M2 Round 2 has a formal failure and engineering evidence, but no
+final scientific result.
 
 ## Research design and substrate
 
@@ -28,18 +29,19 @@ checkpoint; S1M2 has no final scientific result.
 
 | # | Likely claim or subsection | Authoritative tracked source | Optional support | Status | Claim boundary |
 |---:|---|---|---|---|---|
-| 10 | S1M2 scientific contract: reusable untyped pieces with exact concatenation | [Research roadmap](research_roadmap.md#s1m2--reusable-untyped-compositional-pieces) | [S1M2 report index](../reports/core_methods/reusable_pieces/README.md) | IN PROGRESS | No stem/suffix/root labels, learned internal rewrite, gold morphology, or sandhi-use reward is introduced. The milestone has not produced a final result. |
+| 10 | S1M2 scientific contract: reusable untyped pieces with exact concatenation | [Research roadmap](research_roadmap.md#s1m2--reusable-untyped-compositional-pieces) | [S1M2 report index](../reports/core_methods/reusable_pieces/README.md) | METHOD COMPLETE / SCIENCE BLOCKED | No stem/suffix/root labels, learned internal rewrite, gold morphology, or sandhi-use reward is introduced. Round 2 does not supply a final scientific result. |
 | 11 | P0 exact reference semantics | [P0 reference checkpoint](../reports/core_methods/reusable_pieces/s1m2_p0_reference_and_profiling.md) | [S1M2 report index](../reports/core_methods/reusable_pieces/README.md#p0--exact-reference-semantics) | COMPLETE | P0 is the numerical oracle and tiny fitting path, not the production full-corpus engine. |
 | 12 | P1a scoring and P1b lazy lexical spans | [P1a/P1b checkpoint](../reports/core_methods/reusable_pieces/s1m2_p1ab_checkpoint.md) | [Historical P1c readiness](../reports/core_methods/reusable_pieces/s1m2_p1c_readiness_20260905.md) | COMPLETE | The checkpoint establishes fixed-pass scoring and lazy candidate representation; its statement that P1c remained open is historical. |
 | 13 | P1c exact shared/composed inference | [P1c closure](../reports/core_methods/reusable_pieces/s1m2_p1c_closure_20260905.md) | [P0 reference checkpoint](../reports/core_methods/reusable_pieces/s1m2_p0_reference_and_profiling.md) | COMPLETE | Equivalence and bounded-cache contracts establish exact implementation semantics, not corpus-scale scientific success. |
 | 14 | Streaming trainer, resume, and serial/parallel equivalence | [Trainer integration checkpoint](../reports/core_methods/reusable_pieces/s1m2_trainer_integration_20260905.md) | [P1c closure](../reports/core_methods/reusable_pieces/s1m2_p1c_closure_20260905.md) | COMPLETE | Integration and deterministic bounded tests do not authorize or substitute for a full-corpus S1M2 result. |
-| 15 | Current continuous profiling and exact optimization | [Continuous benchmark/profiling/optimization record](../reports/core_methods/reusable_pieces/s1m2_continuous_benchmark_definition_20260905.md) | [Compact evidence directory](../reports/core_methods/reusable_pieces/evidence/) | IN PROGRESS | Treat optimization results as engineering evidence. Do not infer a final runtime, storage gate, production readiness, or scientific conclusion. |
+| 15 | Continuous profiling and exact optimization | [Continuous benchmark/profiling/optimization record](../reports/core_methods/reusable_pieces/s1m2_continuous_benchmark_definition_20260905.md) | [Compact evidence directory](../reports/core_methods/reusable_pieces/evidence/) | COMPLETE ENGINEERING HISTORY | Treat optimization results as engineering evidence, not a final scientific conclusion. |
+| 16 | Round 2 worker scaling, inspection bundling, and exact-science gate | [Round 2 closure](../reports/core_methods/reusable_pieces/s1m2_round2_closure_20260910.md) | [Execution-bundle scheduler checkpoint](../reports/core_methods/reusable_pieces/s1m2_execution_bundle_scheduler_20260909.md) | FORMAL FAIL / ENGINEERING CLOSED | Worker-count artifacts are deterministic and 12 workers is the engineering preference, but stress candidate truncation prevents a formal PASS or production winner. |
 
 ## Later stages
 
 | # | Likely claim or subsection | Authoritative tracked source | Optional support | Status | Claim boundary |
 |---:|---|---|---|---|---|
-| 16 | Later learned-grammar and language-general research program | [Stage 2 and Stage 3 roadmap](research_roadmap.md#stage-2-learned-realization-grammar) | None | N/A | These are planned research stages and hypotheses, not completed methods or evidence-backed results. |
+| 17 | Later learned-grammar and language-general research program | [Stage 2 and Stage 3 roadmap](research_roadmap.md#stage-2-learned-realization-grammar) | None | N/A | These are planned research stages and hypotheses, not completed methods or evidence-backed results. |
 
 ## Use rule
 

@@ -25,18 +25,21 @@ engineering detail. Stage definitions live in the
 No existing file under `latent_lexicon/` is rewritten to update its historical
 status.
 
-## S1M2 — Reusable untyped pieces — IN PROGRESS
+## S1M2 — Reusable untyped pieces — ROUND 2 CLOSED / FORMAL FAIL
 
 - **Ordered report index:** [S1M2 reusable-piece reports](reusable_pieces/README.md).
 - **Completed inference checkpoint:** [P1c exact composed-inference closure](reusable_pieces/s1m2_p1c_closure_20260905.md).
 - **Completed integration checkpoint:** [streaming-trainer integration](reusable_pieces/s1m2_trainer_integration_20260905.md).
 - **Current engineering/scientific-development record:**
+  [Round 2 closure](reusable_pieces/s1m2_round2_closure_20260910.md).
+- **Completed optimization history:**
   [continuous benchmark, profiling, and exact optimization](reusable_pieces/s1m2_continuous_benchmark_definition_20260905.md).
 
 P0, P1a/P1b, P1c, and trainer checkpoints establish method and implementation
-contracts. They do not constitute a final S1M2 scientific result. Continuous
-profiling/optimization remains in progress, and full-corpus S1M2 production
-has not started at this documentation checkpoint.
+contracts. Round 2 establishes deterministic worker-count and scheduler
+engineering evidence but fails the frozen exact-science gate because the
+stress workload truncates candidate support. No formal worker winner exists,
+and full-corpus S1M2 production has not started.
 
 ## Evidence storage
 

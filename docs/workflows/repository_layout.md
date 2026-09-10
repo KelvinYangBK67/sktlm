@@ -17,6 +17,7 @@ src/sktlm/latent/            script-neutral latent lexical induction
 src/sktlm/pieces/            reusable untyped compositional-piece inference
 src/sktlm/analysis/          scientific reduction, protocol, archival, and inventory audits
 src/sktlm/review/            frozen-packet construction and verification support
+src/sktlm/production/        fail-closed S1M2 production planning and run/audit entry points
 ```
 
 Tests live under `tests/` and follow the corresponding package or workflow
@@ -35,10 +36,21 @@ configs/experiments/         experiment conditions and matrices
 configs/analysis/            scientific reduction and retention manifests
 configs/benchmarks/          fixed benchmark/workload definitions
 configs/cloud/               credential-free deployment/run registry material
+configs/production/          frozen production-cell and execution contracts
 ```
 
 Real addresses, credentials, and machine-local bridge values are not stored in
 these tracked files.
+
+Cloud and bounded automation entry points are separated from scientific code:
+
+```text
+scripts/cloud/               host bootstrap, transfer, monitoring, and audit tools
+.codex/automation/           generic fail-closed local Codex task automation
+```
+
+Their mutable state and run payloads live under ignored `artifacts/`; they do
+not define model semantics.
 
 ## Data lifecycle
 

@@ -15,9 +15,12 @@ later explicit checkpoint.
 - **M₀′ — COMPLETE / VALID:** the
   [formal substrate checkpoint](core_methods/latent_lexicon/m0_prime_formal_checkpoint_20260905.md)
   records the corrected downstream IAST-continuous representation.
-- **S1M2 — IN PROGRESS:** P1c exact inference and trainer integration are
-  complete; continuous exact profiling and optimization remain active, and no
-  final full-corpus S1M2 result is claimed. Start with the
+- **S1M2 — ROUND 2 CLOSED / FORMAL SCIENCE BLOCKED:** method implementation
+  and engineering scaling are complete through Round 2. The
+  [Round 2 closure](core_methods/reusable_pieces/s1m2_round2_closure_20260910.md)
+  records deterministic scaling evidence and a 12-worker engineering
+  preference, while stress candidate truncation prevents a formal PASS or
+  production winner. Start with the
   [reusable-piece index](core_methods/reusable_pieces/README.md).
 
 The [core-method report index](core_methods/README.md) gives the shortest path

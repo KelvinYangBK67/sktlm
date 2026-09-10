@@ -22,12 +22,19 @@ ROUND1_NEXT_WORKER_CANDIDATES=12_16_24
 OLD_ROUND2_READINESS=RETIRED
 ROUND2_MODE=BUNDLE_WORKER_RECALIBRATION
 ROUND2_PRIMARY_WORKERS=12_16_24
-ROUND2_WORKER_20_STATUS=RESERVED_IF_DECISION_CRITICAL
-ROUND2_REPRESENTATIVE_PLAN=MATERIALIZATION_REQUIRED
-ROUND2_STRESS_PLAN=MATERIALIZATION_REQUIRED
-ROUND2_STATUS=NOT_STARTED
+ROUND2_WORKER_20_STATUS=NOT_REQUIRED
+ROUND2_REPRESENTATIVE_PLAN=MATERIALIZED
+ROUND2_STRESS_PLAN=MATERIALIZED
+ROUND2_EXECUTION=COMPLETE
+ROUND2_FORMAL_SCIENTIFIC_STATUS=FAIL_CANDIDATE_OVERFLOW
+ROUND2_FORMAL_WINNER=NONE
+ROUND2_ENGINEERING_SCALING=CLOSED
+ROUND2_ENGINEERING_PREFERENCE_WORKERS=12
+ROUND2_WORKER_COUNT_SCIENTIFIC_EQUIVALENCE=PASS
+ROUND2_OLD_NEW_INSPECTION_EQUIVALENCE=PASS_RESEARCHER_MANUAL
 FULL_M0_PROCESS_RUNNING=NO
-NEXT_ACTION=RESEARCHER_PRE_ROUND2_MATERIALIZATION
+FULL_M0_AUTHORIZED=NO
+NEXT_ACTION=BOUNDED_CANDIDATE_OVERFLOW_FORENSIC
 ```
 
 The authoritative production contract is
@@ -36,10 +43,9 @@ The authoritative production contract is
 readiness gate is superseded by Decision 114 and has no active compatibility
 path or replacement stage.
 
-## Active Round2 contract
+## Executed Round2 contract
 
-Round2 is the final engineering worker-selection stage before the unchanged
-full six-cell production plan:
+Round2 executed the following six-job worker matrix:
 
 ```text
 core-01  M0 Devanagari continuous  representative  workers=12
@@ -52,7 +58,7 @@ core-06  M0 Devanagari continuous  stress          workers=24
 
 Every job uses `model=reusable_pieces_v1`, three passes, exact inference, and
 bundle execution. Representative and stress retain their frozen tracked
-document lists. Their subset bundle plans must use:
+document lists. Their materialized subset bundle plans use:
 
 ```text
 target_pressure=279047
@@ -69,31 +75,31 @@ manifest, document-list, representation sequence, segment sequence, plan, and
 materialization identities. Generated trainer commands include
 `--execution-bundle-plan` and the per-job worker count.
 
-## Selection and full dependency
+## Outcome and full dependency
 
-A worker candidate is eligible only when both representative and stress pass
-completion, artifact, provenance, zero-overflow, memory, and storage gates.
-Each workload keeps the existing 10% practical wall-time threshold. A practical
-tie prefers lower process-tree peak RSS, lower canonical reducer stall, then
-fewer workers. Agreement produces `ROUND2_STATUS=PASS` and
-`WINNER_WORKERS`. A decision-critical workload disagreement produces
-`ROUND2_STATUS=NEEDS_W20_INTERPOLATION` and two prepared w20 follow-up job
-specifications; it never runs them automatically.
+All six jobs completed three passes and inspection. Representative has zero
+candidate overflow at every worker count. Stress has 34 overflowed tokens in
+each training pass and 34 in inspection at every worker count. Overflow clears
+the affected internal match list after raw matches exceed 512, so it is true
+candidate-space truncation. No worker passes both frozen workloads; Round2 is
+formally FAIL with no scientific winner, and Full production is not authorized.
 
-The final six-cell generator depends only on a bound Round2 PASS result and its
-eligible `WINNER_WORKERS`. It no longer depends on a Round1 formal winner or
-the retired readiness matrix. Full science cells remain unchanged.
+Worker-count scientific artifacts are identical within each workload. The
+inspection-only bundle calibration has no greater-than-10% wall-time winner;
+the existing RSS/stall/worker-count tie-break makes 12 workers the engineering
+preference. The researcher manually confirmed all six old-vs-new inspection
+artifact comparisons as `ALL_IDENTICAL`; this closure did not rerun them.
 
-## What has not run
+The full evidence and typed result are recorded in
+`reports/core_methods/reusable_pieces/s1m2_round2_closure_20260910.md`.
 
-No representative/stress subset plan has been materialized. No pytest, unit,
-synthetic, exactness, resume, scheduler, corpus smoke, training, Round2, VM,
-RAM/runtime benchmark, profiling, or full-M0 workload ran in PRE-ROUND2.
+## Closure boundary
+
+No pytest, benchmark, production command, VM/cloud workload, or experiment was
+run for documentation closure. Existing Round2 evidence was read only.
 
 ## Next action
 
-The researcher should materialize the representative and stress plans with the
-commands in
-`reports/core_methods/reusable_pieces/s1m2_pre_round2_bundle_worker_recalibration_20260910.md`
-or the final PRE-ROUND2 handoff, inspect their compact summaries, then generate
-the Round2 plan. Do not launch until both materialization identities are bound.
+Run a separately authorized bounded forensic on the 34 stress overflow cases.
+Do not relax the zero-overflow gate, change `max_internal_matches`, or begin
+Full-production wiring as part of this documentation handoff.

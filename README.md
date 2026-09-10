@@ -23,9 +23,11 @@ extent for one representation condition, not that the latent model is “M0”.
 S1M1 is scientifically frozen. Across its four completed controlled cells,
 visible spacing has a substantially larger effect than script: weakening
 boundary evidence makes the flat lexical objective produce a sharper posterior
-but a much larger, low-count, over-long lexicon. The next milestone, S1M2,
-tests whether reusable untyped pieces can improve compositional sharing while
-concatenating exactly to each grammar-licensed lexical form. See the
+but a much larger, low-count, over-long lexicon. S1M2 implements reusable
+untyped pieces that concatenate exactly to each grammar-licensed lexical form.
+Its Round 2 engineering calibration is closed, but the stress workload exposes
+real candidate-space truncation, so no formal scientific winner or full-M0
+production authorization exists yet. See the
 [research roadmap](docs/research_roadmap.md) for the full S1–S3 program.
 
 ## Research documentation
@@ -42,8 +44,9 @@ concatenating exactly to each grammar-licensed lexical form. See the
   — the frozen flat-lexical-identity result.
 - [M₀′ formal substrate checkpoint](reports/core_methods/latent_lexicon/m0_prime_formal_checkpoint_20260905.md)
   — the completed, validated corrected IAST-continuous representation.
-- [S1M2 continuous benchmark, profiling, and optimization record](reports/core_methods/reusable_pieces/s1m2_continuous_benchmark_definition_20260905.md)
-  — the current tracked development record; S1M2 remains in progress.
+- [S1M2 Round 2 closure](reports/core_methods/reusable_pieces/s1m2_round2_closure_20260910.md)
+  — the current authority separating the formal scientific failure,
+  engineering scaling result, and candidate-overflow diagnostic.
 
 ### Experimental substrate
 
@@ -75,14 +78,18 @@ concatenating exactly to each grammar-licensed lexical form. See the
 - [Construction and validation workflow](docs/workflows/m0_prime.md) explains
   the deterministic derivation from frozen M₀ Devanagari `continuous`.
 
-#### S1M2 — Reusable untyped pieces — IN PROGRESS
+#### S1M2 — Reusable untyped pieces — ROUND 2 CLOSED; SCIENCE BLOCKED
 
 - [P1c exact-inference closure](reports/core_methods/reusable_pieces/s1m2_p1c_closure_20260905.md)
   records the completed exact shared/composed inference gate.
 - [Trainer integration checkpoint](reports/core_methods/reusable_pieces/s1m2_trainer_integration_20260905.md)
   records completed streaming, resume, and serial/parallel integration.
 - [Continuous benchmark, profiling, and exact-optimization record](reports/core_methods/reusable_pieces/s1m2_continuous_benchmark_definition_20260905.md)
-  is the current evolving record; it does not claim a final S1M2 result.
+  preserves the completed local engineering history.
+- [Round 2 closure](reports/core_methods/reusable_pieces/s1m2_round2_closure_20260910.md)
+  records deterministic worker-count equivalence and the 12-worker engineering
+  preference, while withholding a formal PASS because stress overflows truncate
+  candidate support.
 - The compact [S1M2 report index](reports/core_methods/reusable_pieces/README.md)
   orders the detailed scientific and implementation checkpoints.
 
@@ -100,8 +107,9 @@ The current framework provides:
 - script-neutral latent lexical induction with a fixed external-sandhi grammar,
   streaming exact inference, deterministic artifacts, and representation-level
   scientific analysis;
-- exact shared/composed inference and a streaming trainer for reusable, untyped
-  compositional pieces, with continuous profiling and optimization in progress;
+- exact shared/composed inference and streaming training/inspection schedulers
+  for reusable, untyped compositional pieces, with Round 2 engineering scaling
+  closed and exact candidate-overflow resolution still required;
 - a common tokenizer interface for SentencePiece BPE, SentencePiece Unigram,
   Unicode characters, UTF-8 bytes, and extended grapheme clusters;
 - token span, orthographic-boundary, and explicitly heuristic sandhi-fragment

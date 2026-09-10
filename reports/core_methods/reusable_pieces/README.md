@@ -1,8 +1,15 @@
 # S1M2 reusable-piece research reports
 
-S1M2 is in progress. This index orders the tracked scientific and
-implementation record; it is navigation, not a new scientific checkpoint or a
-claim of full-corpus readiness.
+S1M2 method implementation and Round 2 engineering calibration are closed.
+The frozen scientific gate is not: stress candidate overflow prevents a formal
+Round 2 PASS and production winner. This index orders the tracked record; the
+Round 2 closure is the current status authority.
+
+## Current authority
+
+- [Round 2 closure](s1m2_round2_closure_20260910.md) — separates the formal
+  scientific failure, 12-worker engineering preference, scheduler findings,
+  deterministic equivalence evidence, and candidate-overflow blocker.
 
 ## Scientific contract and roadmap
 
@@ -37,11 +44,22 @@ claim of full-corpus readiness.
   records fixed-pass piece state, bounded-memory training, deterministic
   resume/parallel behavior, and emitted scientific artifacts.
 
-## Continuous profiling and exact optimization
+## Continuous profiling and exact optimization history
 
 - [Continuous benchmark, profiling, and optimization record](s1m2_continuous_benchmark_definition_20260905.md)
   — freezes matched M₀′/Devanagari workloads and tracks the completed
-  profiling gates, exact optimizations, and still-open runtime/storage path.
+  profiling gates and exact optimization history that preceded Round 2.
+
+## Execution bundling and calibration
+
+- [Execution-bundle scheduler](s1m2_execution_bundle_scheduler_20260909.md) —
+  records deterministic ObservedSegment bundling and canonical reduction.
+- [Pre-Round 2 worker recalibration](s1m2_pre_round2_bundle_worker_recalibration_20260910.md)
+  — preserves the historical launch contract that the Round 2 closure
+  supersedes as current status.
+- [Round 1 diagnostic closure](s1m2_round1_diagnostic_closure_20260909.md) —
+  preserves the bounded precursor calibration and its unresolved formal
+  winner.
 
 ## Machine-readable evidence
 

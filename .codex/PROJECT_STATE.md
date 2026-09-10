@@ -2749,3 +2749,50 @@ ROUND2_STATUS=NOT_STARTED
 FULL_M0_PROCESS_RUNNING=NO
 NEXT_ACTION=RESEARCHER_PRE_ROUND2_MATERIALIZATION
 ```
+
+## 89. S1M2 Round 2 documentation closure (2026-09-10)
+
+Round 2 executed all six planned M0 Devanagari-continuous jobs at workers 12,
+16, and 24 for the frozen representative and stress workloads. All jobs
+completed three passes and inspection. The three representative attestations
+are valid with zero candidate overflow. All three stress attestations fail the
+unchanged zero-overflow gate: each run records 34 overflowed tokens in every
+training pass and 34 in final inspection. Since no worker passes both
+workloads, the machine result is `ROUND2_STATUS=FAIL`,
+`WINNER_WORKERS=null`, and `WINNER_REASON=no_worker_passed_both_workloads`.
+
+Source inspection confirms the overflow semantics: when raw internal matches
+exceed `max_internal_matches=512`, the retained match list is cleared. The
+stress result therefore uses a genuinely truncated candidate space. Round 2
+is not a formal scientific PASS, has no frozen-contract worker winner, and
+does not authorize Full production.
+
+Engineering scaling remains valid as a separately typed result. Scientific
+artifact SHA-256 values are identical across 12/16/24 workers within each
+workload. The later inspection-only bundle calibration gives no worker a
+greater-than-10% wall-time advantage. Under the existing tie-break, 12 workers
+is the engineering preference because it has the lowest sampled process-tree
+RSS; higher worker counts reduce some reducer stall but consume materially more
+memory. The researcher separately reports manual `ALL_IDENTICAL` results for
+all six old-scheduler/new-scheduler inspection artifact comparisons. This
+closure accepts that confirmation without rerunning it; the older generated
+collection JSON is preserved unchanged.
+
+The docs branch `docs/report-lifecycle-paper-map-20260906` is merged with its
+ancestry intact. The authoritative Round 2 narrative is
+`reports/core_methods/reusable_pieces/s1m2_round2_closure_20260910.md`.
+The next boundary is a separately authorized, bounded candidate-overflow
+forensic, followed only after resolution by reconsideration of Full-production
+wiring. Neither task ran during documentation closure.
+
+```text
+ROUND2_EXECUTION=COMPLETE
+ROUND2_FORMAL_SCIENTIFIC_STATUS=FAIL_CANDIDATE_OVERFLOW
+ROUND2_FORMAL_WINNER=NONE
+ROUND2_ENGINEERING_SCALING=CLOSED
+ROUND2_ENGINEERING_PREFERENCE_WORKERS=12
+ROUND2_WORKER_COUNT_SCIENTIFIC_EQUIVALENCE=PASS
+ROUND2_OLD_NEW_INSPECTION_EQUIVALENCE=PASS_RESEARCHER_MANUAL
+FULL_M0_AUTHORIZED=NO
+NEXT_ACTION=BOUNDED_CANDIDATE_OVERFLOW_FORENSIC
+```

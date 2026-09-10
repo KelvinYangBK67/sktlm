@@ -51,7 +51,7 @@ increasing model-family number across stages.
 Names such as `v1` remain implementation/version labels. They do not carry
 Stage or Milestone semantics.
 
-## Current position: S1M1 frozen; S1M2 continuous optimization in progress
+## Current position: S1M1 frozen; S1M2 Round 2 closed with a science blocker
 
 Pre-S1M1 VM scaling and vocabulary-capacity calibration are closed. K=16,384
 and K=32,768 remain appendix pressure conditions; they mainly induce
@@ -90,13 +90,18 @@ unambiguous. The completed substrate is recorded in the
 with its deterministic construction contract in the
 [M₀′ workflow](workflows/m0_prime.md).
 
-S1M2 now tests reusable untyped compositional pieces. P0 reference semantics
-and the P1a production scorer/P1b lazy lexical-span representation are
-complete. P1c shared/composed exact inference and streaming-trainer integration
-are also complete. Continuous exact profiling and optimization are in progress;
-full-corpus S1M2 production has not started. The
+S1M2 now tests reusable untyped compositional pieces. P0 reference semantics,
+P1a/P1b, P1c exact inference, streaming training, bounded inspection, and
+within-document execution bundles are complete. Round 2's six worker-scaling
+runs and inspection-only calibration are closed. The representative workload
+has zero candidate overflow, but stress consistently has 34 overflows in every
+pass and inspection; because overflow discards the affected internal candidate
+set, no formal scientific PASS or worker winner exists. Full-corpus S1M2
+production has not started. The
 [S1M2 report index](../reports/core_methods/reusable_pieces/README.md) orders
-the completed checkpoints and the current development record.
+the completed checkpoints; the
+[Round 2 closure](../reports/core_methods/reusable_pieces/s1m2_round2_closure_20260910.md)
+is the current status authority.
 
 ## Stage 1: known realization grammar
 
@@ -148,11 +153,14 @@ tables, POS, lemma, morphological analyzer, TransLIST/gold segmentation,
 Sanskrit-specific suffix inventory or morphological prior, or newly learned
 internal morphophonological rewrite rules.
 
-Implementation status: P0, P1a/P1b, P1c exact shared/composed inference, and
-streaming-trainer integration are complete. Continuous exact profiling and
-optimization are in progress; full-corpus S1M2 production has not started.
-This remains implementation work, not evidence that S1M2 has solved the
-scientific problem. See the
+Implementation status: P0, P1a/P1b, P1c exact shared/composed inference,
+streaming training, bounded inspection, and training/inspection bundle
+scheduling are complete. Round 2 engineering scaling is closed with a
+12-worker preference, but its stress candidate truncation fails the exact
+scientific contract. The next boundary is candidate-overflow forensic and
+resolution, not more worker calibration. Full-corpus S1M2 production has not
+started. This is not evidence that S1M2 has solved the scientific problem. See
+the
 [S1M2 report index](../reports/core_methods/reusable_pieces/README.md).
 
 ### S1M3 — optional scientific extension
