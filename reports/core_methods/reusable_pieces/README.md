@@ -10,6 +10,9 @@ Round 2 closure is the current status authority.
 - [Round 2 closure](s1m2_round2_closure_20260910.md) — separates the formal
   scientific failure, 12-worker engineering preference, scheduler findings,
   deterministic equivalence evidence, and candidate-overflow blocker.
+- [Compact exact-inference readiness](s1m2_compact_exact_inference_readiness_20260910.md)
+  — freezes the scientific invariants for resolving candidate overflow and
+  defines the read-only architecture-audit boundary before implementation.
 
 ## Scientific contract and roadmap
 
