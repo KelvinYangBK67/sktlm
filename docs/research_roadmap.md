@@ -51,7 +51,7 @@ increasing model-family number across stages.
 Names such as `v1` remain implementation/version labels. They do not carry
 Stage or Milestone semantics.
 
-## Current position: S1M1 frozen; S1M2 P1c next
+## Current position: S1M1 frozen; S1M2 continuous optimization in progress
 
 Pre-S1M1 VM scaling and vocabulary-capacity calibration are closed. K=16,384
 and K=32,768 remain appendix pressure conditions; they mainly induce
@@ -73,7 +73,9 @@ type-weighted comparison moves in that direction. The decisive pattern is a
 large proliferation of long, low-count, narrowly associated identities,
 including deterministic whole-context lexicalizations. Visible spacing is
 evidence/regularization for this objective, not gold wordhood and not a claim
-that Sanskrit inherently requires spaces.
+that Sanskrit inherently requires spaces. The frozen result and its direct
+association-level evidence are collected in the
+[S1M1 final checkpoint](../reports/core_methods/latent_lexicon/s1m1_final_checkpoint_20260903.md).
 
 The original M0 IAST `continuous` representation is
 `NA_SCIENTIFICALLY_EXCLUDED` because ordinary space deletion makes lexical
@@ -83,13 +85,18 @@ flat learner did not scale. Derived M0-prime repairs the IAST encoding from the
 frozen Devanagari source without changing M0: lexical `/ai/` and `/au/` render
 as `ē` and `ō`, while separate `a+i` and `a+u` remain `ai` and `au`;
 aspirated consonants use modifier `ʰ`, leaving plain stop+`h` sequences
-unambiguous.
+unambiguous. The completed substrate is recorded in the
+[M₀′ formal checkpoint](../reports/core_methods/latent_lexicon/m0_prime_formal_checkpoint_20260905.md),
+with its deterministic construction contract in the
+[M₀′ workflow](workflows/m0_prime.md).
 
 S1M2 now tests reusable untyped compositional pieces. P0 reference semantics
 and the P1a production scorer/P1b lazy lexical-span representation are
-complete. P1c shared/composed exact inference and its tiny oracle-equivalence
-gates are the next implementation boundary. No full-corpus S1M2 experiment is
-authorized by that readiness state.
+complete. P1c shared/composed exact inference and streaming-trainer integration
+are also complete. Continuous exact profiling and optimization are in progress;
+full-corpus S1M2 production has not started. The
+[S1M2 report index](../reports/core_methods/reusable_pieces/README.md) orders
+the completed checkpoints and the current development record.
 
 ## Stage 1: known realization grammar
 
@@ -107,7 +114,9 @@ latent lexical identity are separated. The central question is:
 The frozen S1M1 answer is conditional: the script-neutral machinery is stable
 across scripts, but the flat whole-form objective does not remain economical as
 visible boundary evidence is weakened. Its failure mode motivates S1M2 rather
-than a claim that posterior sharpness alone establishes lexical quality.
+than a claim that posterior sharpness alone establishes lexical quality. See
+the [frozen final checkpoint](../reports/core_methods/latent_lexicon/s1m1_final_checkpoint_20260903.md)
+for the result and evidence.
 
 ### S1M2 — reusable untyped compositional pieces
 
@@ -139,9 +148,12 @@ tables, POS, lemma, morphological analyzer, TransLIST/gold segmentation,
 Sanskrit-specific suffix inventory or morphological prior, or newly learned
 internal morphophonological rewrite rules.
 
-Implementation status: P0 and P1a/P1b are complete; P1c exact shared/composed
-inference is next. This is an implementation-readiness boundary, not evidence
-that S1M2 has run or solved the scientific problem.
+Implementation status: P0, P1a/P1b, P1c exact shared/composed inference, and
+streaming-trainer integration are complete. Continuous exact profiling and
+optimization are in progress; full-corpus S1M2 production has not started.
+This remains implementation work, not evidence that S1M2 has solved the
+scientific problem. See the
+[S1M2 report index](../reports/core_methods/reusable_pieces/README.md).
 
 ### S1M3 — optional scientific extension
 

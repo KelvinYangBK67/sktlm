@@ -13,6 +13,14 @@ The current formal representation implementation is:
 canonical-representations-3
 ```
 
+> **Lifecycle note (2026-09-06):** this report remains authoritative for how
+> the six frozen M₀ representations were constructed and validated. It predates
+> the final S1M1 interpretation. Original M₀ IAST `continuous` remains preserved
+> but is `NA_SCIENTIFICALLY_EXCLUDED`; downstream continuous work uses the
+> separately derived, validated M₀′ substrate. See the
+> [S1M1 final checkpoint](../core_methods/latent_lexicon/s1m1_final_checkpoint_20260903.md)
+> and [M₀′ formal checkpoint](../core_methods/latent_lexicon/m0_prime_formal_checkpoint_20260905.md).
+
 ---
 
 ## 1. Authoritative input
