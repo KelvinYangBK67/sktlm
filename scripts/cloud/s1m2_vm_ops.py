@@ -534,17 +534,69 @@ def load_round1_plan(
     return plan, resolved_plan, relative_plan
 
 
+def load_round2_plan(
+    repo_root: Path,
+    plan_path: Path,
+    production_contract_path: Path,
+    expected_head: str,
+) -> tuple[dict[str, Any], Path, str]:
+    resolved_plan, relative_plan = _resolve_repo_path(
+        repo_root, plan_path, label="Round 2 plan"
+    )
+    contract = s1m2.load_contract(
+        production_contract_path, repo_root=repo_root, verify_files=True
+    )
+    plan = json.loads(resolved_plan.read_text(encoding="utf-8"))
+    s1m2._validate_plan(plan, contract)
+    if (
+        plan.get("plan_type") != "round2"
+        or plan.get("launch_mode") != "six_way_parallel"
+        or plan.get("git_sha") != expected_head
+        or plan.get("branch") != contract["deployment"]["branch"]
+    ):
+        raise VmOpsError("Round 2 plan identity does not match the deployment")
+    assignments = [
+        (job.get("host_role"), job.get("workers"), job.get("workload_id"))
+        for job in plan["jobs"]
+    ]
+    expected = [
+        (role, workers, workload)
+        for workload, roles in (
+            ("representative", CORE_HOST_ROLES[:3]),
+            ("stress", CORE_HOST_ROLES[3:]),
+        )
+        for workers, role in zip(s1m2.ROUND2_PRIMARY_WORKERS, roles, strict=True)
+    ]
+    if assignments != expected:
+        raise VmOpsError("Round 2 plan does not contain the exact six-host matrix")
+    for job in plan["jobs"]:
+        details = s1m2._bundle_plan_details(
+            repo_root,
+            job,
+            contract["workloads"][job["workload_id"]],
+            contract["scientific_config"],
+        )
+        if (
+            details["plan_sha256"] != job["execution_bundle_plan_sha256"]
+            or details["materialization_sha256"]
+            != job["execution_bundle_materialization_sha256"]
+        ):
+            raise VmOpsError("Round 2 plan binds a different bundle materialization")
+    return plan, resolved_plan, relative_plan
+
+
 def build_round1_launch_script(
     config: Any,
     job: Mapping[str, Any],
     expected_head: str,
     relative_plan: str,
     plan_sha256: str,
+    phase: str = "round1",
 ) -> str:
     repo = config.remote_repo or ""
     run_path = posixpath.join(repo, str(job["run_dir"]))
     control_path = posixpath.join(repo, str(job["control_dir"]))
-    launch_root = posixpath.join(config.remote_cloud_root, "launches/s1m2_round1")
+    launch_root = posixpath.join(config.remote_cloud_root, f"launches/s1m2_{phase}")
     job_id = str(job["job_id"])
     command = str(job["launch_command_shell"])
     command_sha256 = hashlib.sha256(command.encode("utf-8")).hexdigest()
@@ -572,6 +624,13 @@ def build_round1_launch_script(
         'exit "$code"',
     ]
     wrapper_text = "\n".join(wrapper_lines) + "\n"
+    detached_launcher = "nohup setsid sh" if phase == "round2" else "nohup sh"
+    setsid_guard = (
+        "command -v setsid >/dev/null 2>&1 || "
+        "{ printf 'setsid: MISSING\\n' >&2; exit 45; }"
+        if phase == "round2"
+        else ""
+    )
     return f"""
 set -eu
 {_identity_guard(config, expected_head)}
@@ -579,12 +638,13 @@ plan={shlex.quote(remote_plan)}
 if [ "$(sha256sum "$plan" | awk '{{print $1}}')" != {shlex.quote(plan_sha256)} ]; then printf 'plan SHA-256 mismatch\\n' >&2; exit 40; fi
 if [ -e {shlex.quote(run_path)} ] || [ -e {shlex.quote(control_path)} ]; then printf 'run or control path already exists\\n' >&2; exit 41; fi
 command -v pgrep >/dev/null 2>&1 || {{ printf 'pgrep: MISSING\\n' >&2; exit 44; }}
+{setsid_guard}
 if pgrep -af '[s]ktlm.production.s1m2|[r]un_with_metrics.py' >/dev/null 2>&1; then printf 'another S1M2 process is already active\\n' >&2; exit 43; fi
 mkdir -p {shlex.quote(launch_root)}
 for path in {shlex.quote(wrapper)} {shlex.quote(manifest)} {shlex.quote(exit_status)}; do [ ! -e "$path" ] || {{ printf 'launch identity already exists: %s\\n' "$path" >&2; exit 42; }}; done
 printf %s {shlex.quote(wrapper_text)} > {shlex.quote(wrapper)}
 chmod 700 {shlex.quote(wrapper)}
-nohup sh {shlex.quote(wrapper)} > {shlex.quote(stdout)} 2> {shlex.quote(stderr)} < /dev/null &
+{detached_launcher} {shlex.quote(wrapper)} > {shlex.quote(stdout)} 2> {shlex.quote(stderr)} < /dev/null &
 pid=$!
 start_ticks=$(awk '{{print $22}}' "/proc/$pid/stat")
 started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -611,6 +671,7 @@ def launch_round1_action(
     plan_path: Path,
     relative_plan: str,
     expected_head: str,
+    phase: str = "round1",
 ) -> list[dict[str, Any]]:
     plan_sha256 = _sha256(plan_path)
     remote_plan_by_role: dict[str, str] = {}
@@ -643,7 +704,7 @@ printf 'machine_identity=%s\\n' "$(cat /etc/machine-id)"
         if len(set(machine_ids)) != 6:
             for row in prechecked:
                 row["valid"] = False
-                row.setdefault("error", "Round 1 requires six physical machines")
+                row.setdefault("error", f"{phase} requires six physical machines")
         return prechecked
 
     def prepare(role: str, config: Any) -> Mapping[str, Any]:
@@ -676,7 +737,56 @@ if [ -e {shlex.quote(remote_plan)} ] || [ -e {shlex.quote(incoming)} ]; then pri
                 f"remote plan verification exited {verify.returncode}: {(verify.stderr or '').strip()}"
             )
         remote_plan_by_role[role] = remote_plan
-        return {"plan_path": remote_plan, "plan_sha256": plan_sha256}
+        prepared_payload: dict[str, Any] = {
+            "plan_path": remote_plan,
+            "plan_sha256": plan_sha256,
+        }
+        if phase == "round2":
+            job = jobs[role]
+            local_bundle = (
+                repo_root / str(job["execution_bundle_plan"])
+            ).resolve()
+            remote_bundle = posixpath.join(
+                config.remote_repo or "", str(job["execution_bundle_plan"])
+            )
+            if not local_bundle.is_dir():
+                raise VmOpsError(f"missing local execution bundle plan: {local_bundle}")
+            create = bridge.run_ssh(
+                config,
+                f"set -eu\n{_identity_guard(config, expected_head)}\n"
+                f"[ ! -e {shlex.quote(remote_bundle)} ]\n"
+                f"mkdir -p {shlex.quote(remote_bundle)}",
+                runner,
+            )
+            if create.returncode != 0:
+                raise VmOpsError("remote execution-plan destination is not empty")
+            transferred_files = {}
+            for name in (
+                "scan_summary.json",
+                "summary.json",
+                "bundles.jsonl",
+                "documents.tsv",
+            ):
+                local_file = local_bundle / name
+                remote_file = posixpath.join(remote_bundle, name)
+                copied = runner.run(bridge.scp_argv(config, local_file, remote_file))
+                if copied.returncode != 0:
+                    raise VmOpsError(
+                        f"execution-plan transfer exited {copied.returncode}: "
+                        f"{(copied.stderr or '').strip()}"
+                    )
+                expected_file_sha = _sha256(local_file)
+                checked = bridge.run_ssh(
+                    config,
+                    f"[ \"$(sha256sum {shlex.quote(remote_file)} | awk '{{print $1}}')\" = {shlex.quote(expected_file_sha)} ]",
+                    runner,
+                )
+                if checked.returncode != 0:
+                    raise VmOpsError(f"remote execution-plan hash differs: {name}")
+                transferred_files[name] = expected_file_sha
+            prepared_payload["execution_bundle_plan"] = remote_bundle
+            prepared_payload["execution_bundle_files"] = transferred_files
+        return prepared_payload
 
     prepared = _parallel(configs, prepare)
     if not all(row["valid"] for row in prepared):
@@ -691,6 +801,7 @@ if [ -e {shlex.quote(remote_plan)} ] || [ -e {shlex.quote(incoming)} ]; then pri
                 expected_head,
                 relative_plan,
                 plan_sha256,
+                phase,
             ),
             runner,
         )
@@ -715,8 +826,9 @@ def collect_round1_attestations_action(
     relative_plan: str,
     expected_head: str,
     attestation_dir: Path,
+    phase: str = "round1",
 ) -> list[dict[str, Any]]:
-    """Run formal audits remotely and pull only their compact attestations."""
+    """Run formal audits remotely and pull only compact engineering evidence."""
 
     if attestation_dir.exists():
         raise VmOpsError(f"refusing to overwrite attestation directory: {attestation_dir}")
@@ -726,7 +838,11 @@ def collect_round1_attestations_action(
 
     def collect_one(role: str, config: Any) -> Mapping[str, Any]:
         job = jobs[role]
-        filename = s1m2.round1_attestation_filename(str(job["job_id"]))
+        filename = (
+            s1m2.round1_attestation_filename(str(job["job_id"]))
+            if phase == "round1"
+            else s1m2.round2_attestation_filename(str(job["job_id"]))
+        )
         local_path = attestation_dir / filename
         remote_plan = posixpath.join(config.remote_repo or "", relative_plan)
         remote_path = posixpath.join(
@@ -738,7 +854,7 @@ def collect_round1_attestations_action(
                 "./.venv/bin/python",
                 "-m",
                 "sktlm.production.s1m2",
-                "attest-round1",
+                f"attest-{phase}",
                 "--plan",
                 relative_plan,
                 "--job-id",
@@ -793,6 +909,166 @@ printf 'attestation_bytes=%s\\n' "$(wc -c < {shlex.quote(remote_path)} | tr -d '
     return _parallel(configs, collect_one)
 
 
+def _round2_launch_paths(config: Any, job: Mapping[str, Any]) -> dict[str, str]:
+    root = posixpath.join(config.remote_cloud_root, "launches/s1m2_round2")
+    job_id = str(job["job_id"])
+    return {
+        "manifest": posixpath.join(root, f"{job_id}.detached.json"),
+        "exit": posixpath.join(root, f"{job_id}.exit.json"),
+        "manual_stop": posixpath.join(root, f"{job_id}.manual-stop.json"),
+    }
+
+
+def build_round2_status_script(
+    config: Any,
+    job: Mapping[str, Any],
+    expected_head: str,
+    relative_plan: str,
+    plan_sha256: str,
+) -> str:
+    repo = config.remote_repo or ""
+    paths = _round2_launch_paths(config, job)
+    remote_plan = posixpath.join(repo, relative_plan)
+    fields = (
+        "import json,sys; p=json.load(open(sys.argv[1], encoding='utf-8')); "
+        "print(p['pid'], p['process_start_ticks'], p['job_id'], p['host_role'], sep='\\t')"
+    )
+    return f"""
+set -eu
+{_identity_guard(config, expected_head)}
+plan={shlex.quote(remote_plan)}
+[ "$(sha256sum "$plan" | awk '{{print $1}}')" = {shlex.quote(plan_sha256)} ]
+lifecycle=NOT_STARTED
+if [ -f {shlex.quote(paths['manifest'])} ]; then
+  values=$("$repo/.venv/bin/python" -c {shlex.quote(fields)} {shlex.quote(paths['manifest'])})
+  IFS="$(printf '\\t')" read -r pid start_ticks manifest_job manifest_host <<EOF
+$values
+EOF
+  [ "$manifest_job" = {shlex.quote(str(job['job_id']))} ]
+  [ "$manifest_host" = {shlex.quote(str(job['host_role']))} ]
+  current=$(awk '{{print $22}}' "/proc/$pid/stat" 2>/dev/null || true)
+  if [ "$current" = "$start_ticks" ] && kill -0 "$pid" 2>/dev/null; then lifecycle=RUNNING
+  elif [ -f {shlex.quote(paths['manual_stop'])} ]; then lifecycle=MANUALLY_STOPPED
+  elif [ -f {shlex.quote(paths['exit'])} ]; then lifecycle=COMPLETED
+  else lifecycle=LOST_PROCESS_IDENTITY
+  fi
+fi
+printf 'lifecycle=%s\\n' "$lifecycle"
+cd "$repo"
+"$repo/.venv/bin/python" -m sktlm.production.s1m2 status-job --plan {shlex.quote(relative_plan)} --job-id {shlex.quote(str(job['job_id']))}
+""".strip()
+
+
+def round2_status_action(
+    configs: Mapping[str, Any],
+    runner: Any,
+    *,
+    plan: Mapping[str, Any],
+    plan_path: Path,
+    relative_plan: str,
+    expected_head: str,
+) -> list[dict[str, Any]]:
+    plan_sha256 = _sha256(plan_path)
+    jobs = {str(job["host_role"]): job for job in plan["jobs"]}
+
+    def status_one(role: str, config: Any) -> Mapping[str, Any]:
+        result = bridge.run_ssh(
+            config,
+            build_round2_status_script(
+                config, jobs[role], expected_head, relative_plan, plan_sha256
+            ),
+            runner,
+        )
+        if result.returncode != 0:
+            raise VmOpsError(
+                f"Round 2 status exited {result.returncode}: {(result.stderr or '').strip()}"
+            )
+        lines = [line for line in result.stdout.splitlines() if line.strip()]
+        if not lines:
+            raise VmOpsError("Round 2 status returned no payload")
+        payload = json.loads(lines[-1])
+        lifecycle = _parse_key_values(result.stdout).get("lifecycle")
+        return {**payload, "lifecycle": lifecycle, "valid": True}
+
+    return _parallel(configs, status_one)
+
+
+def build_round2_stop_script(
+    config: Any,
+    job: Mapping[str, Any],
+    expected_head: str,
+    relative_plan: str,
+    plan_sha256: str,
+) -> str:
+    repo = config.remote_repo or ""
+    paths = _round2_launch_paths(config, job)
+    remote_plan = posixpath.join(repo, relative_plan)
+    fields = (
+        "import json,sys; p=json.load(open(sys.argv[1], encoding='utf-8')); "
+        "print(p['pid'], p['process_start_ticks'], p['job_id'], p['host_role'], sep='\\t')"
+    )
+    return f"""
+set -eu
+{_identity_guard(config, expected_head)}
+plan={shlex.quote(remote_plan)}
+[ "$(sha256sum "$plan" | awk '{{print $1}}')" = {shlex.quote(plan_sha256)} ]
+[ -f {shlex.quote(paths['manifest'])} ] || {{ printf 'launch manifest: MISSING\\n' >&2; exit 50; }}
+values=$("$repo/.venv/bin/python" -c {shlex.quote(fields)} {shlex.quote(paths['manifest'])})
+IFS="$(printf '\\t')" read -r pid start_ticks manifest_job manifest_host <<EOF
+$values
+EOF
+[ "$manifest_job" = {shlex.quote(str(job['job_id']))} ]
+[ "$manifest_host" = {shlex.quote(str(job['host_role']))} ]
+current=$(awk '{{print $22}}' "/proc/$pid/stat" 2>/dev/null || true)
+if [ "$current" = "$start_ticks" ] && kill -0 "$pid" 2>/dev/null; then
+  kill -TERM -- "-$pid"
+  stopped=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  tmp={shlex.quote(paths['manual_stop'])}.tmp.$$
+  printf '{{"schema_version":"sktlm-manual-stop/v1","job_id":"%s","pid":%s,"process_start_ticks":%s,"stopped_at":"%s","state_preserved":true}}\\n' "$manifest_job" "$pid" "$start_ticks" "$stopped" > "$tmp"
+  mv "$tmp" {shlex.quote(paths['manual_stop'])}
+  printf 'stop_status=TERM_SENT_STATE_PRESERVED\\n'
+elif [ -f {shlex.quote(paths['manual_stop'])} ]; then
+  printf 'stop_status=ALREADY_MANUALLY_STOPPED\\n'
+elif [ -f {shlex.quote(paths['exit'])} ]; then
+  printf 'stop_status=ALREADY_COMPLETED\\n'
+else
+  printf 'process identity is not live and no terminal marker exists\\n' >&2
+  exit 51
+fi
+printf 'job_id=%s\\n' "$manifest_job"
+printf 'learner_sqlite_preserved=true\\ncheckpoint_preserved=true\\nbundle_shards_preserved=true\\nrun_state_deleted=false\\n'
+""".strip()
+
+
+def round2_stop_action(
+    configs: Mapping[str, Any],
+    runner: Any,
+    *,
+    plan: Mapping[str, Any],
+    plan_path: Path,
+    relative_plan: str,
+    expected_head: str,
+) -> list[dict[str, Any]]:
+    plan_sha256 = _sha256(plan_path)
+    jobs = {str(job["host_role"]): job for job in plan["jobs"]}
+
+    def stop_one(role: str, config: Any) -> Mapping[str, Any]:
+        result = bridge.run_ssh_stdin(
+            config,
+            build_round2_stop_script(
+                config, jobs[role], expected_head, relative_plan, plan_sha256
+            ),
+            runner,
+        )
+        if result.returncode != 0:
+            raise VmOpsError(
+                f"Round 2 stop exited {result.returncode}: {(result.stderr or '').strip()}"
+            )
+        return {**_parse_key_values(result.stdout), "valid": True}
+
+    return _parallel(configs, stop_one)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", type=Path, default=Path("."))
@@ -813,15 +1089,25 @@ def build_parser() -> argparse.ArgumentParser:
     deploy.add_argument("--bundle-sha256", required=True)
     deploy.add_argument("--expected-head", required=True)
     deploy.add_argument("--output", type=Path, required=True)
-    launch = commands.add_parser("launch-round1")
-    launch.add_argument("--plan", type=Path, required=True)
-    launch.add_argument("--expected-head", required=True)
-    launch.add_argument("--output", type=Path, required=True)
-    attest = commands.add_parser("collect-round1-attestations")
-    attest.add_argument("--plan", type=Path, required=True)
-    attest.add_argument("--expected-head", required=True)
-    attest.add_argument("--attestation-dir", type=Path, required=True)
-    attest.add_argument("--output", type=Path, required=True)
+    for name in ("launch-round1", "launch-round2"):
+        launch = commands.add_parser(name)
+        launch.add_argument("--plan", type=Path, required=True)
+        launch.add_argument("--expected-head", required=True)
+        launch.add_argument("--output", type=Path, required=True)
+    for name in (
+        "collect-round1-attestations",
+        "collect-round2-attestations",
+    ):
+        attest = commands.add_parser(name)
+        attest.add_argument("--plan", type=Path, required=True)
+        attest.add_argument("--expected-head", required=True)
+        attest.add_argument("--attestation-dir", type=Path, required=True)
+        attest.add_argument("--output", type=Path, required=True)
+    for name in ("status-round2", "stop-round2"):
+        item = commands.add_parser(name)
+        item.add_argument("--plan", type=Path, required=True)
+        item.add_argument("--expected-head", required=True)
+        item.add_argument("--output", type=Path, required=True)
     return parser
 
 
@@ -887,8 +1173,27 @@ def main(argv: list[str] | None = None, *, runner: Any | None = None) -> int:
             relative_plan=relative_plan,
             expected_head=args.expected_head,
         )
-    else:
-        plan, plan_path, relative_plan = load_round1_plan(
+    elif args.command == "launch-round2":
+        plan, plan_path, relative_plan = load_round2_plan(
+            repo_root, args.plan, production_path, args.expected_head
+        )
+        hosts = launch_round1_action(
+            configs,
+            active_runner,
+            repo_root=repo_root,
+            plan=plan,
+            plan_path=plan_path,
+            relative_plan=relative_plan,
+            expected_head=args.expected_head,
+            phase="round2",
+        )
+    elif args.command in {
+        "collect-round1-attestations",
+        "collect-round2-attestations",
+    }:
+        phase = "round1" if args.command.startswith("collect-round1") else "round2"
+        loader = load_round1_plan if phase == "round1" else load_round2_plan
+        plan, plan_path, relative_plan = loader(
             repo_root, args.plan, production_path, args.expected_head
         )
         attestation_dir = _safe_artifact_path(repo_root, args.attestation_dir)
@@ -900,7 +1205,27 @@ def main(argv: list[str] | None = None, *, runner: Any | None = None) -> int:
             relative_plan=relative_plan,
             expected_head=args.expected_head,
             attestation_dir=attestation_dir,
+            phase=phase,
         )
+    elif args.command in {"status-round2", "stop-round2"}:
+        plan, plan_path, relative_plan = load_round2_plan(
+            repo_root, args.plan, production_path, args.expected_head
+        )
+        action = (
+            round2_status_action
+            if args.command == "status-round2"
+            else round2_stop_action
+        )
+        hosts = action(
+            configs,
+            active_runner,
+            plan=plan,
+            plan_path=plan_path,
+            relative_plan=relative_plan,
+            expected_head=args.expected_head,
+        )
+    else:  # pragma: no cover
+        raise AssertionError(args.command)
 
     status = "PASS" if all(row.get("valid") for row in hosts) else "FAIL"
     payload = {
@@ -914,7 +1239,10 @@ def main(argv: list[str] | None = None, *, runner: Any | None = None) -> int:
         "hosts": hosts,
     }
     _write_receipt(output, payload)
-    print(json.dumps({"status": status, "receipt": str(output)}, sort_keys=True))
+    printed = {"status": status, "receipt": str(output)}
+    if args.command == "status-round2":
+        printed["hosts"] = hosts
+    print(json.dumps(printed, sort_keys=True))
     return 0 if status == "PASS" else 1
 
 

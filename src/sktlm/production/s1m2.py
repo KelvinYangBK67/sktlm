@@ -1,4 +1,4 @@
-"""S1M2 pre-VM plans, execution manifests, audits, and readiness gates.
+"""S1M2 pre-VM plans, execution manifests, audits, and worker selection.
 
 This module is an engineering control plane.  It resolves the frozen six-cell
 contract into the existing exact trainer and Linux process-tree metrics wrapper;
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import csv
 import hashlib
 import json
 import os
@@ -35,6 +36,7 @@ RUN_SCHEMA = "sktlm-s1m2-run-manifest/v1"
 ROUND1_SCHEMA = "sktlm-s1m2-round1-result/v1"
 ROUND1_ATTESTATION_SCHEMA = "sktlm-s1m2-round1-attestation/v1"
 ROUND2_SCHEMA = "sktlm-s1m2-round2-result/v1"
+ROUND2_ATTESTATION_SCHEMA = "sktlm-s1m2-round2-attestation/v1"
 BOUND_VALIDATION_SCHEMA = "sktlm-s1m2-bounded-validation/v1"
 SCRIPT_NEUTRAL_ARTIFACTS = (
     "piece_inventory.tsv",
@@ -42,6 +44,7 @@ SCRIPT_NEUTRAL_ARTIFACTS = (
     "rule_usage.tsv",
 )
 ROUND1_WORKERS = (4, 8, 12, 16, 20, 24)
+ROUND2_PRIMARY_WORKERS = (12, 16, 24)
 CORE_HOST_ROLES = tuple(f"core-{index:02d}" for index in range(1, 7))
 WORKER_CALIBRATION_DOCUMENTS = 72
 WORKER_CALIBRATION_STRUCTURE_SHA256 = (
@@ -212,6 +215,46 @@ def load_contract(
         raise ValueError("Round 1 and Round 2 must map exactly to core-01..core-06.")
     if len(set(round1_hosts)) != 6 or len(set(round2_hosts)) != 6:
         raise ValueError("Round 1 and Round 2 require six distinct host roles.")
+    round2 = contract.get("round2", {})
+    if (
+        round2.get("mode") != "bundle_worker_recalibration"
+        or tuple(round2.get("primary_workers", ())) != ROUND2_PRIMARY_WORKERS
+        or round2.get("worker_20_status") != "RESERVED_IF_DECISION_CRITICAL"
+        or round2.get("target_pressure") != 279047
+        or round2.get("max_segments_per_bundle") != 256
+        or round2.get("max_segment_tokens") != 128
+        or round2.get("practical_tie_wall_fraction") != 0.1
+    ):
+        raise ValueError("Round 2 worker-recalibration policy is not frozen.")
+    round2_jobs = round2.get("jobs", ())
+    expected_round2 = tuple(
+        (workload, workers, host)
+        for workload, host_group in (
+            ("representative", CORE_HOST_ROLES[:3]),
+            ("stress", CORE_HOST_ROLES[3:]),
+        )
+        for workers, host in zip(ROUND2_PRIMARY_WORKERS, host_group, strict=True)
+    )
+    actual_round2 = tuple(
+        (job.get("workload"), job.get("workers"), job.get("host_role"))
+        for job in round2_jobs
+    )
+    if actual_round2 != expected_round2:
+        raise ValueError("Round 2 does not contain the frozen six-job worker matrix.")
+    for job in round2_jobs:
+        if (
+            job.get("cell_id") != "s1m2_m0_devanagari_continuous"
+            or job.get("execution_bundle_plan_status")
+            not in {"MATERIALIZATION_REQUIRED", "MATERIALIZED"}
+            or not job.get("execution_bundle_plan")
+        ):
+            raise ValueError("Round 2 bundle-plan declaration is incomplete.")
+        plan_sha = job.get("execution_bundle_plan_sha256")
+        if plan_sha is not None and (
+            len(str(plan_sha)) != 64
+            or any(character not in "0123456789abcdef" for character in str(plan_sha))
+        ):
+            raise ValueError("Round 2 bundle-plan SHA-256 is invalid.")
     if verify_files:
         cloud_contract = load_experiment_contract(
             _resolve(repo_root, deployment["cloud_contract"])
@@ -296,6 +339,10 @@ def _training_command(job: dict[str, Any], *, resume: bool = False) -> list[str]
         command.extend(
             ["--max-lines-per-document", str(job["max_lines_per_document"])]
         )
+    if job.get("execution_bundle_plan") is not None:
+        command.extend(
+            ["--execution-bundle-plan", str(job["execution_bundle_plan"])]
+        )
     for name in SCIENTIFIC_CONFIG_FIELDS + ENGINEERING_CONFIG_FIELDS:
         value = job["resolved_config"][name]
         if isinstance(value, bool):
@@ -324,14 +371,22 @@ def _job(
     output_root: Path,
     metrics_root: Path,
     host_role: str | None = None,
+    execution_bundle_plan: str | None = None,
+    execution_bundle_plan_sha256: str | None = None,
+    execution_bundle_materialization_sha256: str | None = None,
 ) -> dict[str, Any]:
     cell = _cell(contract, cell_id)
     workload = contract["workloads"][workload_id]
     manifest, manifest_hash = _manifest_details(contract, cell)
     short_cell = cell_id.removeprefix("s1m2_")
-    worker_suffix = f"_w{workers}" if plan_type == "round1" else ""
+    worker_suffix = (
+        f"_w{workers}"
+        if plan_type in {"round1", "round2", "round2_w20"}
+        else ""
+    )
+    id_phase = "round2" if plan_type == "round2_w20" else plan_type
     run_id = (
-        f"s1m2_{plan_type}_{short_cell}_{workload_id}"
+        f"s1m2_{id_phase}_{short_cell}_{workload_id}"
         f"{worker_suffix}_p{workload.get('passes', contract['passes'])}"
     )
     metrics_id = run_id.removeprefix("s1m2_")
@@ -368,6 +423,16 @@ def _job(
         "resolved_config": resolved_config,
         "resume_policy": copy.deepcopy(contract["resume_policy"]),
     }
+    if plan_type in {"round2", "round2_w20"}:
+        job.update(
+            {
+                "execution_bundle_plan": execution_bundle_plan,
+                "execution_bundle_plan_sha256": execution_bundle_plan_sha256,
+                "execution_bundle_materialization_sha256": (
+                    execution_bundle_materialization_sha256
+                ),
+            }
+        )
     job["training_command"] = _training_command(job)
     return job
 
@@ -468,55 +533,114 @@ def build_bounded_plan(
     )
 
 
+def _bundle_plan_details(
+    repo_root: Path,
+    declaration: dict[str, Any],
+    workload: dict[str, Any],
+    scientific_config: dict[str, Any],
+) -> dict[str, str]:
+    relative = str(declaration["execution_bundle_plan"])
+    root = _resolve(repo_root, relative).resolve()
+    required = tuple(
+        root / name
+        for name in ("scan_summary.json", "summary.json", "bundles.jsonl", "documents.tsv")
+    )
+    missing = [path for path in required if not path.is_file()]
+    if missing:
+        raise RuntimeError(
+            "Round 2 bundle plans must be materialized before plan generation: "
+            + ", ".join(str(path) for path in missing)
+        )
+    scan = _read_json(required[0])
+    summary = _read_json(required[1])
+    plan_sha = str(summary.get("plan_sha256", ""))
+    if len(plan_sha) != 64 or any(
+        character not in "0123456789abcdef" for character in plan_sha
+    ):
+        raise ValueError("Round 2 execution bundle plan has no valid plan SHA-256.")
+    expected = {
+        "script": "devanagari",
+        "condition": "continuous",
+        "max_segment_tokens": scientific_config["max_segment_tokens"],
+        "max_lines_per_document": workload.get("max_lines_per_document"),
+        "target_pressure": declaration.get("target_pressure", 279047),
+        "max_segments_per_bundle": declaration.get(
+            "max_segments_per_bundle", 256
+        ),
+    }
+    for name, value in expected.items():
+        payload = summary if name in {"target_pressure", "max_segments_per_bundle"} else scan
+        if payload.get(name) != value:
+            raise ValueError(f"Round 2 bundle plan has invalid {name}.")
+    for name in ("script", "condition", "max_segment_tokens", "max_lines_per_document"):
+        if summary.get(name) != expected[name]:
+            raise ValueError(f"Round 2 bundle-plan summary has invalid {name}.")
+    if (
+        scan.get("document_list") != workload["document_list"]
+        or scan.get("document_list_sha256") != workload["document_list_sha256"]
+    ):
+        raise ValueError("Round 2 bundle plan document-list identity differs.")
+    declared_sha = declaration.get("execution_bundle_plan_sha256")
+    if declared_sha is not None and declared_sha != plan_sha:
+        raise ValueError("Round 2 declared bundle-plan identity differs.")
+    digest = hashlib.sha256()
+    for path in required:
+        digest.update(path.name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return {
+        "path": relative,
+        "plan_sha256": plan_sha,
+        "materialization_sha256": digest.hexdigest(),
+    }
+
+
 def build_round2_plan(
     contract: dict[str, Any],
-    round1: dict[str, Any],
     *,
     contract_path: Path = CONTRACT_PATH,
     output_root: Path = Path("artifacts/latent_benchmarks"),
     metrics_root: Path = Path("artifacts/cloud_metrics"),
+    repo_root: Path = Path("."),
     identity: dict[str, Any],
 ) -> dict[str, Any]:
-    if round1.get("schema_version") != ROUND1_SCHEMA:
-        raise ValueError("Unsupported Round 1 result schema.")
-    if round1.get("ROUND1_STATUS") != "PASS":
-        raise RuntimeError("Round 2 cannot be prepared before Round 1 passes.")
-    if round1.get("production_contract_sha256") != _canonical_sha256(contract):
-        raise ValueError("Round 1 result does not bind the production contract.")
-    if len(round1.get("jobs", ())) != 6 or not all(
-        row.get("valid") is True for row in round1["jobs"]
+    round1 = contract["round1"]
+    if (
+        round1.get("status")
+        != "MANUALLY_TERMINATED_AFTER_DIAGNOSTIC_CONVERGENCE"
+        or round1.get("formal_winner") != "UNRESOLVED"
     ):
-        raise ValueError("Round 1 result does not contain six valid jobs.")
-    if len(round1.get("WORKER_RANKING", ())) != 6:
-        raise ValueError("Round 1 result does not contain a six-worker ranking.")
-    if {
-        int(row.get("workers", -1)) for row in round1["jobs"]
-    } != set(ROUND1_WORKERS) or {
-        int(row.get("workers", -1)) for row in round1["WORKER_RANKING"]
-    } != set(ROUND1_WORKERS):
-        raise ValueError("Round 1 result worker identities differ from the matrix.")
-    if len(str(round1.get("plan_sha256", ""))) != 64:
-        raise ValueError("Round 1 result has no valid plan identity.")
-    winner = int(round1["WINNER_WORKERS"])
-    if winner not in ROUND1_WORKERS:
-        raise ValueError("Round 1 winner is not in the frozen worker matrix.")
-    jobs = [
-        _job(
-            contract,
-            plan_type="round2",
-            cell_id=cell_id,
-            workload_id=workload_id,
-            workers=winner,
-            output_root=output_root,
-            metrics_root=metrics_root,
-            host_role=host_role,
+        raise RuntimeError("Round 2 requires the recorded Round 1 diagnostic closure.")
+    details: dict[str, dict[str, str]] = {}
+    jobs = []
+    for declaration in contract["round2"]["jobs"]:
+        workload_id = str(declaration["workload"])
+        if workload_id not in details:
+            details[workload_id] = _bundle_plan_details(
+                repo_root,
+                declaration,
+                contract["workloads"][workload_id],
+                contract["scientific_config"],
+            )
+        bundle = details[workload_id]
+        jobs.append(
+            _job(
+                contract,
+                plan_type="round2",
+                cell_id=str(declaration["cell_id"]),
+                workload_id=workload_id,
+                workers=int(declaration["workers"]),
+                output_root=output_root,
+                metrics_root=metrics_root,
+                host_role=str(declaration["host_role"]),
+                execution_bundle_plan=bundle["path"],
+                execution_bundle_plan_sha256=bundle["plan_sha256"],
+                execution_bundle_materialization_sha256=(
+                    bundle["materialization_sha256"]
+                ),
+            )
         )
-        for (cell_id, workload_id), host_role in zip(
-            contract["round2"]["jobs"],
-            contract["round2"]["host_roles"],
-            strict=True,
-        )
-    ]
     plan = _base_plan(
         contract,
         contract_path=contract_path,
@@ -524,11 +648,16 @@ def build_round2_plan(
         jobs=jobs,
         identity=identity,
     )
-    plan["winner_workers_source"] = {
-        "round1_result_sha256": _canonical_sha256(round1),
-        "workers": winner,
-    }
-    plan["launch_mode"] = "six_way_parallel"
+    plan.update(
+        {
+            "round1_diagnostic_status": round1["status"],
+            "round1_formal_winner": round1["formal_winner"],
+            "round2_mode": "bundle_worker_recalibration",
+            "primary_workers": list(ROUND2_PRIMARY_WORKERS),
+            "worker_20_status": contract["round2"]["worker_20_status"],
+            "launch_mode": "six_way_parallel",
+        }
+    )
     plan["plan_sha256"] = _canonical_sha256(
         {key: value for key, value in plan.items() if key != "plan_sha256"}
     )
@@ -601,25 +730,21 @@ def build_final_plan(
         raise RuntimeError("Full six-cell launch cannot be prepared before Round 2 passes.")
     if round2.get("production_contract_sha256") != _canonical_sha256(contract):
         raise ValueError("Round 2 result does not bind the production contract.")
-    if len(round2.get("jobs", ())) != 6 or not all(
-        row.get("valid") is True for row in round2["jobs"]
-    ):
-        raise ValueError("Round 2 result does not contain six valid jobs.")
+    if len(round2.get("jobs", ())) != 6:
+        raise ValueError("Round 2 result does not contain the primary six jobs.")
     winner = int(round2["WINNER_WORKERS"])
-    if winner not in ROUND1_WORKERS:
-        raise ValueError("Round 2 winner is not in the frozen worker matrix.")
-    required_gates = (
-        "CONTINUOUS_RUNTIME_TARGET",
-        "PRODUCTION_MEMORY_GATE",
-        "PRODUCTION_STORAGE_GATE",
-        "PRODUCTION_RESUME_GATE",
-        "PRODUCTION_PROVENANCE_GATE",
-        "S1M2_SIX_CELL_INTERFACE_GATE",
+    if winner not in {*ROUND2_PRIMARY_WORKERS, 20}:
+        raise ValueError("Round 2 winner is not an authorized worker candidate.")
+    candidate = next(
+        (
+            row
+            for row in round2.get("candidate_ranking", ())
+            if int(row.get("workers", -1)) == winner
+        ),
+        None,
     )
-    if any(round2.get(name) != "PASS" for name in required_gates):
-        raise RuntimeError("Full six-cell launch requires every Round 2 gate to pass.")
-    if {int(row.get("workers", -1)) for row in round2["jobs"]} != {winner}:
-        raise ValueError("Round 2 job workers differ from WINNER_WORKERS.")
+    if candidate is None or candidate.get("eligible") is not True:
+        raise ValueError("Round 2 winner did not pass both engineering workloads.")
     if len(str(round2.get("plan_sha256", ""))) != 64:
         raise ValueError("Round 2 result has no valid plan identity.")
     jobs = [
@@ -692,10 +817,16 @@ def _validate_plan(plan: dict[str, Any], contract: dict[str, Any]) -> None:
         ):
             raise ValueError("Round 1 plan differs from the frozen host mapping.")
     elif plan_type == "round2":
-        if actual_cells != [tuple(item) for item in contract["round2"]["jobs"]]:
+        declarations = contract["round2"]["jobs"]
+        expected_cells = [
+            (item["cell_id"], item["workload"]) for item in declarations
+        ]
+        if actual_cells != expected_cells:
             raise ValueError("Round 2 plan differs from the frozen matrix.")
         if tuple(job.get("host_role") for job in jobs) != tuple(
-            contract["round2"]["host_roles"]
+            item["host_role"] for item in declarations
+        ) or tuple(job.get("workers") for job in jobs) != tuple(
+            item["workers"] for item in declarations
         ):
             raise ValueError("Round 2 plan differs from the frozen host mapping.")
     elif plan_type in {"bounded", "full"}:
@@ -705,7 +836,7 @@ def _validate_plan(plan: dict[str, Any], contract: dict[str, Any]) -> None:
             raise ValueError(f"{plan_type} plan differs from the six-cell contract.")
     else:
         raise ValueError(f"Unsupported production plan type: {plan_type}")
-    if plan_type != "round1":
+    if plan_type not in {"round1", "round2"}:
         workers = {job.get("workers") for job in jobs}
         if len(workers) != 1 or not workers <= set(ROUND1_WORKERS) | {1}:
             raise ValueError("Production plan has an invalid worker assignment.")
@@ -739,6 +870,17 @@ def _validate_plan(plan: dict[str, Any], contract: dict[str, Any]) -> None:
         for name, value in expected.items():
             if job.get(name) != value:
                 raise ValueError(f"Plan job {job.get('job_id')} has invalid {name}.")
+        if plan_type == "round2":
+            for name in (
+                "execution_bundle_plan",
+                "execution_bundle_plan_sha256",
+                "execution_bundle_materialization_sha256",
+            ):
+                value = job.get(name)
+                if not value or (name.endswith("sha256") and len(str(value)) != 64):
+                    raise ValueError(
+                        f"Plan job {job.get('job_id')} has invalid {name}."
+                    )
         if job.get("training_command") != _training_command(job):
             raise ValueError(f"Plan job {job['job_id']} has an invalid trainer command.")
         if Path(job["run_dir"]) != Path(job["output_root"]) / job["run_id"]:
@@ -768,6 +910,11 @@ def _config_for_job(job: dict[str, Any], *, resume: bool) -> TrainingConfig:
         "passes": int(job["passes"]),
         "workers": int(job["workers"]),
         "max_lines_per_document": job.get("max_lines_per_document"),
+        "execution_bundle_plan": (
+            None
+            if job.get("execution_bundle_plan") is None
+            else Path(job["execution_bundle_plan"])
+        ),
         "resume": resume,
         **job["resolved_config"],
     }
@@ -816,6 +963,15 @@ def _audit_artifacts(
         failures.append("document-list hash differs")
     if provenance.get("script") != job["script"] or provenance.get("condition") != job["condition"]:
         failures.append("trainer cell identity differs")
+    if job.get("execution_bundle_plan") is not None:
+        bundle_provenance = provenance.get("training_execution_bundle_plan", {})
+        if (
+            bundle_provenance.get("plan_sha256")
+            != job.get("execution_bundle_plan_sha256")
+            or bundle_provenance.get("materialization_sha256")
+            != job.get("execution_bundle_materialization_sha256")
+        ):
+            failures.append("execution bundle plan provenance differs")
     if storage.get("status") != "COMPACT":
         failures.append("completed S1M2 SQLite state is not compact")
     topology = storage.get("compiled_topology", {})
@@ -982,6 +1138,19 @@ def run_job(
     ):
         if relative is not None and _sha256(_resolve(repo_root, relative)) != expected:
             raise RuntimeError(f"Job input hash mismatch: {relative}")
+    if job.get("execution_bundle_plan") is not None:
+        bundle = _bundle_plan_details(
+            repo_root,
+            job,
+            contract["workloads"][job["workload_id"]],
+            contract["scientific_config"],
+        )
+        if (
+            bundle["plan_sha256"] != job["execution_bundle_plan_sha256"]
+            or bundle["materialization_sha256"]
+            != job["execution_bundle_materialization_sha256"]
+        ):
+            raise RuntimeError("Job execution bundle materialization differs.")
     run_dir = _resolve(repo_root, job["run_dir"])
     manifest_path = _manifest_path(repo_root, job)
     if resume and not run_dir.is_dir():
@@ -1016,6 +1185,13 @@ def run_job(
             "run_id": job["run_id"],
             "metrics_id": job["metrics_id"],
             "host_id": host_id,
+            "execution_bundle_plan": job.get("execution_bundle_plan"),
+            "execution_bundle_plan_sha256": job.get(
+                "execution_bundle_plan_sha256"
+            ),
+            "execution_bundle_materialization_sha256": job.get(
+                "execution_bundle_materialization_sha256"
+            ),
         }
         for name, value in expected_manifest.items():
             if manifest.get(name) != value:
@@ -1043,6 +1219,13 @@ def run_job(
             "run_id": job["run_id"],
             "metrics_id": job["metrics_id"],
             "host_id": host_id,
+            "execution_bundle_plan": job.get("execution_bundle_plan"),
+            "execution_bundle_plan_sha256": job.get(
+                "execution_bundle_plan_sha256"
+            ),
+            "execution_bundle_materialization_sha256": job.get(
+                "execution_bundle_materialization_sha256"
+            ),
             "runtime_versions": runtime_versions(),
             "start_time": _utc_now(),
             "end_time": None,
@@ -1129,6 +1312,9 @@ def _resource_row(audit: dict[str, Any], workers: int) -> dict[str, Any]:
     stall = float(timings.get("training_reducer_stall", 0.0)) + float(
         timings.get("inspection_reducer_stall", 0.0)
     )
+    gauges = runtime.get("gauges", {})
+    histograms = runtime.get("histograms", {})
+    completion = audit.get("artifact_audit", {}).get("completion", {})
     return {
         "workers": workers,
         "wall_seconds": metrics.get("wall_seconds"),
@@ -1138,8 +1324,75 @@ def _resource_row(audit: dict[str, Any], workers: int) -> dict[str, Any]:
         "sampled_process_tree_read_bytes": metrics.get("sampled_process_tree_read_bytes"),
         "sampled_process_tree_write_bytes": metrics.get("sampled_process_tree_write_bytes"),
         "canonical_reducer_stall_seconds": stall,
+        "bundle_true_inflight": gauges.get("training_bundle_true_inflight"),
+        "bundle_ready_shard": histograms.get(
+            "training_bundle_ready_shards", {}
+        ).get("max"),
+        "completed_passes": completion.get("completed_passes"),
+        "candidate_overflow": completion.get("overflowed_tokens"),
         "host_memory_bytes": metrics.get("host_memory_bytes"),
         "filesystem_free_bytes_end": metrics.get("filesystem_free_bytes_end"),
+    }
+
+
+def job_status(
+    plan: dict[str, Any], job: dict[str, Any], contract: dict[str, Any], *, repo_root: Path
+) -> dict[str, Any]:
+    """Read compact live/completed engineering state without mutating a run."""
+
+    _validate_plan(plan, contract)
+    run_dir = _resolve(repo_root, job["run_dir"])
+    control_dir = _resolve(repo_root, job["control_dir"])
+    checkpoint = (
+        _read_json(run_dir / "checkpoint.json")
+        if (run_dir / "checkpoint.json").is_file()
+        else {}
+    )
+    manifest = (
+        _read_json(control_dir / "run_manifest.json")
+        if (control_dir / "run_manifest.json").is_file()
+        else {}
+    )
+    sample: dict[str, Any] = {}
+    attempts = manifest.get("resume_history", [])
+    samples_path = (
+        _resolve(repo_root, attempts[-1]["metrics_dir"]) / "process_tree_samples.csv"
+        if attempts
+        else control_dir / "process_tree_samples.csv"
+    )
+    if samples_path.is_file():
+        with samples_path.open(encoding="utf-8", newline="") as handle:
+            for sample in csv.DictReader(handle):
+                pass
+    runtime = (
+        _read_json(run_dir / "timing_metrics.json")
+        if (run_dir / "timing_metrics.json").is_file()
+        else {}
+    )
+    gauges = runtime.get("gauges", {})
+    histograms = runtime.get("histograms", {})
+    timings = runtime.get("timings_seconds", {})
+    reducer_stall = None
+    if timings:
+        reducer_stall = float(timings.get("training_reducer_stall", 0.0)) + float(
+            timings.get("inspection_reducer_stall", 0.0)
+        )
+    return {
+        "host": job["host_role"],
+        "workers": job["workers"],
+        "workload": job["workload_id"],
+        "result_status": manifest.get("result_status", "NOT_STARTED"),
+        "completed_passes": checkpoint.get("completed_passes", 0),
+        "next_document_index": checkpoint.get("next_document_index", 0),
+        "elapsed_seconds": (
+            None if not sample.get("wall_seconds") else float(sample["wall_seconds"])
+        ),
+        "peak_rss_bytes": (
+            None if not sample.get("peak_rss_bytes") else int(float(sample["peak_rss_bytes"]))
+        ),
+        "bundle_inflight": gauges.get("training_bundle_true_inflight"),
+        "bundle_ready": histograms.get("training_bundle_ready_shards", {}).get("max"),
+        "reducer_stall_seconds": reducer_stall,
     }
 
 
@@ -1338,75 +1591,272 @@ def aggregate_round1(
     return aggregate_round1_attestations(plan, contract, attestations)
 
 
-def evaluate_round2(
-    plan: dict[str, Any], contract: dict[str, Any], *, repo_root: Path
+def round2_attestation_filename(job_id: str) -> str:
+    return f"{job_id}.round2-attestation.json"
+
+
+def build_round2_attestation(
+    plan: dict[str, Any],
+    job: dict[str, Any],
+    contract: dict[str, Any],
+    *,
+    repo_root: Path,
 ) -> dict[str, Any]:
+    """Reduce one formal job audit to worker-selection engineering evidence."""
+
     _validate_plan(plan, contract)
-    expected = [tuple(item) for item in contract["round2"]["jobs"]]
-    actual = [(job["cell_id"], job["workload_id"]) for job in plan["jobs"]]
-    workers = {int(job["workers"]) for job in plan["jobs"]}
-    interface_ok = actual == expected and len(workers) == 1
-    rows = []
-    audit_ok = True
-    memory_ok = True
-    storage_ok = True
-    runtime_ok = True
-    provenance_ok = True
-    representative_scale = (
-        contract["workloads"]["full"]["phonemes"]
-        / contract["workloads"]["representative"]["phonemes"]
-    )
-    projections: dict[str, float] = {}
-    for job in plan["jobs"]:
-        audit = audit_job(plan, job, contract, repo_root=repo_root)
-        audit_ok &= audit["valid"]
-        provenance_ok &= audit["valid"] and not any(
-            "provenance" in failure or "manifest" in failure
-            for failure in audit["failures"]
-        )
-        row = {"job_id": job["job_id"], "valid": audit["valid"], "failures": audit["failures"]}
-        if audit["valid"]:
-            resources = _resource_row(audit, job["workers"])
-            row.update(resources)
-            peak = resources["peak_process_tree_rss_bytes"]
-            host = resources["host_memory_bytes"]
-            memory_ok &= peak is not None and host is not None and peak <= host * contract["gates"]["memory_max_host_fraction"]
-            peak_storage = resources["peak_watched_run_bytes"]
-            free_end = resources["filesystem_free_bytes_end"]
-            storage_ok &= (
-                peak_storage is not None
-                and peak_storage <= contract["gates"]["storage_max_bytes"]
-                and free_end is not None
-                and free_end >= contract["gates"]["storage_min_free_bytes_end"]
-            )
-            if job["workload_id"] == "representative":
-                wall_projection = float(resources["wall_seconds"]) * representative_scale
-                storage_projection = float(peak_storage) * representative_scale
-                projections[job["cell_id"]] = wall_projection
-                runtime_ok &= wall_projection <= contract["gates"]["continuous_runtime_target_seconds_full_projection"]
-                storage_ok &= storage_projection <= contract["gates"]["storage_max_bytes"]
-                row["full_wall_projection_seconds"] = wall_projection
-                row["full_peak_storage_projection_bytes"] = storage_projection
-        rows.append(row)
-    gates = {
-        "CONTINUOUS_RUNTIME_TARGET": "PASS" if runtime_ok and len(projections) == 2 else "FAIL",
-        "PRODUCTION_MEMORY_GATE": "PASS" if memory_ok and audit_ok else "FAIL",
-        "PRODUCTION_STORAGE_GATE": "PASS" if storage_ok and audit_ok else "FAIL",
-        "PRODUCTION_RESUME_GATE": "PASS" if contract["resume_policy"]["mode"] == "explicit_only" and audit_ok else "FAIL",
-        "PRODUCTION_PROVENANCE_GATE": "PASS" if provenance_ok and audit_ok else "FAIL",
-        "S1M2_SIX_CELL_INTERFACE_GATE": "PASS" if interface_ok and audit_ok else "FAIL",
-    }
-    status = "PASS" if all(value == "PASS" for value in gates.values()) else "FAIL"
+    if plan.get("plan_type") != "round2" or job not in plan.get("jobs", []):
+        raise ValueError("Round 2 attestation requires a job from the exact plan.")
+    audit = audit_job(plan, job, contract, repo_root=repo_root)
+    resources = _resource_row(audit, int(job["workers"]))
     return {
+        "schema_version": ROUND2_ATTESTATION_SCHEMA,
+        "job_id": job["job_id"],
+        "host_role": job["host_role"],
+        "workload": job["workload_id"],
+        "workers": job["workers"],
+        "valid": audit.get("valid") is True,
+        "failures": list(audit.get("failures", [])),
+        **resources,
+        "git_sha": plan["git_sha"],
+        "execution_bundle_plan": job["execution_bundle_plan"],
+        "execution_bundle_plan_sha256": job["execution_bundle_plan_sha256"],
+        "execution_bundle_materialization_sha256": job[
+            "execution_bundle_materialization_sha256"
+        ],
+        "plan_identity": {
+            "schema_version": plan["schema_version"],
+            "plan_type": plan["plan_type"],
+            "plan_sha256": plan["plan_sha256"],
+            "git_sha": plan["git_sha"],
+            "branch": plan["branch"],
+        },
+        "production_contract_identity": {
+            "path": plan["contract_path"],
+            "sha256": plan["production_contract_sha256"],
+        },
+    }
+
+
+def _round2_workload_preference(
+    rows: list[dict[str, Any]], practical_fraction: float
+) -> tuple[int, str, list[dict[str, Any]]]:
+    ranking = sorted(
+        rows, key=lambda row: (float(row["wall_seconds"]), int(row["workers"]))
+    )
+    if not ranking:
+        raise RuntimeError("Round 2 workload selection has no eligible candidates.")
+    fastest = ranking[0]
+    tied = [
+        row
+        for row in ranking
+        if float(row["wall_seconds"])
+        <= float(fastest["wall_seconds"]) / (1.0 - practical_fraction)
+    ]
+    if len(tied) == 1:
+        return int(fastest["workers"]), "direct_wall_winner", ranking
+    selected = min(
+        tied,
+        key=lambda row: (
+            float(row["peak_process_tree_rss_bytes"]),
+            float(row["canonical_reducer_stall_seconds"]),
+            int(row["workers"]),
+        ),
+    )
+    return int(selected["workers"]), "practical_tie_resource_rule", ranking
+
+
+def aggregate_round2_attestations(
+    plan: dict[str, Any],
+    contract: dict[str, Any],
+    attestations: Iterable[dict[str, Any]],
+) -> dict[str, Any]:
+    """Select workers from representative/stress evidence or request w20."""
+
+    _validate_plan(plan, contract)
+    supplied = list(attestations)
+    by_job = {str(item.get("job_id")): item for item in supplied}
+    if plan.get("plan_type") != "round2" or len(supplied) != 6 or len(by_job) != 6:
+        raise ValueError("Round 2 aggregation requires six unique attestations.")
+    resource_fields = (
+        "wall_seconds",
+        "peak_process_tree_rss_bytes",
+        "peak_watched_run_bytes",
+        "sampled_process_tree_cpu_seconds",
+        "canonical_reducer_stall_seconds",
+        "bundle_true_inflight",
+        "bundle_ready_shard",
+        "completed_passes",
+        "candidate_overflow",
+        "host_memory_bytes",
+        "filesystem_free_bytes_end",
+    )
+    rows: list[dict[str, Any]] = []
+    for job in plan["jobs"]:
+        item = by_job.get(job["job_id"])
+        if item is None:
+            raise ValueError(f"Missing Round 2 attestation: {job['job_id']}")
+        failures = list(item.get("failures", []))
+        expected = {
+            "schema_version": ROUND2_ATTESTATION_SCHEMA,
+            "job_id": job["job_id"],
+            "host_role": job["host_role"],
+            "workload": job["workload_id"],
+            "workers": job["workers"],
+            "git_sha": plan["git_sha"],
+            "execution_bundle_plan": job["execution_bundle_plan"],
+            "execution_bundle_plan_sha256": job["execution_bundle_plan_sha256"],
+            "execution_bundle_materialization_sha256": job[
+                "execution_bundle_materialization_sha256"
+            ],
+            "plan_identity": {
+                "schema_version": plan["schema_version"],
+                "plan_type": plan["plan_type"],
+                "plan_sha256": plan["plan_sha256"],
+                "git_sha": plan["git_sha"],
+                "branch": plan["branch"],
+            },
+            "production_contract_identity": {
+                "path": plan["contract_path"],
+                "sha256": plan["production_contract_sha256"],
+            },
+        }
+        for name, value in expected.items():
+            if item.get(name) != value:
+                failures.append(f"attestation {name} differs")
+        if item.get("valid") is not True:
+            failures.append("formal remote audit did not pass")
+        missing = [name for name in resource_fields if item.get(name) is None]
+        if missing:
+            failures.append(f"attestation engineering fields are missing: {missing}")
+        row = {
+            "job_id": job["job_id"],
+            "host_role": job["host_role"],
+            "workload": job["workload_id"],
+            "workers": job["workers"],
+            **{name: item.get(name) for name in resource_fields},
+            "failures": failures,
+        }
+        if not failures:
+            if row["completed_passes"] != contract["passes"]:
+                failures.append("completed-pass gate failed")
+            if row["candidate_overflow"] != 0:
+                failures.append("candidate-overflow gate failed")
+            if row["peak_process_tree_rss_bytes"] > (
+                row["host_memory_bytes"] * contract["gates"]["memory_max_host_fraction"]
+            ):
+                failures.append("memory safety gate failed")
+            if (
+                row["peak_watched_run_bytes"] > contract["gates"]["storage_max_bytes"]
+                or row["filesystem_free_bytes_end"]
+                < contract["gates"]["storage_min_free_bytes_end"]
+            ):
+                failures.append("storage safety gate failed")
+        row["valid"] = not failures
+        rows.append(row)
+
+    candidate_rows = []
+    for workers in ROUND2_PRIMARY_WORKERS:
+        evidence = {
+            row["workload"]: row
+            for row in rows
+            if int(row["workers"]) == workers
+        }
+        eligible = (
+            set(evidence) == {"representative", "stress"}
+            and all(row["valid"] for row in evidence.values())
+        )
+        candidate_rows.append(
+            {
+                "workers": workers,
+                "eligible": eligible,
+                "representative": evidence.get("representative"),
+                "stress": evidence.get("stress"),
+            }
+        )
+    eligible = [row for row in candidate_rows if row["eligible"]]
+    result = {
         "schema_version": ROUND2_SCHEMA,
         "plan_sha256": plan["plan_sha256"],
         "production_contract_sha256": plan["production_contract_sha256"],
-        "WINNER_WORKERS": next(iter(workers)) if len(workers) == 1 else None,
-        "full_runtime_projections_seconds": projections,
-        **gates,
-        "ROUND2_STATUS": status,
+        "ROUND2_STATUS": "FAIL",
+        "WINNER_WORKERS": None,
+        "WINNER_REASON": None,
+        "W20_REQUIRED": "no",
+        "candidate_ranking": candidate_rows,
         "jobs": rows,
     }
+    if not eligible:
+        result["WINNER_REASON"] = "no_worker_passed_both_workloads"
+        return result
+    practical = float(contract["round2"]["practical_tie_wall_fraction"])
+    selections = {}
+    for workload in ("representative", "stress"):
+        selected, reason, ranking = _round2_workload_preference(
+            [row[workload] for row in eligible], practical
+        )
+        selections[workload] = {
+            "workers": selected,
+            "reason": reason,
+            "ranking": ranking,
+        }
+    result["workload_selections"] = selections
+    selected_workers = {row["workers"] for row in selections.values()}
+    if len(selected_workers) != 1:
+        followup_jobs = []
+        for workload in ("representative", "stress"):
+            source = next(
+                job for job in plan["jobs"] if job["workload_id"] == workload
+            )
+            followup_jobs.append(
+                _job(
+                    contract,
+                    plan_type="round2_w20",
+                    cell_id=source["cell_id"],
+                    workload_id=workload,
+                    workers=20,
+                    output_root=Path(source["output_root"]),
+                    metrics_root=Path(source["metrics_root"]),
+                    host_role=contract["round2"]["w20_host_roles"][workload],
+                    execution_bundle_plan=source["execution_bundle_plan"],
+                    execution_bundle_plan_sha256=source[
+                        "execution_bundle_plan_sha256"
+                    ],
+                    execution_bundle_materialization_sha256=source[
+                        "execution_bundle_materialization_sha256"
+                    ],
+                )
+            )
+        result.update(
+            {
+                "ROUND2_STATUS": "NEEDS_W20_INTERPOLATION",
+                "WINNER_REASON": "representative_and_stress_prefer_different_workers",
+                "W20_REQUIRED": "yes",
+                "w20_followup_jobs": followup_jobs,
+            }
+        )
+        return result
+    winner = int(next(iter(selected_workers)))
+    result.update(
+        {
+            "ROUND2_STATUS": "PASS",
+            "WINNER_WORKERS": winner,
+            "WINNER_REASON": (
+                "representative_and_stress_agree_under_10pct_practical_tie_rule"
+            ),
+        }
+    )
+    return result
+
+
+def aggregate_round2(
+    plan: dict[str, Any], contract: dict[str, Any], *, repo_root: Path
+) -> dict[str, Any]:
+    attestations = [
+        build_round2_attestation(plan, job, contract, repo_root=repo_root)
+        for job in plan["jobs"]
+    ]
+    return aggregate_round2_attestations(plan, contract, attestations)
 
 
 def _script_neutral_bounded_gate(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
@@ -1558,10 +2008,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     item.add_argument("--job-id", required=True)
     item.add_argument("--output", required=True, type=Path)
     item = commands.add_parser("plan-round2")
-    item.add_argument("--round1-result", required=True, type=Path)
     item.add_argument("--output", required=True, type=Path)
-    item = commands.add_parser("evaluate-round2")
+    item = commands.add_parser("aggregate-round2")
     item.add_argument("--plan", required=True, type=Path)
+    item.add_argument("--output", required=True, type=Path)
+    item.add_argument("--attestation-dir", type=Path)
+    item = commands.add_parser("attest-round2")
+    item.add_argument("--plan", required=True, type=Path)
+    item.add_argument("--job-id", required=True)
     item.add_argument("--output", required=True, type=Path)
     item = commands.add_parser("plan-final")
     item.add_argument("--round2-result", required=True, type=Path)
@@ -1575,6 +2029,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     item.add_argument("--plan", required=True, type=Path)
     item.add_argument("--job-id", required=True)
     item.add_argument("--output", type=Path)
+    item = commands.add_parser("status-job")
+    item.add_argument("--plan", required=True, type=Path)
+    item.add_argument("--job-id", required=True)
     item = commands.add_parser("validate-bounded")
     item.add_argument("--output-root", required=True, type=Path)
     return parser
@@ -1621,10 +2078,32 @@ def main(argv: list[str] | None = None) -> None:
             _write_json(_resolve(repo_root, args.output), result)
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         raise SystemExit(0 if result["valid"] else 1)
+    if args.command == "status-job":
+        plan = _read_json(_resolve(repo_root, args.plan))
+        result = job_status(
+            plan,
+            _job_from_plan(plan, args.job_id),
+            contract,
+            repo_root=repo_root,
+        )
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        return
     if args.command == "attest-round1":
         plan = _read_json(_resolve(repo_root, args.plan))
         _validate_plan(plan, contract)
         result = build_round1_attestation(
+            plan,
+            _job_from_plan(plan, args.job_id),
+            contract,
+            repo_root=repo_root,
+        )
+        _write_json(_resolve(repo_root, args.output), result)
+        print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        raise SystemExit(0 if result["valid"] else 2)
+    if args.command == "attest-round2":
+        plan = _read_json(_resolve(repo_root, args.plan))
+        _validate_plan(plan, contract)
+        result = build_round2_attestation(
             plan,
             _job_from_plan(plan, args.job_id),
             contract,
@@ -1673,16 +2152,26 @@ def main(argv: list[str] | None = None) -> None:
         output_payload = result
     elif args.command == "plan-round2":
         output = args.output
-        result = _read_json(_resolve(repo_root, args.round1_result))
         plan = build_round2_plan(
-            contract, result, contract_path=args.contract, identity=identity
+            contract,
+            contract_path=args.contract,
+            repo_root=repo_root,
+            identity=identity,
         )
         _write_plan_commands(plan, output)
         _write_json(_resolve(repo_root, output), plan)
         output_payload = plan
-    elif args.command == "evaluate-round2":
+    elif args.command == "aggregate-round2":
         plan = _read_json(_resolve(repo_root, args.plan))
-        result = evaluate_round2(plan, contract, repo_root=repo_root)
+        if args.attestation_dir is None:
+            result = aggregate_round2(plan, contract, repo_root=repo_root)
+        else:
+            directory = _resolve(repo_root, args.attestation_dir)
+            attestations = [
+                _read_json(directory / round2_attestation_filename(job["job_id"]))
+                for job in plan["jobs"]
+            ]
+            result = aggregate_round2_attestations(plan, contract, attestations)
         _write_json(_resolve(repo_root, args.output), result)
         output_payload = result
     elif args.command == "plan-final":

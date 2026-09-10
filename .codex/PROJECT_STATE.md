@@ -2699,3 +2699,53 @@ full-M0, profiling, RAM, or runtime workload ran.
     ROUND2_STATUS=NOT_STARTED
     FULL_M0_PROCESS_RUNNING=NO
     NEXT_ACTION=RESEARCHER_MANUAL_EXECUTION_BUNDLE_VALIDATION
+
+## 88. Pre-Round2 bundle worker recalibration prepared (2026-09-10)
+
+The former six-workload Round2 readiness stage is retired. Round1 remains
+`MANUALLY_TERMINATED_AFTER_DIAGNOSTIC_CONVERGENCE`; its diagnostic evidence is
+valid, its formal winner is unresolved, and its retained worker search is
+12/16/24. No Round1 PASS or winner was fabricated.
+
+Active Round2 now holds the frozen M0 Devanagari-continuous representative and
+stress document lists fixed and runs each at workers 12, 16, and 24 on
+`core-01` through `core-06`. All six jobs use three passes, exact inference,
+and the bundle scheduler. Workload-specific plans fix target pressure 279047,
+at most 256 complete ObservedSegments per bundle, and 128 max segment tokens.
+The planner now accepts an ordered `--document-list` and fixed
+`--target-pressure`, binding the list path/hash into its scan signature. The
+loader accepts the co-located subset-plan layout while continuing to validate
+manifest, list, representation, segment sequence, and materialization identity
+fail closed.
+
+Round2 plan generation no longer consumes a Round1 result. It requires the
+recorded diagnostic closure and both real subset-plan materializations; each
+job and trainer command binds its workload plan, plan SHA, materialization SHA,
+worker, and host. The cloud operator can transfer/verify those plans, launch all
+six jobs, report compact status, safely send TERM while preserving SQLite,
+checkpoints, bundle shards, and run state, and collect remote attestations.
+
+Aggregation admits a worker only when representative and stress both pass the
+existing artifact/provenance/completion/zero-overflow/memory/storage gates. It
+uses the existing 10% practical wall threshold per workload, then lower peak
+process-tree RSS, lower canonical reducer stall, and lower worker count. If the
+two workload selections disagree, it emits
+`NEEDS_W20_INTERPOLATION` and prepared w20 follow-up job specifications. A PASS
+winner directly supplies the worker count to the unchanged full six-cell plan;
+there is no replacement readiness stage.
+
+No subset plan was materialized, and no corpus scan, test, training, Round2,
+VM, benchmark, or full-M0 execution ran. Only Python syntax compilation and
+`git diff --check` are authorized static checks for this handoff.
+
+```text
+OLD_ROUND2_READINESS=RETIRED
+ROUND2_MODE=BUNDLE_WORKER_RECALIBRATION
+ROUND2_PRIMARY_WORKERS=12_16_24
+ROUND2_WORKER_20_STATUS=RESERVED_IF_DECISION_CRITICAL
+ROUND2_REPRESENTATIVE_PLAN=MATERIALIZATION_REQUIRED
+ROUND2_STRESS_PLAN=MATERIALIZATION_REQUIRED
+ROUND2_STATUS=NOT_STARTED
+FULL_M0_PROCESS_RUNNING=NO
+NEXT_ACTION=RESEARCHER_PRE_ROUND2_MATERIALIZATION
+```

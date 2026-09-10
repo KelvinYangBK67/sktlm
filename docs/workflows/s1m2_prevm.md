@@ -5,7 +5,7 @@
 This workflow turns the accepted S1M2 implementation into a fail-closed VM
 execution interface. It does not change the 1,218-rule grammar, legal candidate
 support, scoring equations, exact inference, posterior semantics, piece limits,
-or any frozen S1M1/M0 bytes. Opt17 is not authorized.
+or any frozen S1M1/M0 bytes.
 
 The production universe is exactly six independently trained cells. Five use
 frozen M0. IAST `continuous` uses the validated derived M0-prime manifest and
@@ -16,7 +16,7 @@ frozen-corpus extent of one representation cell, not a model named M0.
 The machine-readable source of truth is
 `configs/production/s1m2_six_cell.json`. Its contract hash is the SHA-256 of
 canonical sorted JSON as emitted by `validate-contract`. Worker count is an
-engineering parameter selected only by Round 1.
+engineering parameter selected by the active bundle-based Round 2.
 
 The deployment/collection source of truth is
 `configs/cloud/s1m2_prevm.yaml`. It fixes the production branch, verified
@@ -39,7 +39,7 @@ The control-plane verbs map to the requested lifecycle as follows:
 - audit: `audit` and the existing `scripts/cloud/audit_latent_run.py`;
 - collect: the existing `scripts/cloud/sktlm_bridge.py collect`, which resolves
   the exact tracked S1M2 planned-run identity and its assigned core host;
-- summarize: `aggregate-round1` and `evaluate-round2`.
+- summarize: historical `aggregate-round1` and active `aggregate-round2`.
 
 All plan and result writers refuse overwrite. The runner snapshots the plan,
 contract hash, complete command, runtime versions, host identity, timestamps,
@@ -91,7 +91,7 @@ A missing or hash-mismatched frozen manifest is a hard preflight failure.
 
 ## Six-host VM operator sequence
 
-Round 1 and Round 2 use six distinct physical core VMs. This engineering
+Round 1 used and Round 2 uses six distinct physical core VMs. This engineering
 assignment is accepted from the S1M1 host-equivalence evidence; it does not
 change the scientific contract. Copy `configs/cloud/bridge.example.toml` to the
 ignored `.sktlm-bridge.toml` and fill the six `core-01` through `core-06` SSH
@@ -133,6 +133,11 @@ closed if any host fails. None of these commands should be run by Codex during
 pre-VM closure; they are the operator's explicit network phase.
 
 ## Round 1: VM worker scaling
+
+Round 1 is closed as `MANUALLY_TERMINATED_AFTER_DIAGNOSTIC_CONVERGENCE`.
+Its formal winner remains unresolved; workers below 12 are excluded from the
+retained search, and the active candidates are 12, 16, and 24. The procedure
+below is historical and must not be rerun for the active pipeline.
 
 Round 1 is six simultaneous executions of the same M0 Devanagari-continuous
 engineering worker-calibration job. Its tracked list contains 72 deterministic
@@ -197,47 +202,50 @@ and finally worker count. Required output fields are `ROUND1_STATUS`,
 `WORKER_RANKING`, `WINNER_WORKERS`, `WINNER_REASON`, resource summaries, and
 excluded-job reasons.
 
-## Round 2: production-readiness matrix
+## Round 2: bundle worker recalibration
 
-Round 2 consumes `WINNER_WORKERS` from the Round 1 result; it never hardcodes a
-worker count independently.
-
-```text
-python -m sktlm.production.s1m2 plan-round2 --round1-result artifacts/s1m2_production/round1_result.json --output artifacts/s1m2_production/round2_plan.json
-```
-
-The generated six-way-parallel plan contains exactly:
-
-1. `core-01`: Devanagari continuous / stress;
-2. `core-02`: M0-prime IAST continuous / representative;
-3. `core-03`: Devanagari continuous / representative;
-4. `core-04`: Devanagari surface_word / smoke;
-5. `core-05`: Devanagari legacy_joined / smoke;
-6. `core-06`: IAST surface_word / smoke.
-
-All six jobs use the same `WINNER_WORKERS` selected by Round 1 and launch on
-their six hosts concurrently. A shared single-VM execution is not a valid
-production plan.
-
-Execute the six generated commands, then evaluate:
+The former six-workload readiness stage is retired. Active Round 2 is the final
+worker-selection engineering stage before full production. It holds the frozen
+M0 Devanagari-continuous representative and stress workloads fixed and varies
+only workers:
 
 ```text
-python -m sktlm.production.s1m2 evaluate-round2 --plan artifacts/s1m2_production/round2_plan.json --output artifacts/s1m2_production/round2_result.json
+core-01 representative w12    core-04 stress w12
+core-02 representative w16    core-05 stress w16
+core-03 representative w24    core-06 stress w24
 ```
 
-PASS requires all artifact audits, zero candidate overflow, exact provenance,
-the explicit resume-capable interface, aggregate RSS at or below 80% of host
-RAM, at least 20 GiB free at completion, and actual watched peak storage at
-or below 300 GiB for every Round 2 job. Representative jobs additionally require
-their full-corpus projected peak storage to remain at or below 300 GiB. Both
-continuous representative wall times are scaled by
-the frozen phoneme ratio `46,255,133 / 456,891`; both projections must meet the
-existing approximately-three-hour engineering target (10,800 seconds). Stress
-must complete/audit but is not linearly projected. The result emits each named
-gate and `ROUND2_STATUS` as machine-readable PASS/FAIL.
+Both subset execution plans use complete canonical `ObservedSegment` values,
+never cross documents, preserve document-list order, and fix
+`target_pressure=279047`, `max_segments_per_bundle=256`, and
+`max_segment_tokens=128`. Materialize both plans before generating Round 2:
 
-These are engineering gates. Failure does not authorize approximate inference,
-candidate pruning/tuning, a new sandhi reward, changed grammar, or Opt17.
+```text
+python scripts/analysis/plan_s1m2_execution_bundles.py --document-list configs/benchmarks/s1m2_continuous_representative_documents.txt --target-pressure 279047 --max-segments-per-bundle 256 --max-segment-tokens 128 --output-dir artifacts/s1m2_execution_bundle_plans/round2_representative_tp279047
+python scripts/analysis/plan_s1m2_execution_bundles.py --document-list configs/benchmarks/s1m2_continuous_stress_documents.txt --target-pressure 279047 --max-segments-per-bundle 256 --max-segment-tokens 128 --output-dir artifacts/s1m2_execution_bundle_plans/round2_stress_tp279047
+python -m sktlm.production.s1m2 plan-round2 --output artifacts/s1m2_production/round2_plan.json
+```
+
+Plan generation fails closed until both materializations exist and match their
+frozen document-list and bundle identities. The generated trainer commands
+include `--execution-bundle-plan`, `--workers 12|16|24`, and `--passes 3`.
+Launch only through `s1m2_vm_ops.py launch-round2`, which transfers and verifies
+the plan and the workload-specific bundle materialization on each assigned VM.
+
+After all six jobs finish, collect compact attestations and aggregate:
+
+```text
+python scripts/cloud/s1m2_vm_ops.py --config .sktlm-bridge.toml collect-round2-attestations --plan artifacts/s1m2_production/round2_plan.json --expected-head <PRE_VM_S1M2_SHA> --attestation-dir artifacts/s1m2_vm/round2_attestations --output artifacts/s1m2_vm/round2_attestation_collection.json
+python -m sktlm.production.s1m2 aggregate-round2 --plan artifacts/s1m2_production/round2_plan.json --attestation-dir artifacts/s1m2_vm/round2_attestations --output artifacts/s1m2_production/round2_result.json
+```
+
+A worker is eligible only when both representative and stress complete their
+artifact, provenance, memory, storage, resume, and zero-overflow gates. Each
+workload keeps the 10% practical wall-time threshold; ties prefer lower peak
+process-tree RSS, lower canonical reducer stall, then fewer workers. Agreement
+between workloads yields `ROUND2_STATUS=PASS`. A decision-critical disagreement
+yields `ROUND2_STATUS=NEEDS_W20_INTERPOLATION` plus prepared representative and
+stress w20 job specifications; it does not run them automatically.
 
 ## Final six-cell launch plan
 
@@ -248,7 +256,7 @@ python -m sktlm.production.s1m2 plan-final --round2-result artifacts/s1m2_produc
 ```
 
 The plan assigns the six cells in contract order to logical roles core-01
-through core-06, uses the one Round 1 winner for every cell, includes exact
+through core-06, uses the resolved Round 2 winner for every cell, includes exact
 launch/audit/resume commands and expected paths, and records:
 
 ```text

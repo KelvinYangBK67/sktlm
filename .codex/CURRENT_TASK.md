@@ -1,6 +1,6 @@
 # CURRENT_TASK.md
 
-## Authoritative current status (2026-09-09)
+## Authoritative current status (2026-09-10)
 
 Branch: `exp/s1m2-reusable-pieces`.
 
@@ -9,133 +9,91 @@ S1M1=FROZEN
 M0_PRIME=COMPLETE_VALID
 S1M2_METHOD=COMPLETE
 S1M2_LOCAL_OPTIMIZATION=COMPLETE
-S1M2_OPTIMIZATION_16=ACCEPTED
-OPT16_TOPOLOGY_RECONSTRUCTIBILITY=PASS
 OPT17=TRAINING_RAM_PASS_INSPECTION_RAM_FAIL_STATE_REUSABLE
 OPT18=RAM_PASS_RUNTIME_FAIL
 OPT19=LOCAL_EXACTNESS_PASS_RAM_GATE_PASS_RUNTIME_GATE_PASS
-POST_OPT16_ENGINEERING_OPTIMIZATION=COMPLETE
-S1M2_SIX_CELL_CONTRACT=FROZEN
-ROUND1_INTERFACE=READY
-ROUND1_AGGREGATOR=READY
-ROUND2_INTERFACE=READY
-ROUND2_GATES=READY
-PROVENANCE=READY
-FINAL_SIX_CELL_GENERATOR=READY
-S1M2_SIX_CELL_BOUNDED_VALIDATION=PASS
-FULL_REPO_GATE=PENDING_ONE_FINAL_RUN
-PRE_VM_INTERFACE_STATE=READY
-PRE_VM_ENGINEERING_STATE=READY
+S1M2_EXECUTION_BUNDLE_AUDIT=PASS
+S1M2_EXECUTION_BUNDLE_SCHEDULER=IMPLEMENTED_TINY_VALIDATION_PASS
+S1M2_EXECUTION_BUNDLE_PLAN=CANDIDATE_008192
 ROUND1_STATUS=MANUALLY_TERMINATED_AFTER_DIAGNOSTIC_CONVERGENCE
 ROUND1_FORMAL_WINNER=UNRESOLVED
 ROUND1_WORKER_SEARCH_LOWER_BOUND=12
 ROUND1_NEXT_WORKER_CANDIDATES=12_16_24
-ROUND1_STRAGGLER=DOCUMENT_INDEX_50_CONFIRMED
-ROUND1_EVIDENCE_CLASSIFICATION=DIAGNOSTIC_VALID
-S1M2_EXECUTION_BUNDLE_AUDIT=PASS
-S1M2_EXECUTION_BUNDLE_SCHEDULER=IMPLEMENTED_TINY_VALIDATION_PASS
-S1M2_EXECUTION_BUNDLE_PLAN=CANDIDATE_008192
-S1M2_EXECUTION_BUNDLE_PLAN_SHA256=7acf4b292adffe35dcdbdf3755c18d699b5659bb806ad2c7342a03db5d4279c9
+OLD_ROUND2_READINESS=RETIRED
+ROUND2_MODE=BUNDLE_WORKER_RECALIBRATION
+ROUND2_PRIMARY_WORKERS=12_16_24
+ROUND2_WORKER_20_STATUS=RESERVED_IF_DECISION_CRITICAL
+ROUND2_REPRESENTATIVE_PLAN=MATERIALIZATION_REQUIRED
+ROUND2_STRESS_PLAN=MATERIALIZATION_REQUIRED
 ROUND2_STATUS=NOT_STARTED
 FULL_M0_PROCESS_RUNNING=NO
-NEXT_ACTION=RESEARCHER_MANUAL_EXECUTION_BUNDLE_VALIDATION
+NEXT_ACTION=RESEARCHER_PRE_ROUND2_MATERIALIZATION
 ```
 
-The authoritative machine-readable contract is
+The authoritative production contract is
 `configs/production/s1m2_six_cell.json`; the deployment contract is
-`configs/cloud/s1m2_prevm.yaml`. Both Round 1 and Round 2 are six-way parallel
-on `core-01` through `core-06`; S1M2 production deployment is verified
-`git_bundle` at the explicit branch and SHA.
+`configs/cloud/s1m2_prevm.yaml`. The former six-science-workload Round2
+readiness gate is superseded by Decision 114 and has no active compatibility
+path or replacement stage.
 
-## Consolidated Opt17 / Opt18 / Opt19 engineering record
+## Active Round2 contract
 
-### Opt17
-
-Opt17 solved the training-memory problem. On the Devanagari-continuous stress
-workload, training stayed around 0.2--0.3 GiB RSS with a transient peak around
-0.79 GiB. Final inspection remained unbounded: RSS continued climbing past
-6.5 GiB and the run was manually interrupted. The completed training state was
-audited as internally consistent and remains directly reusable.
-
-### Opt18
-
-Opt18 decoupled durable training from reconstructible inspection and repaired
-the inspection working set with bounded shared top-K backpointers, bounded
-token-local caches, factor-local posterior recomputation, immediate release,
-and compact occurrence support. The pathological line 39 completed.
-
-At line 47 the recorded state was:
+Round2 is the final engineering worker-selection stage before the unchanged
+full six-cell production plan:
 
 ```text
-elapsed=00:22:33
-RSS=0.708 GiB
-peak RSS=0.747 GiB
+core-01  M0 Devanagari continuous  representative  workers=12
+core-02  M0 Devanagari continuous  representative  workers=16
+core-03  M0 Devanagari continuous  representative  workers=24
+core-04  M0 Devanagari continuous  stress          workers=12
+core-05  M0 Devanagari continuous  stress          workers=16
+core-06  M0 Devanagari continuous  stress          workers=24
 ```
 
-RSS later returned to about 0.44 GiB, confirming bounded-memory behavior.
-Runtime remained unacceptable: after more than two hours the first stress
-document was still incomplete. Opt18 conclusion: `RAM PASS / runtime FAIL`.
-
-### Opt19
-
-Opt19 implements adaptive one-pass/two-pass inspection retention. Small factors
-whose deterministic structural estimate fits the remaining segment-local
-budget retain their complete posterior summary through the outer DP; other
-factors use the Opt18 score-only prepass, posterior recomputation, and immediate
-release.
-
-Manual synthetic mixed-path validation passed:
+Every job uses `model=reusable_pieces_v1`, three passes, exact inference, and
+bundle execution. Representative and stress retain their frozen tracked
+document lists. Their subset bundle plans must use:
 
 ```text
-factors=4
-fast_path=1
-two_pass=3
-recomputed=3
-budget=32678
-retained_budget_peak=32678
-scientific_outputs=EXACT_EQUAL_TO_FORCED_TWO_PASS
+target_pressure=279047
+max_segments_per_bundle=256
+max_segment_tokens=128
+ObservedSegment atomicity=unchanged
 ```
 
-The targeted stress run reached line 47 with:
+The planner accepts `--document-list` in exact listed order and
+`--target-pressure`. It writes one co-located materialization containing
+`scan_summary.json`, `summary.json`, `bundles.jsonl`, and `documents.tsv`.
+Plan generation fails closed until both materializations exist and bind their
+manifest, document-list, representation sequence, segment sequence, plan, and
+materialization identities. Generated trainer commands include
+`--execution-bundle-plan` and the per-job worker count.
 
-```text
-elapsed=00:10:39
-RSS=0.362 GiB
-peak RSS=0.659 GiB
-```
+## Selection and full dependency
 
-Relative to Opt18 at line 47, observed wall time fell by about 52.8%. Opt18 ran
-with profiling while Opt19 did not, so this closes an engineering runtime gate
-rather than constituting a rigorously isolated speedup measurement.
+A worker candidate is eligible only when both representative and stress pass
+completion, artifact, provenance, zero-overflow, memory, and storage gates.
+Each workload keeps the existing 10% practical wall-time threshold. A practical
+tie prefers lower process-tree peak RSS, lower canonical reducer stall, then
+fewer workers. Agreement produces `ROUND2_STATUS=PASS` and
+`WINNER_WORKERS`. A decision-critical workload disagreement produces
+`ROUND2_STATUS=NEEDS_W20_INTERPOLATION` and two prepared w20 follow-up job
+specifications; it never runs them automatically.
 
-Opt19 conclusion: `local exactness PASS / RAM gate PASS / runtime gate PASS`.
-The pre-VM engineering state was `READY`. Round1 was subsequently terminated
-normally after diagnostic convergence without selecting a formal worker
-winner. Its evidence is valid for engineering diagnosis: workers 4 and 8 are
-below the retained search range, while document index 50 repeatedly blocked
-canonical reduction for higher-worker configurations. The current next action
-is an independent pre-full unit-granularity audit.
+The final six-cell generator depends only on a bound Round2 PASS result and its
+eligible `WINNER_WORKERS`. It no longer depends on a Round1 formal winner or
+the retired readiness matrix. Full science cells remain unchanged.
 
-## Execution bundle scheduler handoff
+## What has not run
 
-The pre-full unit-granularity audit passed without changing frontend or
-scientific segmentation: the existing ObservedSegment is the atomic unit.
-The trainer can now consume a validated execution-only bundle plan for S1M2
-parallel training. Candidate 008192 remains selected at plan SHA-256
-7acf4b292adffe35dcdbdf3755c18d699b5659bb806ad2c7342a03db5d4279c9.
+No representative/stress subset plan has been materialized. No pytest, unit,
+synthetic, exactness, resume, scheduler, corpus smoke, training, Round2, VM,
+RAM/runtime benchmark, profiling, or full-M0 workload ran in PRE-ROUND2.
 
-Workers write bundle-local segment results and pass-1 topology fragments.
-Completed futures leave true inflight state immediately and refill the pool;
-ready results wait on disk. A canonical coalescer restores the original
-document/segment left fold, document topology archive, document transaction,
-next_document_index, and checkpoint contract. Pass 2+ validates and reuses
-the pass-1 document topology rather than recompiling it. Current-attempt bundle
-markers are plan-bound and reusable after interruption; plan changes fail
-closed. Legacy scheduling remains unchanged when no plan is supplied, and the
-plan is excluded from scientific training identity.
+## Next action
 
-Tiny validation covers exact planner/trainer segment identity, complete
-contiguous coverage, legacy-vs-bundle scientific state and topology equality,
-out-of-order refill, partial-bundle resume, and plan mismatch rejection. No
-representative, stress, Round1, Round2, VM, full-M0, RAM, or runtime workload
-has run. The next action is researcher-run execution-bundle validation.
+The researcher should materialize the representative and stress plans with the
+commands in
+`reports/core_methods/reusable_pieces/s1m2_pre_round2_bundle_worker_recalibration_20260910.md`
+or the final PRE-ROUND2 handoff, inspect their compact summaries, then generate
+the Round2 plan. Do not launch until both materialization identities are bound.

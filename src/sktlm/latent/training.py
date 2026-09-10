@@ -4892,6 +4892,7 @@ def run_training(
                 condition=config.condition,
                 max_segment_tokens=config.max_segment_tokens,
                 max_lines_per_document=config.max_lines_per_document,
+                document_list=config.document_list,
             )
         grammar = StructuredSandhiGrammar.from_default_inventory()
         rules_path = repo_root / "data" / "rules" / "external_sandhi.tsv"

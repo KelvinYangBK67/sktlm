@@ -14,6 +14,10 @@ Default outputs:
     candidate_002048/{summary.json,bundles.jsonl,documents.tsv}
     candidate_004096/{summary.json,bundles.jsonl,documents.tsv}
     candidate_008192/{summary.json,bundles.jsonl,documents.tsv}
+
+With ``--target-pressure``, one workload-specific plan is written directly to
+``--output-dir`` as ``scan_summary.json``, ``summary.json``,
+``bundles.jsonl``, and ``documents.tsv``.
 """
 from __future__ import annotations
 
@@ -249,6 +253,32 @@ def _scan_segments(
     }
 
 
+def _document_list_rows(
+    rows: Sequence[dict[str, str]], document_list: Path | None
+) -> tuple[tuple[dict[str, str], ...], dict[str, str | None]]:
+    if document_list is None:
+        return tuple(rows), {"path": None, "sha256": None}
+    requested = [
+        line.strip()
+        for line in document_list.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    if not requested:
+        raise ValueError(f"Document list is empty: {document_list}")
+    if len(requested) != len(set(requested)):
+        raise ValueError(f"Document list contains duplicates: {document_list}")
+    by_path = {row["relative_path"]: row for row in rows}
+    missing = [path for path in requested if path not in by_path]
+    if missing:
+        raise ValueError(
+            f"Document list contains paths absent from the basis cell: {missing}"
+        )
+    return tuple(by_path[path] for path in requested), {
+        "path": document_list.as_posix(),
+        "sha256": _sha256(document_list),
+    }
+
+
 def _make_bundle(
     items: Sequence[SegmentRecord], *, bundle_index: int,
     target_pressure: int, closed_by_segment_cap: bool,
@@ -377,6 +407,52 @@ def _plan(
     }
 
 
+def _plan_at_pressure(
+    by_document: Sequence[Sequence[SegmentRecord]], *, target_pressure: int,
+    max_segments_per_bundle: int,
+) -> tuple[list[BundleRecord], dict[str, Any]]:
+    if target_pressure < 1:
+        raise ValueError("target pressure must be positive")
+    bundles: list[BundleRecord] = []
+    per_document_counts: list[int] = []
+    for segments in by_document:
+        doc_bundles = _pack_document(
+            segments,
+            target_pressure=target_pressure,
+            max_segments_per_bundle=max_segments_per_bundle,
+        )
+        bundles.extend(doc_bundles)
+        per_document_counts.append(len(doc_bundles))
+    pressures = [item.pressure for item in bundles]
+    counts = [item.segment_count for item in bundles]
+    phonemes = [item.phonemes for item in bundles]
+    return bundles, {
+        "target_bundle_count": None,
+        "actual_bundle_count": len(bundles),
+        "target_pressure": target_pressure,
+        "actual_to_target_bundle_count_ratio": None,
+        "bundle_pressure": _stats(pressures),
+        "bundle_segments": _stats(counts),
+        "bundle_phonemes": _stats(phonemes),
+        "bundles_below_half_target_pressure": sum(
+            value < 0.5 * target_pressure for value in pressures
+        ),
+        "bundles_above_150pct_target_pressure": sum(
+            value > 1.5 * target_pressure for value in pressures
+        ),
+        "oversized_single_segment_bundles": sum(
+            bundle.oversized_single_segment for bundle in bundles
+        ),
+        "segment_cap_closed_bundles": sum(
+            bundle.closed_by_segment_cap for bundle in bundles
+        ),
+        "documents_with_zero_bundles": sum(
+            count == 0 for count in per_document_counts
+        ),
+        "max_bundles_in_one_document": max(per_document_counts, default=0),
+    }
+
+
 def _bundle_payload(bundle: BundleRecord) -> dict[str, Any]:
     return {
         "schema_version": "sktlm-s1m2-execution-bundle/v1",
@@ -459,7 +535,10 @@ def main() -> int:
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--basis-cell", default=None)
-    parser.add_argument("--target-bundles", type=int, nargs="+", default=list(DEFAULT_TARGET_BUNDLES))
+    parser.add_argument("--document-list", type=Path)
+    target = parser.add_mutually_exclusive_group()
+    target.add_argument("--target-bundles", type=int, nargs="+")
+    target.add_argument("--target-pressure", type=int)
     parser.add_argument("--max-segments-per-bundle", type=int, default=DEFAULT_MAX_SEGMENTS_PER_BUNDLE)
     parser.add_argument("--max-segment-tokens", type=int, default=DEFAULT_MAX_SEGMENT_TOKENS)
     parser.add_argument(
@@ -472,8 +551,18 @@ def main() -> int:
         parser.error("segment limits must be >= 1")
     if args.max_lines_per_document is not None and args.max_lines_per_document < 1:
         parser.error("--max-lines-per-document must be >= 1")
-    if any(v < 1 for v in args.target_bundles) or len(set(args.target_bundles)) != len(args.target_bundles):
+    target_bundles = (
+        list(DEFAULT_TARGET_BUNDLES)
+        if args.target_bundles is None and args.target_pressure is None
+        else args.target_bundles
+    )
+    if target_bundles is not None and (
+        any(v < 1 for v in target_bundles)
+        or len(set(target_bundles)) != len(target_bundles)
+    ):
         parser.error("--target-bundles must contain unique positive integers")
+    if args.target_pressure is not None and args.target_pressure < 1:
+        parser.error("--target-pressure must be a positive integer")
 
     repo_root = args.repo_root.resolve()
     config_path = _resolve(repo_root, args.config)
@@ -489,6 +578,12 @@ def main() -> int:
     if basis.condition != "continuous":
         raise ValueError("This planner accepts continuous cells only")
     rows = _manifest_rows(basis, repo_root)
+    document_list = (
+        None if args.document_list is None else _resolve(repo_root, args.document_list)
+    )
+    rows, document_list_identity = _document_list_rows(rows, document_list)
+    if args.document_list is not None:
+        document_list_identity["path"] = args.document_list.as_posix()
 
     print("=" * 92)
     print("S1M2 STATIC EXECUTION-BUNDLE PLANNER")
@@ -511,6 +606,8 @@ def main() -> int:
         scan["segment_sequence_sha256"], scan["representation_set_sha256"],
         basis.cell_id, basis.script, str(args.max_segment_tokens),
         str(args.max_lines_per_document),
+        str(document_list_identity["path"]),
+        str(document_list_identity["sha256"]),
     ):
         sig.update(str(value).encode("utf-8")); sig.update(b"\n")
     scan_signature = sig.hexdigest()
@@ -528,6 +625,8 @@ def main() -> int:
         "condition": basis.condition,
         "manifest": str(basis.manifest.relative_to(repo_root)),
         "manifest_sha256": basis.manifest_sha256,
+        "document_list": document_list_identity["path"],
+        "document_list_sha256": document_list_identity["sha256"],
         "max_segment_tokens": args.max_segment_tokens,
         "max_lines_per_document": args.max_lines_per_document,
         "pressure_definition": "observed_segment_phonemes_squared",
@@ -546,19 +645,37 @@ def main() -> int:
     print()
 
     candidate_summaries: list[dict[str, Any]] = []
-    for target_count in args.target_bundles:
-        bundles, summary = _plan(
-            by_document,
-            target_bundle_count=target_count,
-            total_pressure=int(scan["pressure"]),
-            max_segments_per_bundle=args.max_segments_per_bundle,
-        )
+    fixed_pressure = args.target_pressure
+    plan_requests: list[tuple[int | None, int | None]] = (
+        [(None, fixed_pressure)]
+        if fixed_pressure is not None
+        else [(target_count, None) for target_count in (target_bundles or [])]
+    )
+    for target_count, requested_pressure in plan_requests:
+        if requested_pressure is None:
+            assert target_count is not None
+            bundles, summary = _plan(
+                by_document,
+                target_bundle_count=target_count,
+                total_pressure=int(scan["pressure"]),
+                max_segments_per_bundle=args.max_segments_per_bundle,
+            )
+        else:
+            bundles, summary = _plan_at_pressure(
+                by_document,
+                target_pressure=requested_pressure,
+                max_segments_per_bundle=args.max_segments_per_bundle,
+            )
         plan_sha = _plan_digest(
             bundles, scan_signature=scan_signature,
             target_pressure=int(summary["target_pressure"]),
             max_segments_per_bundle=args.max_segments_per_bundle,
         )
-        candidate_dir = output_dir / f"candidate_{target_count:06d}"
+        candidate_dir = (
+            output_dir
+            if requested_pressure is not None
+            else output_dir / f"candidate_{target_count:06d}"
+        )
         candidate_dir.mkdir(parents=True, exist_ok=True)
         plan_summary = {
             "schema_version": "sktlm-s1m2-execution-bundle-plan/v1",
@@ -584,7 +701,10 @@ def main() -> int:
         candidate_summaries.append(plan_summary)
 
         bp, bs = summary["bundle_pressure"], summary["bundle_segments"]
-        print(f"candidate target bundles    : {target_count:,}")
+        if target_count is not None:
+            print(f"candidate target bundles    : {target_count:,}")
+        else:
+            print(f"fixed target pressure       : {requested_pressure:,}")
         print(f"  actual bundles            : {summary['actual_bundle_count']:,}")
         print(f"  target pressure           : {summary['target_pressure']:,}")
         print(f"  bundle pressure p50/p95/max: {bp['p50']:,} / {bp['p95']:,} / {bp['max']:,}")
@@ -595,16 +715,20 @@ def main() -> int:
         print(f"  plan sha256               : {plan_sha}")
         print()
 
-    _write_json(output_dir / "candidates_summary.json", {
-        "schema_version": "sktlm-s1m2-execution-bundle-candidates/v1",
-        "scan_signature_sha256": scan_signature,
-        "candidates": candidate_summaries,
-    })
+    if fixed_pressure is None:
+        _write_json(output_dir / "candidates_summary.json", {
+            "schema_version": "sktlm-s1m2-execution-bundle-candidates/v1",
+            "scan_signature_sha256": scan_signature,
+            "candidates": candidate_summaries,
+        })
     print("outputs:")
     print(f"  {output_dir / 'scan_summary.json'}")
-    print(f"  {output_dir / 'candidates_summary.json'}")
-    for target_count in args.target_bundles:
-        print(f"  {output_dir / f'candidate_{target_count:06d}'}")
+    if fixed_pressure is None:
+        print(f"  {output_dir / 'candidates_summary.json'}")
+        for target_count in target_bundles or []:
+            print(f"  {output_dir / f'candidate_{target_count:06d}'}")
+    else:
+        print(f"  {output_dir / 'summary.json'}")
     return 0
 
 

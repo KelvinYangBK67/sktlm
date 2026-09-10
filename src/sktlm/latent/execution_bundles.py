@@ -118,6 +118,7 @@ def load_execution_bundle_plan(
     condition: str,
     max_segment_tokens: int,
     max_lines_per_document: int | None,
+    document_list: Path | None = None,
 ) -> ExecutionBundlePlan:
     """Load and fail closed on a stale, incomplete, or reordered plan."""
 
@@ -128,7 +129,8 @@ def load_execution_bundle_plan(
     summary_path = root / "summary.json"
     bundles_path = root / "bundles.jsonl"
     documents_path = root / "documents.tsv"
-    scan_path = root.parent / "scan_summary.json"
+    colocated_scan = root / "scan_summary.json"
+    scan_path = colocated_scan if colocated_scan.is_file() else root.parent / "scan_summary.json"
     for required in (summary_path, bundles_path, documents_path, scan_path):
         if not required.is_file():
             raise FileNotFoundError(required)
@@ -169,6 +171,20 @@ def load_execution_bundle_plan(
     )
     if scan.get("manifest_sha256") != _sha256(manifest):
         raise ValueError("Execution bundle plan manifest mismatch.")
+    recorded_document_list = scan.get("document_list")
+    recorded_document_list_sha = scan.get("document_list_sha256")
+    if document_list is None:
+        if recorded_document_list is not None or recorded_document_list_sha is not None:
+            raise ValueError("Execution bundle plan unexpectedly binds a document list.")
+    else:
+        resolved_document_list = (
+            document_list if document_list.is_absolute() else repo_root / document_list
+        )
+        if (
+            recorded_document_list != document_list.as_posix()
+            or recorded_document_list_sha != _sha256(resolved_document_list)
+        ):
+            raise ValueError("Execution bundle plan document-list identity mismatch.")
     config_path = Path(str(scan.get("config", "")))
     if config_path and not config_path.is_absolute():
         config_path = repo_root / config_path

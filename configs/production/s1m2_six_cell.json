@@ -61,7 +61,7 @@
     "piece_shared_token_marginals": true,
     "piece_shared_prefix_nodes": 262144,
     "piece_shared_top_k_piece_references": 4194304,
-    "worker_count_classification": "engineering_only_selected_by_round1"
+    "worker_count_classification": "engineering_only_selected_by_round2"
   },
   "cells": [
     {"cell_id": "s1m2_m0_iast_surface_word", "substrate": "M0", "script": "iast", "condition": "surface_word", "manifest_key": "m0_manifest"},
@@ -80,6 +80,10 @@
     "full": {"document_list": null, "document_list_sha256": null, "max_lines_per_document": null, "phonemes": 46255133, "classification": "full_frozen_corpus_one_cell"}
   },
   "round1": {
+    "status": "MANUALLY_TERMINATED_AFTER_DIAGNOSTIC_CONVERGENCE",
+    "formal_winner": "UNRESOLVED",
+    "worker_search_lower_bound": 12,
+    "next_worker_candidates": [12, 16, 24],
     "cell_id": "s1m2_m0_devanagari_continuous",
     "workload_id": "worker_calibration",
     "workers": [4, 8, 12, 16, 20, 24],
@@ -91,18 +95,27 @@
     }
   },
   "round2": {
+    "mode": "bundle_worker_recalibration",
+    "status": "NOT_STARTED",
+    "primary_workers": [12, 16, 24],
+    "worker_20_status": "RESERVED_IF_DECISION_CRITICAL",
+    "target_pressure": 279047,
+    "max_segments_per_bundle": 256,
+    "max_segment_tokens": 128,
+    "practical_tie_wall_fraction": 0.1,
+    "selection_order": ["wall_seconds", "peak_process_tree_rss_bytes", "canonical_reducer_stall_seconds", "workers"],
+    "w20_host_roles": {"representative": "core-02", "stress": "core-05"},
     "host_roles": ["core-01", "core-02", "core-03", "core-04", "core-05", "core-06"],
     "jobs": [
-      ["s1m2_m0_devanagari_continuous", "stress"],
-      ["s1m2_m0_prime_iast_continuous", "representative"],
-      ["s1m2_m0_devanagari_continuous", "representative"],
-      ["s1m2_m0_devanagari_surface_word", "smoke"],
-      ["s1m2_m0_devanagari_legacy_joined", "smoke"],
-      ["s1m2_m0_iast_surface_word", "smoke"]
+      {"cell_id": "s1m2_m0_devanagari_continuous", "workload": "representative", "workers": 12, "host_role": "core-01", "execution_bundle_plan": "artifacts/s1m2_execution_bundle_plans/round2_representative_tp279047", "execution_bundle_plan_sha256": null, "execution_bundle_plan_status": "MATERIALIZATION_REQUIRED"},
+      {"cell_id": "s1m2_m0_devanagari_continuous", "workload": "representative", "workers": 16, "host_role": "core-02", "execution_bundle_plan": "artifacts/s1m2_execution_bundle_plans/round2_representative_tp279047", "execution_bundle_plan_sha256": null, "execution_bundle_plan_status": "MATERIALIZATION_REQUIRED"},
+      {"cell_id": "s1m2_m0_devanagari_continuous", "workload": "representative", "workers": 24, "host_role": "core-03", "execution_bundle_plan": "artifacts/s1m2_execution_bundle_plans/round2_representative_tp279047", "execution_bundle_plan_sha256": null, "execution_bundle_plan_status": "MATERIALIZATION_REQUIRED"},
+      {"cell_id": "s1m2_m0_devanagari_continuous", "workload": "stress", "workers": 12, "host_role": "core-04", "execution_bundle_plan": "artifacts/s1m2_execution_bundle_plans/round2_stress_tp279047", "execution_bundle_plan_sha256": null, "execution_bundle_plan_status": "MATERIALIZATION_REQUIRED"},
+      {"cell_id": "s1m2_m0_devanagari_continuous", "workload": "stress", "workers": 16, "host_role": "core-05", "execution_bundle_plan": "artifacts/s1m2_execution_bundle_plans/round2_stress_tp279047", "execution_bundle_plan_sha256": null, "execution_bundle_plan_status": "MATERIALIZATION_REQUIRED"},
+      {"cell_id": "s1m2_m0_devanagari_continuous", "workload": "stress", "workers": 24, "host_role": "core-06", "execution_bundle_plan": "artifacts/s1m2_execution_bundle_plans/round2_stress_tp279047", "execution_bundle_plan_sha256": null, "execution_bundle_plan_status": "MATERIALIZATION_REQUIRED"}
     ]
   },
   "gates": {
-    "continuous_runtime_target_seconds_full_projection": 10800,
     "memory_max_host_fraction": 0.8,
     "storage_max_bytes": 322122547200,
     "storage_min_free_bytes_end": 21474836480,
