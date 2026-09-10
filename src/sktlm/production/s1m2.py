@@ -45,6 +45,14 @@ SCRIPT_NEUTRAL_ARTIFACTS = (
 )
 ROUND1_WORKERS = (4, 8, 12, 16, 20, 24)
 ROUND2_PRIMARY_WORKERS = (12, 16, 24)
+FULL_EXECUTION_BUNDLE_CELL_ID = "s1m2_m0_devanagari_continuous"
+FULL_EXECUTION_BUNDLE_PLAN = (
+    "artifacts/s1m2_execution_bundle_plans/"
+    "full_m0_devanagari_continuous_tp279047"
+)
+FULL_EXECUTION_BUNDLE_PLAN_SHA256 = (
+    "9c828b6612d3e60b443511907dc2f731a08548be07caf513ea346e43b7d6414a"
+)
 CORE_HOST_ROLES = tuple(f"core-{index:02d}" for index in range(1, 7))
 WORKER_CALIBRATION_DOCUMENTS = 72
 WORKER_CALIBRATION_STRUCTURE_SHA256 = (
@@ -423,7 +431,7 @@ def _job(
         "resolved_config": resolved_config,
         "resume_policy": copy.deepcopy(contract["resume_policy"]),
     }
-    if plan_type in {"round2", "round2_w20"}:
+    if execution_bundle_plan is not None:
         job.update(
             {
                 "execution_bundle_plan": execution_bundle_plan,
@@ -723,6 +731,7 @@ def build_final_plan(
     output_root: Path = Path("artifacts/latent_benchmarks"),
     metrics_root: Path = Path("artifacts/cloud_metrics"),
     identity: dict[str, Any],
+    repo_root: Path = Path("."),
 ) -> dict[str, Any]:
     if round2.get("schema_version") != ROUND2_SCHEMA:
         raise ValueError("Unsupported Round 2 result schema.")
@@ -747,21 +756,47 @@ def build_final_plan(
         raise ValueError("Round 2 winner did not pass both engineering workloads.")
     if len(str(round2.get("plan_sha256", ""))) != 64:
         raise ValueError("Round 2 result has no valid plan identity.")
-    jobs = [
-        _job(
-            contract,
-            plan_type="full",
-            cell_id=cell["cell_id"],
-            workload_id="full",
-            workers=winner,
-            output_root=output_root,
-            metrics_root=metrics_root,
-            host_role=host_role,
+
+    full_bundle = _bundle_plan_details(
+        repo_root.resolve(),
+        {
+            "execution_bundle_plan": FULL_EXECUTION_BUNDLE_PLAN,
+            "execution_bundle_plan_sha256": FULL_EXECUTION_BUNDLE_PLAN_SHA256,
+            "target_pressure": contract["round2"]["target_pressure"],
+            "max_segments_per_bundle": contract["round2"]["max_segments_per_bundle"],
+        },
+        contract["workloads"]["full"],
+        contract["scientific_config"],
+    )
+    if full_bundle["plan_sha256"] != FULL_EXECUTION_BUNDLE_PLAN_SHA256:
+        raise RuntimeError("Full execution bundle plan identity differs.")
+
+    jobs = []
+    for cell, host_role in zip(
+        contract["cells"], CORE_HOST_ROLES, strict=True
+    ):
+        bundle_kwargs = {}
+        if cell["cell_id"] == FULL_EXECUTION_BUNDLE_CELL_ID:
+            bundle_kwargs = {
+                "execution_bundle_plan": full_bundle["path"],
+                "execution_bundle_plan_sha256": full_bundle["plan_sha256"],
+                "execution_bundle_materialization_sha256": (
+                    full_bundle["materialization_sha256"]
+                ),
+            }
+        jobs.append(
+            _job(
+                contract,
+                plan_type="full",
+                cell_id=cell["cell_id"],
+                workload_id="full",
+                workers=winner,
+                output_root=output_root,
+                metrics_root=metrics_root,
+                host_role=host_role,
+                **bundle_kwargs,
+            )
         )
-        for cell, host_role in zip(
-            contract["cells"], CORE_HOST_ROLES, strict=True
-        )
-    ]
     plan = _base_plan(
         contract,
         contract_path=contract_path,
@@ -881,6 +916,35 @@ def _validate_plan(plan: dict[str, Any], contract: dict[str, Any]) -> None:
                     raise ValueError(
                         f"Plan job {job.get('job_id')} has invalid {name}."
                     )
+        elif plan_type == "full":
+            bundle_fields = (
+                "execution_bundle_plan",
+                "execution_bundle_plan_sha256",
+                "execution_bundle_materialization_sha256",
+            )
+            if job["cell_id"] == FULL_EXECUTION_BUNDLE_CELL_ID:
+                if job.get("execution_bundle_plan") != FULL_EXECUTION_BUNDLE_PLAN:
+                    raise ValueError(
+                        "Full Devanagari continuous job has invalid execution bundle plan."
+                    )
+                if (
+                    job.get("execution_bundle_plan_sha256")
+                    != FULL_EXECUTION_BUNDLE_PLAN_SHA256
+                ):
+                    raise ValueError(
+                        "Full Devanagari continuous job has invalid bundle-plan identity."
+                    )
+                materialization_sha = job.get(
+                    "execution_bundle_materialization_sha256"
+                )
+                if not materialization_sha or len(str(materialization_sha)) != 64:
+                    raise ValueError(
+                        "Full Devanagari continuous job has invalid bundle materialization."
+                    )
+            elif any(job.get(name) is not None for name in bundle_fields):
+                raise ValueError(
+                    "Only Full M0 Devanagari continuous may use this execution bundle plan."
+                )
         if job.get("training_command") != _training_command(job):
             raise ValueError(f"Plan job {job['job_id']} has an invalid trainer command.")
         if Path(job["run_dir"]) != Path(job["output_root"]) / job["run_id"]:
@@ -2178,7 +2242,11 @@ def main(argv: list[str] | None = None) -> None:
         output = args.output
         result = _read_json(_resolve(repo_root, args.round2_result))
         plan = build_final_plan(
-            contract, result, contract_path=args.contract, identity=identity
+            contract,
+            result,
+            contract_path=args.contract,
+            identity=identity,
+            repo_root=repo_root,
         )
         _write_plan_commands(plan, output)
         _write_json(_resolve(repo_root, output), plan)
