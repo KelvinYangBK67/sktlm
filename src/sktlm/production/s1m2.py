@@ -389,12 +389,11 @@ def _job(
     short_cell = cell_id.removeprefix("s1m2_")
     worker_suffix = (
         f"_w{workers}"
-        if plan_type in {"round1", "round2", "round2_w20"}
+        if plan_type in {"round1", "round2"}
         else ""
     )
-    id_phase = "round2" if plan_type == "round2_w20" else plan_type
     run_id = (
-        f"s1m2_{id_phase}_{short_cell}_{workload_id}"
+        f"s1m2_{plan_type}_{short_cell}_{workload_id}"
         f"{worker_suffix}_p{workload.get('passes', contract['passes'])}"
     )
     metrics_id = run_id.removeprefix("s1m2_")
@@ -742,8 +741,8 @@ def build_final_plan(
     if len(round2.get("jobs", ())) != 6:
         raise ValueError("Round 2 result does not contain the primary six jobs.")
     winner = int(round2["WINNER_WORKERS"])
-    if winner not in {*ROUND2_PRIMARY_WORKERS, 20}:
-        raise ValueError("Round 2 winner is not an authorized worker candidate.")
+    if winner not in ROUND2_PRIMARY_WORKERS:
+        raise ValueError("Round 2 winner is not a primary worker candidate.")
     candidate = next(
         (
             row
@@ -1867,36 +1866,11 @@ def aggregate_round2_attestations(
     result["workload_selections"] = selections
     selected_workers = {row["workers"] for row in selections.values()}
     if len(selected_workers) != 1:
-        followup_jobs = []
-        for workload in ("representative", "stress"):
-            source = next(
-                job for job in plan["jobs"] if job["workload_id"] == workload
-            )
-            followup_jobs.append(
-                _job(
-                    contract,
-                    plan_type="round2_w20",
-                    cell_id=source["cell_id"],
-                    workload_id=workload,
-                    workers=20,
-                    output_root=Path(source["output_root"]),
-                    metrics_root=Path(source["metrics_root"]),
-                    host_role=contract["round2"]["w20_host_roles"][workload],
-                    execution_bundle_plan=source["execution_bundle_plan"],
-                    execution_bundle_plan_sha256=source[
-                        "execution_bundle_plan_sha256"
-                    ],
-                    execution_bundle_materialization_sha256=source[
-                        "execution_bundle_materialization_sha256"
-                    ],
-                )
-            )
         result.update(
             {
-                "ROUND2_STATUS": "NEEDS_W20_INTERPOLATION",
+                "ROUND2_STATUS": "FAIL",
                 "WINNER_REASON": "representative_and_stress_prefer_different_workers",
-                "W20_REQUIRED": "yes",
-                "w20_followup_jobs": followup_jobs,
+                "W20_REQUIRED": "no",
             }
         )
         return result
