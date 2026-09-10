@@ -303,6 +303,21 @@ def test_planner_uses_training_segment_identity_and_plan_is_complete(
         for document in documents
     )
     assert all(bundle.segment_count == 1 for bundle in loaded.bundles)
+    for document_index, document_bundles in enumerate(loaded.by_document):
+        expected_ordinal = 0
+        for bundle in document_bundles:
+            assert bundle.document_index == document_index
+            assert bundle.relative_path == documents[document_index].relative_path
+            assert bundle.first_segment_ordinal == expected_ordinal
+            expected_ordinal = bundle.last_segment_ordinal_exclusive
+        assert expected_ordinal == len(
+            list(
+                _iter_document_segments(
+                    documents[document_index],
+                    _config(tmp_path, manifest, f"coverage-{document_index}"),
+                )
+            )
+        )
 
 
 def test_bundle_scheduler_is_bit_exact_with_legacy_document_scheduler(
@@ -480,6 +495,193 @@ def test_bundle_scheduler_refills_while_canonical_first_bundle_waits(
     )
     assert submitted == list(range(6))
     assert first_completed_after == 6
+
+
+def test_inspection_bundle_scheduler_refills_and_reduces_canonically(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    by_document = tuple(
+        tuple(
+            ExecutionBundle(
+                document_index=document_index,
+                relative_path=f"tiny-{document_index}.txt",
+                bundle_index=bundle_index,
+                first_segment_ordinal=bundle_index,
+                last_segment_ordinal_exclusive=bundle_index + 1,
+                first_line_number=1,
+                first_segment_index=bundle_index,
+                last_line_number=1,
+                last_segment_index=bundle_index,
+                segment_count=1,
+                phonemes=1,
+                pressure=1,
+            )
+            for bundle_index in range(3)
+        )
+        for document_index in range(2)
+    )
+    bundles = tuple(bundle for items in by_document for bundle in items)
+    plan = ExecutionBundlePlan(
+        root=tmp_path,
+        scan_signature_sha256="1" * 64,
+        plan_sha256="2" * 64,
+        materialization_sha256="5" * 64,
+        planner_implementation=PLANNER_IMPLEMENTATION,
+        representation_set_sha256="3" * 64,
+        segment_sequence_sha256="4" * 64,
+        bundles=bundles,
+        by_document=by_document,
+    )
+    submitted: list[tuple[int, int]] = []
+    coalesced: list[int] = []
+    applied: list[int] = []
+    first_future: Future[dict[str, object]] | None = None
+
+    class FakeExecutor:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def __enter__(self) -> FakeExecutor:
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            pass
+
+        def submit(self, _function: object, bundle: ExecutionBundle, *_: object) -> Future:
+            nonlocal first_future
+            future: Future[dict[str, object]] = Future()
+            submitted.append(bundle.key)
+            if bundle.key == (0, 0):
+                first_future = future
+            else:
+                future.set_result({"bundle_index": bundle.bundle_index})
+            if len(submitted) == len(bundles):
+                assert first_future is not None
+                first_future.set_result({"bundle_index": 0})
+            return future
+
+    monkeypatch.setattr(training, "ProcessPoolExecutor", FakeExecutor)
+    monkeypatch.setattr(training, "_load_inspection_shard", lambda *_args: None)
+    monkeypatch.setattr(
+        training, "_load_inspection_bundle_shard", lambda **_kwargs: None
+    )
+    monkeypatch.setattr(
+        training, "_validate_bundle_topology_archive", lambda **_kwargs: None
+    )
+
+    def coalesce(**kwargs: object) -> dict[str, object]:
+        document_bundles = kwargs["bundles"]
+        assert isinstance(document_bundles, tuple)
+        document_index = document_bundles[0].document_index
+        coalesced.append(document_index)
+        return {"document_index": document_index}
+
+    monkeypatch.setattr(training, "_coalesce_inspection_bundle_shards", coalesce)
+    monkeypatch.setattr(
+        training,
+        "_apply_inspection_shard",
+        lambda **kwargs: applied.append(int(kwargs["payload"]["document_index"])),
+    )
+    monkeypatch.setattr(training, "_record_run_storage", lambda *_args: None)
+    monkeypatch.setattr(training, "_retire_inspection_shard", lambda *_args: None)
+    monkeypatch.setattr(
+        training, "_retire_inspection_bundle_shards", lambda *_args: None
+    )
+    monkeypatch.setattr(
+        training, "_finalize_inspection", lambda **_kwargs: {"status": "done"}
+    )
+    documents = tuple(
+        CorpusDocument(
+            f"tiny-{index}.txt",
+            tmp_path / f"unused-{index}",
+            f"tiny-{index}",
+            EXPECTED_FREEZE_ID,
+        )
+        for index in range(2)
+    )
+
+    class FakeStore:
+        path = tmp_path / "learner.sqlite"
+
+        @staticmethod
+        def load_frozen_vocabulary() -> None:
+            return None
+
+    result = training._parallel_inspection_bundles(
+        documents=documents,
+        grammar=training.StructuredSandhiGrammar.from_default_inventory(),
+        store=FakeStore(),  # type: ignore[arg-type]
+        config=TrainingConfig(model=S1M2_MODEL, workers=2),
+        inspection_workers=2,
+        run_dir=tmp_path,
+        telemetry=RuntimeTelemetry(),
+        plan=plan,
+    )
+    assert submitted == [bundle.key for bundle in bundles]
+    assert coalesced == [0, 1]
+    assert applied == [0, 1]
+    assert result == {"status": "done"}
+
+
+def test_inspection_only_bundle_scheduler_is_scientifically_exact(
+    tmp_path: Path,
+) -> None:
+    manifest, documents = _fixture(tmp_path)
+    plan_root = _write_plan(
+        tmp_path,
+        name="inspection_exact",
+        manifest=manifest,
+        documents=documents,
+        segments_per_bundle=1,
+    )
+    reference = run_training(
+        _config(tmp_path, manifest, "inspection-reference"),
+        repo_root=Path("."),
+    )
+    bundled_config = _config(
+        tmp_path, manifest, "inspection-bundled", plan=plan_root
+    )
+    stopped = run_training(
+        bundled_config,
+        repo_root=Path("."),
+        stop_after_training=True,
+    )
+    training_provenance = (stopped.run_dir / "provenance.json").read_bytes()
+    inspected = run_training(
+        bundled_config,
+        repo_root=Path("."),
+        inspection_only=True,
+        inspection_workers=2,
+    )
+    scientific = (
+        "iteration_metrics.json",
+        "piece_inventory.tsv",
+        "lexical_diagnostics.tsv",
+        "analyses.jsonl",
+        "boundary_posteriors.jsonl",
+        "rule_usage.tsv",
+        "summary.json",
+    )
+    for name in scientific:
+        assert (reference.run_dir / name).read_bytes() == (
+            inspected.run_dir / name
+        ).read_bytes()
+    assert _piece_state(reference.run_dir) == _piece_state(inspected.run_dir)
+    assert (inspected.run_dir / "provenance.json").read_bytes() == training_provenance
+    inspection_provenance = json.loads(
+        (inspected.run_dir / "inspection_provenance.json").read_text("utf-8")
+    )
+    assert inspection_provenance["mode"] == "inspection_only"
+    assert inspection_provenance["inspection_execution_bundle_plan"][
+        "plan_sha256"
+    ]
+    assert inspected.runtime["gauges"]["inspection_bundle_inflight_limit"] == 4
+    assert inspected.runtime["gauges"]["inspection_bundle_true_inflight"] <= 4
+    assert inspected.runtime["counters"][
+        "inspection_bundle_shard_files_retired"
+    ] > 0
+    assert not tuple((inspected.run_dir / "shards" / "inspection").rglob("*.*"))
 
 
 def test_bundle_resume_reuses_ready_shards_and_rejects_plan_change(

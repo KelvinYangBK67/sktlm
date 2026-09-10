@@ -2933,6 +2933,21 @@ def _inspection_shard_paths(
     }
 
 
+def _inspection_bundle_paths(
+    run_dir: Path,
+    bundle: ExecutionBundle,
+) -> dict[str, Path]:
+    root = run_dir / "shards" / "inspection" / "bundles"
+    stem = (
+        f"document_{bundle.document_index:08d}."
+        f"bundle_{bundle.bundle_index:06d}"
+    )
+    return {
+        "segments": root / f"{stem}.segments.jsonl",
+        "marker": root / f"{stem}.complete.json",
+    }
+
+
 def _initialize_inspection_worker(
     database_path: Path,
     config: TrainingConfig,
@@ -3523,6 +3538,652 @@ def _write_inspection_shard(
     return payload
 
 
+def _write_inspection_bundle_shard(
+    bundle: ExecutionBundle,
+    document: CorpusDocument,
+    config: TrainingConfig,
+    run_dir: Path,
+    config_signature: str,
+    plan_sha256: str,
+) -> dict[str, Any]:
+    """Compute one atomic segment range into an execution-only shard."""
+
+    if _WORKER_GRAMMAR is None or _WORKER_PIECE_ENGINE is None:
+        raise RuntimeError("S1M2 inspection bundle worker was not initialized.")
+    paths = _inspection_bundle_paths(run_dir, bundle)
+    paths["segments"].parent.mkdir(parents=True, exist_ok=True)
+    temporary = paths["segments"].with_suffix(".jsonl.tmp")
+    wall_started = time.perf_counter()
+    cpu_started = time.process_time()
+    candidate_seconds = 0.0
+    inference_seconds = 0.0
+    aggregation_seconds = 0.0
+    frontend_seconds = 0.0
+    serialization_seconds = 0.0
+    active_scorer = _WORKER_PIECE_ENGINE.scorer
+    scorer_calls_before = int(getattr(active_scorer, "score_calls", 0))
+    sqlite_selects_before = int(getattr(active_scorer, "sqlite_selects", 0))
+    sqlite_seconds_before = float(getattr(active_scorer, "sqlite_seconds", 0.0))
+    piece_counters_before = _WORKER_PIECE_ENGINE.counter_snapshot()
+    engineering = RuntimeTelemetry()
+    records = 0
+    first_identity: tuple[int, int] | None = None
+    last_identity: tuple[int, int] | None = None
+    topology_reader: TopologyArchiveReader | None = None
+    try:
+        topology_reader = TopologyArchiveReader(
+            _topology_archive_path(run_dir, bundle.document_index),
+            _topology_archive_header(
+                config_signature, bundle.document_index, document
+            ),
+        )
+        topology_reader.skip_records(bundle.first_segment_ordinal)
+        with temporary.open("w", encoding="utf-8", newline="") as handle:
+            iterator = _iter_execution_bundle_segments(document, config, bundle)
+            while True:
+                started = time.perf_counter()
+                try:
+                    line_number, segment_index, segment = next(iterator)
+                except StopIteration:
+                    frontend_seconds += time.perf_counter() - started
+                    break
+                frontend_seconds += time.perf_counter() - started
+                identity = (line_number, segment_index)
+                if first_identity is None:
+                    first_identity = identity
+                last_identity = identity
+                _observe_segment_telemetry(
+                    engineering, segment, config, phase="inspection"
+                )
+
+                started = time.perf_counter()
+                candidate_profile = CandidateBuildProfile()
+                graph = build_lazy_candidate_graph(
+                    segment,
+                    _WORKER_GRAMMAR,
+                    config.candidate_config,
+                    profile=candidate_profile,
+                )
+                candidate_seconds += time.perf_counter() - started
+                candidate_values = lazy_candidate_graph_statistics(graph)
+                _record_candidate_telemetry(
+                    engineering,
+                    candidate_profile,
+                    candidate_values,
+                    phase="inspection",
+                )
+                topology = topology_reader.read(line_number, segment_index)
+
+                started = time.perf_counter()
+                inference = infer_composed_segment(
+                    graph,
+                    _WORKER_PIECE_ENGINE,
+                    whitespace_merge_penalty=config.whitespace_merge_penalty,
+                    support_epsilon=config.piece_support_epsilon,
+                    topology=topology,
+                )
+                _record_composed_timings(
+                    engineering, inference.timings, phase="inspection"
+                )
+                inference_seconds += time.perf_counter() - started
+
+                serialization_started = time.perf_counter()
+                segment_id = (
+                    f"{document.document_id}:l{line_number:08d}:"
+                    f"s{segment_index:04d}"
+                )
+                analysis_row = {
+                    "schema_version": 2,
+                    "segment_id": segment_id,
+                    "document": document.relative_path,
+                    "line_number": line_number,
+                    "source_start": segment.source_start,
+                    "source_end": segment.source_end,
+                    "surface": segment.written,
+                    "top_analyses": [
+                        _composed_analysis_payload(analysis)
+                        for analysis in inference.top_analyses
+                    ],
+                    "top_analysis_mass": inference.top_analysis_mass,
+                    "residual_posterior": max(
+                        0.0, 1.0 - inference.top_analysis_mass
+                    ),
+                    "identity_mass": inference.identity_mass,
+                    "latent_mass": inference.latent_mass,
+                    "entropy": inference.entropy,
+                    "log_partition": inference.log_partition,
+                    "candidate_counts": candidate_values,
+                    "piece_posterior": {
+                        "expected_piece_tokens": inference.expected_piece_tokens,
+                        "segmentation_entropy": (
+                            inference.piece_segmentation_entropy
+                        ),
+                        "whole_form_uses": inference.expected_whole_form_uses,
+                        "singleton_path_uses": (
+                            inference.expected_singleton_path_uses
+                        ),
+                        "multi_piece_uses": inference.expected_multi_piece_uses,
+                    },
+                }
+                if config.equivalence_diagnostics:
+                    analysis_row["candidate_fingerprint"] = _sha256_bytes(
+                        _canonical_json(candidate_values).encode("utf-8")
+                    )
+                boundary_row = {
+                    "schema_version": 2,
+                    "segment_id": segment_id,
+                    "surface": segment.written,
+                    "boundaries": [
+                        _boundary_posterior_payload(item)
+                        for item in inference.boundary_posteriors
+                    ],
+                }
+                top_probability = (
+                    inference.top_analyses[0].probability
+                    if inference.top_analyses
+                    else 0.0
+                )
+                report_payload = {
+                    "segment_id": segment_id,
+                    "surface": segment.written,
+                    "analysis": (
+                        " | ".join(
+                            word.iast for word in inference.top_analyses[0].words
+                        )
+                        if inference.top_analyses
+                        else ""
+                    ),
+                    "posterior": top_probability,
+                    "identity_mass": inference.identity_mass,
+                    "latent_mass": inference.latent_mass,
+                    "entropy": inference.entropy,
+                    "rule_ids": (
+                        list(inference.top_analyses[0].rule_ids)
+                        if inference.top_analyses
+                        else []
+                    ),
+                }
+                reduction_row = {
+                    "characters": len(segment.written),
+                    "log_partition": inference.log_partition,
+                    "identity_mass": inference.identity_mass,
+                    "latent_mass": inference.latent_mass,
+                    "expected_lexical_tokens": inference.expected_lexical_tokens,
+                    "overflowed_tokens": graph.overflowed_tokens,
+                    "candidate_factors": candidate_values["factors"],
+                    "candidate_nodes": candidate_values["lattice_nodes"],
+                    "candidate_edges": candidate_values[
+                        "lexical_span_hypotheses"
+                    ],
+                    "expected_piece_tokens": inference.expected_piece_tokens,
+                    "piece_segmentation_entropy": (
+                        inference.piece_segmentation_entropy
+                    ),
+                    "expected_whole_form_uses": (
+                        inference.expected_whole_form_uses
+                    ),
+                    "expected_singleton_path_uses": (
+                        inference.expected_singleton_path_uses
+                    ),
+                    "expected_multi_piece_uses": (
+                        inference.expected_multi_piece_uses
+                    ),
+                    "top_probability": top_probability,
+                    "entropy": inference.entropy,
+                    "rule_usage": dict(inference.rule_usage),
+                    "composed_counters": asdict(inference.counters),
+                    "report": report_payload,
+                }
+
+                started = time.perf_counter()
+                surface_usage = [
+                    (form.key, segment.written, float(mass).hex())
+                    for form, mass in inference.lexical_expected_counts.items()
+                    if mass >= config.usage_posterior_threshold
+                ]
+                context_usage = []
+                for analysis in inference.top_analyses:
+                    if analysis.probability < config.usage_posterior_threshold:
+                        continue
+                    for word_index, word in enumerate(analysis.words):
+                        left = (
+                            analysis.words[word_index - 1].key
+                            if word_index
+                            else "<BOS>"
+                        )
+                        right = (
+                            analysis.words[word_index + 1].key
+                            if word_index + 1 < len(analysis.words)
+                            else "<EOS>"
+                        )
+                        context_usage.append(
+                            (
+                                word.key,
+                                f"{left}>{right}",
+                                float(analysis.probability).hex(),
+                            )
+                        )
+                record = {
+                    "schema_version": "sktlm-s1m2-inspection-segment-result/v1",
+                    "line_number": line_number,
+                    "segment_index": segment_index,
+                    "analysis": analysis_row,
+                    "boundary": boundary_row,
+                    "reduction": reduction_row,
+                    "lexical_counts": [
+                        (form.key, float(value).hex())
+                        for form, value in inference.lexical_expected_counts.items()
+                    ],
+                    "piece_counts": [
+                        (
+                            piece.key,
+                            float(value).hex(),
+                            int(inference.piece_occurrence_support[piece]),
+                        )
+                        for piece, value in inference.piece_expected_counts.items()
+                    ],
+                    "surface_usage": surface_usage,
+                    "context_usage": context_usage,
+                }
+                aggregation_seconds += time.perf_counter() - started
+                handle.write(
+                    json.dumps(
+                        record,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                    + "\n"
+                )
+                serialization_seconds += (
+                    time.perf_counter() - serialization_started
+                )
+                records += 1
+            handle.flush()
+            os.fsync(handle.fileno())
+        topology_reader.close(require_eof=False)
+        engineering.increment("topology_archives_reused", 1)
+        engineering.increment("topology_records_reused", topology_reader.records)
+        _replace_file(temporary, paths["segments"])
+        payload = {
+            "schema_version": "sktlm-s1m2-inspection-bundle-shard/v1",
+            "config_signature": config_signature,
+            "plan_sha256": plan_sha256,
+            "document_index": bundle.document_index,
+            "relative_path": document.relative_path,
+            "bundle_index": bundle.bundle_index,
+            "first_segment_ordinal": bundle.first_segment_ordinal,
+            "last_segment_ordinal_exclusive": (
+                bundle.last_segment_ordinal_exclusive
+            ),
+            "first_line_number": bundle.first_line_number,
+            "first_segment_index": bundle.first_segment_index,
+            "last_line_number": bundle.last_line_number,
+            "last_segment_index": bundle.last_segment_index,
+            "segment_count": records,
+            "segment_shard_sha256": _file_sha256(paths["segments"]),
+            "runtime": {
+                "inspection_candidate_generation": candidate_seconds,
+                "inspection_inference": inference_seconds,
+                "inspection_count_aggregation": aggregation_seconds,
+                "inspection_frontend_io": frontend_seconds,
+                "inspection_serialization": serialization_seconds,
+                "inspection_worker_bundle_total": (
+                    time.perf_counter() - wall_started
+                ),
+                "inspection_worker_cpu": time.process_time() - cpu_started,
+                "lexical_score_calls": (
+                    int(getattr(active_scorer, "score_calls", 0))
+                    - scorer_calls_before
+                ),
+                "sqlite_selects": (
+                    int(getattr(active_scorer, "sqlite_selects", 0))
+                    - sqlite_selects_before
+                ),
+                "sqlite_seconds": (
+                    float(getattr(active_scorer, "sqlite_seconds", 0.0))
+                    - sqlite_seconds_before
+                ),
+                "composed_counters": asdict(
+                    _WORKER_PIECE_ENGINE.counter_delta(piece_counters_before)
+                ),
+                "engineering_telemetry": engineering.payload(),
+            },
+        }
+        if (
+            records != bundle.segment_count
+            or first_identity
+            != (bundle.first_line_number, bundle.first_segment_index)
+            or last_identity
+            != (bundle.last_line_number, bundle.last_segment_index)
+        ):
+            raise RuntimeError("Inspection bundle segment coverage changed.")
+        _write_json(paths["marker"], payload)
+        return payload
+    except BaseException:
+        if topology_reader is not None:
+            topology_reader.close(require_eof=False)
+        if temporary.exists():
+            temporary.unlink()
+        raise
+
+
+def _load_inspection_bundle_shard(
+    *,
+    run_dir: Path,
+    bundle: ExecutionBundle,
+    document: CorpusDocument,
+    config_signature: str,
+    plan_sha256: str,
+) -> dict[str, Any] | None:
+    paths = _inspection_bundle_paths(run_dir, bundle)
+    if not paths["segments"].is_file() or not paths["marker"].is_file():
+        return None
+    payload = json.loads(paths["marker"].read_text(encoding="utf-8"))
+    expected = (
+        payload.get("schema_version")
+        == "sktlm-s1m2-inspection-bundle-shard/v1"
+        and payload.get("config_signature") == config_signature
+        and payload.get("plan_sha256") == plan_sha256
+        and int(payload.get("document_index", -1)) == bundle.document_index
+        and payload.get("relative_path") == document.relative_path
+        and int(payload.get("bundle_index", -1)) == bundle.bundle_index
+        and int(payload.get("first_segment_ordinal", -1))
+        == bundle.first_segment_ordinal
+        and int(payload.get("last_segment_ordinal_exclusive", -1))
+        == bundle.last_segment_ordinal_exclusive
+        and int(payload.get("segment_count", -1)) == bundle.segment_count
+    )
+    if not expected:
+        raise RuntimeError(
+            f"Stale or mismatched inspection bundle shard: {paths['marker']}"
+        )
+    if payload.get("segment_shard_sha256") != _file_sha256(paths["segments"]):
+        raise RuntimeError(
+            f"Inspection bundle shard checksum mismatch: {paths['segments']}"
+        )
+    return payload
+
+
+def _coalesce_inspection_bundle_shards(
+    *,
+    bundles: tuple[ExecutionBundle, ...],
+    payloads: dict[tuple[int, int], dict[str, Any]],
+    document: CorpusDocument,
+    config: TrainingConfig,
+    run_dir: Path,
+    config_signature: str,
+) -> dict[str, Any]:
+    """Rebuild the existing document shard in canonical segment order."""
+
+    if not bundles:
+        raise RuntimeError("Cannot coalesce an empty inspection bundle set.")
+    document_index = bundles[0].document_index
+    paths = _inspection_shard_paths(run_dir, document_index)
+    paths["marker"].parent.mkdir(parents=True, exist_ok=True)
+    temporary = {
+        kind: paths[kind].with_suffix(paths[kind].suffix + ".tmp")
+        for kind in _INSPECTION_SHARD_KINDS
+    }
+    aggregate_temporary = temporary["aggregates"]
+    if aggregate_temporary.exists():
+        aggregate_temporary.unlink()
+    aggregate_connection = sqlite3.connect(aggregate_temporary)
+    aggregate_connection.execute("PRAGMA journal_mode=OFF")
+    aggregate_connection.execute("PRAGMA synchronous=OFF")
+    aggregate_connection.execute("PRAGMA temp_store=MEMORY")
+    aggregate_connection.executescript(
+        "CREATE TABLE count_rows ("
+        "row_number INTEGER PRIMARY KEY, form_key TEXT NOT NULL, "
+        "expected_count REAL NOT NULL);"
+        "CREATE TABLE piece_rows ("
+        "row_number INTEGER PRIMARY KEY, form_key TEXT NOT NULL, "
+        "expected_count REAL NOT NULL, occurrence_support INTEGER NOT NULL);"
+        "CREATE TABLE surface_rows ("
+        "row_number INTEGER PRIMARY KEY, form_key TEXT NOT NULL, "
+        "surface TEXT NOT NULL, expected_mass REAL NOT NULL);"
+        "CREATE TABLE context_rows ("
+        "row_number INTEGER PRIMARY KEY, form_key TEXT NOT NULL, "
+        "context TEXT NOT NULL, expected_mass REAL NOT NULL);"
+    )
+    counts: Counter[PhonologicalForm] = Counter()
+    piece_counts: Counter[PhonologicalForm] = Counter()
+    piece_support: Counter[PhonologicalForm] = Counter()
+    surface_buffer: list[tuple[str, str, float]] = []
+    context_buffer: list[tuple[str, str, float]] = []
+    row_numbers = {"counts": 0, "pieces": 0, "surfaces": 0, "contexts": 0}
+    row_counts = {"counts": 0, "pieces": 0, "surfaces": 0, "contexts": 0}
+    seen_lines: set[int] = set()
+    reduction_rows = 0
+    shard_database_seconds = 0.0
+    coalesce_started = time.perf_counter()
+    runtime_totals: Counter[str] = Counter()
+    composed_totals: Counter[str] = Counter()
+    engineering = RuntimeTelemetry()
+
+    def flush_counts() -> None:
+        nonlocal shard_database_seconds
+        started = time.perf_counter()
+        count_rows = []
+        for form, value in sorted(counts.items(), key=lambda item: item[0].key):
+            row_numbers["counts"] += 1
+            count_rows.append((row_numbers["counts"], form.key, float(value)))
+        if count_rows:
+            aggregate_connection.executemany(
+                "INSERT INTO count_rows VALUES (?, ?, ?)", count_rows
+            )
+            row_counts["counts"] += len(count_rows)
+            counts.clear()
+        piece_rows = []
+        for piece, value in sorted(
+            piece_counts.items(), key=lambda item: item[0].key
+        ):
+            row_numbers["pieces"] += 1
+            piece_rows.append(
+                (
+                    row_numbers["pieces"],
+                    piece.key,
+                    float(value),
+                    int(piece_support[piece]),
+                )
+            )
+        if piece_rows:
+            aggregate_connection.executemany(
+                "INSERT INTO piece_rows VALUES (?, ?, ?, ?)", piece_rows
+            )
+            row_counts["pieces"] += len(piece_rows)
+            piece_counts.clear()
+            piece_support.clear()
+        shard_database_seconds += time.perf_counter() - started
+
+    def flush_usage() -> None:
+        nonlocal shard_database_seconds
+        if not surface_buffer and not context_buffer:
+            return
+        started = time.perf_counter()
+        surface_rows = []
+        for key, surface, mass in surface_buffer:
+            row_numbers["surfaces"] += 1
+            surface_rows.append(
+                (row_numbers["surfaces"], key, surface, float(mass))
+            )
+        context_rows = []
+        for key, context, mass in context_buffer:
+            row_numbers["contexts"] += 1
+            context_rows.append(
+                (row_numbers["contexts"], key, context, float(mass))
+            )
+        if surface_rows:
+            aggregate_connection.executemany(
+                "INSERT INTO surface_rows VALUES (?, ?, ?, ?)", surface_rows
+            )
+        if context_rows:
+            aggregate_connection.executemany(
+                "INSERT INTO context_rows VALUES (?, ?, ?, ?)", context_rows
+            )
+        row_counts["surfaces"] += len(surface_rows)
+        row_counts["contexts"] += len(context_rows)
+        surface_buffer.clear()
+        context_buffer.clear()
+        shard_database_seconds += time.perf_counter() - started
+
+    handles: dict[str, Any] = {}
+    try:
+        for kind in _INSPECTION_STREAM_SHARD_KINDS:
+            handles[kind] = temporary[kind].open(
+                "w", encoding="utf-8", newline=""
+            )
+        expected_ordinal = 0
+        for bundle in bundles:
+            if bundle.document_index != document_index:
+                raise RuntimeError("Inspection bundle coalescing crossed documents.")
+            payload = payloads[bundle.key]
+            runtime = payload["runtime"]
+            for label in (
+                "inspection_candidate_generation",
+                "inspection_inference",
+                "inspection_count_aggregation",
+                "inspection_frontend_io",
+                "inspection_serialization",
+                "inspection_worker_bundle_total",
+                "inspection_worker_cpu",
+                "lexical_score_calls",
+                "sqlite_selects",
+                "sqlite_seconds",
+            ):
+                runtime_totals[label] += runtime.get(label, 0)
+            composed_totals.update(runtime.get("composed_counters", {}))
+            engineering.merge_payload(runtime.get("engineering_telemetry", {}))
+            bundle_records = 0
+            first_identity: tuple[int, int] | None = None
+            last_identity: tuple[int, int] | None = None
+            bundle_paths = _inspection_bundle_paths(run_dir, bundle)
+            with bundle_paths["segments"].open(encoding="utf-8") as source:
+                for line in source:
+                    record = json.loads(line)
+                    if record.get("schema_version") != (
+                        "sktlm-s1m2-inspection-segment-result/v1"
+                    ):
+                        raise RuntimeError("Invalid inspection segment shard.")
+                    identity = (
+                        int(record["line_number"]),
+                        int(record["segment_index"]),
+                    )
+                    if first_identity is None:
+                        first_identity = identity
+                    last_identity = identity
+                    seen_lines.add(identity[0])
+                    for key, value in record["lexical_counts"]:
+                        counts[PhonologicalForm.from_key(key)] += float.fromhex(
+                            value
+                        )
+                    for key, value, support in record["piece_counts"]:
+                        piece = PhonologicalForm.from_key(key)
+                        piece_counts[piece] += float.fromhex(value)
+                        piece_support[piece] += int(support)
+                    handles["analyses"].write(
+                        json.dumps(
+                            record["analysis"],
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        )
+                        + "\n"
+                    )
+                    handles["boundaries"].write(
+                        json.dumps(
+                            record["boundary"],
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        )
+                        + "\n"
+                    )
+                    handles["reductions"].write(
+                        json.dumps(
+                            record["reduction"],
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        )
+                        + "\n"
+                    )
+                    surface_buffer.extend(
+                        (key, surface, float.fromhex(mass))
+                        for key, surface, mass in record["surface_usage"]
+                    )
+                    context_buffer.extend(
+                        (key, context, float.fromhex(mass))
+                        for key, context, mass in record["context_usage"]
+                    )
+                    if len(counts) + len(piece_counts) >= config.flush_types:
+                        flush_counts()
+                    if len(surface_buffer) + len(context_buffer) >= config.flush_types:
+                        flush_usage()
+                    bundle_records += 1
+                    reduction_rows += 1
+            if (
+                bundle.first_segment_ordinal != expected_ordinal
+                or bundle_records != bundle.segment_count
+                or first_identity
+                != (bundle.first_line_number, bundle.first_segment_index)
+                or last_identity
+                != (bundle.last_line_number, bundle.last_segment_index)
+            ):
+                raise RuntimeError("Inspection bundle coverage is not canonical.")
+            expected_ordinal = bundle.last_segment_ordinal_exclusive
+        flush_counts()
+        flush_usage()
+        for handle in handles.values():
+            handle.flush()
+            os.fsync(handle.fileno())
+        aggregate_connection.commit()
+    finally:
+        for handle in handles.values():
+            handle.close()
+        aggregate_connection.close()
+    for kind in _INSPECTION_STREAM_SHARD_KINDS:
+        _replace_file(temporary[kind], paths[kind])
+    _replace_file(aggregate_temporary, paths["aggregates"])
+    runtime = {
+        "inspection_candidate_generation": runtime_totals[
+            "inspection_candidate_generation"
+        ],
+        "inspection_inference": runtime_totals["inspection_inference"],
+        "inspection_count_aggregation": runtime_totals[
+            "inspection_count_aggregation"
+        ],
+        "inspection_frontend_io": runtime_totals["inspection_frontend_io"],
+        "inspection_serialization": runtime_totals["inspection_serialization"],
+        "inspection_worker_document_total": runtime_totals[
+            "inspection_worker_bundle_total"
+        ],
+        "inspection_worker_cpu": runtime_totals["inspection_worker_cpu"],
+        "inspection_worker_shard_database": shard_database_seconds,
+        "inspection_bundle_coalescing": time.perf_counter() - coalesce_started,
+        "lexical_score_calls": int(runtime_totals["lexical_score_calls"]),
+        "sqlite_selects": int(runtime_totals["sqlite_selects"]),
+        "sqlite_seconds": runtime_totals["sqlite_seconds"],
+        "composed_counters": {
+            key: int(value) for key, value in composed_totals.items()
+        },
+        "engineering_telemetry": engineering.payload(),
+    }
+    payload = {
+        "schema_version": 2,
+        "config_signature": config_signature,
+        "document_index": document_index,
+        "relative_path": document.relative_path,
+        "lines": len(seen_lines),
+        "rows": {**row_counts, "reductions": reduction_rows},
+        "sha256": {
+            kind: _file_sha256(paths[kind])
+            for kind in _INSPECTION_SHARD_KINDS
+        },
+        "runtime": runtime,
+        "aggregate_format": _INSPECTION_AGGREGATE_FORMAT,
+    }
+    _write_json(paths["marker"], payload)
+    return payload
+
+
 def _load_inspection_shard(
     run_dir: Path,
     document_index: int,
@@ -3778,6 +4439,24 @@ def _retire_inspection_shard(
     telemetry.increment("inspection_shard_bytes_retired", retired_bytes)
 
 
+def _retire_inspection_bundle_shards(
+    run_dir: Path,
+    bundles: tuple[ExecutionBundle, ...],
+    telemetry: RuntimeTelemetry,
+) -> None:
+    existing = tuple(
+        path
+        for bundle in bundles
+        for path in _inspection_bundle_paths(run_dir, bundle).values()
+        if path.is_file()
+    )
+    retired_bytes = _existing_path_bytes(existing)
+    for path in existing:
+        path.unlink()
+    telemetry.increment("inspection_bundle_shard_files_retired", len(existing))
+    telemetry.increment("inspection_bundle_shard_bytes_retired", retired_bytes)
+
+
 def _finalize_inspection(
     *,
     store: LexiconStore,
@@ -3896,6 +4575,209 @@ def _finalize_inspection(
         newline="",
     )
     return summary
+
+
+def _parallel_inspection_bundles(
+    *,
+    documents: tuple[CorpusDocument, ...],
+    grammar: StructuredSandhiGrammar,
+    store: LexiconStore,
+    config: TrainingConfig,
+    inspection_workers: int,
+    run_dir: Path,
+    telemetry: RuntimeTelemetry,
+    plan: ExecutionBundlePlan,
+) -> dict[str, Any]:
+    """Run true inflight inspection bundles and reduce documents canonically."""
+
+    signature = _config_signature(config)
+    vocabulary = store.load_frozen_vocabulary()
+    if config.vocab_budget is not None and vocabulary is None:
+        raise RuntimeError("Inspection requires the frozen pass-1 vocabulary.")
+    analyses_tmp = run_dir / "analyses.jsonl.tmp"
+    boundaries_tmp = run_dir / "boundary_posteriors.jsonl.tmp"
+    aggregate = _InspectionAggregate()
+    parallel_started = telemetry.now()
+    existing_documents: dict[int, dict[str, Any]] = {}
+    for document_index, document in enumerate(documents):
+        payload = _load_inspection_shard(
+            run_dir, document_index, document, signature
+        )
+        if payload is not None:
+            existing_documents[document_index] = payload
+    todo = tuple(
+        bundle
+        for document_index in range(len(documents))
+        if document_index not in existing_documents
+        for bundle in plan.by_document[document_index]
+    )
+    bundle_by_key = {bundle.key: bundle for bundle in plan.bundles}
+    repair_engine = ComposedPieceInference(
+        NeutralPieceScorer(),
+        model_config=config.piece_model_config,
+        cache_config=config.piece_cache_config,
+    )
+    context = multiprocessing.get_context("spawn")
+    with analyses_tmp.open("wb") as analyses_handle, boundaries_tmp.open(
+        "wb"
+    ) as boundaries_handle, ProcessPoolExecutor(
+        max_workers=inspection_workers,
+        mp_context=context,
+        initializer=_initialize_inspection_worker,
+        initargs=(store.path, config, vocabulary),
+    ) as executor:
+        max_inflight = inspection_workers * 2
+        telemetry.maximum("inspection_pending_shard_limit", max_inflight)
+        telemetry.maximum("inspection_bundle_inflight_limit", max_inflight)
+        inflight: dict[Future[dict[str, Any]], ExecutionBundle] = {}
+        ready: dict[tuple[int, int], dict[str, Any]] = {}
+        validated_topology: set[int] = set()
+        next_submit = 0
+
+        def fill_inflight() -> None:
+            nonlocal next_submit
+            while next_submit < len(todo) and len(inflight) < max_inflight:
+                bundle = todo[next_submit]
+                document = documents[bundle.document_index]
+                existing = _load_inspection_bundle_shard(
+                    run_dir=run_dir,
+                    bundle=bundle,
+                    document=document,
+                    config_signature=signature,
+                    plan_sha256=plan.plan_sha256,
+                )
+                if existing is not None:
+                    ready[bundle.key] = existing
+                    telemetry.increment("inspection_bundle_shards_resumed", 1)
+                    next_submit += 1
+                    continue
+                if bundle.document_index not in validated_topology:
+                    _validate_bundle_topology_archive(
+                        document=document,
+                        document_index=bundle.document_index,
+                        config=config,
+                        run_dir=run_dir,
+                        config_signature=signature,
+                        grammar=grammar,
+                        piece_engine=repair_engine,
+                        telemetry=telemetry,
+                    )
+                    validated_topology.add(bundle.document_index)
+                future = executor.submit(
+                    _write_inspection_bundle_shard,
+                    bundle,
+                    document,
+                    config,
+                    run_dir,
+                    signature,
+                    plan.plan_sha256,
+                )
+                inflight[future] = bundle
+                next_submit += 1
+            telemetry.maximum("inspection_pending_shards", len(inflight))
+            telemetry.maximum("inspection_bundle_true_inflight", len(inflight))
+            telemetry.maximum("inspection_bundle_ready_shards", len(ready))
+
+        def collect_completed() -> None:
+            if not inflight:
+                return
+            wait(tuple(inflight), return_when=FIRST_COMPLETED)
+            completed = tuple(future for future in inflight if future.done())
+            for future in completed:
+                bundle = inflight.pop(future)
+                ready[bundle.key] = future.result()
+            telemetry.observe("inspection_bundle_true_inflight", len(inflight))
+            telemetry.observe("inspection_bundle_ready_shards", len(ready))
+            fill_inflight()
+
+        fill_inflight()
+        for document_index, document in enumerate(documents):
+            document_bundles = plan.by_document[document_index]
+            if document_index in existing_documents:
+                payload = existing_documents[document_index]
+                telemetry.add_seconds("inspection_reducer_stall", 0.0)
+            else:
+                expected_keys = tuple(bundle.key for bundle in document_bundles)
+                wait_started = telemetry.now()
+                while any(key not in ready for key in expected_keys):
+                    if not inflight:
+                        raise RuntimeError(
+                            "Inspection bundle scheduler exhausted inflight work "
+                            f"before document {document_index} became ready."
+                        )
+                    collect_completed()
+                telemetry.add_seconds(
+                    "inspection_reducer_stall",
+                    time.perf_counter() - wait_started,
+                )
+                payload = _coalesce_inspection_bundle_shards(
+                    bundles=document_bundles,
+                    payloads=ready,
+                    document=document,
+                    config=config,
+                    run_dir=run_dir,
+                    config_signature=signature,
+                )
+            completed_but_blocked = len(ready) - sum(
+                bundle.key in ready for bundle in document_bundles
+            )
+            telemetry.observe(
+                "inspection_completed_but_blocked_shards_per_reduction",
+                completed_but_blocked,
+            )
+            telemetry.maximum(
+                "inspection_completed_but_blocked_shards",
+                completed_but_blocked,
+            )
+            pending_bundles = {
+                bundle.key: bundle for bundle in inflight.values()
+            }
+            pending_bundles.update(
+                {key: bundle_by_key[key] for key in ready}
+            )
+            pending_paths = [
+                path
+                for bundle in pending_bundles.values()
+                for path in _inspection_bundle_paths(run_dir, bundle).values()
+            ]
+            pending_paths.extend(
+                _inspection_shard_paths(run_dir, document_index).values()
+            )
+            telemetry.maximum(
+                "inspection_pending_shard_bytes",
+                _existing_path_bytes(pending_paths),
+            )
+            _apply_inspection_shard(
+                payload=payload,
+                store=store,
+                config=config,
+                run_dir=run_dir,
+                analyses_handle=analyses_handle,
+                boundaries_handle=boundaries_handle,
+                aggregate=aggregate,
+                telemetry=telemetry,
+            )
+            _record_run_storage(telemetry, run_dir)
+            _retire_inspection_shard(run_dir, document_index, telemetry)
+            _retire_inspection_bundle_shards(
+                run_dir, document_bundles, telemetry
+            )
+            for bundle in document_bundles:
+                ready.pop(bundle.key, None)
+            telemetry.observe("inspection_bundle_ready_shards", len(ready))
+            fill_inflight()
+    parallel_seconds = time.perf_counter() - parallel_started
+    telemetry.add_seconds("inspection_parallel_wall", parallel_seconds)
+    telemetry.add_seconds("inspection_document_total", parallel_seconds)
+    return _finalize_inspection(
+        store=store,
+        grammar=grammar,
+        config=config,
+        run_dir=run_dir,
+        analyses_tmp=analyses_tmp,
+        boundaries_tmp=boundaries_tmp,
+        aggregate=aggregate,
+    )
 
 
 def _parallel_inspection_pass(
@@ -4103,11 +4985,27 @@ def _inspection_pass(
     inspection_workers: int,
     run_dir: Path,
     telemetry: RuntimeTelemetry,
+    execution_plan: ExecutionBundlePlan | None = None,
 ) -> dict[str, Any]:
     if config.model == S1M1_MODEL:
         store.begin_inspection()
     else:
         store.begin_piece_inspection()
+    if (
+        config.model == S1M2_MODEL
+        and inspection_workers > 1
+        and execution_plan is not None
+    ):
+        return _parallel_inspection_bundles(
+            documents=documents,
+            grammar=grammar,
+            store=store,
+            config=config,
+            inspection_workers=inspection_workers,
+            run_dir=run_dir,
+            telemetry=telemetry,
+            plan=execution_plan,
+        )
     if inspection_workers > 1:
         return _parallel_inspection_pass(
             documents=documents,
@@ -4769,6 +5667,7 @@ def _begin_inspection_provenance(
     inspection_workers: int,
     inspection_retained_factor_bytes: int,
     inspection_only: bool,
+    execution_plan: ExecutionBundlePlan | None = None,
 ) -> dict[str, Any]:
     path = run_dir / "inspection_provenance.json"
     attempt = 1
@@ -4793,6 +5692,10 @@ def _begin_inspection_provenance(
             "segment_budget_bytes": inspection_retained_factor_bytes,
         },
     }
+    if execution_plan is not None:
+        payload["inspection_execution_bundle_plan"] = (
+            execution_plan.provenance_payload()
+        )
     _write_json(path, payload)
     return payload
 
@@ -4882,7 +5785,7 @@ def run_training(
             ),
         )
         execution_plan = None
-        if config.execution_bundle_plan is not None and not inspection_only:
+        if config.execution_bundle_plan is not None:
             execution_plan = load_execution_bundle_plan(
                 config.execution_bundle_plan,
                 repo_root=repo_root,
@@ -5172,6 +6075,7 @@ def run_training(
                 config.inspection_retained_factor_bytes
             ),
             inspection_only=inspection_only,
+            execution_plan=execution_plan,
         )
         summary = _inspection_pass(
             documents=documents,
@@ -5181,6 +6085,7 @@ def run_training(
             inspection_workers=actual_inspection_workers,
             run_dir=run_dir,
             telemetry=telemetry,
+            execution_plan=execution_plan,
         )
         _record_store_storage(telemetry, store.path)
         telemetry.maximum(
