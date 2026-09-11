@@ -21,27 +21,43 @@ def _contract() -> dict:
     )
 
 
-def test_full_rejects_retired_w20_winner() -> None:
+def test_full_rejects_retired_w20_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     contract = _contract()
     round2 = {
         "schema_version": s1m2.ROUND2_SCHEMA,
         "plan_sha256": "c" * 64,
         "production_contract_sha256": s1m2._canonical_sha256(contract),
-        "ROUND2_STATUS": "PASS",
-        "WINNER_WORKERS": 20,
-        "jobs": [{} for _ in range(6)],
-        "candidate_ranking": [
-            {"workers": 20, "eligible": True},
-        ],
+        "ROUND2_STATUS": "FAIL",
+        "WINNER_WORKERS": None,
+        "jobs": [{"candidate_overflow": 1} for _ in range(6)],
     }
+    closure = {
+        "closure_sha256": "e" * 64,
+        "round2_result_sha256": "f" * 64,
+        "retained_workers": 20,
+    }
+    monkeypatch.setattr(s1m2, "validate_round3_closure", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        s1m2,
+        "_bundle_plan_details",
+        lambda *args, **kwargs: {
+            "path": s1m2.FULL_EXECUTION_BUNDLE_PLAN,
+            "plan_sha256": s1m2.FULL_EXECUTION_BUNDLE_PLAN_SHA256,
+            "materialization_sha256": "d" * 64,
+        },
+    )
 
-    with pytest.raises(ValueError, match="primary worker candidate"):
-        s1m2.build_final_plan(
+    plan = s1m2.build_final_plan(
             contract,
             round2,
+            closure,
             identity=IDENTITY,
             repo_root=Path("."),
         )
+    with pytest.raises(ValueError, match="invalid Round 3 eligibility binding"):
+        s1m2._validate_plan(plan, contract)
 
 
 def _synthetic_round2_plan(contract: dict) -> dict:

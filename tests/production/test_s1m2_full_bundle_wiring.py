@@ -15,17 +15,22 @@ IDENTITY = {
 }
 
 
-def _round2_pass(contract: dict) -> dict:
+def _round2_fail(contract: dict) -> dict:
     return {
         "schema_version": s1m2.ROUND2_SCHEMA,
         "plan_sha256": "c" * 64,
         "production_contract_sha256": s1m2._canonical_sha256(contract),
-        "ROUND2_STATUS": "PASS",
-        "WINNER_WORKERS": 12,
-        "jobs": [{"valid": True} for _ in range(6)],
-        "candidate_ranking": [
-            {"workers": 12, "eligible": True},
-        ],
+        "ROUND2_STATUS": "FAIL",
+        "WINNER_WORKERS": None,
+        "jobs": [{"candidate_overflow": 1} for _ in range(6)],
+    }
+
+
+def _closure() -> dict:
+    return {
+        "closure_sha256": "e" * 64,
+        "round2_result_sha256": "f" * 64,
+        "retained_workers": 12,
     }
 
 
@@ -60,10 +65,12 @@ def test_full_plan_binds_bundle_only_to_devanagari_continuous(
         }
 
     monkeypatch.setattr(s1m2, "_bundle_plan_details", fake_bundle_details)
+    monkeypatch.setattr(s1m2, "validate_round3_closure", lambda *args, **kwargs: None)
 
     plan = s1m2.build_final_plan(
         contract,
-        _round2_pass(contract),
+        _round2_fail(contract),
+        _closure(),
         identity=IDENTITY,
         repo_root=tmp_path,
     )
@@ -114,10 +121,12 @@ def test_full_plan_rejects_missing_required_bundle_binding(
             "materialization_sha256": "d" * 64,
         },
     )
+    monkeypatch.setattr(s1m2, "validate_round3_closure", lambda *args, **kwargs: None)
 
     plan = s1m2.build_final_plan(
         contract,
-        _round2_pass(contract),
+        _round2_fail(contract),
+        _closure(),
         identity=IDENTITY,
         repo_root=tmp_path,
     )

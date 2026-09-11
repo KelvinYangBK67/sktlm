@@ -43,24 +43,23 @@ def _round1_result(workers: int = 16) -> dict[str, object]:
     }
 
 
-def _round2_result(*, status: str = "PASS", workers: int = 16) -> dict[str, object]:
+def _round2_result() -> dict[str, object]:
     contract = _contract()
-    gate_status = "PASS" if status == "PASS" else "FAIL"
     return {
         "schema_version": s1m2.ROUND2_SCHEMA,
         "plan_sha256": "c" * 64,
         "production_contract_sha256": s1m2._canonical_sha256(contract),
-        "ROUND2_STATUS": status,
-        "WINNER_WORKERS": workers,
-        "CONTINUOUS_RUNTIME_TARGET": gate_status,
-        "PRODUCTION_MEMORY_GATE": gate_status,
-        "PRODUCTION_STORAGE_GATE": gate_status,
-        "PRODUCTION_RESUME_GATE": gate_status,
-        "PRODUCTION_PROVENANCE_GATE": gate_status,
-        "S1M2_SIX_CELL_INTERFACE_GATE": gate_status,
-        "jobs": [
-            {"valid": status == "PASS", "workers": workers} for _ in range(6)
-        ],
+        "ROUND2_STATUS": "FAIL",
+        "WINNER_WORKERS": None,
+        "jobs": [{"valid": False, "candidate_overflow": 1} for _ in range(6)],
+    }
+
+
+def _round3_closure() -> dict[str, object]:
+    return {
+        "closure_sha256": "e" * 64,
+        "round2_result_sha256": "f" * 64,
+        "retained_workers": 12,
     }
 
 
@@ -317,14 +316,14 @@ def test_round1_aggregator_fails_closed_on_filesystem_headroom(
     )
 
 
-def test_round2_and_final_plans_consume_one_winner_artifact() -> None:
+def test_round2_and_final_plans_use_round3_retained_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     contract = _contract()
-    round2 = s1m2.build_round2_plan(
-        contract, _round1_result(16), identity=IDENTITY
-    )
+    round2 = s1m2.build_round2_plan(contract, identity=IDENTITY)
     s1m2._validate_plan(round2, contract)
     assert len(round2["jobs"]) == 6
-    assert {job["workers"] for job in round2["jobs"]} == {16}
+    assert {job["workers"] for job in round2["jobs"]} == {12, 16, 24}
     assert [job["host_role"] for job in round2["jobs"]] == list(
         s1m2.CORE_HOST_ROLES
     )
@@ -334,12 +333,14 @@ def test_round2_and_final_plans_consume_one_winner_artifact() -> None:
         (job["cell_id"], job["workload_id"]) for job in round2["jobs"]
     ] == [tuple(item) for item in contract["round2"]["jobs"]]
 
-    passed = _round2_result(workers=16)
-    final = s1m2.build_final_plan(contract, passed, identity=IDENTITY)
+    monkeypatch.setattr(s1m2, "validate_round3_closure", lambda *args, **kwargs: None)
+    final = s1m2.build_final_plan(
+        contract, _round2_result(), _round3_closure(), identity=IDENTITY
+    )
     s1m2._validate_plan(final, contract)
     assert len(final["jobs"]) == 6
     assert {job["workload_id"] for job in final["jobs"]} == {"full"}
-    assert {job["workers"] for job in final["jobs"]} == {16}
+    assert {job["workers"] for job in final["jobs"]} == {12}
     assert final["FULL_M0_PROCESS_RUNNING"] == "NO"
     assert [job["host_role"] for job in final["jobs"]] == [
         "core-01", "core-02", "core-03", "core-04", "core-05", "core-06"
@@ -348,9 +349,7 @@ def test_round2_and_final_plans_consume_one_winner_artifact() -> None:
 
 def test_round2_gates_are_machine_readable(monkeypatch: pytest.MonkeyPatch) -> None:
     contract = _contract()
-    plan = s1m2.build_round2_plan(
-        contract, _round1_result(12), identity=IDENTITY
-    )
+    plan = s1m2.build_round2_plan(contract, identity=IDENTITY)
 
     def fake_audit(*args: object, **kwargs: object) -> dict[str, object]:
         return {
@@ -388,9 +387,7 @@ def test_round2_storage_gate_fails_closed_on_actual_peak_for_all_job_classes(
     target_workload: str,
 ) -> None:
     contract = _contract()
-    plan = s1m2.build_round2_plan(
-        contract, _round1_result(12), identity=IDENTITY
-    )
+    plan = s1m2.build_round2_plan(contract, identity=IDENTITY)
     storage_max = int(contract["gates"]["storage_max_bytes"])
     target_job_id = next(
         job["job_id"]
@@ -458,23 +455,21 @@ def test_bounded_script_neutral_gate_covers_all_three_conditions() -> None:
     assert s1m2._script_neutral_bounded_gate(rows)["status"] == "FAIL"
 
 
-def test_final_plan_fails_closed_before_round2_passes() -> None:
+def test_final_plan_fails_closed_without_round3_closure() -> None:
     contract = _contract()
-    failed = _round2_result(status="FAIL", workers=8)
-    with pytest.raises(RuntimeError, match="before Round 2 passes"):
-        s1m2.build_final_plan(contract, failed, identity=IDENTITY)
+    with pytest.raises(ValueError, match="Unsupported Round 3 closure"):
+        s1m2.build_final_plan(contract, _round2_result(), {}, identity=IDENTITY)
 
 
-def test_cloud_registry_contains_all_prevm_planned_identities() -> None:
+def test_cloud_registry_contains_all_prevm_planned_identities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     contract = _contract()
     round1 = s1m2.build_round1_plan(contract, identity=IDENTITY)
-    round2 = s1m2.build_round2_plan(
-        contract, _round1_result(12), identity=IDENTITY
-    )
+    round2 = s1m2.build_round2_plan(contract, identity=IDENTITY)
+    monkeypatch.setattr(s1m2, "validate_round3_closure", lambda *args, **kwargs: None)
     final = s1m2.build_final_plan(
-        contract,
-        _round2_result(workers=12),
-        identity=IDENTITY,
+        contract, _round2_result(), _round3_closure(), identity=IDENTITY
     )
     registry = tomllib.loads(
         Path("configs/cloud/experiment_registry.toml").read_text(encoding="utf-8")
@@ -488,7 +483,9 @@ def test_cloud_registry_contains_all_prevm_planned_identities() -> None:
     }
     assert len(planned) == 18
     assert registry_ids == generated_ids
-    assert registry["s1m2_prevm"]["round1_status"] == "NOT_STARTED"
+    assert registry["s1m2_prevm"]["round1_status"] == (
+        "MANUALLY_TERMINATED_AFTER_DIAGNOSTIC_CONVERGENCE"
+    )
     assert registry["s1m2_prevm"]["full_m0_process_running"] is False
     assert registry["s1m2_prevm"]["launch_mode"] == "SIX_WAY_PARALLEL"
     assert registry["s1m2_prevm"]["host_roles"] == list(s1m2.CORE_HOST_ROLES)

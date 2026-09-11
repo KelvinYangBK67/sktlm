@@ -26,7 +26,12 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from sktlm.cloud.contracts import load_experiment_contract
-from sktlm.latent.training import S1M2_MODEL, TrainingConfig, run_training
+from sktlm.latent.training import (
+    COMPACT_EXACT_S1M2,
+    S1M2_MODEL,
+    TrainingConfig,
+    run_training,
+)
 
 
 CONTRACT_PATH = Path("configs/production/s1m2_six_cell.json")
@@ -37,6 +42,7 @@ ROUND1_SCHEMA = "sktlm-s1m2-round1-result/v1"
 ROUND1_ATTESTATION_SCHEMA = "sktlm-s1m2-round1-attestation/v1"
 ROUND2_SCHEMA = "sktlm-s1m2-round2-result/v1"
 ROUND2_ATTESTATION_SCHEMA = "sktlm-s1m2-round2-attestation/v1"
+ROUND3_CLOSURE_SCHEMA = "sktlm-s1m2-round3-closure/v1"
 BOUND_VALIDATION_SCHEMA = "sktlm-s1m2-bounded-validation/v1"
 SCRIPT_NEUTRAL_ARTIFACTS = (
     "piece_inventory.tsv",
@@ -52,6 +58,24 @@ FULL_EXECUTION_BUNDLE_PLAN = (
 )
 FULL_EXECUTION_BUNDLE_PLAN_SHA256 = (
     "9c828b6612d3e60b443511907dc2f731a08548be07caf513ea346e43b7d6414a"
+)
+COMPACT_EXACT_INFERENCE_COMMIT = "7752da2c453804a000dac83a36bd4aa58b9a0b8c"
+COMPACT_OCCURRENCE_SUPPORT_FIX_COMMIT = (
+    "ba4cc5f99752e66d01944869bea92b77b0dd32b7"
+)
+ROUND3_RETAINED_WORKERS = 12
+ROUND3_REAL_OFFENDER_EVIDENCE = Path(
+    "artifacts/s1m2_candidate_pressure/round3_real_offender_exactness_raw520.json"
+)
+ROUND3_WORKER_EQUIVALENCE_EVIDENCE = Path(
+    "artifacts/s1m2_candidate_pressure/round3_local_worker_equivalence_w2_w4.json"
+)
+ROUND3_TAIL_EVIDENCE = tuple(
+    Path(
+        "artifacts/s1m2_candidate_pressure/round3_compact_tail/"
+        f"raw{raw}_postfix.json"
+    )
+    for raw in (1002, 1410, 1841, 2484)
 )
 CORE_HOST_ROLES = tuple(f"core-{index:02d}" for index in range(1, 7))
 WORKER_CALIBRATION_DOCUMENTS = 72
@@ -722,9 +746,243 @@ def select_worker_calibration_documents(
     return selected
 
 
+def _git_is_ancestor(repo_root: Path, ancestor: str, descendant: str) -> bool:
+    return subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+        cwd=repo_root,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    ).returncode == 0
+
+
+def _evidence_path(repo_root: Path, path: Path) -> str:
+    resolved = _resolve(repo_root, path).resolve()
+    try:
+        return resolved.relative_to(repo_root.resolve()).as_posix()
+    except ValueError:
+        return resolved.as_posix()
+
+
+def _validate_historical_round2(
+    round2: dict[str, Any], contract: dict[str, Any]
+) -> None:
+    if round2.get("schema_version") != ROUND2_SCHEMA:
+        raise ValueError("Unsupported Round 2 result schema.")
+    if round2.get("production_contract_sha256") != _canonical_sha256(contract):
+        raise ValueError("Round 2 result does not bind the production contract.")
+    if round2.get("ROUND2_STATUS") != "FAIL":
+        raise ValueError("Round 3 requires the immutable Round 2 FAIL result.")
+    if round2.get("WINNER_WORKERS") is not None:
+        raise ValueError("Historical Round 2 must retain no formal winner.")
+    if len(round2.get("jobs", ())) != 6:
+        raise ValueError("Round 2 result does not contain the primary six jobs.")
+    if len(str(round2.get("plan_sha256", ""))) != 64:
+        raise ValueError("Round 2 result has no valid plan identity.")
+    if not any(int(job.get("candidate_overflow", 0)) > 0 for job in round2["jobs"]):
+        raise ValueError("Round 2 FAIL does not retain candidate-overflow evidence.")
+
+
+def _validate_round3_evidence(
+    real_offender: dict[str, Any],
+    worker_equivalence: dict[str, Any],
+    tail_cases: tuple[dict[str, Any], ...],
+) -> None:
+    case = real_offender.get("case", {})
+    compact = real_offender.get("compact", {})
+    scientific = real_offender.get("scientific_equivalence", {})
+    if (
+        real_offender.get("status") != "PASS"
+        or real_offender.get("gate")
+        != "REAL_OFFENDER_COMPACT_VS_LEGACY_EXACTNESS"
+        or case.get("raw_internal_matches") != 520
+        or case.get("retained_internal_matches") != 520
+        or compact.get("support_truncation_tokens") != 0
+        or compact.get("shared_batch_fallbacks") != 0
+        or not scientific
+        or any(value != "PASS" for value in scientific.values())
+    ):
+        raise ValueError("Round 3 real-offender exactness evidence failed.")
+
+    artifacts = worker_equivalence.get("scientific_artifacts", {})
+    if (
+        worker_equivalence.get("status") != "PASS"
+        or worker_equivalence.get("gate")
+        != "COMPACT_LOCAL_WORKER_SCIENTIFIC_EQUIVALENCE"
+        or worker_equivalence.get("scientific_artifacts_all_byte_identical")
+        is not True
+        or worker_equivalence.get("workers") != [2, 4]
+        or worker_equivalence.get("same_bundle_plan") is not True
+        or worker_equivalence.get("training_history") != "EXACT"
+        or worker_equivalence.get("piece_lexicon_state") != "EXACT"
+        or worker_equivalence.get("worker_selection_reopened") is not False
+        or worker_equivalence.get("round2_engineering_preference_retained")
+        != ROUND3_RETAINED_WORKERS
+        or not artifacts
+        or any(item.get("equal") is not True for item in artifacts.values())
+    ):
+        raise ValueError("Round 3 worker-equivalence evidence failed.")
+
+    expected_raws = (1002, 1410, 1841, 2484)
+    if len(tail_cases) != len(expected_raws):
+        raise ValueError("Round 3 pressure-tail evidence is incomplete.")
+    for expected_raw, evidence in zip(expected_raws, tail_cases, strict=True):
+        case = evidence.get("case", {})
+        compact = evidence.get("compact", {})
+        posterior_mass = evidence.get("posterior_mass")
+        if (
+            evidence.get("status") != "PASS"
+            or evidence.get("gate") != "COMPACT_PRODUCTION_PASS1_TAIL"
+            or case.get("raw") != expected_raw
+            or case.get("retained") != expected_raw
+            or compact.get("support_truncation_tokens") != 0
+            or compact.get("shared_batch_fallbacks") != 0
+            or not isinstance(posterior_mass, (int, float))
+            or abs(float(posterior_mass) - 1.0) > 1e-12
+        ):
+            raise ValueError(
+                f"Round 3 pressure-tail evidence failed for raw={expected_raw}."
+            )
+
+
+def validate_round3_closure(
+    closure: dict[str, Any],
+    contract: dict[str, Any],
+    round2: dict[str, Any],
+    *,
+    repo_root: Path = Path("."),
+) -> None:
+    if closure.get("schema_version") != ROUND3_CLOSURE_SCHEMA:
+        raise ValueError("Unsupported Round 3 closure schema.")
+    expected_hash = _canonical_sha256(
+        {key: value for key, value in closure.items() if key != "closure_sha256"}
+    )
+    if closure.get("closure_sha256") != expected_hash:
+        raise ValueError("Round 3 closure SHA-256 mismatch.")
+    if closure.get("production_contract_sha256") != _canonical_sha256(contract):
+        raise ValueError("Round 3 closure does not bind the production contract.")
+    _validate_historical_round2(round2, contract)
+    round2_path = _resolve(repo_root, closure.get("round2_result_path", ""))
+    if not round2_path.is_file():
+        raise ValueError("Round 3 closure Round 2 artifact is missing.")
+    if closure.get("round2_result_sha256") != _sha256(round2_path):
+        raise ValueError("Round 3 closure Round 2 artifact hash differs.")
+    if closure.get("round2_payload_sha256") != _canonical_sha256(round2):
+        raise ValueError("Round 3 closure Round 2 payload differs.")
+    if _canonical_sha256(_read_json(round2_path)) != _canonical_sha256(round2):
+        raise ValueError("Supplied Round 2 result differs from the bound artifact.")
+    if (
+        closure.get("round2_formal_status") != "FAIL_CANDIDATE_OVERFLOW"
+        or closure.get("round2_formal_winner") is not None
+        or closure.get("compact_git_sha") != COMPACT_EXACT_INFERENCE_COMMIT
+        or closure.get("compact_occurrence_support_fix_git_sha")
+        != COMPACT_OCCURRENCE_SUPPORT_FIX_COMMIT
+    ):
+        raise ValueError("Round 3 closure changes immutable history or code identity.")
+    for commit in (
+        COMPACT_EXACT_INFERENCE_COMMIT,
+        COMPACT_OCCURRENCE_SUPPORT_FIX_COMMIT,
+    ):
+        if not _git_is_ancestor(repo_root, commit, "HEAD"):
+            raise ValueError(f"Required compact commit is not in current history: {commit}")
+
+    evidence_entries = closure.get("evidence", {})
+    try:
+        real_entry = evidence_entries["real_offender_exactness"]
+        worker_entry = evidence_entries["local_worker_equivalence"]
+        tail_entries = tuple(evidence_entries["pressure_tail"])
+    except (KeyError, TypeError):
+        raise ValueError("Round 3 closure evidence manifest is incomplete.") from None
+
+    def load_entry(entry: dict[str, Any]) -> dict[str, Any]:
+        path = _resolve(repo_root, entry.get("path", ""))
+        if not path.is_file() or entry.get("sha256") != _sha256(path):
+            raise ValueError("Round 3 evidence file identity differs.")
+        return _read_json(path)
+
+    real = load_entry(real_entry)
+    worker = load_entry(worker_entry)
+    tails = tuple(load_entry(entry) for entry in tail_entries)
+    _validate_round3_evidence(real, worker, tails)
+    if (
+        closure.get("candidate_overflow_blocker")
+        != "RESOLVED_BY_COMPACT_EXACT_INFERENCE"
+        or closure.get("worker_selection_reopened") is not False
+        or closure.get("retained_workers") != ROUND3_RETAINED_WORKERS
+        or closure.get("round3_status") != "PASS"
+        or closure.get("round3_vm_required") is not False
+        or closure.get("w20_active_path") != "RETIRED"
+        or closure.get("legacy_3h_gate") != "NOT_APPLICABLE"
+    ):
+        raise ValueError("Round 3 closure eligibility fields are invalid.")
+
+
+def build_round3_closure(
+    contract: dict[str, Any],
+    round2_result_path: Path,
+    *,
+    real_offender_path: Path = ROUND3_REAL_OFFENDER_EVIDENCE,
+    worker_equivalence_path: Path = ROUND3_WORKER_EQUIVALENCE_EVIDENCE,
+    tail_paths: tuple[Path, ...] = ROUND3_TAIL_EVIDENCE,
+    repo_root: Path = Path("."),
+) -> dict[str, Any]:
+    round2_path = _resolve(repo_root, round2_result_path)
+    round2 = _read_json(round2_path)
+    _validate_historical_round2(round2, contract)
+    real = _read_json(_resolve(repo_root, real_offender_path))
+    worker = _read_json(_resolve(repo_root, worker_equivalence_path))
+    tails = tuple(_read_json(_resolve(repo_root, path)) for path in tail_paths)
+    _validate_round3_evidence(real, worker, tails)
+    closure = {
+        "schema_version": ROUND3_CLOSURE_SCHEMA,
+        "production_contract_sha256": _canonical_sha256(contract),
+        "round2_result_path": _evidence_path(repo_root, round2_path),
+        "round2_result_sha256": _sha256(round2_path),
+        "round2_payload_sha256": _canonical_sha256(round2),
+        "round2_formal_status": "FAIL_CANDIDATE_OVERFLOW",
+        "round2_formal_winner": None,
+        "compact_git_sha": COMPACT_EXACT_INFERENCE_COMMIT,
+        "compact_occurrence_support_fix_git_sha": (
+            COMPACT_OCCURRENCE_SUPPORT_FIX_COMMIT
+        ),
+        "evidence": {
+            "real_offender_exactness": {
+                "path": _evidence_path(repo_root, real_offender_path),
+                "sha256": _sha256(_resolve(repo_root, real_offender_path)),
+            },
+            "local_worker_equivalence": {
+                "path": _evidence_path(repo_root, worker_equivalence_path),
+                "sha256": _sha256(_resolve(repo_root, worker_equivalence_path)),
+            },
+            "pressure_tail": [
+                {
+                    "path": _evidence_path(repo_root, path),
+                    "sha256": _sha256(_resolve(repo_root, path)),
+                }
+                for path in tail_paths
+            ],
+        },
+        "real_offender_exactness": "PASS",
+        "local_worker_equivalence": "PASS",
+        "pressure_tail": "PASS",
+        "full_max_raw": 2484,
+        "worker_selection_reopened": False,
+        "retained_workers": ROUND3_RETAINED_WORKERS,
+        "candidate_overflow_blocker": "RESOLVED_BY_COMPACT_EXACT_INFERENCE",
+        "round3_status": "PASS",
+        "round3_vm_required": False,
+        "w20_active_path": "RETIRED",
+        "legacy_3h_gate": "NOT_APPLICABLE",
+    }
+    closure["closure_sha256"] = _canonical_sha256(closure)
+    validate_round3_closure(closure, contract, round2, repo_root=repo_root)
+    return closure
+
+
 def build_final_plan(
     contract: dict[str, Any],
     round2: dict[str, Any],
+    round3_closure: dict[str, Any],
     *,
     contract_path: Path = CONTRACT_PATH,
     output_root: Path = Path("artifacts/latent_benchmarks"),
@@ -732,29 +990,10 @@ def build_final_plan(
     identity: dict[str, Any],
     repo_root: Path = Path("."),
 ) -> dict[str, Any]:
-    if round2.get("schema_version") != ROUND2_SCHEMA:
-        raise ValueError("Unsupported Round 2 result schema.")
-    if round2.get("ROUND2_STATUS") != "PASS":
-        raise RuntimeError("Full six-cell launch cannot be prepared before Round 2 passes.")
-    if round2.get("production_contract_sha256") != _canonical_sha256(contract):
-        raise ValueError("Round 2 result does not bind the production contract.")
-    if len(round2.get("jobs", ())) != 6:
-        raise ValueError("Round 2 result does not contain the primary six jobs.")
-    winner = int(round2["WINNER_WORKERS"])
-    if winner not in ROUND2_PRIMARY_WORKERS:
-        raise ValueError("Round 2 winner is not a primary worker candidate.")
-    candidate = next(
-        (
-            row
-            for row in round2.get("candidate_ranking", ())
-            if int(row.get("workers", -1)) == winner
-        ),
-        None,
+    validate_round3_closure(
+        round3_closure, contract, round2, repo_root=repo_root
     )
-    if candidate is None or candidate.get("eligible") is not True:
-        raise ValueError("Round 2 winner did not pass both engineering workloads.")
-    if len(str(round2.get("plan_sha256", ""))) != 64:
-        raise ValueError("Round 2 result has no valid plan identity.")
+    winner = int(round3_closure["retained_workers"])
 
     full_bundle = _bundle_plan_details(
         repo_root.resolve(),
@@ -805,10 +1044,24 @@ def build_final_plan(
     )
     plan.update(
         {
-            "winner_workers_source": {
-                "round2_result_sha256": _canonical_sha256(round2),
+            "full_worker_selection": {
+                "round2_result_sha256": round3_closure["round2_result_sha256"],
+                "round3_closure_sha256": round3_closure["closure_sha256"],
                 "workers": winner,
+                "basis": (
+                    "round2_engineering_preference_retained_by_round3_closure"
+                ),
             },
+            "ROUND2_FORMAL_RESULT": "PRESERVED_FAIL",
+            "ROUND2_FORMAL_WINNER": None,
+            "ROUND3_STATUS": "PASS",
+            "ROUND3_TO_FULL_CONTROL_PLANE": "PASS",
+            "FULL_ELIGIBILITY": "PASS",
+            "FULL_WORKERS": winner,
+            "WORKER_SELECTION_REOPENED": "NO",
+            "W20_ACTIVE_PATH": "RETIRED",
+            "LEGACY_3H_GATE": "NOT_APPLICABLE",
+            "FULL_M0_AUTHORIZED": "NO",
             "FULL_M0_SIX_CELL_CONFIG": "FROZEN",
             "FULL_M0_LAUNCH_PLAN": "PREPARED",
             "FULL_M0_PROCESS_RUNNING": "NO",
@@ -876,6 +1129,27 @@ def _validate_plan(plan: dict[str, Any], contract: dict[str, Any]) -> None:
             raise ValueError("Production plan has an invalid worker assignment.")
         if plan_type == "bounded" and workers != {1}:
             raise ValueError("Bounded validation must use one worker.")
+        if plan_type == "full":
+            selection = plan.get("full_worker_selection", {})
+            if (
+                workers != {ROUND3_RETAINED_WORKERS}
+                or selection.get("workers") != ROUND3_RETAINED_WORKERS
+                or selection.get("basis")
+                != "round2_engineering_preference_retained_by_round3_closure"
+                or len(str(selection.get("round2_result_sha256", ""))) != 64
+                or len(str(selection.get("round3_closure_sha256", ""))) != 64
+                or plan.get("ROUND2_FORMAL_RESULT") != "PRESERVED_FAIL"
+                or plan.get("ROUND2_FORMAL_WINNER") is not None
+                or plan.get("ROUND3_STATUS") != "PASS"
+                or plan.get("ROUND3_TO_FULL_CONTROL_PLANE") != "PASS"
+                or plan.get("FULL_ELIGIBILITY") != "PASS"
+                or plan.get("FULL_WORKERS") != ROUND3_RETAINED_WORKERS
+                or plan.get("WORKER_SELECTION_REOPENED") != "NO"
+                or plan.get("W20_ACTIVE_PATH") != "RETIRED"
+                or plan.get("LEGACY_3H_GATE") != "NOT_APPLICABLE"
+                or plan.get("FULL_M0_AUTHORIZED") != "NO"
+            ):
+                raise ValueError("Full plan has invalid Round 3 eligibility binding.")
     expected_config = {
         **contract["scientific_config"],
         **{
@@ -1040,7 +1314,10 @@ def _audit_artifacts(
     topology = storage.get("compiled_topology", {})
     if topology.get("mutable_scores_or_posteriors_stored") is not False:
         failures.append("topology archive claims mutable scientific state")
-    if not tuple(run_dir.glob(contract["artifact_contract"]["topology_glob"])):
+    legacy_topology_required = not COMPACT_EXACT_S1M2
+    if legacy_topology_required and not tuple(
+        run_dir.glob(contract["artifact_contract"]["topology_glob"])
+    ):
         failures.append("no compiled topology archives were retained")
     residue = sorted(
         str(path.relative_to(run_dir))
@@ -1097,6 +1374,7 @@ def _audit_artifacts(
         "valid": not failures,
         "failures": failures,
         "run_dir": run_dir.as_posix(),
+        "legacy_topology_required": legacy_topology_required,
         "completion": {
             "completed_passes": checkpoint.get("completed_passes"),
             "inspection_complete": checkpoint.get("inspection_complete"),
@@ -2055,8 +2333,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     item.add_argument("--plan", required=True, type=Path)
     item.add_argument("--job-id", required=True)
     item.add_argument("--output", required=True, type=Path)
+    item = commands.add_parser("build-round3-closure")
+    item.add_argument("--round2-result", required=True, type=Path)
+    item.add_argument("--output", required=True, type=Path)
+    item = commands.add_parser("validate-round3-closure")
+    item.add_argument("--round2-result", required=True, type=Path)
+    item.add_argument("--closure", required=True, type=Path)
     item = commands.add_parser("plan-final")
     item.add_argument("--round2-result", required=True, type=Path)
+    item.add_argument("--round3-closure", required=True, type=Path)
     item.add_argument("--output", required=True, type=Path)
     item = commands.add_parser("run")
     item.add_argument("--plan", required=True, type=Path)
@@ -2125,6 +2410,23 @@ def main(argv: list[str] | None = None) -> None:
             repo_root=repo_root,
         )
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        return
+    if args.command == "validate-round3-closure":
+        round2 = _read_json(_resolve(repo_root, args.round2_result))
+        closure = _read_json(_resolve(repo_root, args.closure))
+        validate_round3_closure(
+            closure, contract, round2, repo_root=repo_root
+        )
+        print(
+            json.dumps(
+                {
+                    "status": "PASS",
+                    "closure_sha256": closure["closure_sha256"],
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
         return
     if args.command == "attest-round1":
         plan = _read_json(_resolve(repo_root, args.plan))
@@ -2212,17 +2514,29 @@ def main(argv: list[str] | None = None) -> None:
             result = aggregate_round2_attestations(plan, contract, attestations)
         _write_json(_resolve(repo_root, args.output), result)
         output_payload = result
+    elif args.command == "build-round3-closure":
+        output = args.output
+        closure = build_round3_closure(
+            contract,
+            args.round2_result,
+            repo_root=repo_root,
+        )
+        _write_json(_resolve(repo_root, output), closure)
+        output_payload = closure
     elif args.command == "plan-final":
         output = args.output
         result = _read_json(_resolve(repo_root, args.round2_result))
+        closure = _read_json(_resolve(repo_root, args.round3_closure))
         plan = build_final_plan(
             contract,
             result,
+            closure,
             contract_path=args.contract,
             identity=identity,
             repo_root=repo_root,
         )
         _write_plan_commands(plan, output)
+        _validate_plan(plan, contract)
         _write_json(_resolve(repo_root, output), plan)
         output_payload = plan
     else:  # pragma: no cover

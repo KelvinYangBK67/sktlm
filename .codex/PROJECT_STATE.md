@@ -2843,3 +2843,41 @@ representative, VM, worker calibration, or Full M0 run was executed.
 COMPACT_OCCURRENCE_SUPPORT_CPU_FIX_IMPLEMENTED=YES
 PER_ENDPOINT_FULL_FORM_LEGAL_PIECE_RESCAN_REMOVED=YES
 COMPACT_VS_LEGACY_FOCUSED_EXACTNESS=PASS
+
+## S1M2 Round3 to Full control-plane closure — 2026-09-11
+
+Compact exact completed-run audit now treats the legacy topology archive as an
+optional reconstructible cache. Zero `topology/document_*.bin` files pass in
+compact mode, while storage metadata that claims mutable scores or posteriors
+still fails closed. The frozen production contract remains unchanged.
+
+A formal `sktlm-s1m2-round3-closure/v1` builder and validator now bind the
+immutable Round2 FAIL artifact, its canonical production contract, compact
+implementation commits, and the existing raw520 exactness, local worker
+equivalence, and raw1002/1410/1841/2484 pressure-tail evidence files by SHA-256.
+Validation rejects a forged Round2 PASS, a formal winner, missing or altered
+evidence, truncation/fallback, reopened worker selection, a non-w12 retained
+preference, and compact commits outside current history.
+
+Full-plan construction now requires both the historical Round2 result and the
+validated Round3 closure. It does not rewrite Round2: formal status remains
+FAIL due to candidate overflow and formal winner remains null. All six Full
+jobs use the retained engineering preference of 12 workers, with the existing
+Devanagari-continuous execution bundle path and SHA unchanged. W20 and the
+legacy 3-hour gate remain retired. Eligibility is PASS, but Full M0 remains
+unauthorized pending an explicit researcher decision.
+
+```text
+COMPACT_PRODUCTION_AUDIT=PASS
+LEGACY_TOPOLOGY_REQUIRED=NO
+ROUND3_STATUS=PASS
+ROUND2_FORMAL_RESULT=PRESERVED_FAIL_CANDIDATE_OVERFLOW
+ROUND2_FORMAL_WINNER=PRESERVED_NONE
+ROUND2_ENGINEERING_PREFERENCE_RETAINED=12
+WORKER_SELECTION_REOPENED=NO
+CANDIDATE_OVERFLOW_BLOCKER=RESOLVED_BY_COMPACT_EXACT_INFERENCE
+ROUND3_TO_FULL_CONTROL_PLANE=PASS
+FULL_WORKERS=12
+FULL_ELIGIBILITY=PASS
+FULL_M0_AUTHORIZED=NO
+```
