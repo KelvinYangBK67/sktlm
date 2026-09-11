@@ -131,11 +131,13 @@ def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(
     assert result.runtime["counters"]["training_form_cache_hits"] > 0
     assert result.runtime["counters"]["training_store_lookups"] > 0
     assert result.runtime["counters"]["training_topology_compiles"] > 0
-    assert result.runtime["counters"]["training_topology_reuses"] > 0
-    assert result.runtime["counters"]["inspection_topology_reuses"] > 0
-    assert result.runtime["counters"]["topology_archives_compiled"] == 2
-    assert result.runtime["counters"]["topology_archives_reused"] == 4
-    assert len(tuple((result.run_dir / "topology").glob("*.bin"))) == 2
+    assert result.runtime["counters"]["training_compact_trie_compiles"] > 0
+    assert result.runtime["counters"]["inspection_compact_trie_compiles"] > 0
+    assert result.runtime["counters"].get("training_topology_reuses", 0) == 0
+    assert result.runtime["counters"].get("inspection_topology_reuses", 0) == 0
+    assert result.runtime["counters"].get("topology_archives_compiled", 0) == 0
+    assert result.runtime["counters"].get("topology_archives_reused", 0) == 0
+    assert len(tuple((result.run_dir / "topology").glob("*.bin"))) == 0
     assert (
         result.runtime["gauges"]["training_piece_score_cache_entries"]
         <= 65_536
@@ -191,7 +193,7 @@ def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(
         "inspection_worker_shards"
     ]
     assert storage["compiled_topology"]["mutable_scores_or_posteriors_stored"] is False
-    assert "one segment at a time" in storage["transient_lifecycle"][
+    assert "boundary-node geometry" in storage["transient_lifecycle"][
         "compiled_topology"
     ]
 
@@ -319,7 +321,7 @@ def test_s1m2_resume_after_durable_pass_diagnostics_retired(
             repo_root=Path("."),
         )
     crashed = tmp_path / "artifacts" / "pass-retirement-crashed"
-    assert len(tuple((crashed / "topology").glob("*.bin"))) == 2
+    assert len(tuple((crashed / "topology").glob("*.bin"))) == 0
     store = LexiconStore(crashed / "learner.sqlite")
     try:
         assert store.has_table("piece_lexicon")
@@ -342,7 +344,7 @@ def test_s1m2_resume_after_durable_pass_diagnostics_retired(
     _assert_same_science(reference, resumed)
 
 
-def test_s1m2_resume_regenerates_missing_topology_before_later_pass(
+def test_s1m2_resume_does_not_require_legacy_topology_before_later_pass(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -369,7 +371,7 @@ def test_s1m2_resume_regenerates_missing_topology_before_later_pass(
             repo_root=Path("."),
         )
     run_dir = tmp_path / "artifacts" / "missing-topology-resumed"
-    (run_dir / "topology" / "document_00000000.bin").unlink()
+    assert not (run_dir / "topology" / "document_00000000.bin").exists()
 
     monkeypatch.setattr(latent_training, "_training_pass", original_training_pass)
     result = run_training(
@@ -382,11 +384,11 @@ def test_s1m2_resume_regenerates_missing_topology_before_later_pass(
         repo_root=Path("."),
     )
     _assert_same_science(reference, result.run_dir)
-    assert result.runtime["counters"]["topology_archive_cache_misses"] == 1
-    assert result.runtime["counters"]["topology_archives_regenerated"] == 1
+    assert result.runtime["counters"].get("topology_archive_cache_misses", 0) == 0
+    assert result.runtime["counters"].get("topology_archives_regenerated", 0) == 0
 
 
-def test_s1m2_resume_regenerates_corrupt_topology_before_inspection(
+def test_s1m2_resume_ignores_legacy_topology_before_inspection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -408,7 +410,8 @@ def test_s1m2_resume_regenerates_corrupt_topology_before_inspection(
         )
     run_dir = tmp_path / "artifacts" / "corrupt-topology-resumed"
     archive = run_dir / "topology" / "document_00000000.bin"
-    archive.write_bytes(archive.read_bytes()[:-7])
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    archive.write_bytes(b"retired legacy topology")
 
     monkeypatch.setattr(latent_training, "_inspection_pass", original_inspection)
     result = run_training(
@@ -421,8 +424,8 @@ def test_s1m2_resume_regenerates_corrupt_topology_before_inspection(
         repo_root=Path("."),
     )
     _assert_same_science(reference, result.run_dir)
-    assert result.runtime["counters"]["topology_archive_cache_invalid"] == 1
-    assert result.runtime["counters"]["topology_archives_regenerated"] == 1
+    assert result.runtime["counters"].get("topology_archive_cache_invalid", 0) == 0
+    assert result.runtime["counters"].get("topology_archives_regenerated", 0) == 0
 
 
 def test_s1m2_resume_regenerates_retired_inspection_shard(
@@ -511,8 +514,10 @@ def test_s1m2_parallel_and_serial_scientific_outputs_match(tmp_path: Path) -> No
     assert runtime["gauges"]["inspection_pending_shard_bytes"] > 0
     assert runtime["counters"]["inspection_shard_files_retired"] > 0
     assert runtime["counters"]["inspection_shard_bytes_retired"] > 0
-    assert runtime["counters"]["topology_archives_compiled"] == 2
-    assert runtime["counters"]["topology_archives_reused"] == 4
+    assert runtime["counters"].get("topology_archives_compiled", 0) == 0
+    assert runtime["counters"].get("topology_archives_reused", 0) == 0
+    assert runtime["counters"]["training_compact_trie_compiles"] > 0
+    assert runtime["counters"]["inspection_compact_trie_compiles"] > 0
     assert not tuple((parallel / "shards" / "inspection").glob("*"))
     assert runtime["timings_seconds"]["training_reducer_stall"] >= 0.0
     assert runtime["timings_seconds"]["inspection_reducer_stall"] >= 0.0

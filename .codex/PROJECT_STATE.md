@@ -2796,3 +2796,25 @@ ROUND2_OLD_NEW_INSPECTION_EQUIVALENCE=PASS_RESEARCHER_MANUAL
 FULL_M0_AUTHORIZED=NO
 NEXT_ACTION=BOUNDED_CANDIDATE_OVERFLOW_FORENSIC
 ```
+
+## S1M2 compact exact inference implementation checkpoint — 2026-09-11
+
+- Branch: `exp/s1m2-reusable-pieces`.
+- Starting remote/reference HEAD: `fd99c9492ed063b7f2172f0c6e124a39303c58dd`.
+- Selected architecture: `DIRECT_STRUCTURAL_FORM_TRIE_WITH_LEFT_ANCHORED_INCREMENTAL_CONSTRUCTION`.
+- Compact S1M2 exact inference no longer retains one `LazyLexicalSpan` per legal lexical hypothesis.
+- Compact support no longer globally retains complete lexical forms/form keys for all hypotheses.
+- Hot-path per-span complete-form materialization is removed; bounded consumption-oriented reconstruction is used where canonical form identity is scientifically required.
+- Compact S1M2 retains all grammar-licensed internal matches; the historical 512 threshold is telemetry/pressure only and no longer deletes compact-route support.
+- Whole-form reusable-piece legality and exact preceding-pass count scoring are preserved, including whole forms longer than `max_piece_length`.
+- `piece_occurrence_support` semantics remain exact and distinct from posterior expected count.
+- Shared exact reusable-piece DP remains the inference kernel; legacy P1c remains the reference oracle.
+- Compact production inference remains unbound from the legacy complete-form topology archive.
+- Compact Top-K memory pressure no longer causes fallback to legacy inference: exact marginals continue, shared K×trie-node presentation state is disabled when over budget, and bounded exact per-form reconstruction supplies presentation Top-K.
+- `lexical_span_hypotheses` again counts exact legal spans using a structural counter without reconstructing complete forms.
+- Manual exact-span comparator passed against `LazyTokenLattice.iter_spans()` on tiny fixtures.
+- Focused compact validation passed: compact/reference exactness, no per-span form materialization, support beyond the legacy pressure limit, exact active-piece scoring, and training without the legacy topology archive.
+- Compact Top-K over-budget comparator passed.
+- No representative corpus, stress corpus, VM run, or Full M0 was executed for this implementation checkpoint.
+- `FULL_M0_AUTHORIZED=NO`.
+- Next action after publication: bounded post-push offender/pressure probe of the compact kernel before any broader validation.

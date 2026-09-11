@@ -82,6 +82,7 @@ EXPECTED_FREEZE_ID = "9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3
 IMPLEMENTATION = "latent-lexicon-v1"
 S1M1_MODEL = "latent_lexicon_v1"
 S1M2_MODEL = "reusable_pieces_v1"
+COMPACT_EXACT_S1M2 = True
 FORMAL_M0_SCRIPTS = frozenset({"iast", "devanagari"})
 SUPPORTED_OBSERVATION_SCRIPTS = FORMAL_M0_SCRIPTS | {"iast_m0_prime"}
 FORMAL_CONDITIONS = frozenset({"surface_word", "legacy_joined", "continuous"})
@@ -1063,6 +1064,7 @@ def _rebuild_topology_archive(
                 segment,
                 grammar,
                 config.candidate_config,
+                exact_internal_matches=False,
             )
             writer.write(
                 line_number,
@@ -1167,7 +1169,7 @@ def _profiled_document_segments_with_topology(
     piece_engine: ComposedPieceInference | None,
 ) -> Iterator[tuple[int, int, ObservedSegment, CompiledSegmentTopology | None]]:
     reader = None
-    if config.model == S1M2_MODEL:
+    if config.model == S1M2_MODEL and not COMPACT_EXACT_S1M2:
         assert piece_engine is not None
         reader = _open_reconstructible_topology_archive(
             document=document,
@@ -1338,11 +1340,11 @@ def _write_training_shard(
         handle = resources.enter_context(
             temporary.open('w', encoding='utf-8', newline='')
         )
-        if config.model == S1M2_MODEL:
+        if config.model == S1M2_MODEL and not COMPACT_EXACT_S1M2:
             header = _topology_archive_header(
                 config_signature, document_index, document
             )
-            if pass_index == 1:
+            if pass_index == 1 and not COMPACT_EXACT_S1M2:
                 if topology_temporary.exists():
                     topology_temporary.unlink()
                 topology_writer = resources.enter_context(
@@ -1410,7 +1412,7 @@ def _write_training_shard(
                     phase="training",
                 )
             segment_topology = None
-            if config.model == S1M2_MODEL:
+            if config.model == S1M2_MODEL and not COMPACT_EXACT_S1M2:
                 assert _WORKER_PIECE_ENGINE is not None
                 if topology_writer is not None:
                     segment_topology = compile_composed_segment_topology(
@@ -1570,20 +1572,21 @@ def _write_training_bundle_shard(
             )
             topology_writer: TopologyArchiveWriter | None = None
             topology_reader: TopologyArchiveReader | None = None
-            header = _topology_archive_header(
-                config_signature, bundle.document_index, document
-            )
-            if pass_index == 1:
-                topology_writer = resources.enter_context(
-                    TopologyArchiveWriter(topology_temporary, header)
+            if not COMPACT_EXACT_S1M2:
+                header = _topology_archive_header(
+                    config_signature, bundle.document_index, document
                 )
-            else:
-                topology_reader = TopologyArchiveReader(
-                    _topology_archive_path(run_dir, bundle.document_index),
-                    header,
-                )
-                topology_reader.skip_records(bundle.first_segment_ordinal)
-                resources.callback(topology_reader.close, require_eof=False)
+                if pass_index == 1 and not COMPACT_EXACT_S1M2:
+                    topology_writer = resources.enter_context(
+                        TopologyArchiveWriter(topology_temporary, header)
+                    )
+                else:
+                    topology_reader = TopologyArchiveReader(
+                        _topology_archive_path(run_dir, bundle.document_index),
+                        header,
+                    )
+                    topology_reader.skip_records(bundle.first_segment_ordinal)
+                    resources.callback(topology_reader.close, require_eof=False)
 
             iterator = _iter_execution_bundle_segments(document, config, bundle)
             while True:
@@ -1613,13 +1616,13 @@ def _write_training_bundle_shard(
                     candidate_counts,
                     phase="training",
                 )
+                topology = None
                 if topology_writer is not None:
                     topology = compile_composed_segment_topology(
                         graph, _WORKER_PIECE_ENGINE
                     )
                     topology_writer.write(line_number, segment_index, topology)
-                else:
-                    assert topology_reader is not None
+                elif topology_reader is not None:
                     topology = topology_reader.read(line_number, segment_index)
 
                 started = time.perf_counter()
@@ -1684,7 +1687,7 @@ def _write_training_bundle_shard(
         _replace_file(segment_temporary, paths["segments"])
         topology_name = None
         topology_sha = None
-        if pass_index == 1:
+        if topology_writer is not None:
             _replace_file(topology_temporary, paths["topology"])
             topology_name = paths["topology"].name
             topology_sha = _file_sha256(paths["topology"])
@@ -1773,7 +1776,7 @@ def _load_training_bundle_shard(
         raise RuntimeError(f"Stale or mismatched bundle shard: {paths['marker']}")
     if payload.get("segment_shard_sha256") != _file_sha256(paths["segments"]):
         raise RuntimeError(f"Bundle shard checksum mismatch: {paths['segments']}")
-    if pass_index == 1:
+    if pass_index == 1 and not COMPACT_EXACT_S1M2:
         if not paths["topology"].is_file() or (
             payload.get("topology_shard_sha256")
             != _file_sha256(paths["topology"])
@@ -1836,7 +1839,7 @@ def _coalesce_training_bundle_shards(
     topology_writer: TopologyArchiveWriter | None = None
     try:
         with temporary.open("w", encoding="utf-8", newline="") as handle:
-            if pass_index == 1:
+            if pass_index == 1 and not COMPACT_EXACT_S1M2:
                 topology_writer = TopologyArchiveWriter(
                     topology_temporary,
                     _topology_archive_header(
@@ -1847,7 +1850,7 @@ def _coalesce_training_bundle_shards(
                 payload = payloads[bundle.key]
                 paths = _training_bundle_paths(run_dir, pass_index, bundle)
                 topology_reader = None
-                if pass_index == 1:
+                if pass_index == 1 and not COMPACT_EXACT_S1M2:
                     topology_reader = TopologyArchiveReader(
                         paths["topology"],
                         _topology_archive_header(
@@ -2342,7 +2345,8 @@ def _parallel_training_bundles(
                     next_submit += 1
                     continue
                 if (
-                    pass_index > 1
+                    not COMPACT_EXACT_S1M2
+                    and pass_index > 1
                     and bundle.document_index not in validated_topology
                 ):
                     _validate_bundle_topology_archive(
@@ -2547,7 +2551,7 @@ def _training_pass(
         topology_reader: ReconstructibleTopologyArchiveReader | None = None
         store.begin_document_counts()
         try:
-            if config.model == S1M2_MODEL:
+            if config.model == S1M2_MODEL and not COMPACT_EXACT_S1M2:
                 header = _topology_archive_header(
                     _config_signature(config), document_index, document
                 )
@@ -2609,7 +2613,7 @@ def _training_pass(
                         phase="training",
                     )
                 segment_topology = None
-                if config.model == S1M2_MODEL:
+                if config.model == S1M2_MODEL and not COMPACT_EXACT_S1M2:
                     assert piece_engine is not None
                     if topology_writer is not None:
                         segment_topology = compile_composed_segment_topology(
@@ -3172,7 +3176,7 @@ def _write_inspection_shard(
                 encoding="utf-8",
                 newline="",
             )
-        if config.model == S1M2_MODEL:
+        if config.model == S1M2_MODEL and not COMPACT_EXACT_S1M2:
             assert _WORKER_GRAMMAR is not None
             assert _WORKER_PIECE_ENGINE is not None
             topology_reader = _open_reconstructible_topology_archive(
@@ -3232,7 +3236,7 @@ def _write_inspection_shard(
                     phase="inspection",
                 )
             segment_topology = None
-            if config.model == S1M2_MODEL:
+            if config.model == S1M2_MODEL and not COMPACT_EXACT_S1M2:
                 assert topology_reader is not None
                 segment_topology = topology_reader.read(
                     line_number, segment_index
@@ -3571,13 +3575,6 @@ def _write_inspection_bundle_shard(
     last_identity: tuple[int, int] | None = None
     topology_reader: TopologyArchiveReader | None = None
     try:
-        topology_reader = TopologyArchiveReader(
-            _topology_archive_path(run_dir, bundle.document_index),
-            _topology_archive_header(
-                config_signature, bundle.document_index, document
-            ),
-        )
-        topology_reader.skip_records(bundle.first_segment_ordinal)
         with temporary.open("w", encoding="utf-8", newline="") as handle:
             iterator = _iter_execution_bundle_segments(document, config, bundle)
             while True:
@@ -3612,7 +3609,7 @@ def _write_inspection_bundle_shard(
                     candidate_values,
                     phase="inspection",
                 )
-                topology = topology_reader.read(line_number, segment_index)
+                topology = None
 
                 started = time.perf_counter()
                 inference = infer_composed_segment(
@@ -3801,9 +3798,6 @@ def _write_inspection_bundle_shard(
                 records += 1
             handle.flush()
             os.fsync(handle.fileno())
-        topology_reader.close(require_eof=False)
-        engineering.increment("topology_archives_reused", 1)
-        engineering.increment("topology_records_reused", topology_reader.records)
         _replace_file(temporary, paths["segments"])
         payload = {
             "schema_version": "sktlm-s1m2-inspection-bundle-shard/v1",
@@ -4652,17 +4646,20 @@ def _parallel_inspection_bundles(
                     next_submit += 1
                     continue
                 if bundle.document_index not in validated_topology:
-                    _validate_bundle_topology_archive(
-                        document=document,
-                        document_index=bundle.document_index,
-                        config=config,
-                        run_dir=run_dir,
-                        config_signature=signature,
-                        grammar=grammar,
-                        piece_engine=repair_engine,
-                        telemetry=telemetry,
-                    )
-                    validated_topology.add(bundle.document_index)
+                    if COMPACT_EXACT_S1M2:
+                        validated_topology.add(bundle.document_index)
+                    else:
+                        _validate_bundle_topology_archive(
+                            document=document,
+                            document_index=bundle.document_index,
+                            config=config,
+                            run_dir=run_dir,
+                            config_signature=signature,
+                            grammar=grammar,
+                            piece_engine=repair_engine,
+                            telemetry=telemetry,
+                        )
+                        validated_topology.add(bundle.document_index)
                 future = executor.submit(
                     _write_inspection_bundle_shard,
                     bundle,
@@ -4934,14 +4931,16 @@ def _compact_completed_s1m2_storage(
             "piece_lexicon": "fixed active piece parameters used by final inspection",
         },
         "compiled_topology": {
-            "path": "topology/document_*.bin",
-            "role": "reconstructible immutable cache, never authoritative state",
-            "compression": "zlib level 1 per bounded segment record",
+            "path": None,
+            "role": (
+                "compact structural form tries are deterministic transient "
+                "execution state, never authoritative state"
+            ),
+            "compression": None,
             "mutable_scores_or_posteriors_stored": False,
             "validation": (
-                "archive header binds configuration, document, freeze, byte order, "
-                "array sizes, and phoneme inventory; every inference validates "
-                "factor IDs and ordered lexical-form support"
+                "each pass rebuilds exact document-local candidate geometry and "
+                "factor-local direct structural tries from frozen inputs"
             ),
         },
         "canonical_scientific_artifacts": list(
@@ -4965,10 +4964,9 @@ def _compact_completed_s1m2_storage(
                 "retired shards from durable active parameters and frozen inputs"
             ),
             "compiled_topology": (
-                "compiled once while pass 1 streams each document, retained as "
-                "compressed document-local records, and read one segment at a "
-                "time by later passes and inspection; all scores and DP state "
-                "are recomputed from current authoritative piece parameters"
+                "rebuilt directly from boundary-node geometry for each factor and "
+                "released after inference; legacy topology archives are reference-"
+                "only and are not required by training or inspection-only"
             ),
         },
     }

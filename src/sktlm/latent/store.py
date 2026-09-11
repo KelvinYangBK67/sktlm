@@ -11,7 +11,7 @@ from collections import Counter, OrderedDict
 from pathlib import Path
 from typing import Any, Iterable
 
-from sktlm.latent.phonology import PhonologicalForm
+from sktlm.latent.phonology import Phoneme, PhonologicalForm
 from sktlm.latent.telemetry import RuntimeTelemetry
 from sktlm.latent.vocabulary import (
     BASE_FORMS,
@@ -162,6 +162,54 @@ class PieceStoreScorer:
         self.active_piece_types = int(row[0])
         self.total_count = float(row[1])
         self.denominator = self.total_count + alpha
+        # Exact active-piece counts are immutable for a pass.  Loading them
+        # into a prefix trie once makes long whole-form endpoint lookup
+        # proportional to form length without one SQLite query per endpoint.
+        self._count_trie_children: list[dict[Phoneme, int]] = [{}]
+        self._count_trie_values: list[float | None] = [None]
+        started = time.perf_counter()
+        rows = connection.execute(
+            "SELECT form_key, expected_count FROM piece_lexicon "
+            "ORDER BY form_key"
+        )
+        for form_key, expected_count in rows:
+            node = 0
+            for symbol in PhonologicalForm.from_key(str(form_key)).symbols:
+                child = self._count_trie_children[node].get(symbol)
+                if child is None:
+                    child = len(self._count_trie_children)
+                    self._count_trie_children[node][symbol] = child
+                    self._count_trie_children.append({})
+                    self._count_trie_values.append(None)
+                node = child
+            self._count_trie_values[node] = float(expected_count)
+        self.sqlite_seconds += time.perf_counter() - started
+        self.sqlite_selects += 1
+
+    def _lookup_symbols(
+        self, key: str, symbols: tuple[Phoneme, ...]
+    ) -> float:
+        cached = self._cache.get(key)
+        if cached is not None:
+            self.cache_hits += 1
+            self._cache.move_to_end(key)
+            return cached
+        self.cache_misses += 1
+        self.store_lookups += 1
+        node = 0
+        for symbol in symbols:
+            child = self._count_trie_children[node].get(symbol)
+            if child is None:
+                count = 0.0
+                break
+            node = child
+        else:
+            value = self._count_trie_values[node]
+            count = 0.0 if value is None else value
+        self._cache[key] = count
+        if len(self._cache) > self.cache_size:
+            self._cache.popitem(last=False)
+        return count
 
     def _lookup(self, key: str) -> float:
         cached = self._cache.get(key)
@@ -189,17 +237,35 @@ class PieceStoreScorer:
             count + self.alpha * self.base_measure.probability(piece)
         ) / self.denominator
 
-    def score(self, piece: PhonologicalForm) -> float:
-        self.score_calls += 1
-        count = self._lookup(piece.key)
+    def score_from_count_and_length(self, count: float, length: int) -> float:
+        """Apply the unchanged production equation to an exact trie count."""
+
+        continuation = (
+            0.0
+            if length == 1
+            else (length - 1)
+            * math.log1p(-self.base_measure.stop_probability)
+        )
+        base_probability = math.exp(
+            math.log(self.base_measure.stop_probability)
+            + continuation
+            - length * math.log(self.base_measure.alphabet_size)
+        )
+        probability = (
+            count + self.alpha * base_probability
+        ) / self.denominator
         amplitude = self.complexity_weight * (
-            self.complexity_kappa
-            + self.complexity_beta * len(piece.symbols)
+            self.complexity_kappa + self.complexity_beta * length
         )
         penalty = amplitude * math.log1p(
             1.0 / (self.complexity_tau + count)
         )
-        return math.log(max(self.probability(piece, count), 1e-300)) - penalty
+        return math.log(max(probability, 1e-300)) - penalty
+
+    def score(self, piece: PhonologicalForm) -> float:
+        self.score_calls += 1
+        count = self._lookup_symbols(piece.key, piece.symbols)
+        return self.score_from_count_and_length(count, len(piece.symbols))
 
 
 class LexiconStore:

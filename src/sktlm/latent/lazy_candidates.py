@@ -29,7 +29,7 @@ from sktlm.latent.candidates import (
 )
 from sktlm.latent.frontend import ObservedSegment, ObservedToken
 from sktlm.latent.grammar import StructuredSandhiGrammar
-from sktlm.latent.phonology import Phoneme, PhonologicalForm
+from sktlm.latent.phonology import Phoneme, PhonologicalForm, VOWELS
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +67,7 @@ class LazyTokenLattice:
     overflowed: bool = False
     raw_internal_matches: int = 0
     retained_internal_matches: int = 0
+    historical_match_pressure_exceeded: bool = False
 
     def span(self, left_index: int, right_index: int) -> LazyLexicalSpan | None:
         if not 0 <= left_index < right_index < len(self.nodes):
@@ -147,6 +148,7 @@ class LazyCandidateGraph:
     boundary_options: tuple[tuple[BoundaryOption, ...], ...]
     factors: tuple[LazySegmentFactor, ...]
     overflowed_tokens: int
+    historical_match_pressure_tokens: int = 0
 
 
 def build_lazy_token_lattice(
@@ -157,13 +159,20 @@ def build_lazy_token_lattice(
     *,
     max_internal_matches: int,
     profile: CandidateBuildProfile | None = None,
+    exact_internal_matches: bool = True,
 ) -> LazyTokenLattice | None:
+    # S1M2's compact route treats the configured legacy ceiling as pressure
+    # telemetry only.  Passing a practically unbounded ceiling preserves every
+    # grammar-licensed match without changing S1M1's legacy helper semantics.
+    effective_limit = (
+        (1 << 63) - 1 if exact_internal_matches else max_internal_matches
+    )
     nodes, overflowed, raw_matches, retained_matches = _internal_nodes(
         token,
         grammar,
         incoming,
         outgoing,
-        max_internal_matches,
+        effective_limit,
         profile,
     )
     if not nodes:
@@ -176,6 +185,9 @@ def build_lazy_token_lattice(
         overflowed=overflowed,
         raw_internal_matches=raw_matches,
         retained_internal_matches=retained_matches,
+        historical_match_pressure_exceeded=(
+            raw_matches > max_internal_matches
+        ),
     )
     started = time.perf_counter() if profile is not None else 0.0
     valid = next(lattice.iter_spans_from(0), None) is not None
@@ -192,6 +204,7 @@ def build_lazy_candidate_graph(
     config: CandidateConfig = CandidateConfig(),
     *,
     profile: CandidateBuildProfile | None = None,
+    exact_internal_matches: bool = True,
 ) -> LazyCandidateGraph:
     """Build the production-only node graph without materialized lexical edges."""
 
@@ -217,6 +230,7 @@ def build_lazy_candidate_graph(
 
     factors: list[LazySegmentFactor] = []
     overflowed_tokens: set[int] = set()
+    pressure_tokens: set[int] = set()
     factor_started = time.perf_counter() if profile is not None else 0.0
     for index, token in enumerate(segment.tokens):
         for incoming in boundaries[index]:
@@ -230,11 +244,14 @@ def build_lazy_candidate_graph(
                     outgoing,
                     max_internal_matches=config.max_internal_matches,
                     profile=profile,
+                    exact_internal_matches=exact_internal_matches,
                 )
                 if lattice is None:
                     continue
                 if lattice.overflowed:
                     overflowed_tokens.add(index)
+                if lattice.historical_match_pressure_exceeded:
+                    pressure_tokens.add(index)
                 factors.append(
                     LazySegmentFactor(
                         factor_id=f"token:{index}:{incoming.key}:{outgoing.key}",
@@ -289,8 +306,76 @@ def build_lazy_candidate_graph(
         boundary_options=tuple(boundaries),
         factors=tuple(factors),
         overflowed_tokens=len(overflowed_tokens),
+        historical_match_pressure_tokens=len(pressure_tokens),
     )
 
+
+def _count_legal_spans(lattice: LazyTokenLattice) -> int:
+    """Count exact legal lexical spans without materializing span forms."""
+
+    units = lattice.token.units
+    phoneme_prefix = [0] * (len(units) + 1)
+    vowel_prefix = [0] * (len(units) + 1)
+    avagraha_prefix = [0] * (len(units) + 1)
+
+    for index, unit in enumerate(units):
+        phoneme_prefix[index + 1] = (
+            phoneme_prefix[index] + int(unit.phoneme is not None)
+        )
+        vowel_prefix[index + 1] = (
+            vowel_prefix[index] + int(unit.phoneme in VOWELS)
+        )
+        avagraha_prefix[index + 1] = (
+            avagraha_prefix[index] + int(unit.kind == "avagraha")
+        )
+
+    count = 0
+    nodes = lattice.nodes
+    for left_index, left in enumerate(nodes[:-1]):
+        left_has_vowel = any(
+            symbol in VOWELS for symbol in left.right_underlying
+        )
+        for right in nodes[left_index + 1 :]:
+            if left.surface_end > right.surface_start:
+                continue
+
+            gap_start = left.surface_end
+            gap_end = right.surface_start
+            identity_edge = left.is_start and right.is_end
+
+            gap_avagraha = (
+                avagraha_prefix[gap_end] - avagraha_prefix[gap_start]
+            )
+            if gap_avagraha and not identity_edge:
+                continue
+
+            gap_phonemes = (
+                phoneme_prefix[gap_end] - phoneme_prefix[gap_start]
+            )
+            if not (
+                left.right_underlying
+                or gap_phonemes
+                or right.left_underlying
+            ):
+                continue
+
+            if not identity_edge:
+                gap_vowels = (
+                    vowel_prefix[gap_end] - vowel_prefix[gap_start]
+                )
+                right_has_vowel = any(
+                    symbol in VOWELS for symbol in right.left_underlying
+                )
+                if not (
+                    left_has_vowel
+                    or gap_vowels
+                    or right_has_vowel
+                ):
+                    continue
+
+            count += 1
+
+    return count
 
 def lazy_candidate_graph_statistics(graph: LazyCandidateGraph) -> dict[str, int]:
     lattices = [
@@ -308,10 +393,15 @@ def lazy_candidate_graph_statistics(graph: LazyCandidateGraph) -> dict[str, int]
             lattice.retained_internal_matches for lattice in lattices
         ),
         "lattice_nodes": sum(len(lattice.nodes) for lattice in lattices),
+        # Preserve the historical exact metric without reconstructing complete
+        # lexical forms or transient LazyLexicalSpan objects.
         "lexical_span_hypotheses": sum(
-            1 for lattice in lattices for _span in lattice.iter_spans()
+            _count_legal_spans(lattice) for lattice in lattices
         ),
         "overflowed_tokens": graph.overflowed_tokens,
+        "historical_match_pressure_tokens": (
+            graph.historical_match_pressure_tokens
+        ),
     }
 
 

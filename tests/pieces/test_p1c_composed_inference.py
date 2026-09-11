@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import math
+import sqlite3
 
 import pytest
 
 import sktlm.pieces.composed as composed_module
-from sktlm.latent.candidates import CandidateBuildProfile
+from sktlm.latent.candidates import CandidateBuildProfile, CandidateConfig
 from sktlm.latent.frontend import iter_observed_segments, parse_surface
 from sktlm.latent.grammar import StructuredSandhiGrammar
 from sktlm.latent.inference import infer_segment
@@ -14,6 +16,8 @@ from sktlm.latent.lazy_candidates import (
     materialize_lazy_candidate_graph,
 )
 from sktlm.latent.phonology import Phoneme, PhonologicalForm, parse_iast_form
+from sktlm.latent.store import PieceStoreScorer
+from sktlm.latent.telemetry import RuntimeTelemetry
 from sktlm.pieces import (
     BaseMeasurePieceScorer,
     ComposedCacheConfig,
@@ -418,7 +422,7 @@ def test_shared_zero_epsilon_occurrences_stay_form_compact() -> None:
     )
 
 
-def test_shared_token_prefix_bound_falls_back_to_legacy_path() -> None:
+def test_compact_structural_trie_does_not_fall_back_to_span_materialization() -> None:
     grammar = StructuredSandhiGrammar.from_default_inventory()
     segment = next(iter_observed_segments("devaśca"))
     graph = build_lazy_candidate_graph(segment, grammar)
@@ -433,7 +437,9 @@ def test_shared_token_prefix_bound_falls_back_to_legacy_path() -> None:
     )
 
     assert result.total_posterior_mass == pytest.approx(1.0, abs=1e-12)
-    assert result.counters.form_cache_misses > 0
+    assert result.counters.compact_trie_compiles > 0
+    assert result.counters.shared_batch_fallbacks == 0
+    assert result.counters.form_cache_misses == 0
 
 
 def test_compiled_topology_reweights_changed_piece_parameters_exactly() -> None:
@@ -696,18 +702,167 @@ def test_opt19_adaptive_factor_retention_is_exact_and_cumulatively_bounded() -> 
     nonmerged_index = next(
         index for index, factor in enumerate(graph.factors) if factor.lattice is not None
     )
-    assert composed_module._factor_retention_estimate(
+    compact_estimate = composed_module._factor_retention_estimate(
         graph.factors[nonmerged_index],
         None,
         estimator,
         support_epsilon=0.0,
-    ) is None
+    )
+    assert compact_estimate is not None
+    assert compact_estimate.retained_bytes > 0
+
+
+@pytest.mark.parametrize("surface", ("devo'pi", "tattvamasi"))
+def test_compact_structural_trie_matches_legacy_shared_oracle(surface: str) -> None:
+    grammar = StructuredSandhiGrammar.from_default_inventory()
+    segment = next(iter_observed_segments(surface))
+    graph = build_lazy_candidate_graph(segment, grammar)
+    config = PieceModelConfig(max_piece_length=2, rho=0.41)
+    topology = compile_composed_segment_topology(
+        graph,
+        ComposedPieceInference(_production_scorer(), model_config=config),
+    )
+
+    def run(*, legacy: bool):
+        return infer_composed_segment(
+            graph,
+            ComposedPieceInference(
+                _production_scorer(),
+                model_config=config,
+                inspection_top_k=5,
+            ),
+            whitespace_merge_penalty=8.0,
+            topology=topology if legacy else None,
+        )
+
+    compact = run(legacy=False)
+    legacy = run(legacy=True)
+    for name in (
+        "log_partition",
+        "entropy",
+        "identity_mass",
+        "latent_mass",
+        "expected_lexical_tokens",
+        "expected_piece_tokens",
+        "piece_segmentation_entropy",
+        "expected_whole_form_uses",
+        "expected_singleton_path_uses",
+        "expected_multi_piece_uses",
+        "top_analysis_mass",
+        "total_posterior_mass",
+    ):
+        assert getattr(compact, name) == pytest.approx(
+            getattr(legacy, name), rel=1e-10, abs=1e-12
+        )
+    assert compact.lexical_expected_counts == pytest.approx(
+        legacy.lexical_expected_counts, rel=1e-10, abs=1e-12
+    )
+    assert compact.piece_expected_counts == pytest.approx(
+        legacy.piece_expected_counts, rel=1e-10, abs=1e-12
+    )
+    assert compact.rule_usage == pytest.approx(
+        legacy.rule_usage, rel=1e-10, abs=1e-12
+    )
+    assert compact.boundary_posteriors == legacy.boundary_posteriors
+    assert compact.top_analyses == legacy.top_analyses
+    assert compact.piece_occurrence_support == legacy.piece_occurrence_support
+    assert compact.counters.compact_trie_compiles > 0
+    assert compact.counters.support_truncation_tokens == 0
+
+
+def test_compact_route_does_not_materialize_forms_per_span(monkeypatch) -> None:
+    grammar = StructuredSandhiGrammar.from_default_inventory()
+    segment = next(iter_observed_segments("tattvamasi"))
+    graph = build_lazy_candidate_graph(segment, grammar)
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("legacy per-span form construction was used")
+
+    monkeypatch.setattr(composed_module.LazyTokenLattice, "span", forbidden)
+    monkeypatch.setattr(
+        composed_module.LazyTokenLattice, "iter_spans_from", forbidden
+    )
+    result = infer_composed_segment(
+        graph,
+        ComposedPieceInference(
+            _production_scorer(),
+            model_config=PieceModelConfig(max_piece_length=2),
+        ),
+        whitespace_merge_penalty=8.0,
+    )
+
+    assert result.total_posterior_mass == pytest.approx(1.0, abs=1e-12)
+    assert result.counters.compact_endpoint_occurrences > 0
+
+
+def test_compact_candidates_keep_matches_beyond_legacy_pressure_limit() -> None:
+    grammar = StructuredSandhiGrammar.from_default_inventory()
+    segment = next(iter_observed_segments("tattvamasi"))
+    config = CandidateConfig(max_internal_matches=1)
+    compact = build_lazy_candidate_graph(segment, grammar, config)
+    legacy = build_lazy_candidate_graph(
+        segment,
+        grammar,
+        config,
+        exact_internal_matches=False,
+    )
+
+    assert compact.overflowed_tokens == 0
+    assert compact.historical_match_pressure_tokens > 0
+    assert any(
+        lattice.retained_internal_matches > 1
+        for factor in compact.factors
+        if (lattice := factor.lattice) is not None
+    )
+    assert legacy.overflowed_tokens > 0
+
+
+def test_piece_store_active_trie_preserves_exact_scoring_equation() -> None:
+    connection = sqlite3.connect(":memory:")
+    connection.execute(
+        "CREATE TABLE piece_lexicon (form_key TEXT PRIMARY KEY, "
+        "expected_count REAL NOT NULL)"
+    )
+    active = parse_iast_form("ani")
+    connection.execute(
+        "INSERT INTO piece_lexicon VALUES (?, ?)", (active.key, 3.25)
+    )
+    scorer = PieceStoreScorer(
+        connection,
+        alpha=0.1,
+        complexity_weight=0.5,
+        complexity_kappa=1.0,
+        complexity_beta=0.25,
+        complexity_tau=1.0,
+        base_stop_probability=0.5,
+        cache_size=8,
+        telemetry=RuntimeTelemetry(),
+    )
+
+    for piece, count in ((active, 3.25), (parse_iast_form("api"), 0.0)):
+        amplitude = scorer.complexity_weight * (
+            scorer.complexity_kappa
+            + scorer.complexity_beta * len(piece.symbols)
+        )
+        expected = math.log(max(scorer.probability(piece, count), 1e-300)) - (
+            amplitude
+            * math.log1p(1.0 / (scorer.complexity_tau + count))
+        )
+        assert scorer.score(piece) == expected
+    assert scorer.sqlite_selects == 1
 
 
 def test_shared_inspection_piece_reference_bound_falls_back() -> None:
     grammar = StructuredSandhiGrammar.from_default_inventory()
     segment = next(iter_observed_segments("devo'pi"))
     graph = build_lazy_candidate_graph(segment, grammar)
+    topology = compile_composed_segment_topology(
+        graph,
+        ComposedPieceInference(
+            _production_scorer(),
+            model_config=PieceModelConfig(max_piece_length=3),
+        ),
+    )
     result = infer_composed_segment(
         graph,
         ComposedPieceInference(
@@ -719,6 +874,7 @@ def test_shared_inspection_piece_reference_bound_falls_back() -> None:
             inspection_top_k=5,
         ),
         whitespace_merge_penalty=8.0,
+        topology=topology,
     )
 
     assert result.top_analyses

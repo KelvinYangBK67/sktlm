@@ -24,7 +24,7 @@ from sktlm.latent.lazy_candidates import (
     LazySegmentFactor,
     LazyTokenLattice,
 )
-from sktlm.latent.phonology import Phoneme, PhonologicalForm
+from sktlm.latent.phonology import Phoneme, PhonologicalForm, VOWELS
 from sktlm.pieces.inference import PieceSegmentation
 from sktlm.pieces.model import PieceModelConfig
 from sktlm.pieces.scorer import PieceScorer
@@ -118,6 +118,10 @@ class ComposedInferenceCounters:
     form_cache_entries: int = 0
     form_cache_estimated_bytes: int = 0
     retained_budget_peak_bytes: int = 0
+    compact_trie_compiles: int = 0
+    compact_endpoint_occurrences: int = 0
+    historical_match_pressure_tokens: int = 0
+    support_truncation_tokens: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,6 +176,10 @@ _EVENT_COUNTERS = (
     "topology_compiles",
     "topology_reuses",
     "store_lookups",
+    "compact_trie_compiles",
+    "compact_endpoint_occurrences",
+    "historical_match_pressure_tokens",
+    "support_truncation_tokens",
 )
 
 _TIMING_COUNTERS = tuple(ComposedInferenceTimings.__dataclass_fields__)
@@ -362,6 +370,53 @@ class _SharedFormBatch:
     forms: dict[str, _SharedFormScore]
 
 
+@dataclass(frozen=True, slots=True)
+class _CompactSharedFormTopology:
+    """Primitive direct-trie support without complete forms or form keys."""
+
+    max_piece_length: int
+    parent: array
+    depth: array
+    symbols: tuple[Phoneme | None, ...]
+    transition_offsets: array
+    transition_sources: array
+    transition_piece_ids: array
+    pieces: tuple[tuple[Phoneme, ...], ...]
+    endpoint_nodes: array
+
+
+@dataclass(frozen=True, slots=True)
+class _CompactTokenSupport:
+    """Packed lexical hypotheses over a direct structural form trie."""
+
+    topology: _CompactSharedFormTopology
+    hypothesis_offsets: array
+    hypothesis_ends: array
+    hypothesis_endpoints: array
+
+
+@dataclass(frozen=True, slots=True)
+class _CompactEndpointScore:
+    node: int
+    prior_log_normalizer: float
+    raw_log_partition: float
+    log_score: float
+    whole_raw_score: float
+    singleton_score: float
+
+
+@dataclass(slots=True)
+class _CompactSharedFormBatch:
+    topology: _CompactSharedFormTopology
+    pieces: tuple[PhonologicalForm, ...]
+    transition_raw_scores: array
+    prior_alpha: list[float]
+    alpha: list[float]
+    singleton_scores: list[float]
+    top_paths: list[tuple[_SharedInnerPath, ...]] | None
+    endpoint_scores: tuple[_CompactEndpointScore, ...]
+
+
 def _shared_inner_pieces(
     path: _SharedInnerPath,
 ) -> tuple[PhonologicalForm, ...]:
@@ -502,6 +557,75 @@ def _top_token_path_extensions(
             ),
         )
     return result
+
+
+def _top_compact_token_path_extensions(
+    prefixes: list[_ComposedPath],
+    *,
+    form: PhonologicalForm,
+    end: int,
+    rule_ids: tuple[str, ...],
+    boundary: LexicalBoundary | None,
+    segmentations: tuple[
+        tuple[PieceSegmentation, tuple[str, ...]], ...
+    ],
+    limit: int,
+) -> tuple[int, list[_ComposedPath]]:
+    """Bounded presentation extension without a retained lexical-span row."""
+
+    if not prefixes or not segmentations:
+        return end, []
+    heap: list[tuple[tuple[object, ...], int, int, _ComposedPath]] = []
+
+    def extend(
+        prefix: _ComposedPath,
+        segmentation: PieceSegmentation,
+        segmentation_key: tuple[str, ...],
+    ) -> _ComposedPath:
+        return _ComposedPath(
+            score=prefix.score + segmentation.log_weight,
+            words=prefix.words + (form,),
+            piece_segmentations=(
+                prefix.piece_segmentations + (segmentation.pieces,)
+            ),
+            rule_ids=prefix.rule_ids + rule_ids,
+            boundaries=(
+                prefix.boundaries
+                + ((boundary,) if boundary is not None else ())
+            ),
+            tie_key=(
+                prefix.tie_key[0] + (form.key,),
+                prefix.tie_key[1] + (segmentation_key,),
+                prefix.tie_key[2] + rule_ids,
+            ),
+        )
+
+    first_segmentation, first_key = segmentations[0]
+    for prefix_index, prefix in enumerate(prefixes):
+        path = extend(prefix, first_segmentation, first_key)
+        heapq.heappush(
+            heap,
+            ((-path.score, *path.tie_key), prefix_index, 0, path),
+        )
+    result: list[_ComposedPath] = []
+    while heap and len(result) < limit:
+        _key, prefix_index, segmentation_index, path = heapq.heappop(heap)
+        result.append(path)
+        next_index = segmentation_index + 1
+        if next_index >= len(segmentations):
+            continue
+        segmentation, segmentation_key = segmentations[next_index]
+        next_path = extend(prefixes[prefix_index], segmentation, segmentation_key)
+        heapq.heappush(
+            heap,
+            (
+                (-next_path.score, *next_path.tie_key),
+                prefix_index,
+                next_index,
+                next_path,
+            ),
+        )
+    return end, result
 
 
 class ComposedPieceInference:
@@ -917,6 +1041,414 @@ class ComposedPieceInference:
             whole_piece_ids=whole_piece_ids,
         )
 
+    def _compile_compact_token_support(
+        self,
+        lattice: LazyTokenLattice,
+    ) -> _CompactTokenSupport:
+        """Build packed exact support directly from boundary-node geometry."""
+
+        nodes = [_SharedPrefixNode(parent=-1, symbol=None, depth=0)]
+
+        def extend(parent: int, symbols: tuple[Phoneme, ...]) -> int:
+            current = parent
+            for symbol in symbols:
+                child = nodes[current].children.get(symbol)
+                if child is None:
+                    child = len(nodes)
+                    nodes[current].children[symbol] = child
+                    nodes.append(
+                        _SharedPrefixNode(
+                            parent=current,
+                            symbol=symbol,
+                            depth=nodes[current].depth + 1,
+                        )
+                    )
+                current = child
+            return current
+
+        endpoint_ids: dict[int, int] = {}
+        endpoints: list[int] = []
+        hypothesis_offsets = array("I", [0])
+        hypothesis_ends = array("I")
+        hypothesis_endpoints = array("I")
+        token_units = lattice.token.units
+        for left_index, left in enumerate(lattice.nodes[:-1]):
+            surface_node = extend(0, left.right_underlying)
+            surface_has_vowel = any(
+                symbol in VOWELS for symbol in left.right_underlying
+            )
+            gap_has_avagraha = False
+            surface_cursor = left.surface_end
+            for right_index in range(left_index + 1, len(lattice.nodes)):
+                right = lattice.nodes[right_index]
+                if left.surface_end > right.surface_start:
+                    continue
+                for unit in token_units[surface_cursor : right.surface_start]:
+                    if unit.kind == "avagraha":
+                        gap_has_avagraha = True
+                    else:
+                        assert unit.phoneme is not None
+                        surface_node = extend(surface_node, (unit.phoneme,))
+                        surface_has_vowel = (
+                            surface_has_vowel or unit.phoneme in VOWELS
+                        )
+                surface_cursor = right.surface_start
+                identity_edge = left.is_start and right.is_end
+                if gap_has_avagraha and not identity_edge:
+                    continue
+                endpoint = extend(surface_node, right.left_underlying)
+                if nodes[endpoint].depth == 0:
+                    continue
+                if not identity_edge and not (
+                    surface_has_vowel
+                    or any(symbol in VOWELS for symbol in right.left_underlying)
+                ):
+                    continue
+                endpoint_id = endpoint_ids.get(endpoint)
+                if endpoint_id is None:
+                    endpoint_id = len(endpoints)
+                    endpoint_ids[endpoint] = endpoint_id
+                    endpoints.append(endpoint)
+                hypothesis_ends.append(right_index)
+                hypothesis_endpoints.append(endpoint_id)
+            hypothesis_offsets.append(len(hypothesis_ends))
+
+        max_piece_length = self.model_config.max_piece_length
+        piece_ids: dict[tuple[Phoneme, ...], int] = {}
+        pieces: list[tuple[Phoneme, ...]] = []
+        offsets = array("I", [0])
+        sources = array("I")
+        transition_piece_ids = array("I")
+        for node_index in range(1, len(nodes)):
+            node = nodes[node_index]
+            cursor = node_index
+            suffix_reversed: list[Phoneme] = []
+            descending: list[tuple[int, int]] = []
+            for _piece_length in range(
+                1, min(node.depth, max_piece_length) + 1
+            ):
+                symbol = nodes[cursor].symbol
+                assert symbol is not None
+                suffix_reversed.append(symbol)
+                source = nodes[cursor].parent
+                piece_symbols = tuple(reversed(suffix_reversed))
+                piece_id = piece_ids.get(piece_symbols)
+                if piece_id is None:
+                    piece_id = len(pieces)
+                    piece_ids[piece_symbols] = piece_id
+                    pieces.append(piece_symbols)
+                descending.append((source, piece_id))
+                cursor = source
+            for source, piece_id in reversed(descending):
+                sources.append(source)
+                transition_piece_ids.append(piece_id)
+            offsets.append(len(sources))
+
+        topology = _CompactSharedFormTopology(
+            max_piece_length=max_piece_length,
+            parent=array("i", (node.parent for node in nodes)),
+            depth=array("I", (node.depth for node in nodes)),
+            symbols=tuple(node.symbol for node in nodes),
+            transition_offsets=offsets,
+            transition_sources=sources,
+            transition_piece_ids=transition_piece_ids,
+            pieces=tuple(pieces),
+            endpoint_nodes=array("I", endpoints),
+        )
+        self._events["compact_trie_compiles"] += 1
+        self._events["compact_endpoint_occurrences"] += len(hypothesis_ends)
+        return _CompactTokenSupport(
+            topology=topology,
+            hypothesis_offsets=hypothesis_offsets,
+            hypothesis_ends=hypothesis_ends,
+            hypothesis_endpoints=hypothesis_endpoints,
+        )
+
+    @staticmethod
+    def _compact_form_symbols(
+        topology: _CompactSharedFormTopology,
+        endpoint_id: int,
+    ) -> tuple[Phoneme, ...]:
+        """Materialize one endpoint symbol sequence for immediate consumption."""
+
+        symbols: list[Phoneme] = []
+        cursor = topology.endpoint_nodes[endpoint_id]
+        while cursor:
+            symbol = topology.symbols[cursor]
+            assert symbol is not None
+            symbols.append(symbol)
+            cursor = topology.parent[cursor]
+        symbols.reverse()
+        return tuple(symbols)
+
+    def _compact_form(
+        self,
+        topology: _CompactSharedFormTopology,
+        endpoint_id: int,
+    ) -> PhonologicalForm:
+        return PhonologicalForm(
+            self._compact_form_symbols(topology, endpoint_id)
+        )
+
+    def _build_compact_form_batch(
+        self,
+        support: _CompactTokenSupport,
+        *,
+        materialize_top_paths: bool = True,
+    ) -> _CompactSharedFormBatch:
+        """Reweight a primitive compact trie without retaining complete forms."""
+
+        evaluation_started = time.perf_counter()
+        topology = support.topology
+        self._events["topology_compiles"] += 1
+        if self.inspection_top_k is not None and (
+            self.inspection_top_k * len(topology.parent)
+            > self.cache_config.shared_top_k_piece_references
+        ):
+            # The manual correction is binding: disable only shared
+            # presentation state. Exact marginal state remains unchanged.
+            materialize_top_paths = False
+
+        transition_started = time.perf_counter()
+        pieces_and_scores = tuple(
+            self._piece_and_score(piece_symbols)
+            for piece_symbols in topology.pieces
+        )
+        prior_by_shape = {
+            (noninitial, length): (
+                int(noninitial) * math.log(self.model_config.rho)
+                + (length - 1) * math.log1p(-self.model_config.rho)
+            )
+            for noninitial in (False, True)
+            for length in range(1, topology.max_piece_length + 1)
+        }
+        prior_alpha = [-math.inf] * len(topology.parent)
+        alpha = [-math.inf] * len(topology.parent)
+        singleton_scores = [-math.inf] * len(topology.parent)
+        prior_alpha[0] = 0.0
+        alpha[0] = 0.0
+        singleton_scores[0] = 0.0
+        transition_raw_scores = array("d")
+
+        forward_started = time.perf_counter()
+        for node_index in range(1, len(topology.parent)):
+            node_prior_alpha = -math.inf
+            node_alpha = -math.inf
+            start = topology.transition_offsets[node_index - 1]
+            end = topology.transition_offsets[node_index]
+            for transition_index in range(start, end):
+                source = topology.transition_sources[transition_index]
+                prior = prior_by_shape[
+                    (
+                        source > 0,
+                        topology.depth[node_index] - topology.depth[source],
+                    )
+                ]
+                raw = (
+                    prior
+                    + pieces_and_scores[
+                        topology.transition_piece_ids[transition_index]
+                    ][1]
+                )
+                transition_raw_scores.append(raw)
+                node_prior_alpha = logaddexp(
+                    node_prior_alpha,
+                    prior_alpha[source] + prior,
+                )
+                node_alpha = logaddexp(
+                    node_alpha,
+                    alpha[source] + raw,
+                )
+            prior_alpha[node_index] = node_prior_alpha
+            alpha[node_index] = node_alpha
+            singleton_index = end - 1
+            assert (
+                topology.transition_sources[singleton_index]
+                == topology.parent[node_index]
+            )
+            singleton_scores[node_index] = (
+                singleton_scores[topology.parent[node_index]]
+                + transition_raw_scores[singleton_index]
+            )
+        self.add_timing("inner_piece_forward_seconds", forward_started)
+
+        endpoint_scores: list[_CompactEndpointScore] = []
+        long_whole_count = 0
+        for endpoint_id, node_index in enumerate(topology.endpoint_nodes):
+            node_depth = topology.depth[node_index]
+            form_symbols = self._compact_form_symbols(topology, endpoint_id)
+            _whole_piece, piece_score = self._piece_and_score(form_symbols)
+            whole_prior = _raw_prior_score(
+                0,
+                node_depth,
+                rho=self.model_config.rho,
+            )
+            whole_raw = whole_prior + piece_score
+            if node_depth > topology.max_piece_length:
+                prior_log_z = logaddexp(whole_prior, prior_alpha[node_index])
+                raw_log_z = logaddexp(whole_raw, alpha[node_index])
+                long_whole_count += 1
+            else:
+                prior_log_z = prior_alpha[node_index]
+                raw_log_z = alpha[node_index]
+            if prior_log_z == -math.inf or raw_log_z == -math.inf:
+                raise ValueError("Lexical form has no complete piece segmentation.")
+            endpoint_scores.append(
+                _CompactEndpointScore(
+                    node=node_index,
+                    prior_log_normalizer=prior_log_z,
+                    raw_log_partition=raw_log_z,
+                    log_score=raw_log_z - prior_log_z,
+                    whole_raw_score=whole_raw,
+                    singleton_score=singleton_scores[node_index],
+                )
+            )
+
+        top_paths: list[tuple[_SharedInnerPath, ...]] | None = None
+        if self.inspection_top_k is not None and materialize_top_paths:
+            top_k_started = time.perf_counter()
+            top_paths = [() for _ in topology.parent]
+            top_paths[0] = (_SharedInnerPath(0.0, None, None),)
+            for node_index in range(1, len(topology.parent)):
+                candidates: list[_SharedInnerPath] = []
+                for transition_index in range(
+                    topology.transition_offsets[node_index - 1],
+                    topology.transition_offsets[node_index],
+                ):
+                    source = topology.transition_sources[transition_index]
+                    piece = pieces_and_scores[
+                        topology.transition_piece_ids[transition_index]
+                    ][0]
+                    raw_score = transition_raw_scores[transition_index]
+                    candidates.extend(
+                        _SharedInnerPath(
+                            score=prefix.score + raw_score,
+                            parent=prefix,
+                            piece=piece,
+                        )
+                        for prefix in top_paths[source]
+                    )
+                candidates.sort(
+                    key=lambda item: (-item.score, _shared_inner_piece_keys(item))
+                )
+                top_paths[node_index] = tuple(
+                    candidates[: self.inspection_top_k]
+                )
+            self._events["shared_top_k_states"] += len(topology.parent)
+            self._events["shared_top_k_paths"] += sum(
+                len(paths) for paths in top_paths
+            )
+            self.add_timing("inner_piece_top_k_seconds", top_k_started)
+
+        self.add_timing("inner_piece_reweight_seconds", transition_started)
+        self.add_timing("inner_piece_transition_build_seconds", transition_started)
+        self._events["composed_state_count"] += len(topology.parent)
+        self._events["composed_transition_count"] += (
+            len(topology.transition_sources) + long_whole_count
+        )
+        self._events["shared_prefix_nodes"] += len(topology.parent)
+        self._events["shared_form_endpoints"] += len(endpoint_scores)
+        self.add_timing("inner_piece_evaluation_seconds", evaluation_started)
+        return _CompactSharedFormBatch(
+            topology=topology,
+            pieces=tuple(item[0] for item in pieces_and_scores),
+            transition_raw_scores=transition_raw_scores,
+            prior_alpha=prior_alpha,
+            alpha=alpha,
+            singleton_scores=singleton_scores,
+            top_paths=top_paths,
+            endpoint_scores=tuple(endpoint_scores),
+        )
+
+    def _aggregate_compact_piece_marginals(
+        self,
+        batch: _CompactSharedFormBatch,
+        endpoint_masses: dict[int, float],
+    ) -> tuple[dict[PhonologicalForm, float], float]:
+        """Reverse the compact shared DAG with endpoint-indexed adjoints."""
+
+        started = time.perf_counter()
+        topology = batch.topology
+        log_adjoint = [-math.inf] * len(topology.parent)
+        piece_counts: dict[PhonologicalForm, float] = defaultdict(float)
+        expected_raw_score = 0.0
+        for endpoint_id, mass in endpoint_masses.items():
+            if mass <= 0.0:
+                continue
+            score = batch.endpoint_scores[endpoint_id]
+            seed = math.log(mass) - score.raw_log_partition
+            log_adjoint[score.node] = logaddexp(
+                log_adjoint[score.node], seed
+            )
+            if topology.depth[score.node] > topology.max_piece_length:
+                contribution = math.exp(seed + score.whole_raw_score)
+                whole_piece = self._compact_form(topology, endpoint_id)
+                piece_counts[whole_piece] += contribution
+                expected_raw_score += contribution * score.whole_raw_score
+
+        for node_index in range(len(topology.parent) - 1, 0, -1):
+            adjoint = log_adjoint[node_index]
+            if adjoint == -math.inf:
+                continue
+            for transition_index in range(
+                topology.transition_offsets[node_index - 1],
+                topology.transition_offsets[node_index],
+            ):
+                source = topology.transition_sources[transition_index]
+                raw_score = batch.transition_raw_scores[transition_index]
+                piece = batch.pieces[
+                    topology.transition_piece_ids[transition_index]
+                ]
+                contribution = math.exp(
+                    adjoint + batch.alpha[source] + raw_score
+                )
+                piece_counts[piece] += contribution
+                expected_raw_score += contribution * raw_score
+                log_adjoint[source] = logaddexp(
+                    log_adjoint[source], adjoint + raw_score
+                )
+        self.add_timing("inner_piece_backward_seconds", started)
+        self.add_timing("inner_piece_posterior_seconds", started)
+        return dict(piece_counts), expected_raw_score
+
+    def _compact_top_segmentations(
+        self,
+        batch: _CompactSharedFormBatch,
+        endpoint_id: int,
+    ) -> tuple[PieceSegmentation, ...]:
+        """Recover exact presentation Top-K with bounded form materialization."""
+
+        assert self.inspection_top_k is not None
+        if batch.top_paths is None:
+            return self.evaluate_form(
+                self._compact_form(batch.topology, endpoint_id)
+            ).top_segmentations
+        started = time.perf_counter()
+        score = batch.endpoint_scores[endpoint_id]
+        candidates = list(batch.top_paths[score.node])
+        if batch.topology.depth[score.node] > self.model_config.max_piece_length:
+            candidates.append(
+                _SharedInnerPath(
+                    score=score.whole_raw_score,
+                    parent=None,
+                    piece=self._compact_form(batch.topology, endpoint_id),
+                )
+            )
+        candidates.sort(
+            key=lambda item: (-item.score, _shared_inner_piece_keys(item))
+        )
+        del candidates[self.inspection_top_k :]
+        result = tuple(
+            PieceSegmentation(
+                pieces=_shared_inner_pieces(path),
+                log_weight=path.score - score.prior_log_normalizer,
+                probability=math.exp(path.score - score.raw_log_partition),
+            )
+            for path in candidates
+        )
+        self.add_timing("inner_piece_top_k_seconds", started)
+        return result
+
     def _build_shared_form_batch(
         self,
         forms: tuple[PhonologicalForm, ...],
@@ -924,6 +1456,7 @@ class ComposedPieceInference:
         topology: CompiledSharedFormTopology | None = None,
         topology_reused: bool = False,
         materialize_top_paths: bool = True,
+        compact_topology: bool = False,
     ) -> _SharedFormBatch | None:
         """Compile or exactly reweight one bounded shared prefix DAG."""
 
@@ -948,12 +1481,19 @@ class ComposedPieceInference:
         form_keys = tuple(form.key for form in forms)
         if topology.form_keys != form_keys:
             raise ValueError("Compiled piece topology does not match lexical forms.")
-        if self.inspection_top_k is not None and (
-            self.inspection_top_k * len(topology.parent)
+        top_k_over_budget = (
+            self.inspection_top_k is not None
+            and self.inspection_top_k * len(topology.parent)
             > self.cache_config.shared_top_k_piece_references
-        ):
-            self._events["shared_batch_fallbacks"] += 1
-            return None
+        )
+        if top_k_over_budget:
+            if compact_topology:
+                # Exact marginals are unaffected. Disable only the
+                # presentation-only shared Top-K prefix payload.
+                materialize_top_paths = False
+            else:
+                self._events["shared_batch_fallbacks"] += 1
+                return None
 
         reweight_started = time.perf_counter()
         pieces_and_scores = tuple(
@@ -1241,6 +1781,10 @@ class ComposedPieceInference:
             for factor in graph.factors
             if factor.lattice is not None
         )
+        self._events["historical_match_pressure_tokens"] += (
+            graph.historical_match_pressure_tokens
+        )
+        self._events["support_truncation_tokens"] += graph.overflowed_tokens
 
     def record_lazy_span(self, *, hypothesis: bool) -> None:
         self._events["lazy_span_traversals"] += 1
@@ -1474,50 +2018,83 @@ def _factor_retention_estimate(
         lattice = factor.lattice
         if (
             lattice is None
-            or topology is None
             or support_epsilon != 0.0
             or not engine.cache_config.shared_token_marginals
         ):
             return None
-        prefix_nodes = len(topology.parent)
-        transitions = len(topology.transition_sources)
-        forms = len(topology.form_keys)
-        pieces = len(topology.pieces)
+        if topology is None:
+            # Fail-closed structural upper estimate for the direct compact
+            # trie.  It uses no lexical-span/form enumeration.
+            lattice_nodes = len(lattice.nodes)
+            surface_length = len(lattice.token.phonemes)
+            endpoint_slots = lattice_nodes * (lattice_nodes - 1) // 2
+            max_form_depth = surface_length + max(
+                (
+                    len(node.left_underlying) + len(node.right_underlying)
+                    for node in lattice.nodes
+                ),
+                default=0,
+            )
+            forms = endpoint_slots
+            prefix_nodes = 1 + max(1, lattice_nodes - 1) * max(
+                1, max_form_depth
+            )
+            transitions = prefix_nodes * min(
+                max_form_depth, engine.model_config.max_piece_length
+            )
+            pieces = transitions + forms
+            depth_sum = prefix_nodes * max_form_depth
+            occurrence_slots = endpoint_slots
+        else:
+            prefix_nodes = len(topology.parent)
+            transitions = len(topology.transition_sources)
+            forms = len(topology.form_keys)
+            pieces = len(topology.pieces)
+            lattice_nodes = len(lattice.nodes)
+            occurrence_slots = lattice_nodes * (lattice_nodes - 1) // 2
+            try:
+                endpoint_depths = tuple(
+                    int(topology.depth[node]) for node in topology.endpoint_nodes
+                )
+            except (IndexError, OverflowError, TypeError):
+                return None
+            depth_sum = sum(int(depth) for depth in topology.depth)
+            max_form_depth = max(endpoint_depths, default=0)
         if (
             prefix_nodes < 1
             or forms < 1
             or pieces < 1
-            or topology.max_piece_length
-            != engine.model_config.max_piece_length
-            or len(topology.depth) != prefix_nodes
-            or len(topology.transition_offsets) != prefix_nodes
-            or len(topology.transition_piece_ids) != transitions
-            or len(topology.endpoint_nodes) != forms
-            or len(topology.whole_piece_ids) != forms
-            or topology.transition_offsets[-1] != transitions
-            or top_k * prefix_nodes
-            > engine.cache_config.shared_top_k_piece_references
-        ):
-            return None
-        try:
-            endpoint_depths = tuple(
-                int(topology.depth[node]) for node in topology.endpoint_nodes
+            or (
+                topology is not None
+                and topology.max_piece_length
+                != engine.model_config.max_piece_length
             )
-        except (IndexError, OverflowError, TypeError):
-            return None
-        if len(endpoint_depths) != forms or any(
-            depth < 1 for depth in endpoint_depths
+            or (
+                topology is not None
+                and (
+                    len(topology.depth) != prefix_nodes
+                    or len(topology.transition_offsets) != prefix_nodes
+                    or len(topology.transition_piece_ids) != transitions
+                    or len(topology.endpoint_nodes) != forms
+                    or len(topology.whole_piece_ids) != forms
+                    or topology.transition_offsets[-1] != transitions
+                    or top_k * prefix_nodes
+                    > engine.cache_config.shared_top_k_piece_references
+                )
+            )
         ):
             return None
-        depth_sum = sum(int(depth) for depth in topology.depth)
-        lattice_nodes = len(lattice.nodes)
+        if topology is not None and (
+            len(endpoint_depths) != forms
+            or any(depth < 1 for depth in endpoint_depths)
+        ):
+            return None
         if lattice_nodes < 2 or depth_sum < 0:
             return None
-        occurrence_slots = lattice_nodes * (lattice_nodes - 1) // 2
-        max_form_depth = max(endpoint_depths, default=0)
-        transitions += sum(
-            depth > topology.max_piece_length for depth in endpoint_depths
-        )
+        if topology is not None:
+            transitions += sum(
+                depth > topology.max_piece_length for depth in endpoint_depths
+            )
 
     top_path_records = top_k * (1 + max_form_depth)
     retained_records = (
@@ -1555,6 +2132,244 @@ def _factor_retention_estimate(
     )
 
 
+def _compact_boundary(
+    lattice: LazyTokenLattice,
+    end: int,
+) -> LexicalBoundary | None:
+    right = lattice.nodes[end]
+    if right.is_end:
+        return None
+    return LexicalBoundary(
+        boundary_id=(
+            f"internal:{right.source_start}:{right.source_end}:"
+            f"{','.join(right.rule_ids)}"
+        ),
+        cue_kind=(
+            "avagraha"
+            if any(
+                unit.kind == "avagraha"
+                for unit in lattice.token.units[
+                    right.surface_start : right.surface_end
+                ]
+            )
+            else "unmarked"
+        ),
+        source_start=right.source_start,
+        source_end=right.source_end,
+    )
+
+
+def _evaluate_lazy_token_compact(
+    lattice: LazyTokenLattice,
+    engine: ComposedPieceInference,
+) -> _TokenSummary:
+    """Exact shared inference over packed structural lexical hypotheses."""
+
+    node_count = len(lattice.nodes)
+    support = engine._compile_compact_token_support(lattice)
+    batch = engine._build_compact_form_batch(support)
+    offsets = support.hypothesis_offsets
+    ends = support.hypothesis_ends
+    endpoint_ids = support.hypothesis_endpoints
+    for _hypothesis_index in range(len(ends)):
+        engine.record_lazy_span(hypothesis=True)
+
+    alpha = [-math.inf] * node_count
+    alpha[0] = 0.0
+    started = time.perf_counter()
+    for start in range(node_count - 1):
+        if alpha[start] == -math.inf:
+            continue
+        for hypothesis_index in range(offsets[start], offsets[start + 1]):
+            end = ends[hypothesis_index]
+            score = batch.endpoint_scores[endpoint_ids[hypothesis_index]]
+            alpha[end] = logaddexp(
+                alpha[end], alpha[start] + score.log_score
+            )
+    engine.add_timing("lazy_token_forward_seconds", started)
+    log_z = alpha[-1]
+    if log_z == -math.inf:
+        raise ValueError("Lazy token lattice has no complete lexical analysis.")
+
+    beta = [-math.inf] * node_count
+    beta[-1] = 0.0
+    started = time.perf_counter()
+    for start in range(node_count - 2, -1, -1):
+        for hypothesis_index in range(offsets[start], offsets[start + 1]):
+            end = ends[hypothesis_index]
+            score = batch.endpoint_scores[endpoint_ids[hypothesis_index]]
+            beta[start] = logaddexp(
+                beta[start], score.log_score + beta[end]
+            )
+    engine.add_timing("lazy_token_backward_seconds", started)
+
+    lexical_masses: dict[int, float] = defaultdict(float)
+    endpoint_masses: dict[int, float] = defaultdict(float)
+    form_occurrences: dict[int, set[int]] = defaultdict(set)
+    boundary_mass: dict[str, float] = defaultdict(float)
+    boundary_meta: dict[str, LexicalBoundary] = {}
+    rule_usage: dict[str, float] = defaultdict(float)
+    surface_base = len(lattice.token.units) + 1
+    expected_prior_log_z = 0.0
+    mass_weighted_raw_log_z = 0.0
+    expected_whole_form_uses = 0.0
+    expected_singleton_path_uses = 0.0
+    expected_multi_piece_uses = 0.0
+    identity_log_score = -math.inf
+    started = time.perf_counter()
+    for start in range(node_count - 1):
+        for hypothesis_index in range(offsets[start], offsets[start + 1]):
+            end = ends[hypothesis_index]
+            endpoint_id = endpoint_ids[hypothesis_index]
+            score = batch.endpoint_scores[endpoint_id]
+            mass = math.exp(
+                alpha[start] + score.log_score + beta[end] - log_z
+            )
+            lexical_masses[endpoint_id] += mass
+            endpoint_masses[endpoint_id] += mass
+            expected_prior_log_z += mass * score.prior_log_normalizer
+            mass_weighted_raw_log_z += mass * score.raw_log_partition
+            whole_mass = math.exp(
+                score.whole_raw_score - score.raw_log_partition
+            )
+            singleton_mass = math.exp(
+                score.singleton_score - score.raw_log_partition
+            )
+            expected_whole_form_uses += mass * whole_mass
+            expected_singleton_path_uses += mass * singleton_mass
+            expected_multi_piece_uses += mass * (1.0 - whole_mass)
+            if mass > 0.0:
+                form_occurrences[endpoint_id].add(
+                    lattice.nodes[start].surface_end * surface_base
+                    + lattice.nodes[end].surface_start
+                )
+            boundary = _compact_boundary(lattice, end)
+            if boundary is not None:
+                boundary_mass[boundary.boundary_id] += mass
+                boundary_meta[boundary.boundary_id] = boundary
+            rule_ids = lattice.nodes[end].rule_ids if end < node_count - 1 else ()
+            for rule_id in rule_ids:
+                rule_usage[rule_id] += mass / len(rule_ids)
+            if start == 0 and end == node_count - 1:
+                identity_log_score = score.log_score
+
+    piece_counts, expected_raw_score = (
+        engine._aggregate_compact_piece_marginals(batch, endpoint_masses)
+    )
+    lexical_counts: dict[PhonologicalForm, float] = {}
+    shared_occurrences: list[_SharedFormOccurrenceSupport] = []
+    for endpoint_id, mass in lexical_masses.items():
+        form = engine._compact_form(batch.topology, endpoint_id)
+        lexical_counts[form] = mass
+        occurrences = form_occurrences.get(endpoint_id)
+        if occurrences:
+            shared_occurrences.append(
+                _SharedFormOccurrenceSupport(
+                    form=form,
+                    surface_base=surface_base,
+                    occurrence_ids=occurrences,
+                )
+            )
+    engine.add_timing("lazy_token_posterior_seconds", started)
+
+    top_paths: tuple[_ComposedPath, ...] = ()
+    if engine.inspection_top_k is not None:
+        started = time.perf_counter()
+        top_segmentations: OrderedDict[
+            int,
+            tuple[
+                tuple[tuple[PieceSegmentation, tuple[str, ...]], ...],
+                int,
+            ],
+        ] = OrderedDict()
+        top_segmentation_bytes = 0
+        paths: list[list[_ComposedPath]] = [[] for _ in range(node_count)]
+        paths[0] = [_ComposedPath(0.0, (), (), (), (), ((), (), ()))]
+        for start in range(node_count - 1):
+            if not paths[start]:
+                continue
+            for hypothesis_index in range(offsets[start], offsets[start + 1]):
+                end = ends[hypothesis_index]
+                endpoint_id = endpoint_ids[hypothesis_index]
+                form = engine._compact_form(batch.topology, endpoint_id)
+                cached = top_segmentations.get(endpoint_id)
+                if cached is None:
+                    segmentations = engine._compact_top_segmentations(
+                        batch, endpoint_id
+                    )
+                    keyed_segmentations = tuple(
+                        (
+                            segmentation,
+                            tuple(piece.key for piece in segmentation.pieces),
+                        )
+                        for segmentation in segmentations
+                    )
+                    cache_size = 96 + sum(
+                        64
+                        + 16 * len(segmentation.pieces)
+                        + sum(len(key.encode("utf-8")) for key in keys)
+                        for segmentation, keys in keyed_segmentations
+                    )
+                    if cache_size <= engine.cache_config.form_bytes:
+                        while top_segmentations and (
+                            len(top_segmentations)
+                            >= engine.cache_config.form_entries
+                            or top_segmentation_bytes + cache_size
+                            > engine.cache_config.form_bytes
+                        ):
+                            _old_key, (_old_value, old_size) = (
+                                top_segmentations.popitem(last=False)
+                            )
+                            top_segmentation_bytes -= old_size
+                        top_segmentations[endpoint_id] = (
+                            keyed_segmentations,
+                            cache_size,
+                        )
+                        top_segmentation_bytes += cache_size
+                else:
+                    keyed_segmentations, _cache_size = cached
+                    top_segmentations.move_to_end(endpoint_id)
+                rule_ids = (
+                    lattice.nodes[end].rule_ids if end < node_count - 1 else ()
+                )
+                target_end, candidates = _top_compact_token_path_extensions(
+                    paths[start],
+                    form=form,
+                    end=end,
+                    rule_ids=rule_ids,
+                    boundary=_compact_boundary(lattice, end),
+                    segmentations=keyed_segmentations,
+                    limit=engine.inspection_top_k,
+                )
+                paths[target_end].extend(candidates)
+                paths[target_end] = _trim_composed_paths(
+                    paths[target_end], engine.inspection_top_k
+                )
+        top_paths = tuple(paths[-1])
+        engine.add_timing("lazy_token_top_k_seconds", started)
+
+    return _TokenSummary(
+        log_partition=log_z,
+        expected_log_weight=expected_raw_score - expected_prior_log_z,
+        identity_log_score=identity_log_score,
+        expected_piece_tokens=sum(piece_counts.values()),
+        piece_segmentation_entropy=max(
+            0.0, mass_weighted_raw_log_z - expected_raw_score
+        ),
+        expected_whole_form_uses=expected_whole_form_uses,
+        expected_singleton_path_uses=expected_singleton_path_uses,
+        expected_multi_piece_uses=expected_multi_piece_uses,
+        lexical_counts=lexical_counts,
+        piece_counts=piece_counts,
+        boundary_mass=dict(boundary_mass),
+        boundary_meta=boundary_meta,
+        rule_usage=dict(rule_usage),
+        piece_occurrences={},
+        shared_occurrences=tuple(shared_occurrences),
+        top_paths=top_paths,
+    )
+
+
 def _evaluate_lazy_token_shared(
     lattice: LazyTokenLattice,
     engine: ComposedPieceInference,
@@ -1564,17 +2379,22 @@ def _evaluate_lazy_token_shared(
     """Exact training marginals through a bounded token-local prefix DAG."""
 
     node_count = len(lattice.nodes)
-    spans_by_start: list[tuple[LazyLexicalSpan, ...]] = []
+    if topology is None:
+        return _evaluate_lazy_token_compact(lattice, engine)
+    legacy_spans: list[tuple[LazyLexicalSpan, ...]] = []
     unique_forms: dict[str, PhonologicalForm] = {}
     for start in range(node_count - 1):
         spans = tuple(lattice.iter_spans_from(start))
-        spans_by_start.append(spans)
+        legacy_spans.append(spans)
         for span in spans:
             unique_forms.setdefault(span.word.key, span.word)
+    spans_by_start = tuple(legacy_spans)
+    forms = tuple(unique_forms.values())
     batch = engine._build_shared_form_batch(
-        tuple(unique_forms.values()),
+        forms,
         topology=topology,
         topology_reused=topology_reused,
+        compact_topology=False,
     )
     if batch is None:
         return None
@@ -1674,7 +2494,14 @@ def _evaluate_lazy_token_shared(
         for form_key, occurrences in form_occurrences.items()
     )
 
-    identity = lattice.span(0, node_count - 1)
+    identity = next(
+        (
+            span
+            for span in spans_by_start[0]
+            if span.end == node_count - 1 and span.identity_edge
+        ),
+        None,
+    )
     identity_log_score = -math.inf
     if identity is not None:
         identity_log_score = batch.forms[identity.word.key].log_score
@@ -1699,10 +2526,15 @@ def _evaluate_lazy_token_shared(
             for span in spans:
                 cached_segmentations = top_segmentations.get(span.word.key)
                 if cached_segmentations is None:
-                    segmentations = engine._shared_top_segmentations(
-                        batch,
-                        batch.forms[span.word.key],
-                    )
+                    if batch.top_paths is None:
+                        segmentations = engine.evaluate_form(
+                            span.word
+                        ).top_segmentations
+                    else:
+                        segmentations = engine._shared_top_segmentations(
+                            batch,
+                            batch.forms[span.word.key],
+                        )
                     keyed_segmentations = tuple(
                         (
                             segmentation,
@@ -1814,6 +2646,34 @@ def _score_lazy_token(
     """Return outer and identity scores without retaining posterior payloads."""
 
     node_count = len(lattice.nodes)
+    if topology is None and (
+        engine.cache_config.shared_token_marginals and support_epsilon == 0.0
+    ):
+        support = engine._compile_compact_token_support(lattice)
+        batch = engine._build_compact_form_batch(
+            support, materialize_top_paths=False
+        )
+        alpha = [-math.inf] * node_count
+        alpha[0] = 0.0
+        identity_log_score = -math.inf
+        for start in range(node_count - 1):
+            if alpha[start] == -math.inf:
+                continue
+            for hypothesis_index in range(
+                support.hypothesis_offsets[start],
+                support.hypothesis_offsets[start + 1],
+            ):
+                end = support.hypothesis_ends[hypothesis_index]
+                score = batch.endpoint_scores[
+                    support.hypothesis_endpoints[hypothesis_index]
+                ].log_score
+                alpha[end] = logaddexp(alpha[end], alpha[start] + score)
+                if start == 0 and end == node_count - 1:
+                    identity_log_score = score
+        if alpha[-1] == -math.inf:
+            raise ValueError("Lazy token lattice has no complete lexical analysis.")
+        return alpha[-1], identity_log_score
+
     spans_by_start = tuple(
         tuple(lattice.iter_spans_from(start))
         for start in range(node_count - 1)
@@ -1825,11 +2685,13 @@ def _score_lazy_token(
             for spans in spans_by_start:
                 for span in spans:
                     unique_forms.setdefault(span.word.key, span.word)
+            forms = tuple(unique_forms.values())
             batch = engine._build_shared_form_batch(
-                tuple(unique_forms.values()),
+                forms,
                 topology=topology,
                 topology_reused=topology_reused,
                 materialize_top_paths=False,
+                compact_topology=False,
             )
 
     form_scores: dict[str, float] = {}
@@ -1856,7 +2718,14 @@ def _score_lazy_token(
     log_z = alpha[-1]
     if log_z == -math.inf:
         raise ValueError("Lazy token lattice has no complete lexical analysis.")
-    identity = lattice.span(0, node_count - 1)
+    identity = next(
+        (
+            span
+            for span in spans_by_start[0]
+            if span.end == node_count - 1 and span.identity_edge
+        ),
+        None,
+    )
     identity_log_score = (
         -math.inf if identity is None else score(identity.word)
     )
