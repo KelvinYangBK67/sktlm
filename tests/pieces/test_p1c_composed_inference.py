@@ -389,7 +389,7 @@ def test_shared_token_marginals_match_legacy_exact_path(surface: str) -> None:
     )
 
 
-def test_shared_zero_epsilon_occurrences_stay_form_compact() -> None:
+def test_shared_zero_epsilon_occurrences_stay_structurally_compact() -> None:
     grammar = StructuredSandhiGrammar.from_default_inventory()
     segment = next(iter_observed_segments('tattvamasi'))
     graph = build_lazy_candidate_graph(segment, grammar)
@@ -404,21 +404,19 @@ def test_shared_zero_epsilon_occurrences_stay_form_compact() -> None:
 
     assert summary is not None
     assert summary.piece_occurrences == {}
-    assert summary.shared_occurrences
+    assert summary.shared_occurrences == ()
+    assert summary.compact_occurrences is not None
+    support = summary.compact_occurrences
     stored_occurrences = sum(
-        len(support.occurrence_ids)
-        for support in summary.shared_occurrences
-    )
-    expanded_occurrences = sum(
-        len(support.occurrence_ids) * len(support.pieces)
-        for support in summary.shared_occurrences
+        len(endpoint.occurrence_ids) for endpoint in support.endpoints
     )
     assert stored_occurrences > 0
-    assert expanded_occurrences > stored_occurrences
+    assert len(support.root_nodes) == len(support.root_piece_ids)
+    assert support.root_nodes
     assert all(
         isinstance(occurrence_id, int)
-        for support in summary.shared_occurrences
-        for occurrence_id in support.occurrence_ids
+        for endpoint in support.endpoints
+        for occurrence_id in endpoint.occurrence_ids
     )
 
 
@@ -782,6 +780,9 @@ def test_compact_route_does_not_materialize_forms_per_span(monkeypatch) -> None:
     monkeypatch.setattr(
         composed_module.LazyTokenLattice, "iter_spans_from", forbidden
     )
+    monkeypatch.setattr(
+        composed_module.ComposedPieceInference, "_legal_pieces", forbidden
+    )
     result = infer_composed_segment(
         graph,
         ComposedPieceInference(
@@ -793,6 +794,56 @@ def test_compact_route_does_not_materialize_forms_per_span(monkeypatch) -> None:
 
     assert result.total_posterior_mass == pytest.approx(1.0, abs=1e-12)
     assert result.counters.compact_endpoint_occurrences > 0
+
+
+def test_compact_occurrence_support_deduplicates_and_keeps_long_whole_form() -> None:
+    grammar = StructuredSandhiGrammar(())
+    config = CandidateConfig(allow_whitespace_merge=False)
+    model_config = PieceModelConfig(max_piece_length=2)
+
+    repeated_graph = build_lazy_candidate_graph(
+        next(iter_observed_segments("aaaa")), grammar, config
+    )
+    repeated = infer_composed_segment(
+        repeated_graph,
+        ComposedPieceInference(
+            _production_scorer(), model_config=model_config
+        ),
+        whitespace_merge_penalty=8.0,
+    )
+    repeated_legacy = infer_composed_segment(
+        repeated_graph,
+        ComposedPieceInference(
+            _production_scorer(), model_config=model_config
+        ),
+        whitespace_merge_penalty=8.0,
+        topology=compile_composed_segment_topology(
+            repeated_graph,
+            ComposedPieceInference(
+                _production_scorer(), model_config=model_config
+            ),
+        ),
+    )
+    singleton = parse_iast_form("a")
+    long_whole = parse_iast_form("aaaa")
+    assert repeated.piece_occurrence_support[singleton] == 1
+    assert repeated.piece_occurrence_support[long_whole] == 1
+    assert (
+        repeated.piece_occurrence_support
+        == repeated_legacy.piece_occurrence_support
+    )
+
+    twice_graph = build_lazy_candidate_graph(
+        next(iter_observed_segments("a a")), grammar, config
+    )
+    twice = infer_composed_segment(
+        twice_graph,
+        ComposedPieceInference(
+            _production_scorer(), model_config=model_config
+        ),
+        whitespace_merge_penalty=8.0,
+    )
+    assert twice.piece_occurrence_support[singleton] == 2
 
 
 def test_compact_candidates_keep_matches_beyond_legacy_pressure_limit() -> None:

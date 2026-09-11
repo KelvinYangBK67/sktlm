@@ -2818,3 +2818,28 @@ NEXT_ACTION=BOUNDED_CANDIDATE_OVERFLOW_FORENSIC
 - No representative corpus, stress corpus, VM run, or Full M0 was executed for this implementation checkpoint.
 - `FULL_M0_AUTHORIZED=NO`.
 - Next action after publication: bounded post-push offender/pressure probe of the compact kernel before any broader validation.
+
+## S1M2 compact occurrence-support CPU-tail fix — 2026-09-11
+
+The post-marginal compact path no longer reconstructs every endpoint's legal
+piece set through repeated `_legal_pieces(form)` scans. During direct-trie
+compilation it records packed `(subtree root, piece id)` membership roots.
+Ancestor dominance removes repeated occurrences of the same piece along one
+form path. At outer-posterior consumption, exact distinct lexical-occurrence
+ownership is assigned across factors, endpoint counts are propagated once up
+the retained parent array, and piece support is summed over disjoint roots.
+Whole forms longer than `max_piece_length` remain separate exact endpoint
+pieces. Score-only inspection prepasses skip occurrence-root compilation.
+
+Focused compact-vs-legacy inference tests cover `devo'pi`, `tattvamasi`, a
+repeated piece within one lexical occurrence, the same form at two distinct
+lexical occurrences, and a whole form longer than `max_piece_length`. A
+monkeypatch gate proves the compact production route does not call
+`_legal_pieces(form)`. The focused inference file passes 31 tests, and the
+tiny serial/parallel S1M2 scientific-output test passes. No raw1002+, stress,
+representative, VM, worker calibration, or Full M0 run was executed.
+
+```text
+COMPACT_OCCURRENCE_SUPPORT_CPU_FIX_IMPLEMENTED=YES
+PER_ENDPOINT_FULL_FORM_LEGAL_PIECE_RESCAN_REMOVED=YES
+COMPACT_VS_LEGACY_FOCUSED_EXACTNESS=PASS

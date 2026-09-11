@@ -245,6 +245,26 @@ class _SharedFormOccurrenceSupport:
 
 
 @dataclass(frozen=True, slots=True)
+class _CompactEndpointOccurrenceSupport:
+    node: int
+    form: PhonologicalForm
+    occurrence_ids: set[int]
+
+
+@dataclass(frozen=True, slots=True)
+class _CompactOccurrenceSupport:
+    """Packed exact piece-membership roots for compact lexical endpoints."""
+
+    max_piece_length: int
+    parent: array
+    root_nodes: array
+    root_piece_ids: array
+    pieces: tuple[PhonologicalForm, ...]
+    surface_base: int
+    endpoints: tuple[_CompactEndpointOccurrenceSupport, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class _TokenSummary:
     log_partition: float
     expected_log_weight: float
@@ -261,6 +281,7 @@ class _TokenSummary:
     rule_usage: dict[str, float]
     piece_occurrences: dict[PhonologicalForm, dict[str, float]]
     shared_occurrences: tuple[_SharedFormOccurrenceSupport, ...]
+    compact_occurrences: _CompactOccurrenceSupport | None
     top_paths: tuple[_ComposedPath, ...]
 
 
@@ -282,6 +303,7 @@ class _FactorSummary:
     rule_usage: dict[str, float]
     piece_occurrences: dict[PhonologicalForm, dict[str, float]]
     shared_occurrences: tuple[_SharedFormOccurrenceSupport, ...]
+    compact_occurrences: _CompactOccurrenceSupport | None
     top_paths: tuple[_ComposedPath, ...]
 
 
@@ -383,6 +405,8 @@ class _CompactSharedFormTopology:
     transition_piece_ids: array
     pieces: tuple[tuple[Phoneme, ...], ...]
     endpoint_nodes: array
+    occurrence_root_nodes: array
+    occurrence_root_piece_ids: array
 
 
 @dataclass(frozen=True, slots=True)
@@ -1044,6 +1068,8 @@ class ComposedPieceInference:
     def _compile_compact_token_support(
         self,
         lattice: LazyTokenLattice,
+        *,
+        occurrence_support: bool = True,
     ) -> _CompactTokenSupport:
         """Build packed exact support directly from boundary-node geometry."""
 
@@ -1144,6 +1170,51 @@ class ComposedPieceInference:
                 transition_piece_ids.append(piece_id)
             offsets.append(len(sources))
 
+        # For occurrence support, a piece belongs to an endpoint exactly when
+        # at least one node carrying that piece lies on the endpoint's root
+        # path.  Keep only the highest such node on each trie branch: its
+        # subtree covers the same endpoints and makes repeated occurrences of
+        # the piece within one form idempotent.
+        occurrence_root_nodes = array("I")
+        occurrence_root_piece_ids = array("I")
+        if occurrence_support:
+            first_child = array("i", [-1]) * len(nodes)
+            next_sibling = array("i", [-1]) * len(nodes)
+            for child in range(len(nodes) - 1, 0, -1):
+                parent = nodes[child].parent
+                next_sibling[child] = first_child[parent]
+                first_child[parent] = child
+            active_piece_depth = array("I", [0]) * len(pieces)
+            traversal: list[tuple[int, bool]] = [(0, False)]
+            while traversal:
+                node_index, exiting = traversal.pop()
+                if exiting:
+                    if node_index:
+                        for transition_index in range(
+                            offsets[node_index - 1], offsets[node_index]
+                        ):
+                            piece_id = transition_piece_ids[transition_index]
+                            active_piece_depth[piece_id] -= 1
+                    continue
+                if node_index:
+                    for transition_index in range(
+                        offsets[node_index - 1], offsets[node_index]
+                    ):
+                        piece_id = transition_piece_ids[transition_index]
+                        if active_piece_depth[piece_id] == 0:
+                            occurrence_root_nodes.append(node_index)
+                            occurrence_root_piece_ids.append(piece_id)
+                        active_piece_depth[piece_id] += 1
+                traversal.append((node_index, True))
+                children: list[int] = []
+                child = first_child[node_index]
+                while child != -1:
+                    children.append(child)
+                    child = next_sibling[child]
+                traversal.extend(
+                    (child, False) for child in reversed(children)
+                )
+
         topology = _CompactSharedFormTopology(
             max_piece_length=max_piece_length,
             parent=array("i", (node.parent for node in nodes)),
@@ -1154,6 +1225,8 @@ class ComposedPieceInference:
             transition_piece_ids=transition_piece_ids,
             pieces=tuple(pieces),
             endpoint_nodes=array("I", endpoints),
+            occurrence_root_nodes=occurrence_root_nodes,
+            occurrence_root_piece_ids=occurrence_root_piece_ids,
         )
         self._events["compact_trie_compiles"] += 1
         self._events["compact_endpoint_occurrences"] += len(hypothesis_ends)
@@ -1410,6 +1483,39 @@ class ComposedPieceInference:
         self.add_timing("inner_piece_backward_seconds", started)
         self.add_timing("inner_piece_posterior_seconds", started)
         return dict(piece_counts), expected_raw_score
+
+    def _aggregate_compact_occurrence_support(
+        self,
+        support: _CompactOccurrenceSupport,
+        endpoint_occurrence_counts: tuple[int, ...],
+    ) -> dict[PhonologicalForm, int]:
+        """Aggregate exact distinct-occurrence support over trie subtrees."""
+
+        if len(endpoint_occurrence_counts) != len(support.endpoints):
+            raise ValueError("Compact occurrence endpoint counts do not align.")
+        subtree_occurrences = array("Q", [0]) * len(support.parent)
+        for endpoint, count in zip(
+            support.endpoints, endpoint_occurrence_counts
+        ):
+            subtree_occurrences[endpoint.node] += count
+        for node_index in range(len(support.parent) - 1, 0, -1):
+            subtree_occurrences[support.parent[node_index]] += (
+                subtree_occurrences[node_index]
+            )
+
+        counts: dict[PhonologicalForm, int] = defaultdict(int)
+        for node_index, piece_id in zip(
+            support.root_nodes, support.root_piece_ids
+        ):
+            count = subtree_occurrences[node_index]
+            if count:
+                counts[support.pieces[piece_id]] += count
+        for endpoint, count in zip(
+            support.endpoints, endpoint_occurrence_counts
+        ):
+            if count and len(endpoint.form.symbols) > support.max_piece_length:
+                counts[endpoint.form] += count
+        return dict(counts)
 
     def _compact_top_segmentations(
         self,
@@ -1955,12 +2061,13 @@ def _evaluate_lazy_token_legacy(
             for piece, occurrences in piece_occurrences.items()
         },
         shared_occurrences=(),
+        compact_occurrences=None,
         top_paths=top_paths,
     )
 
 
 _RETENTION_ESTIMATE_MAX = (1 << 63) - 1
-INSPECTION_RETENTION_FORMULA = "sktlm-opt19-factor-summary/v1"
+INSPECTION_RETENTION_FORMULA = "sktlm-compact-occurrence-factor-summary/v2"
 
 
 def _checked_retention_total(
@@ -2014,6 +2121,7 @@ def _factor_retention_estimate(
         occurrence_slots = 1
         lattice_nodes = 2
         max_form_depth = length
+        occurrence_root_slots = 0
     else:
         lattice = factor.lattice
         if (
@@ -2045,6 +2153,9 @@ def _factor_retention_estimate(
             pieces = transitions + forms
             depth_sum = prefix_nodes * max_form_depth
             occurrence_slots = endpoint_slots
+            # One packed (node, piece-id) pair is retained for at most every
+            # legal transition; ancestor dominance normally makes it smaller.
+            occurrence_root_slots = transitions
         else:
             prefix_nodes = len(topology.parent)
             transitions = len(topology.transition_sources)
@@ -2052,6 +2163,7 @@ def _factor_retention_estimate(
             pieces = len(topology.pieces)
             lattice_nodes = len(lattice.nodes)
             occurrence_slots = lattice_nodes * (lattice_nodes - 1) // 2
+            occurrence_root_slots = 0
             try:
                 endpoint_depths = tuple(
                     int(topology.depth[node]) for node in topology.endpoint_nodes
@@ -2103,6 +2215,7 @@ def _factor_retention_estimate(
         + forms
         + pieces
         + occurrence_slots
+        + occurrence_root_slots
         + 2 * lattice_nodes
         + top_path_records
     )
@@ -2116,6 +2229,7 @@ def _factor_retention_estimate(
             (forms, 320),
             (pieces, 160),
             (occurrence_slots, 80),
+            (occurrence_root_slots, 8),
             (lattice_nodes, 192),
             (top_path_records, 64),
         )
@@ -2257,19 +2371,28 @@ def _evaluate_lazy_token_compact(
         engine._aggregate_compact_piece_marginals(batch, endpoint_masses)
     )
     lexical_counts: dict[PhonologicalForm, float] = {}
-    shared_occurrences: list[_SharedFormOccurrenceSupport] = []
+    compact_endpoints: list[_CompactEndpointOccurrenceSupport] = []
     for endpoint_id, mass in lexical_masses.items():
         form = engine._compact_form(batch.topology, endpoint_id)
         lexical_counts[form] = mass
         occurrences = form_occurrences.get(endpoint_id)
         if occurrences:
-            shared_occurrences.append(
-                _SharedFormOccurrenceSupport(
+            compact_endpoints.append(
+                _CompactEndpointOccurrenceSupport(
+                    node=batch.topology.endpoint_nodes[endpoint_id],
                     form=form,
-                    surface_base=surface_base,
                     occurrence_ids=occurrences,
                 )
             )
+    compact_occurrences = _CompactOccurrenceSupport(
+        max_piece_length=batch.topology.max_piece_length,
+        parent=batch.topology.parent,
+        root_nodes=batch.topology.occurrence_root_nodes,
+        root_piece_ids=batch.topology.occurrence_root_piece_ids,
+        pieces=batch.pieces,
+        surface_base=surface_base,
+        endpoints=tuple(compact_endpoints),
+    )
     engine.add_timing("lazy_token_posterior_seconds", started)
 
     top_paths: tuple[_ComposedPath, ...] = ()
@@ -2365,7 +2488,8 @@ def _evaluate_lazy_token_compact(
         boundary_meta=boundary_meta,
         rule_usage=dict(rule_usage),
         piece_occurrences={},
-        shared_occurrences=tuple(shared_occurrences),
+        shared_occurrences=(),
+        compact_occurrences=compact_occurrences,
         top_paths=top_paths,
     )
 
@@ -2603,6 +2727,7 @@ def _evaluate_lazy_token_shared(
         rule_usage=dict(rule_usage),
         piece_occurrences={},
         shared_occurrences=shared_occurrences,
+        compact_occurrences=None,
         top_paths=top_paths,
     )
 
@@ -2649,7 +2774,9 @@ def _score_lazy_token(
     if topology is None and (
         engine.cache_config.shared_token_marginals and support_epsilon == 0.0
     ):
-        support = engine._compile_compact_token_support(lattice)
+        support = engine._compile_compact_token_support(
+            lattice, occurrence_support=False
+        )
         batch = engine._build_compact_form_batch(
             support, materialize_top_paths=False
         )
@@ -2822,6 +2949,7 @@ def _evaluate_factor(
                 if conditional_mass > 0.0
             },
             shared_occurrences=(),
+            compact_occurrences=None,
             top_paths=top_paths,
         )
     assert factor.lattice is not None
@@ -2854,6 +2982,7 @@ def _evaluate_factor(
         rule_usage=token.rule_usage,
         piece_occurrences=token.piece_occurrences,
         shared_occurrences=token.shared_occurrences,
+        compact_occurrences=token.compact_occurrences,
         top_paths=token.top_paths,
     )
 
@@ -3163,7 +3292,15 @@ def infer_composed_segment(
     boundary_mass: dict[str, float] = defaultdict(float)
     boundary_meta: dict[str, LexicalBoundary] = {}
     piece_occurrences: dict[PhonologicalForm, set[str]] = defaultdict(set)
-    shared_form_occurrences: dict[PhonologicalForm, set[int]] = defaultdict(set)
+    seen_shared_form_occurrences: dict[
+        PhonologicalForm, set[int]
+    ] = defaultdict(set)
+    legacy_shared_form_occurrences: dict[
+        PhonologicalForm, set[int]
+    ] = defaultdict(set)
+    compact_piece_occurrence_support: dict[
+        PhonologicalForm, int
+    ] = defaultdict(int)
     support_piece_order: dict[PhonologicalForm, None] = {}
     factor_top_paths: list[tuple[_ComposedPath, ...]] = []
     token_base = len(graph.segment.tokens) + 1
@@ -3256,19 +3393,62 @@ def infer_composed_segment(
                 factor_prefix = (
                     factor.start_token * token_base + factor.end_token
                 )
-                target = shared_form_occurrences[support.form]
+                seen = seen_shared_form_occurrences[support.form]
+                target = legacy_shared_form_occurrences[support.form]
                 for occurrence_id in support.occurrence_ids:
                     left_surface_end, right_surface_start = divmod(
                         occurrence_id,
                         support.surface_base,
                     )
-                    target.add(
-                        (
-                            factor_prefix * surface_base + left_surface_end
-                        )
+                    global_occurrence_id = (
+                        (factor_prefix * surface_base + left_surface_end)
                         * surface_base
                         + right_surface_start
                     )
+                    if global_occurrence_id not in seen:
+                        seen.add(global_occurrence_id)
+                        target.add(global_occurrence_id)
+            compact_support = evaluation.compact_occurrences
+            if compact_support is not None:
+                if support_epsilon != 0.0:
+                    raise AssertionError(
+                        'Structural occurrence support requires zero epsilon.'
+                    )
+                factor_prefix = (
+                    factor.start_token * token_base + factor.end_token
+                )
+                endpoint_counts: list[int] = []
+                for endpoint in compact_support.endpoints:
+                    seen = seen_shared_form_occurrences[endpoint.form]
+                    new_count = 0
+                    for occurrence_id in endpoint.occurrence_ids:
+                        left_surface_end, right_surface_start = divmod(
+                            occurrence_id,
+                            compact_support.surface_base,
+                        )
+                        global_occurrence_id = (
+                            (
+                                factor_prefix * surface_base
+                                + left_surface_end
+                            )
+                            * surface_base
+                            + right_surface_start
+                        )
+                        if global_occurrence_id not in seen:
+                            seen.add(global_occurrence_id)
+                            new_count += 1
+                    endpoint_counts.append(new_count)
+                compact_counts = (
+                    engine._aggregate_compact_occurrence_support(
+                        compact_support,
+                        tuple(endpoint_counts),
+                    )
+                )
+                for piece in sorted(compact_counts, key=lambda item: item.key):
+                    support_piece_order.setdefault(piece, None)
+                    compact_piece_occurrence_support[piece] += compact_counts[
+                        piece
+                    ]
 
         if factor.end_token < len(graph.segment.tokens):
             boundary_index = factor.end_token
@@ -3336,10 +3516,13 @@ def infer_composed_segment(
         for path in decoded
     )
     piece_occurrence_support = {
-        piece: len(piece_occurrences.get(piece, ()))
+        piece: (
+            len(piece_occurrences.get(piece, ()))
+            + compact_piece_occurrence_support.get(piece, 0)
+        )
         for piece in support_piece_order
     }
-    for form, occurrence_ids in shared_form_occurrences.items():
+    for form, occurrence_ids in legacy_shared_form_occurrences.items():
         for piece in engine._legal_pieces(form):
             added = len(occurrence_ids)
             legacy_occurrences = piece_occurrences.get(piece)
