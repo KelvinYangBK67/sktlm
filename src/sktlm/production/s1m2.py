@@ -59,6 +59,28 @@ FULL_EXECUTION_BUNDLE_PLAN = (
 FULL_EXECUTION_BUNDLE_PLAN_SHA256 = (
     "9c828b6612d3e60b443511907dc2f731a08548be07caf513ea346e43b7d6414a"
 )
+FULL_IAST_EXECUTION_BUNDLE_CELL_ID = "s1m2_m0_prime_iast_continuous"
+FULL_IAST_EXECUTION_BUNDLE_PLAN = (
+    "artifacts/s1m2_execution_bundle_plans/"
+    "full_m0_prime_iast_continuous_tp279047"
+)
+FULL_IAST_EXECUTION_BUNDLE_PLAN_SHA256 = (
+    "9b88f7dd64d48f11b5730723f49acbec0a01ecb71c9391d1aea7a8ca5385cfca"
+)
+FULL_EXECUTION_BUNDLE_SPECS = {
+    FULL_EXECUTION_BUNDLE_CELL_ID: {
+        "execution_bundle_plan": FULL_EXECUTION_BUNDLE_PLAN,
+        "execution_bundle_plan_sha256": FULL_EXECUTION_BUNDLE_PLAN_SHA256,
+        "script": "devanagari",
+        "condition": "continuous",
+    },
+    FULL_IAST_EXECUTION_BUNDLE_CELL_ID: {
+        "execution_bundle_plan": FULL_IAST_EXECUTION_BUNDLE_PLAN,
+        "execution_bundle_plan_sha256": FULL_IAST_EXECUTION_BUNDLE_PLAN_SHA256,
+        "script": "iast_m0_prime",
+        "condition": "continuous",
+    },
+}
 COMPACT_EXACT_INFERENCE_COMMIT = "7752da2c453804a000dac83a36bd4aa58b9a0b8c"
 COMPACT_OCCURRENCE_SUPPORT_FIX_COMMIT = (
     "ba4cc5f99752e66d01944869bea92b77b0dd32b7"
@@ -590,8 +612,8 @@ def _bundle_plan_details(
     ):
         raise ValueError("Round 2 execution bundle plan has no valid plan SHA-256.")
     expected = {
-        "script": "devanagari",
-        "condition": "continuous",
+        "script": declaration.get("script", "devanagari"),
+        "condition": declaration.get("condition", "continuous"),
         "max_segment_tokens": scientific_config["max_segment_tokens"],
         "max_lines_per_document": workload.get("max_lines_per_document"),
         "target_pressure": declaration.get("target_pressure", 279047),
@@ -995,26 +1017,35 @@ def build_final_plan(
     )
     winner = int(round3_closure["retained_workers"])
 
-    full_bundle = _bundle_plan_details(
-        repo_root.resolve(),
-        {
-            "execution_bundle_plan": FULL_EXECUTION_BUNDLE_PLAN,
-            "execution_bundle_plan_sha256": FULL_EXECUTION_BUNDLE_PLAN_SHA256,
+    full_bundles: dict[str, dict[str, str]] = {}
+    for bundle_cell_id, bundle_spec in FULL_EXECUTION_BUNDLE_SPECS.items():
+        declaration = {
+            **bundle_spec,
             "target_pressure": contract["round2"]["target_pressure"],
             "max_segments_per_bundle": contract["round2"]["max_segments_per_bundle"],
-        },
-        contract["workloads"]["full"],
-        contract["scientific_config"],
-    )
-    if full_bundle["plan_sha256"] != FULL_EXECUTION_BUNDLE_PLAN_SHA256:
-        raise RuntimeError("Full execution bundle plan identity differs.")
+        }
+        full_bundle = _bundle_plan_details(
+            repo_root.resolve(),
+            declaration,
+            contract["workloads"]["full"],
+            contract["scientific_config"],
+        )
+        if (
+            full_bundle["plan_sha256"]
+            != bundle_spec["execution_bundle_plan_sha256"]
+        ):
+            raise RuntimeError(
+                f"Full execution bundle plan identity differs for {bundle_cell_id}."
+            )
+        full_bundles[bundle_cell_id] = full_bundle
 
     jobs = []
     for cell, host_role in zip(
         contract["cells"], CORE_HOST_ROLES, strict=True
     ):
         bundle_kwargs = {}
-        if cell["cell_id"] == FULL_EXECUTION_BUNDLE_CELL_ID:
+        full_bundle = full_bundles.get(cell["cell_id"])
+        if full_bundle is not None:
             bundle_kwargs = {
                 "execution_bundle_plan": full_bundle["path"],
                 "execution_bundle_plan_sha256": full_bundle["plan_sha256"],
@@ -1195,28 +1226,32 @@ def _validate_plan(plan: dict[str, Any], contract: dict[str, Any]) -> None:
                 "execution_bundle_plan_sha256",
                 "execution_bundle_materialization_sha256",
             )
-            if job["cell_id"] == FULL_EXECUTION_BUNDLE_CELL_ID:
-                if job.get("execution_bundle_plan") != FULL_EXECUTION_BUNDLE_PLAN:
+            bundle_spec = FULL_EXECUTION_BUNDLE_SPECS.get(job["cell_id"])
+            if bundle_spec is not None:
+                if (
+                    job.get("execution_bundle_plan")
+                    != bundle_spec["execution_bundle_plan"]
+                ):
                     raise ValueError(
-                        "Full Devanagari continuous job has invalid execution bundle plan."
+                        "Full continuous job has invalid execution bundle plan."
                     )
                 if (
                     job.get("execution_bundle_plan_sha256")
-                    != FULL_EXECUTION_BUNDLE_PLAN_SHA256
+                    != bundle_spec["execution_bundle_plan_sha256"]
                 ):
                     raise ValueError(
-                        "Full Devanagari continuous job has invalid bundle-plan identity."
+                        "Full continuous job has invalid bundle-plan identity."
                     )
                 materialization_sha = job.get(
                     "execution_bundle_materialization_sha256"
                 )
                 if not materialization_sha or len(str(materialization_sha)) != 64:
                     raise ValueError(
-                        "Full Devanagari continuous job has invalid bundle materialization."
+                        "Full continuous job has invalid bundle materialization."
                     )
             elif any(job.get(name) is not None for name in bundle_fields):
                 raise ValueError(
-                    "Only Full M0 Devanagari continuous may use this execution bundle plan."
+                    "Only Full continuous cells may use execution bundle plans."
                 )
         if job.get("training_command") != _training_command(job):
             raise ValueError(f"Plan job {job['job_id']} has an invalid trainer command.")

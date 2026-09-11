@@ -34,7 +34,7 @@ def _closure() -> dict:
     }
 
 
-def test_full_plan_binds_bundle_only_to_devanagari_continuous(
+def test_full_plan_binds_bundles_to_both_continuous_cells(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -50,17 +50,23 @@ def test_full_plan_binds_bundle_only_to_devanagari_continuous(
         scientific_config: dict,
     ) -> dict[str, str]:
         assert repo_root == tmp_path.resolve()
-        assert declaration["execution_bundle_plan"] == (
-            s1m2.FULL_EXECUTION_BUNDLE_PLAN
-        )
+        path = declaration["execution_bundle_plan"]
+        expected_by_path = {
+            spec["execution_bundle_plan"]: spec
+            for spec in s1m2.FULL_EXECUTION_BUNDLE_SPECS.values()
+        }
+        assert path in expected_by_path
+        spec = expected_by_path[path]
         assert declaration["execution_bundle_plan_sha256"] == (
-            s1m2.FULL_EXECUTION_BUNDLE_PLAN_SHA256
+            spec["execution_bundle_plan_sha256"]
         )
+        assert declaration["script"] == spec["script"]
+        assert declaration["condition"] == spec["condition"]
         assert workload == contract["workloads"]["full"]
         assert scientific_config == contract["scientific_config"]
         return {
-            "path": s1m2.FULL_EXECUTION_BUNDLE_PLAN,
-            "plan_sha256": s1m2.FULL_EXECUTION_BUNDLE_PLAN_SHA256,
+            "path": path,
+            "plan_sha256": spec["execution_bundle_plan_sha256"],
             "materialization_sha256": "d" * 64,
         }
 
@@ -82,23 +88,24 @@ def test_full_plan_binds_bundle_only_to_devanagari_continuous(
         if job.get("execution_bundle_plan") is not None
     ]
 
-    assert len(bundle_jobs) == 1
-    job = bundle_jobs[0]
+    assert len(bundle_jobs) == 2
+    expected = s1m2.FULL_EXECUTION_BUNDLE_SPECS
+    assert {job["cell_id"] for job in bundle_jobs} == set(expected)
 
-    assert job["cell_id"] == s1m2.FULL_EXECUTION_BUNDLE_CELL_ID
-    assert job["execution_bundle_plan"] == s1m2.FULL_EXECUTION_BUNDLE_PLAN
-    assert (
-        job["execution_bundle_plan_sha256"]
-        == s1m2.FULL_EXECUTION_BUNDLE_PLAN_SHA256
-    )
-    assert job["execution_bundle_materialization_sha256"] == "d" * 64
-
-    command = job["training_command"]
-    index = command.index("--execution-bundle-plan")
-    assert command[index + 1] == s1m2.FULL_EXECUTION_BUNDLE_PLAN
+    for job in bundle_jobs:
+        spec = expected[job["cell_id"]]
+        assert job["execution_bundle_plan"] == spec["execution_bundle_plan"]
+        assert (
+            job["execution_bundle_plan_sha256"]
+            == spec["execution_bundle_plan_sha256"]
+        )
+        assert job["execution_bundle_materialization_sha256"] == "d" * 64
+        command = job["training_command"]
+        index = command.index("--execution-bundle-plan")
+        assert command[index + 1] == spec["execution_bundle_plan"]
 
     for other in plan["jobs"]:
-        if other["cell_id"] != s1m2.FULL_EXECUTION_BUNDLE_CELL_ID:
+        if other["cell_id"] not in expected:
             assert other.get("execution_bundle_plan") is None
             assert "--execution-bundle-plan" not in other["training_command"]
 
@@ -115,9 +122,9 @@ def test_full_plan_rejects_missing_required_bundle_binding(
     monkeypatch.setattr(
         s1m2,
         "_bundle_plan_details",
-        lambda *args, **kwargs: {
-            "path": s1m2.FULL_EXECUTION_BUNDLE_PLAN,
-            "plan_sha256": s1m2.FULL_EXECUTION_BUNDLE_PLAN_SHA256,
+        lambda _repo_root, declaration, *_args, **_kwargs: {
+            "path": declaration["execution_bundle_plan"],
+            "plan_sha256": declaration["execution_bundle_plan_sha256"],
             "materialization_sha256": "d" * 64,
         },
     )
