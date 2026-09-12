@@ -80,6 +80,50 @@ FULL_EXECUTION_BUNDLE_SPECS = {
         "script": "iast_m0_prime",
         "condition": "continuous",
     },
+    "s1m2_m0_iast_surface_word": {
+        "execution_bundle_plan": (
+            "artifacts/s1m2_execution_bundle_plans/"
+            "full_m0_iast_surface_word_tp279047"
+        ),
+        "execution_bundle_plan_sha256": (
+            "a672a4c46de043c68a3b5921e885774f08fcad1b721a9f6afc25acb2134d3092"
+        ),
+        "script": "iast",
+        "condition": "surface_word",
+    },
+    "s1m2_m0_iast_legacy_joined": {
+        "execution_bundle_plan": (
+            "artifacts/s1m2_execution_bundle_plans/"
+            "full_m0_iast_legacy_joined_tp279047"
+        ),
+        "execution_bundle_plan_sha256": (
+            "e54f7ab98a1afb4236802a7d02d72e2ea7550ebbbd72cffd662698182e722897"
+        ),
+        "script": "iast",
+        "condition": "legacy_joined",
+    },
+    "s1m2_m0_devanagari_surface_word": {
+        "execution_bundle_plan": (
+            "artifacts/s1m2_execution_bundle_plans/"
+            "full_m0_devanagari_surface_word_tp279047"
+        ),
+        "execution_bundle_plan_sha256": (
+            "c696c95c29c19166e81887e0372078000ce3cce6289b74556d2527709eaf90e3"
+        ),
+        "script": "devanagari",
+        "condition": "surface_word",
+    },
+    "s1m2_m0_devanagari_legacy_joined": {
+        "execution_bundle_plan": (
+            "artifacts/s1m2_execution_bundle_plans/"
+            "full_m0_devanagari_legacy_joined_tp279047"
+        ),
+        "execution_bundle_plan_sha256": (
+            "2831e3a36fe903f8ab80f2c698f5efc05652dfbf7fa7fd368451a2f532d60ad5"
+        ),
+        "script": "devanagari",
+        "condition": "legacy_joined",
+    },
 }
 COMPACT_EXACT_INFERENCE_COMMIT = "7752da2c453804a000dac83a36bd4aa58b9a0b8c"
 COMPACT_OCCURRENCE_SUPPORT_FIX_COMMIT = (
