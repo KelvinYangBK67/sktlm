@@ -6,7 +6,7 @@ import csv
 import hashlib
 import json
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Sequence
 
 
@@ -28,6 +28,21 @@ def _text_sha256(path: Path) -> str:
     text = path.read_text(encoding="utf-8")
     canonical = text.replace("\r\n", "\n").replace("\r", "\n")
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _repo_metadata_path(
+    repo_root: Path,
+    value: object,
+    label: str,
+) -> Path:
+    """Resolve a portable POSIX repo-relative path stored in an artifact."""
+
+    if not isinstance(value, str) or not value or "\\" in value:
+        raise ValueError(f"Invalid {label} path in execution bundle plan.")
+    relative = PurePosixPath(value)
+    if relative.is_absolute() or not relative.parts or ".." in relative.parts:
+        raise ValueError(f"Invalid {label} path in execution bundle plan.")
+    return repo_root.joinpath(*relative.parts)
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,9 +206,11 @@ def load_execution_bundle_plan(
             or recorded_document_list_sha != _sha256(resolved_document_list)
         ):
             raise ValueError("Execution bundle plan document-list identity mismatch.")
-    config_path = Path(str(scan.get("config", "")))
-    if config_path and not config_path.is_absolute():
-        config_path = repo_root / config_path
+    config_path = _repo_metadata_path(
+        repo_root,
+        scan.get("config"),
+        "planner config",
+    )
     if not config_path.is_file() or scan.get("config_sha256") != _text_sha256(config_path):
         raise ValueError("Execution bundle planner config mismatch.")
     for payload in (scan, summary):

@@ -47,7 +47,8 @@ def _fixture(tmp_path: Path) -> tuple[Path, Path, tuple]:
                 "representation_path": str(text),
             }
         )
-    config = tmp_path / "planner.json"
+    config = tmp_path / "configs" / "planner.json"
+    config.parent.mkdir(parents=True)
     config.write_text('{"purpose":"tiny"}\n', encoding="utf-8", newline="")
     documents = load_documents(
         manifest,
@@ -89,12 +90,6 @@ def _plan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, 
         ],
     )
     assert planner["main"]() == 0
-    scan_path = output / "scan_summary.json"
-    scan = json.loads(scan_path.read_text(encoding="utf-8"))
-    scan["config"] = str(config)
-    scan_path.write_text(
-        json.dumps(scan, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline=""
-    )
     return output, config, documents
 
 
@@ -190,6 +185,8 @@ def test_surface_word_planner_load_and_generic_full_binding(
     assert job["execution_bundle_plan"] == "synthetic/surface"
 
     for cell_id, spec in s1m2.FULL_EXECUTION_BUNDLE_SPECS.items():
+        if cell_id == surface["cell_id"]:
+            continue
         default_job = next(
             item for item in final["jobs"]
             if item["cell_id"] == cell_id
@@ -247,6 +244,37 @@ def test_planner_config_hash_accepts_eol_checkout_but_rejects_content_change(
     )
     config.write_text('{"purpose":"changed"}\n', encoding="utf-8", newline="")
     with pytest.raises(ValueError, match="planner config mismatch"):
+        load_execution_bundle_plan(
+            plan_root,
+            repo_root=tmp_path,
+            manifest=manifest,
+            documents=documents,
+            script="iast",
+            condition="surface_word",
+            max_segment_tokens=128,
+            max_lines_per_document=None,
+        )
+
+def test_planner_metadata_paths_are_posix_and_backslashes_are_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan_root, _config, documents = _plan(tmp_path, monkeypatch)
+    manifest = tmp_path / "representations.csv"
+    scan_path = plan_root / "scan_summary.json"
+    scan = json.loads(scan_path.read_text(encoding="utf-8"))
+
+    assert scan["config"] == "configs/planner.json"
+    assert "\\" not in scan["config"]
+    assert "\\" not in scan["manifest"]
+
+    scan["config"] = r"configs\planner.json"
+    scan_path.write_text(
+        json.dumps(scan, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="",
+    )
+
+    with pytest.raises(ValueError, match="planner config path"):
         load_execution_bundle_plan(
             plan_root,
             repo_root=tmp_path,
