@@ -2000,6 +2000,161 @@ def _retire_training_bundle_shards(
                 path.unlink()
 
 
+def _apply_compact_training_bundle_shards(
+    *,
+    bundles: tuple[ExecutionBundle, ...],
+    payloads: dict[tuple[int, int], dict[str, Any]],
+    store: LexiconStore,
+    config: TrainingConfig,
+    checkpoint: dict[str, Any],
+    metrics: PassMetrics,
+    run_dir: Path,
+    pass_index: int,
+    telemetry: RuntimeTelemetry,
+) -> PassMetrics:
+    """Fold canonical compact bundle records directly into one document transaction."""
+
+    document_index = bundles[0].document_index
+    lexical_counts: Counter[PhonologicalForm] = Counter()
+    piece_counts: Counter[PhonologicalForm] = Counter()
+    piece_support: Counter[PhonologicalForm] = Counter()
+    document_metrics = PassMetrics()
+    seen_lines: set[int] = set()
+    runtime_totals: Counter[str] = Counter()
+    composed_totals: Counter[str] = Counter()
+    engineering = RuntimeTelemetry()
+
+    def flush() -> None:
+        if lexical_counts:
+            store.add_document_lexical_diagnostics(
+                sorted(lexical_counts.items(), key=lambda item: item[0].key)
+            )
+            lexical_counts.clear()
+        if piece_counts:
+            store.add_document_piece_counts(
+                (
+                    (piece, value, piece_support[piece])
+                    for piece, value in sorted(
+                        piece_counts.items(), key=lambda item: item[0].key
+                    )
+                )
+            )
+            piece_counts.clear()
+            piece_support.clear()
+
+    store.begin_document_counts()
+    try:
+        for bundle in bundles:
+            payload = payloads[bundle.key]
+            paths = _training_bundle_paths(run_dir, pass_index, bundle)
+            record_count = 0
+            first_identity: tuple[int, int] | None = None
+            last_identity: tuple[int, int] | None = None
+            with paths["segments"].open(encoding="utf-8") as source:
+                for line in source:
+                    record = json.loads(line)
+                    if (
+                        record.get("schema_version")
+                        != "sktlm-s1m2-training-segment-result/v1"
+                    ):
+                        raise RuntimeError(
+                            f"Invalid bundle segment record: {paths['segments']}"
+                        )
+                    identity = (
+                        int(record["line_number"]),
+                        int(record["segment_index"]),
+                    )
+                    if first_identity is None:
+                        first_identity = identity
+                    last_identity = identity
+                    seen_lines.add(identity[0])
+                    for key, value in record["lexical_counts"]:
+                        lexical_counts[PhonologicalForm.from_key(key)] += (
+                            float.fromhex(value)
+                        )
+                    for key, value, support in record["piece_counts"]:
+                        piece = PhonologicalForm.from_key(key)
+                        piece_counts[piece] += float.fromhex(value)
+                        piece_support[piece] += int(support)
+                    document_metrics = document_metrics.merged(
+                        _metrics_from_exact_payload(record["metrics"])
+                    )
+                    record_count += 1
+                    if len(lexical_counts) + len(piece_counts) >= config.flush_types:
+                        flush()
+            if (
+                record_count != bundle.segment_count
+                or first_identity
+                != (bundle.first_line_number, bundle.first_segment_index)
+                or last_identity
+                != (bundle.last_line_number, bundle.last_segment_index)
+            ):
+                raise RuntimeError(
+                    f"Bundle segment order mismatch: {paths['segments']}"
+                )
+            runtime = payload["runtime"]
+            for label in (
+                "training_candidate_generation",
+                "training_inference",
+                "training_count_aggregation",
+                "training_frontend_io",
+                "training_worker_document_total",
+                "training_worker_cpu",
+                "lexical_score_calls",
+                "sqlite_selects",
+                "sqlite_seconds",
+            ):
+                runtime_totals[label] += runtime[label]
+            composed_totals.update(runtime.get("composed_counters", {}))
+            if runtime.get("engineering_telemetry"):
+                engineering.merge_payload(runtime["engineering_telemetry"])
+        flush()
+        document_metrics.documents = 1
+        document_metrics.lines = len(seen_lines)
+        next_metrics = metrics.merged(document_metrics)
+        next_checkpoint = {
+            **checkpoint,
+            "active_pass": pass_index,
+            "next_document_index": document_index + 1,
+            "active_metrics": asdict(next_metrics),
+        }
+        store.commit_document(next_checkpoint)
+        _record_store_storage(telemetry, store.path)
+    except BaseException:
+        store.rollback_document()
+        raise
+
+    checkpoint.update(next_checkpoint)
+    for label in (
+        "training_candidate_generation",
+        "training_inference",
+        "training_count_aggregation",
+        "training_frontend_io",
+        "training_worker_document_total",
+        "training_worker_cpu",
+    ):
+        telemetry.add_seconds(label, float(runtime_totals[label]))
+    telemetry.increment(
+        "training_worker_lexical_score_calls",
+        int(runtime_totals["lexical_score_calls"]),
+    )
+    telemetry.increment(
+        "training_worker_sqlite_selects", int(runtime_totals["sqlite_selects"])
+    )
+    telemetry.add_seconds(
+        "training_worker_sqlite", float(runtime_totals["sqlite_seconds"])
+    )
+    if composed_totals:
+        _record_composed_telemetry(
+            telemetry,
+            ComposedInferenceCounters(**composed_totals),
+            phase="training",
+        )
+    telemetry.merge_payload(engineering.payload())
+    _timed_checkpoint(run_dir, checkpoint, telemetry)
+    return next_metrics
+
+
 def _flush_piece_training_counts(
     store: LexiconStore,
     lexical_counts: Counter[PhonologicalForm],
@@ -2417,6 +2572,7 @@ def _parallel_training_bundles(
         try:
             for document_index in range(start_document, len(documents)):
                 document_bundles = plan.by_document[document_index]
+                compact_bundle_apply = False
                 if document_index in existing_documents:
                     payload = existing_documents[document_index]
                     telemetry.add_seconds("training_reducer_stall", 0.0)
@@ -2438,24 +2594,40 @@ def _parallel_training_bundles(
                             time.perf_counter() - wait_started,
                         )
                         payloads = {key: ready[key] for key in expected_keys}
-                    payload = _coalesce_training_bundle_shards(
+                    if COMPACT_EXACT_S1M2:
+                        compact_bundle_apply = True
+                    else:
+                        payload = _coalesce_training_bundle_shards(
+                            bundles=document_bundles,
+                            payloads=payloads,
+                            document=documents[document_index],
+                            config=config,
+                            pass_index=pass_index,
+                            run_dir=run_dir,
+                            config_signature=signature,
+                        )
+                if compact_bundle_apply:
+                    metrics = _apply_compact_training_bundle_shards(
                         bundles=document_bundles,
                         payloads=payloads,
-                        document=documents[document_index],
+                        store=store,
                         config=config,
-                        pass_index=pass_index,
+                        checkpoint=checkpoint,
+                        metrics=metrics,
                         run_dir=run_dir,
-                        config_signature=signature,
+                        pass_index=pass_index,
+                        telemetry=telemetry,
                     )
-                metrics = _apply_training_shard(
-                    payload=payload,
-                    store=store,
-                    config=config,
-                    checkpoint=checkpoint,
-                    metrics=metrics,
-                    run_dir=run_dir,
-                    telemetry=telemetry,
-                )
+                else:
+                    metrics = _apply_training_shard(
+                        payload=payload,
+                        store=store,
+                        config=config,
+                        checkpoint=checkpoint,
+                        metrics=metrics,
+                        run_dir=run_dir,
+                        telemetry=telemetry,
+                    )
                 _retire_training_bundle_shards(
                     run_dir, pass_index, document_bundles
                 )
