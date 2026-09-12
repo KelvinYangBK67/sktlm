@@ -12,6 +12,7 @@ import os
 import shutil
 import sqlite3
 import subprocess
+import threading
 import time
 from collections import Counter
 from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
@@ -2325,10 +2326,18 @@ def _parallel_training_bundles(
         ready: dict[tuple[int, int], dict[str, Any]] = {}
         validated_topology: set[int] = set()
         next_submit = 0
+        dispatch_error: BaseException | None = None
+        dispatch_done = False
+        dispatch_stop = False
+        condition = threading.Condition()
 
         def fill_inflight() -> None:
             nonlocal next_submit
-            while next_submit < len(todo) and len(inflight) < max_inflight:
+            while (
+                next_submit < len(todo)
+                and len(inflight) < max_inflight
+                and len(inflight) + len(ready) < max_inflight * 2
+            ):
                 bundle = todo[next_submit]
                 document = documents[bundle.document_index]
                 existing = _load_training_bundle_shard(
@@ -2376,63 +2385,92 @@ def _parallel_training_bundles(
             telemetry.maximum("training_bundle_true_inflight", len(inflight))
             telemetry.maximum("training_bundle_ready_shards", len(ready))
 
-        def collect_completed() -> None:
-            if not inflight:
-                return
-            wait(tuple(inflight), return_when=FIRST_COMPLETED)
-            completed = tuple(future for future in inflight if future.done())
-            for future in completed:
-                bundle = inflight.pop(future)
-                ready[bundle.key] = future.result()
-            telemetry.observe("training_bundle_true_inflight", len(inflight))
-            telemetry.observe("training_bundle_ready_shards", len(ready))
-            fill_inflight()
+        def dispatch() -> None:
+            nonlocal dispatch_error, dispatch_done
+            try:
+                while True:
+                    with condition:
+                        if dispatch_stop:
+                            return
+                        fill_inflight()
+                        if not inflight:
+                            dispatch_done = next_submit == len(todo)
+                            condition.notify_all()
+                            if dispatch_done:
+                                return
+                        futures = tuple(inflight)
+                    wait(futures, return_when=FIRST_COMPLETED)
+                    with condition:
+                        for future in tuple(item for item in inflight if item.done()):
+                            bundle = inflight.pop(future)
+                            ready[bundle.key] = future.result()
+                        telemetry.observe("training_bundle_true_inflight", len(inflight))
+                        telemetry.observe("training_bundle_ready_shards", len(ready))
+                        condition.notify_all()
+            except BaseException as error:
+                with condition:
+                    dispatch_error = error
+                    condition.notify_all()
 
-        fill_inflight()
-        for document_index in range(start_document, len(documents)):
-            document_bundles = plan.by_document[document_index]
-            if document_index in existing_documents:
-                payload = existing_documents[document_index]
-                telemetry.add_seconds("training_reducer_stall", 0.0)
-            else:
-                expected_keys = tuple(bundle.key for bundle in document_bundles)
-                wait_started = telemetry.now()
-                while any(key not in ready for key in expected_keys):
-                    if not inflight:
-                        raise RuntimeError(
-                            "Bundle scheduler exhausted inflight work before "
-                            f"document {document_index} became ready."
+        dispatcher = threading.Thread(target=dispatch, name="s1m2-training-dispatch")
+        dispatcher.start()
+        try:
+            for document_index in range(start_document, len(documents)):
+                document_bundles = plan.by_document[document_index]
+                if document_index in existing_documents:
+                    payload = existing_documents[document_index]
+                    telemetry.add_seconds("training_reducer_stall", 0.0)
+                else:
+                    expected_keys = tuple(bundle.key for bundle in document_bundles)
+                    wait_started = telemetry.now()
+                    with condition:
+                        while any(key not in ready for key in expected_keys):
+                            if dispatch_error is not None:
+                                raise dispatch_error
+                            if dispatch_done:
+                                raise RuntimeError(
+                                    "Bundle scheduler exhausted work before "
+                                    f"document {document_index} became ready."
+                                )
+                            condition.wait()
+                        telemetry.add_seconds(
+                            "training_reducer_stall",
+                            time.perf_counter() - wait_started,
                         )
-                    collect_completed()
-                telemetry.add_seconds(
-                    "training_reducer_stall",
-                    time.perf_counter() - wait_started,
-                )
-                payload = _coalesce_training_bundle_shards(
-                    bundles=document_bundles,
-                    payloads=ready,
-                    document=documents[document_index],
+                        payloads = {key: ready[key] for key in expected_keys}
+                    payload = _coalesce_training_bundle_shards(
+                        bundles=document_bundles,
+                        payloads=payloads,
+                        document=documents[document_index],
+                        config=config,
+                        pass_index=pass_index,
+                        run_dir=run_dir,
+                        config_signature=signature,
+                    )
+                metrics = _apply_training_shard(
+                    payload=payload,
+                    store=store,
                     config=config,
-                    pass_index=pass_index,
+                    checkpoint=checkpoint,
+                    metrics=metrics,
                     run_dir=run_dir,
-                    config_signature=signature,
+                    telemetry=telemetry,
                 )
-            metrics = _apply_training_shard(
-                payload=payload,
-                store=store,
-                config=config,
-                checkpoint=checkpoint,
-                metrics=metrics,
-                run_dir=run_dir,
-                telemetry=telemetry,
-            )
-            _retire_training_bundle_shards(
-                run_dir, pass_index, document_bundles
-            )
-            for bundle in document_bundles:
-                ready.pop(bundle.key, None)
-            telemetry.observe("training_bundle_ready_shards", len(ready))
-            fill_inflight()
+                _retire_training_bundle_shards(
+                    run_dir, pass_index, document_bundles
+                )
+                with condition:
+                    for bundle in document_bundles:
+                        ready.pop(bundle.key, None)
+                    telemetry.observe("training_bundle_ready_shards", len(ready))
+                    condition.notify_all()
+        finally:
+            with condition:
+                dispatch_stop = True
+                condition.notify_all()
+            dispatcher.join()
+        if dispatch_error is not None:
+            raise dispatch_error
 
     parallel_seconds = time.perf_counter() - parallel_started
     telemetry.add_seconds("training_parallel_wall", parallel_seconds)
@@ -4627,10 +4665,18 @@ def _parallel_inspection_bundles(
         ready: dict[tuple[int, int], dict[str, Any]] = {}
         validated_topology: set[int] = set()
         next_submit = 0
+        dispatch_error: BaseException | None = None
+        dispatch_done = False
+        dispatch_stop = False
+        condition = threading.Condition()
 
         def fill_inflight() -> None:
             nonlocal next_submit
-            while next_submit < len(todo) and len(inflight) < max_inflight:
+            while (
+                next_submit < len(todo)
+                and len(inflight) < max_inflight
+                and len(inflight) + len(ready) < max_inflight * 2
+            ):
                 bundle = todo[next_submit]
                 document = documents[bundle.document_index]
                 existing = _load_inspection_bundle_shard(
@@ -4675,94 +4721,125 @@ def _parallel_inspection_bundles(
             telemetry.maximum("inspection_bundle_true_inflight", len(inflight))
             telemetry.maximum("inspection_bundle_ready_shards", len(ready))
 
-        def collect_completed() -> None:
-            if not inflight:
-                return
-            wait(tuple(inflight), return_when=FIRST_COMPLETED)
-            completed = tuple(future for future in inflight if future.done())
-            for future in completed:
-                bundle = inflight.pop(future)
-                ready[bundle.key] = future.result()
-            telemetry.observe("inspection_bundle_true_inflight", len(inflight))
-            telemetry.observe("inspection_bundle_ready_shards", len(ready))
-            fill_inflight()
+        def dispatch() -> None:
+            nonlocal dispatch_error, dispatch_done
+            try:
+                while True:
+                    with condition:
+                        if dispatch_stop:
+                            return
+                        fill_inflight()
+                        if not inflight:
+                            dispatch_done = next_submit == len(todo)
+                            condition.notify_all()
+                            if dispatch_done:
+                                return
+                        futures = tuple(inflight)
+                    wait(futures, return_when=FIRST_COMPLETED)
+                    with condition:
+                        for future in tuple(item for item in inflight if item.done()):
+                            bundle = inflight.pop(future)
+                            ready[bundle.key] = future.result()
+                        telemetry.observe("inspection_bundle_true_inflight", len(inflight))
+                        telemetry.observe("inspection_bundle_ready_shards", len(ready))
+                        condition.notify_all()
+            except BaseException as error:
+                with condition:
+                    dispatch_error = error
+                    condition.notify_all()
 
-        fill_inflight()
-        for document_index, document in enumerate(documents):
-            document_bundles = plan.by_document[document_index]
-            if document_index in existing_documents:
-                payload = existing_documents[document_index]
-                telemetry.add_seconds("inspection_reducer_stall", 0.0)
-            else:
-                expected_keys = tuple(bundle.key for bundle in document_bundles)
-                wait_started = telemetry.now()
-                while any(key not in ready for key in expected_keys):
-                    if not inflight:
-                        raise RuntimeError(
-                            "Inspection bundle scheduler exhausted inflight work "
-                            f"before document {document_index} became ready."
+        dispatcher = threading.Thread(target=dispatch, name="s1m2-inspection-dispatch")
+        dispatcher.start()
+        try:
+            for document_index, document in enumerate(documents):
+                document_bundles = plan.by_document[document_index]
+                if document_index in existing_documents:
+                    payload = existing_documents[document_index]
+                    telemetry.add_seconds("inspection_reducer_stall", 0.0)
+                else:
+                    expected_keys = tuple(bundle.key for bundle in document_bundles)
+                    wait_started = telemetry.now()
+                    with condition:
+                        while any(key not in ready for key in expected_keys):
+                            if dispatch_error is not None:
+                                raise dispatch_error
+                            if dispatch_done:
+                                raise RuntimeError(
+                                    "Inspection bundle scheduler exhausted work "
+                                    f"before document {document_index} became ready."
+                                )
+                            condition.wait()
+                        telemetry.add_seconds(
+                            "inspection_reducer_stall",
+                            time.perf_counter() - wait_started,
                         )
-                    collect_completed()
-                telemetry.add_seconds(
-                    "inspection_reducer_stall",
-                    time.perf_counter() - wait_started,
+                        payloads = {key: ready[key] for key in expected_keys}
+                if document_index not in existing_documents:
+                    payload = _coalesce_inspection_bundle_shards(
+                        bundles=document_bundles,
+                        payloads=payloads,
+                        document=document,
+                        config=config,
+                        run_dir=run_dir,
+                        config_signature=signature,
+                    )
+                with condition:
+                    completed_but_blocked = len(ready) - sum(
+                        bundle.key in ready for bundle in document_bundles
+                    )
+                    pending_bundles = {
+                        bundle.key: bundle for bundle in inflight.values()
+                    }
+                    pending_bundles.update(
+                        {key: bundle_by_key[key] for key in ready}
+                    )
+                telemetry.observe(
+                    "inspection_completed_but_blocked_shards_per_reduction",
+                    completed_but_blocked,
                 )
-                payload = _coalesce_inspection_bundle_shards(
-                    bundles=document_bundles,
-                    payloads=ready,
-                    document=document,
+                telemetry.maximum(
+                    "inspection_completed_but_blocked_shards",
+                    completed_but_blocked,
+                )
+                pending_paths = [
+                    path
+                    for bundle in pending_bundles.values()
+                    for path in _inspection_bundle_paths(run_dir, bundle).values()
+                ]
+                pending_paths.extend(
+                    _inspection_shard_paths(run_dir, document_index).values()
+                )
+                telemetry.maximum(
+                    "inspection_pending_shard_bytes",
+                    _existing_path_bytes(pending_paths),
+                )
+                _apply_inspection_shard(
+                    payload=payload,
+                    store=store,
                     config=config,
                     run_dir=run_dir,
-                    config_signature=signature,
+                    analyses_handle=analyses_handle,
+                    boundaries_handle=boundaries_handle,
+                    aggregate=aggregate,
+                    telemetry=telemetry,
                 )
-            completed_but_blocked = len(ready) - sum(
-                bundle.key in ready for bundle in document_bundles
-            )
-            telemetry.observe(
-                "inspection_completed_but_blocked_shards_per_reduction",
-                completed_but_blocked,
-            )
-            telemetry.maximum(
-                "inspection_completed_but_blocked_shards",
-                completed_but_blocked,
-            )
-            pending_bundles = {
-                bundle.key: bundle for bundle in inflight.values()
-            }
-            pending_bundles.update(
-                {key: bundle_by_key[key] for key in ready}
-            )
-            pending_paths = [
-                path
-                for bundle in pending_bundles.values()
-                for path in _inspection_bundle_paths(run_dir, bundle).values()
-            ]
-            pending_paths.extend(
-                _inspection_shard_paths(run_dir, document_index).values()
-            )
-            telemetry.maximum(
-                "inspection_pending_shard_bytes",
-                _existing_path_bytes(pending_paths),
-            )
-            _apply_inspection_shard(
-                payload=payload,
-                store=store,
-                config=config,
-                run_dir=run_dir,
-                analyses_handle=analyses_handle,
-                boundaries_handle=boundaries_handle,
-                aggregate=aggregate,
-                telemetry=telemetry,
-            )
-            _record_run_storage(telemetry, run_dir)
-            _retire_inspection_shard(run_dir, document_index, telemetry)
-            _retire_inspection_bundle_shards(
-                run_dir, document_bundles, telemetry
-            )
-            for bundle in document_bundles:
-                ready.pop(bundle.key, None)
-            telemetry.observe("inspection_bundle_ready_shards", len(ready))
-            fill_inflight()
+                _record_run_storage(telemetry, run_dir)
+                _retire_inspection_shard(run_dir, document_index, telemetry)
+                _retire_inspection_bundle_shards(
+                    run_dir, document_bundles, telemetry
+                )
+                with condition:
+                    for bundle in document_bundles:
+                        ready.pop(bundle.key, None)
+                    telemetry.observe("inspection_bundle_ready_shards", len(ready))
+                    condition.notify_all()
+        finally:
+            with condition:
+                dispatch_stop = True
+                condition.notify_all()
+            dispatcher.join()
+        if dispatch_error is not None:
+            raise dispatch_error
     parallel_seconds = time.perf_counter() - parallel_started
     telemetry.add_seconds("inspection_parallel_wall", parallel_seconds)
     telemetry.add_seconds("inspection_document_total", parallel_seconds)
