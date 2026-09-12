@@ -42,8 +42,8 @@ def _fixture(tmp_path: Path) -> tuple[Path, tuple[CorpusDocument, ...]]:
     manifest = tmp_path / "representations.csv"
     rows = []
     texts = (
-        "देवोऽपि।रामोऽपि॥अश्वोऽपि।\n\nअग्निम्।इति॥\n",
-        "नरोऽपि।देवश्च॥सोमम्।इति।\nअथ।पुनः॥\n",
+        "啶︵啶掂啶洁お啶苦イ啶班ぞ啶啶洁お啶苦ゥ啶呧ざ啷嵿さ啷嬥そ啶た啷n\n啶呧啷嵿え啶苦ぎ啷嵿イ啶囙い啶苦ゥ\n",
+        "啶ㄠぐ啷嬥そ啶た啷むう啷囙さ啶多啶氞ゥ啶膏啶ぎ啷嵿イ啶囙い啶苦イ\n啶呧ぅ啷むお啷佮え啶冟ゥ\n",
     )
     for index, text in enumerate(texts):
         corpus = tmp_path / f"continuous-{index}.txt"
@@ -496,8 +496,8 @@ def test_bundle_scheduler_refills_while_canonical_first_bundle_waits(
         vocabulary=None,
         plan=plan,
     )
-    assert submitted == list(range(6))
-    assert first_completed_after == 6
+    assert submitted == list(range(12))
+    assert first_completed_after == 12
 
 
 def test_inspection_bundle_scheduler_refills_and_reduces_canonically(
