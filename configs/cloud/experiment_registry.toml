@@ -382,7 +382,7 @@ metrics_id = "full_m0_prime_iast_continuous_full_p3"
 cell_id = "s1m2_m0_prime_iast_continuous"
 workload_id = "full"
 workers_source = "ROUND2.WINNER_WORKERS"
-host_role = "core-03"
+host_role = "core-07"
 state = "GATE_BLOCKED"
 
 [[s1m2_prevm.planned_runs]]
@@ -412,7 +412,7 @@ metrics_id = "full_m0_devanagari_continuous_full_p3"
 cell_id = "s1m2_m0_devanagari_continuous"
 workload_id = "full"
 workers_source = "ROUND2.WINNER_WORKERS"
-host_role = "core-06"
+host_role = "core-08"
 state = "GATE_BLOCKED"
 
 [[runs]]

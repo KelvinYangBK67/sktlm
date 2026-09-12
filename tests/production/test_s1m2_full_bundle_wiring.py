@@ -82,13 +82,31 @@ def test_full_plan_binds_bundles_to_both_continuous_cells(
     )
     s1m2._validate_plan(plan, contract)
 
+    expected_host_roles = tuple(
+        s1m2.FULL_HOST_ROLE_BY_CELL[cell["cell_id"]]
+        for cell in contract["cells"]
+    )
+    assert tuple(job["host_role"] for job in plan["jobs"]) == expected_host_roles
+
+    wrong_host_plan = copy.deepcopy(plan)
+    wrong_host_plan["jobs"][2]["host_role"] = "core-03"
+    wrong_host_plan["plan_sha256"] = s1m2._canonical_sha256(
+        {
+            key: value
+            for key, value in wrong_host_plan.items()
+            if key != "plan_sha256"
+        }
+    )
+    with pytest.raises(ValueError, match="deployed host mapping"):
+        s1m2._validate_plan(wrong_host_plan, contract)
+
     bundle_jobs = [
         job
         for job in plan["jobs"]
         if job.get("execution_bundle_plan") is not None
     ]
 
-    assert len(bundle_jobs) == 2
+    assert len(bundle_jobs) == len(s1m2.FULL_EXECUTION_BUNDLE_SPECS)
     expected = s1m2.FULL_EXECUTION_BUNDLE_SPECS
     assert {job["cell_id"] for job in bundle_jobs} == set(expected)
 

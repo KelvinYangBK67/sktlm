@@ -178,6 +178,14 @@ def _full_execution_bundle_specs(
     return result
 
 CORE_HOST_ROLES = tuple(f"core-{index:02d}" for index in range(1, 7))
+FULL_HOST_ROLE_BY_CELL = {
+    "s1m2_m0_iast_surface_word": "core-01",
+    "s1m2_m0_iast_legacy_joined": "core-02",
+    "s1m2_m0_prime_iast_continuous": "core-07",
+    "s1m2_m0_devanagari_surface_word": "core-04",
+    "s1m2_m0_devanagari_legacy_joined": "core-05",
+    "s1m2_m0_devanagari_continuous": "core-08",
+}
 WORKER_CALIBRATION_DOCUMENTS = 72
 WORKER_CALIBRATION_STRUCTURE_SHA256 = (
     "03ebdf71afc80f82492d9d36cc593ab50c380fd3b0b57689862ea8e98c7b39f8"
@@ -1119,9 +1127,8 @@ def build_final_plan(
         full_bundles[bundle_cell_id] = full_bundle
 
     jobs = []
-    for cell, host_role in zip(
-        contract["cells"], CORE_HOST_ROLES, strict=True
-    ):
+    for cell in contract["cells"]:
+        host_role = FULL_HOST_ROLE_BY_CELL[cell["cell_id"]]
         bundle_kwargs = {}
         full_bundle = full_bundles.get(cell["cell_id"])
         if full_bundle is not None:
@@ -1231,6 +1238,15 @@ def _validate_plan(plan: dict[str, Any], contract: dict[str, Any]) -> None:
         expected_cells = [(cell["cell_id"], workload_id) for cell in contract["cells"]]
         if actual_cells != expected_cells:
             raise ValueError(f"{plan_type} plan differs from the six-cell contract.")
+        if plan_type == "full":
+            expected_host_roles = tuple(
+                FULL_HOST_ROLE_BY_CELL[cell["cell_id"]]
+                for cell in contract["cells"]
+            )
+            if tuple(job.get("host_role") for job in jobs) != expected_host_roles:
+                raise ValueError(
+                    "Full plan differs from the deployed host mapping."
+                )
     else:
         raise ValueError(f"Unsupported production plan type: {plan_type}")
     if plan_type not in {"round1", "round2"}:
