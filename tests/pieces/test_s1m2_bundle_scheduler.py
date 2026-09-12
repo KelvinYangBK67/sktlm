@@ -401,6 +401,8 @@ def test_bundle_scheduler_refills_while_canonical_first_bundle_waits(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(training, "COMPACT_EXACT_S1M2", False)
+
     bundles = tuple(
         ExecutionBundle(
             document_index=0,
@@ -416,7 +418,7 @@ def test_bundle_scheduler_refills_while_canonical_first_bundle_waits(
             phonemes=1,
             pressure=1,
         )
-        for index in range(6)
+        for index in range(12)
     )
     plan = ExecutionBundlePlan(
         root=tmp_path,

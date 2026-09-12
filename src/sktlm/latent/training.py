@@ -2481,6 +2481,7 @@ def _parallel_training_bundles(
         ready: dict[tuple[int, int], dict[str, Any]] = {}
         validated_topology: set[int] = set()
         next_submit = 0
+        reduction_document_index = start_document
         dispatch_error: BaseException | None = None
         dispatch_done = False
         dispatch_stop = False
@@ -2491,7 +2492,18 @@ def _parallel_training_bundles(
             while (
                 next_submit < len(todo)
                 and len(inflight) < max_inflight
-                and len(inflight) + len(ready) < max_inflight * 2
+                and (
+                    todo[next_submit].document_index
+                    <= reduction_document_index
+                    or (
+                        len(inflight)
+                        + sum(
+                            key[0] > reduction_document_index
+                            for key in ready
+                        )
+                        < max_inflight * 2
+                    )
+                )
             ):
                 bundle = todo[next_submit]
                 document = documents[bundle.document_index]
@@ -2553,6 +2565,8 @@ def _parallel_training_bundles(
                             condition.notify_all()
                             if dispatch_done:
                                 return
+                            condition.wait()
+                            continue
                         futures = tuple(inflight)
                     wait(futures, return_when=FIRST_COMPLETED)
                     with condition:
@@ -2634,6 +2648,7 @@ def _parallel_training_bundles(
                 with condition:
                     for bundle in document_bundles:
                         ready.pop(bundle.key, None)
+                    reduction_document_index = document_index + 1
                     telemetry.observe("training_bundle_ready_shards", len(ready))
                     condition.notify_all()
         finally:
@@ -4837,6 +4852,7 @@ def _parallel_inspection_bundles(
         ready: dict[tuple[int, int], dict[str, Any]] = {}
         validated_topology: set[int] = set()
         next_submit = 0
+        reduction_document_index = 0
         dispatch_error: BaseException | None = None
         dispatch_done = False
         dispatch_stop = False
@@ -4847,7 +4863,18 @@ def _parallel_inspection_bundles(
             while (
                 next_submit < len(todo)
                 and len(inflight) < max_inflight
-                and len(inflight) + len(ready) < max_inflight * 2
+                and (
+                    todo[next_submit].document_index
+                    <= reduction_document_index
+                    or (
+                        len(inflight)
+                        + sum(
+                            key[0] > reduction_document_index
+                            for key in ready
+                        )
+                        < max_inflight * 2
+                    )
+                )
             ):
                 bundle = todo[next_submit]
                 document = documents[bundle.document_index]
@@ -4906,6 +4933,8 @@ def _parallel_inspection_bundles(
                             condition.notify_all()
                             if dispatch_done:
                                 return
+                            condition.wait()
+                            continue
                         futures = tuple(inflight)
                     wait(futures, return_when=FIRST_COMPLETED)
                     with condition:
@@ -5003,6 +5032,7 @@ def _parallel_inspection_bundles(
                 with condition:
                     for bundle in document_bundles:
                         ready.pop(bundle.key, None)
+                    reduction_document_index = document_index + 1
                     telemetry.observe("inspection_bundle_ready_shards", len(ready))
                     condition.notify_all()
         finally:

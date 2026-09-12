@@ -160,9 +160,9 @@ def test_surface_word_planner_load_and_generic_full_binding(
     monkeypatch.setattr(
         s1m2,
         "_bundle_plan_details",
-        lambda *args, **kwargs: {
-            "path": "synthetic/surface",
-            "plan_sha256": "a" * 64,
+        lambda _repo_root, declaration, *_args, **_kwargs: {
+            "path": declaration["execution_bundle_plan"],
+            "plan_sha256": declaration["execution_bundle_plan_sha256"],
             "materialization_sha256": "b" * 64,
         },
     )
@@ -183,8 +183,25 @@ def test_surface_word_planner_load_and_generic_full_binding(
         repo_root=tmp_path,
     )
     s1m2._validate_plan(final, contract)
-    job = next(item for item in final["jobs"] if item["cell_id"] == surface["cell_id"])
+    job = next(
+        item for item in final["jobs"]
+        if item["cell_id"] == surface["cell_id"]
+    )
     assert job["execution_bundle_plan"] == "synthetic/surface"
+
+    for cell_id, spec in s1m2.FULL_EXECUTION_BUNDLE_SPECS.items():
+        default_job = next(
+            item for item in final["jobs"]
+            if item["cell_id"] == cell_id
+        )
+        assert (
+            default_job["execution_bundle_plan"]
+            == spec["execution_bundle_plan"]
+        )
+        assert (
+            default_job["execution_bundle_plan_sha256"]
+            == spec["execution_bundle_plan_sha256"]
+        )
 
 
 def test_surface_word_bundled_training_is_scientifically_exact(

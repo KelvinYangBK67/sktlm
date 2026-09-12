@@ -104,15 +104,19 @@ ROUND3_TAIL_EVIDENCE = tuple(
 def _full_execution_bundle_specs(
     contract: dict[str, Any],
 ) -> dict[str, dict[str, str]]:
-    """Return explicitly declared Full bundle plans, with legacy defaults."""
+    """Return legacy Full bundle defaults plus explicit cell declarations."""
 
+    result = {
+        str(cell_id): dict(spec)
+        for cell_id, spec in FULL_EXECUTION_BUNDLE_SPECS.items()
+    }
     declared = contract.get("full_execution_bundle_plans")
     if declared is None:
-        return FULL_EXECUTION_BUNDLE_SPECS
+        return result
     if not isinstance(declared, dict):
         raise ValueError("Full execution bundle declarations must be a mapping.")
+
     cells = {cell["cell_id"]: cell for cell in contract["cells"]}
-    result: dict[str, dict[str, str]] = {}
     for cell_id, spec in declared.items():
         cell = cells.get(cell_id)
         if (
@@ -123,9 +127,12 @@ def _full_execution_bundle_specs(
             or not spec.get("execution_bundle_plan")
             or len(str(spec.get("execution_bundle_plan_sha256", ""))) != 64
         ):
-            raise ValueError(f"Invalid Full execution bundle declaration: {cell_id}")
+            raise ValueError(
+                f"Invalid Full execution bundle declaration: {cell_id}"
+            )
         result[str(cell_id)] = dict(spec)
     return result
+
 CORE_HOST_ROLES = tuple(f"core-{index:02d}" for index in range(1, 7))
 WORKER_CALIBRATION_DOCUMENTS = 72
 WORKER_CALIBRATION_STRUCTURE_SHA256 = (
