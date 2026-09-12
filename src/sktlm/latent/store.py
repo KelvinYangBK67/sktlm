@@ -11,7 +11,7 @@ from collections import Counter, OrderedDict
 from pathlib import Path
 from typing import Any, Iterable
 
-from sktlm.latent.phonology import Phoneme, PhonologicalForm
+from sktlm.latent.phonology import PhonologicalForm
 from sktlm.latent.telemetry import RuntimeTelemetry
 from sktlm.latent.vocabulary import (
     BASE_FORMS,
@@ -119,7 +119,7 @@ class LexiconScorer:
 
 
 class PieceStoreScorer:
-    """Bounded-cache P1a scorer over the finite active SQLite piece state."""
+    """P1a scorer over one flat immutable copy of the active piece state."""
 
     def __init__(
         self,
@@ -147,7 +147,6 @@ class PieceStoreScorer:
         self.base_measure = GeometricPhonemeBaseMeasure(base_stop_probability)
         self.cache_size = cache_size
         self.telemetry = telemetry
-        self._cache: OrderedDict[str, float] = OrderedDict()
         self.score_calls = 0
         self.cache_hits = 0
         self.cache_misses = 0
@@ -162,75 +161,21 @@ class PieceStoreScorer:
         self.active_piece_types = int(row[0])
         self.total_count = float(row[1])
         self.denominator = self.total_count + alpha
-        # Exact active-piece counts are immutable for a pass.  Loading them
-        # into a prefix trie once makes long whole-form endpoint lookup
-        # proportional to form length without one SQLite query per endpoint.
-        self._count_trie_children: list[dict[Phoneme, int]] = [{}]
-        self._count_trie_values: list[float | None] = [None]
+        # Exact active-piece counts are immutable for a pass. A flat key map
+        # avoids replicating a Python node/dict trie in every spawned worker.
         started = time.perf_counter()
-        rows = connection.execute(
-            "SELECT form_key, expected_count FROM piece_lexicon "
-            "ORDER BY form_key"
-        )
-        for form_key, expected_count in rows:
-            node = 0
-            for symbol in PhonologicalForm.from_key(str(form_key)).symbols:
-                child = self._count_trie_children[node].get(symbol)
-                if child is None:
-                    child = len(self._count_trie_children)
-                    self._count_trie_children[node][symbol] = child
-                    self._count_trie_children.append({})
-                    self._count_trie_values.append(None)
-                node = child
-            self._count_trie_values[node] = float(expected_count)
+        self._counts = {
+            str(form_key): float(expected_count)
+            for form_key, expected_count in connection.execute(
+                "SELECT form_key, expected_count FROM piece_lexicon"
+            )
+        }
         self.sqlite_seconds += time.perf_counter() - started
         self.sqlite_selects += 1
-
-    def _lookup_symbols(
-        self, key: str, symbols: tuple[Phoneme, ...]
-    ) -> float:
-        cached = self._cache.get(key)
-        if cached is not None:
-            self.cache_hits += 1
-            self._cache.move_to_end(key)
-            return cached
-        self.cache_misses += 1
-        self.store_lookups += 1
-        node = 0
-        for symbol in symbols:
-            child = self._count_trie_children[node].get(symbol)
-            if child is None:
-                count = 0.0
-                break
-            node = child
-        else:
-            value = self._count_trie_values[node]
-            count = 0.0 if value is None else value
-        self._cache[key] = count
-        if len(self._cache) > self.cache_size:
-            self._cache.popitem(last=False)
-        return count
 
     def _lookup(self, key: str) -> float:
-        cached = self._cache.get(key)
-        if cached is not None:
-            self.cache_hits += 1
-            self._cache.move_to_end(key)
-            return cached
-        self.cache_misses += 1
-        started = time.perf_counter()
-        row = self.connection.execute(
-            "SELECT expected_count FROM piece_lexicon WHERE form_key = ?",
-            (key,),
-        ).fetchone()
-        self.sqlite_seconds += time.perf_counter() - started
-        self.sqlite_selects += 1
         self.store_lookups += 1
-        count = 0.0 if row is None else float(row[0])
-        self._cache[key] = count
-        if len(self._cache) > self.cache_size:
-            self._cache.popitem(last=False)
-        return count
+        return self._counts.get(key, 0.0)
 
     def probability(self, piece: PhonologicalForm, count: float) -> float:
         return (
@@ -264,7 +209,7 @@ class PieceStoreScorer:
 
     def score(self, piece: PhonologicalForm) -> float:
         self.score_calls += 1
-        count = self._lookup_symbols(piece.key, piece.symbols)
+        count = self._lookup(piece.key)
         return self.score_from_count_and_length(count, len(piece.symbols))
 
 

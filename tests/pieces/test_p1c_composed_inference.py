@@ -868,7 +868,7 @@ def test_compact_candidates_keep_matches_beyond_legacy_pressure_limit() -> None:
     assert legacy.overflowed_tokens > 0
 
 
-def test_piece_store_active_trie_preserves_exact_scoring_equation() -> None:
+def test_piece_store_flat_counts_preserve_exact_scoring_equation() -> None:
     connection = sqlite3.connect(":memory:")
     connection.execute(
         "CREATE TABLE piece_lexicon (form_key TEXT PRIMARY KEY, "
@@ -900,6 +900,7 @@ def test_piece_store_active_trie_preserves_exact_scoring_equation() -> None:
             * math.log1p(1.0 / (scorer.complexity_tau + count))
         )
         assert scorer.score(piece) == expected
+        assert scorer._lookup(piece.key) == count
     assert scorer.sqlite_selects == 1
 
 
