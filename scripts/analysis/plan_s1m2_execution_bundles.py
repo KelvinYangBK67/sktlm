@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build deterministic static execution-bundle candidate plans for S1M2 continuous workloads.
+Build deterministic static execution-bundle candidate plans for S1M2 workloads.
 
 Analysis/planning only: no model training, candidate construction, or latent inference.
 The repository's existing frontend segmentation is reused exactly. Every existing
@@ -30,7 +30,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Sequence
 
-from sktlm.latent.continuous_structure import ContinuousSelectionConfig, _manifest_rows
+from sktlm.latent.continuous_structure import (
+    ContinuousSelectionConfig,
+    StaticInput,
+    _manifest_rows,
+)
 from sktlm.latent.execution_bundles import PLANNER_IMPLEMENTATION
 from sktlm.latent.frontend import ObservedSegment
 from sktlm.latent.training import (
@@ -87,6 +91,13 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _text_sha256(path: Path) -> str:
+    """Hash logical UTF-8 text with the repository's canonical LF form."""
+
+    text = path.read_text(encoding="utf-8")
+    return hashlib.sha256(text.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")).hexdigest()
+
+
 def _git_head(repo_root: Path) -> str | None:
     try:
         return subprocess.run(
@@ -118,6 +129,7 @@ def _iter_document_segments(
     document_index: int,
     relative_path: str,
     script: str,
+    condition: str,
     max_segment_tokens: int,
     max_lines_per_document: int | None,
 ) -> Iterator[SegmentRecord]:
@@ -130,7 +142,7 @@ def _iter_document_segments(
     )
     config = TrainingConfig(
         script=script,
-        condition="continuous",
+        condition=condition,
         max_segment_tokens=max_segment_tokens,
         max_lines_per_document=max_lines_per_document,
     )
@@ -177,6 +189,7 @@ def _stats(values: Sequence[int]) -> dict[str, int | float]:
 
 def _scan_segments(
     *, repo_root: Path, rows: Sequence[dict[str, str]], script: str,
+    condition: str,
     max_segment_tokens: int, max_lines_per_document: int | None,
 ) -> tuple[list[list[SegmentRecord]], dict[str, Any]]:
     by_document: list[list[SegmentRecord]] = []
@@ -213,6 +226,7 @@ def _scan_segments(
             document_index=document_index,
             relative_path=relative_path,
             script=script,
+            condition=condition,
             max_segment_tokens=max_segment_tokens,
             max_lines_per_document=max_lines_per_document,
         ))
@@ -535,6 +549,10 @@ def main() -> int:
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--basis-cell", default=None)
+    parser.add_argument("--cell-id")
+    parser.add_argument("--manifest", type=Path)
+    parser.add_argument("--script")
+    parser.add_argument("--condition", choices=("continuous", "surface_word", "legacy_joined"))
     parser.add_argument("--document-list", type=Path)
     target = parser.add_mutually_exclusive_group()
     target.add_argument("--target-bundles", type=int, nargs="+")
@@ -569,14 +587,27 @@ def main() -> int:
     output_dir = _resolve(repo_root, args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    config = ContinuousSelectionConfig.load(config_path, repo_root=repo_root)
-    basis_cell = args.basis_cell or config.selection_basis_cell
-    matches = [item for item in config.inputs if item.cell_id == basis_cell]
-    if len(matches) != 1:
-        raise ValueError(f"Expected exactly one configured basis cell {basis_cell!r}")
-    basis = matches[0]
-    if basis.condition != "continuous":
-        raise ValueError("This planner accepts continuous cells only")
+    explicit = (args.cell_id, args.manifest, args.script, args.condition)
+    if any(value is not None for value in explicit) and not all(
+        value is not None for value in explicit
+    ):
+        parser.error("--cell-id, --manifest, --script, and --condition are all required together")
+    if all(value is not None for value in explicit):
+        manifest = _resolve(repo_root, args.manifest)
+        basis = StaticInput(
+            cell_id=args.cell_id,
+            manifest=manifest,
+            manifest_sha256=_sha256(manifest),
+            script=args.script,
+            condition=args.condition,
+        )
+    else:
+        config = ContinuousSelectionConfig.load(config_path, repo_root=repo_root)
+        basis_cell = args.basis_cell or config.selection_basis_cell
+        matches = [item for item in config.inputs if item.cell_id == basis_cell]
+        if len(matches) != 1:
+            raise ValueError(f"Expected exactly one configured basis cell {basis_cell!r}")
+        basis = matches[0]
     rows = _manifest_rows(basis, repo_root)
     document_list = (
         None if args.document_list is None else _resolve(repo_root, args.document_list)
@@ -597,6 +628,7 @@ def main() -> int:
 
     by_document, scan = _scan_segments(
         repo_root=repo_root, rows=rows, script=basis.script,
+        condition=basis.condition,
         max_segment_tokens=args.max_segment_tokens,
         max_lines_per_document=args.max_lines_per_document,
     )
@@ -604,7 +636,7 @@ def main() -> int:
     sig = hashlib.sha256()
     for value in (
         scan["segment_sequence_sha256"], scan["representation_set_sha256"],
-        basis.cell_id, basis.script, str(args.max_segment_tokens),
+        basis.cell_id, basis.script, basis.condition, str(args.max_segment_tokens),
         str(args.max_lines_per_document),
         str(document_list_identity["path"]),
         str(document_list_identity["sha256"]),
@@ -619,7 +651,7 @@ def main() -> int:
         "git_head": _git_head(repo_root),
         "git_worktree_dirty": _git_dirty(repo_root),
         "config": str(config_path.relative_to(repo_root)),
-        "config_sha256": _sha256(config_path),
+        "config_sha256": _text_sha256(config_path),
         "cell_id": basis.cell_id,
         "script": basis.script,
         "condition": basis.condition,

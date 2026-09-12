@@ -24,6 +24,12 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _text_sha256(path: Path) -> str:
+    text = path.read_text(encoding="utf-8")
+    canonical = text.replace("\r\n", "\n").replace("\r", "\n")
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 @dataclass(frozen=True, slots=True)
 class ExecutionBundle:
     document_index: int
@@ -188,7 +194,7 @@ def load_execution_bundle_plan(
     config_path = Path(str(scan.get("config", "")))
     if config_path and not config_path.is_absolute():
         config_path = repo_root / config_path
-    if not config_path.is_file() or scan.get("config_sha256") != _sha256(config_path):
+    if not config_path.is_file() or scan.get("config_sha256") != _text_sha256(config_path):
         raise ValueError("Execution bundle planner config mismatch.")
     for payload in (scan, summary):
         if payload.get("script") != script or payload.get("condition") != condition:

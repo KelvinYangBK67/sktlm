@@ -273,6 +273,7 @@ def test_planner_uses_training_segment_identity_and_plan_is_complete(
             document_index=0,
             relative_path=documents[0].relative_path,
             script="devanagari",
+            condition="continuous",
             max_segment_tokens=128,
             max_lines_per_document=None,
         )

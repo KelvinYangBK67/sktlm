@@ -99,6 +99,33 @@ ROUND3_TAIL_EVIDENCE = tuple(
     )
     for raw in (1002, 1410, 1841, 2484)
 )
+
+
+def _full_execution_bundle_specs(
+    contract: dict[str, Any],
+) -> dict[str, dict[str, str]]:
+    """Return explicitly declared Full bundle plans, with legacy defaults."""
+
+    declared = contract.get("full_execution_bundle_plans")
+    if declared is None:
+        return FULL_EXECUTION_BUNDLE_SPECS
+    if not isinstance(declared, dict):
+        raise ValueError("Full execution bundle declarations must be a mapping.")
+    cells = {cell["cell_id"]: cell for cell in contract["cells"]}
+    result: dict[str, dict[str, str]] = {}
+    for cell_id, spec in declared.items():
+        cell = cells.get(cell_id)
+        if (
+            cell is None
+            or not isinstance(spec, dict)
+            or spec.get("script") != cell["script"]
+            or spec.get("condition") != cell["condition"]
+            or not spec.get("execution_bundle_plan")
+            or len(str(spec.get("execution_bundle_plan_sha256", ""))) != 64
+        ):
+            raise ValueError(f"Invalid Full execution bundle declaration: {cell_id}")
+        result[str(cell_id)] = dict(spec)
+    return result
 CORE_HOST_ROLES = tuple(f"core-{index:02d}" for index in range(1, 7))
 WORKER_CALIBRATION_DOCUMENTS = 72
 WORKER_CALIBRATION_STRUCTURE_SHA256 = (
@@ -1018,7 +1045,8 @@ def build_final_plan(
     winner = int(round3_closure["retained_workers"])
 
     full_bundles: dict[str, dict[str, str]] = {}
-    for bundle_cell_id, bundle_spec in FULL_EXECUTION_BUNDLE_SPECS.items():
+    bundle_specs = _full_execution_bundle_specs(contract)
+    for bundle_cell_id, bundle_spec in bundle_specs.items():
         declaration = {
             **bundle_spec,
             "target_pressure": contract["round2"]["target_pressure"],
@@ -1226,32 +1254,32 @@ def _validate_plan(plan: dict[str, Any], contract: dict[str, Any]) -> None:
                 "execution_bundle_plan_sha256",
                 "execution_bundle_materialization_sha256",
             )
-            bundle_spec = FULL_EXECUTION_BUNDLE_SPECS.get(job["cell_id"])
+            bundle_spec = _full_execution_bundle_specs(contract).get(job["cell_id"])
             if bundle_spec is not None:
                 if (
                     job.get("execution_bundle_plan")
                     != bundle_spec["execution_bundle_plan"]
                 ):
                     raise ValueError(
-                        "Full continuous job has invalid execution bundle plan."
+                        "Full job has invalid execution bundle plan."
                     )
                 if (
                     job.get("execution_bundle_plan_sha256")
                     != bundle_spec["execution_bundle_plan_sha256"]
                 ):
                     raise ValueError(
-                        "Full continuous job has invalid bundle-plan identity."
+                        "Full job has invalid bundle-plan identity."
                     )
                 materialization_sha = job.get(
                     "execution_bundle_materialization_sha256"
                 )
                 if not materialization_sha or len(str(materialization_sha)) != 64:
                     raise ValueError(
-                        "Full continuous job has invalid bundle materialization."
+                        "Full job has invalid bundle materialization."
                     )
             elif any(job.get(name) is not None for name in bundle_fields):
                 raise ValueError(
-                    "Only Full continuous cells may use execution bundle plans."
+                    "Only explicitly declared Full cells may use execution bundle plans."
                 )
         if job.get("training_command") != _training_command(job):
             raise ValueError(f"Plan job {job['job_id']} has an invalid trainer command.")
