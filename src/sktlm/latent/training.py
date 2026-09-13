@@ -1300,9 +1300,9 @@ def _write_training_shard(
     )
     shard_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = shard_path.with_suffix(shard_path.suffix + '.tmp')
-    counts: Counter[PhonologicalForm] = Counter()
-    piece_counts: Counter[PhonologicalForm] = Counter()
-    piece_support: Counter[PhonologicalForm] = Counter()
+    counts: Counter[str] = Counter()
+    piece_counts: Counter[str] = Counter()
+    piece_support: Counter[str] = Counter()
     metrics = PassMetrics()
     seen_lines: set[int] = set()
     row_count = 0
@@ -1853,15 +1853,13 @@ def _coalesce_training_bundle_shards(
         nonlocal row_count
         if not counts and not piece_counts:
             return
-        for form, value in sorted(counts.items(), key=lambda item: item[0].key):
-            handle.write(f"L\t{form.key}\t{float(value).hex()}\n")
+        for form_key, value in sorted(counts.items()):
+            handle.write(f"L\t{form_key}\t{float(value).hex()}\n")
             row_count += 1
-        for piece, value in sorted(
-            piece_counts.items(), key=lambda item: item[0].key
-        ):
+        for piece_key, value in sorted(piece_counts.items()):
             handle.write(
-                f"P\t{piece.key}\t{float(value).hex()}\t"
-                f"{piece_support[piece]}\n"
+                f"P\t{piece_key}\t{float(value).hex()}\t"
+                f"{piece_support[piece_key]}\n"
             )
             row_count += 1
         counts.clear()
@@ -1912,13 +1910,10 @@ def _coalesce_training_bundle_shards(
                             last_identity = identity
                             seen_lines.add(identity[0])
                             for key, value in record["lexical_counts"]:
-                                counts[PhonologicalForm.from_key(key)] += (
-                                    float.fromhex(value)
-                                )
+                                counts[key] += float.fromhex(value)
                             for key, value, support in record["piece_counts"]:
-                                piece = PhonologicalForm.from_key(key)
-                                piece_counts[piece] += float.fromhex(value)
-                                piece_support[piece] += int(support)
+                                piece_counts[key] += float.fromhex(value)
+                                piece_support[key] += int(support)
                             metrics = metrics.merged(
                                 _metrics_from_exact_payload(record["metrics"])
                             )
@@ -2046,9 +2041,9 @@ def _apply_compact_training_bundle_shards(
     """Fold canonical compact bundle records directly into one document transaction."""
 
     document_index = bundles[0].document_index
-    lexical_counts: Counter[PhonologicalForm] = Counter()
-    piece_counts: Counter[PhonologicalForm] = Counter()
-    piece_support: Counter[PhonologicalForm] = Counter()
+    lexical_counts: Counter[str] = Counter()
+    piece_counts: Counter[str] = Counter()
+    piece_support: Counter[str] = Counter()
     document_metrics = PassMetrics()
     seen_lines: set[int] = set()
     runtime_totals: Counter[str] = Counter()
@@ -2058,16 +2053,21 @@ def _apply_compact_training_bundle_shards(
     def flush() -> None:
         if lexical_counts:
             store.add_document_lexical_diagnostics(
-                sorted(lexical_counts.items(), key=lambda item: item[0].key)
+                (
+                    (PhonologicalForm.from_key(key), value)
+                    for key, value in sorted(lexical_counts.items())
+                )
             )
             lexical_counts.clear()
         if piece_counts:
             store.add_document_piece_counts(
                 (
-                    (piece, value, piece_support[piece])
-                    for piece, value in sorted(
-                        piece_counts.items(), key=lambda item: item[0].key
+                    (
+                        PhonologicalForm.from_key(key),
+                        value,
+                        piece_support[key],
                     )
+                    for key, value in sorted(piece_counts.items())
                 )
             )
             piece_counts.clear()
@@ -2100,13 +2100,10 @@ def _apply_compact_training_bundle_shards(
                     last_identity = identity
                     seen_lines.add(identity[0])
                     for key, value in record["lexical_counts"]:
-                        lexical_counts[PhonologicalForm.from_key(key)] += (
-                            float.fromhex(value)
-                        )
+                        lexical_counts[key] += float.fromhex(value)
                     for key, value, support in record["piece_counts"]:
-                        piece = PhonologicalForm.from_key(key)
-                        piece_counts[piece] += float.fromhex(value)
-                        piece_support[piece] += int(support)
+                        piece_counts[key] += float.fromhex(value)
+                        piece_support[key] += int(support)
                     document_metrics = document_metrics.merged(
                         _metrics_from_exact_payload(record["metrics"])
                     )
@@ -3254,9 +3251,9 @@ def _write_inspection_shard(
         kind: paths[kind].with_suffix(paths[kind].suffix + ".tmp")
         for kind in shard_kinds
     }
-    counts: Counter[PhonologicalForm] = Counter()
-    piece_counts: Counter[PhonologicalForm] = Counter()
-    piece_support: Counter[PhonologicalForm] = Counter()
+    counts: Counter[str] = Counter()
+    piece_counts: Counter[str] = Counter()
+    piece_support: Counter[str] = Counter()
     seen_lines: set[int] = set()
     count_rows = 0
     piece_rows = 0
@@ -4228,9 +4225,9 @@ def _coalesce_inspection_bundle_shards(
         nonlocal shard_database_seconds
         started = time.perf_counter()
         count_rows = []
-        for form, value in sorted(counts.items(), key=lambda item: item[0].key):
+        for form_key, value in sorted(counts.items()):
             row_numbers["counts"] += 1
-            count_rows.append((row_numbers["counts"], form.key, float(value)))
+            count_rows.append((row_numbers["counts"], form_key, float(value)))
         if count_rows:
             aggregate_connection.executemany(
                 "INSERT INTO count_rows VALUES (?, ?, ?)", count_rows
@@ -4238,16 +4235,14 @@ def _coalesce_inspection_bundle_shards(
             row_counts["counts"] += len(count_rows)
             counts.clear()
         piece_rows = []
-        for piece, value in sorted(
-            piece_counts.items(), key=lambda item: item[0].key
-        ):
+        for piece_key, value in sorted(piece_counts.items()):
             row_numbers["pieces"] += 1
             piece_rows.append(
                 (
                     row_numbers["pieces"],
-                    piece.key,
+                    piece_key,
                     float(value),
-                    int(piece_support[piece]),
+                    int(piece_support[piece_key]),
                 )
             )
         if piece_rows:
@@ -4337,13 +4332,10 @@ def _coalesce_inspection_bundle_shards(
                     last_identity = identity
                     seen_lines.add(identity[0])
                     for key, value in record["lexical_counts"]:
-                        counts[PhonologicalForm.from_key(key)] += float.fromhex(
-                            value
-                        )
+                        counts[key] += float.fromhex(value)
                     for key, value, support in record["piece_counts"]:
-                        piece = PhonologicalForm.from_key(key)
-                        piece_counts[piece] += float.fromhex(value)
-                        piece_support[piece] += int(support)
+                        piece_counts[key] += float.fromhex(value)
+                        piece_support[key] += int(support)
                     handles["analyses"].write(
                         json.dumps(
                             record["analysis"],
