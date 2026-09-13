@@ -2,7 +2,7 @@
 
 DATE=2026-09-13
 BRANCH=exp/s1m2-reusable-pieces
-STATUS=ROUND4_RUNTIME_OPTIMIZATION_IMPLEMENTED
+STATUS=GENERIC_CLOUD_HOST_BOOTSTRAP_IMPLEMENTED
 
 ROUND4_START_HEAD=535f4e618563d88b9d85109d03bfaf1b049664dc
 ROUND4_CODE_HEAD=3b937abd4a64d5f6b48034d716112bdedca918e8
@@ -15,6 +15,10 @@ FIXED_PIECE_DP_PRIORS=PASS_LOCAL
 SCIENTIFIC_SEMANTICS_CHANGED=NO
 RAM_BOUND_INCREASED=NO
 LONG_VALIDATION_RUN=NO
+GENERIC_PUSH_INPUTS_DISPATCH=PASS_LOCAL
+GENERIC_CLOUD_HOST_BOOTSTRAP=PASS_LOCAL
+REMOTE_OPERATIONS_RUN=NO
+BOOTSTRAP_CODE_HEAD=21492879a779507b578d690a010fa24af36d63f6
 FULL_M0_AUTHORIZED=NO
 
 Round 4 removed repeated document-prefix reads, post-write shard rereads,
@@ -30,10 +34,16 @@ deterministic UTF-8 byte offset for each bundle's first source line. Existing
 v1 plans fail closed and must be rematerialized before a run uses this HEAD;
 this changes execution-plan identity, not scientific training identity.
 
-NEXT_ACTION=RESEARCHER_RUN_ROUND4_MANUAL_GATES
+The generic WSL bootstrap command now prepares an arbitrary configured host
+through guarded disk/mount setup, prerequisite and CPython 3.11.9 installation,
+exact published-HEAD Git-bundle deployment, guarded layout/venv setup, CPU-only
+dependencies, frozen-input transfer, and authoritative validation. It is
+idempotent, receipt-backed, and never launches a workload.
 
-Do not automatically launch Full M0, VM/cloud work, representative/stress
-workloads, worker calibration, RAM/runtime benchmarks, or long equivalence
-runs. The researcher should manually rematerialize any needed v2 execution
-plan, run a short 12-worker Pass-2 RAM/runtime probe, and perform the canonical
-scientific-equivalence comparison.
+NEXT_ACTION=RESEARCHER_DRY_RUN_NEW_HOST_BOOTSTRAP
+
+Do not automatically bootstrap a real host or launch Full M0, representative,
+stress, calibration, RAM/runtime, or scientific workloads. The researcher may
+first run this from WSL:
+
+    PYTHONPATH=src python3 scripts/cloud/bootstrap_cloud_host.py --host-profile core-XX --data-device /dev/vdb --dry-run

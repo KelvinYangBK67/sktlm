@@ -2963,3 +2963,41 @@ LONG_VALIDATION_RUN=NO
 FULL_M0_AUTHORIZED=NO
 NEXT_ACTION=RESEARCHER_RUN_ROUND4_MANUAL_GATES
 ```
+
+## Generic cloud-host bootstrap — 2026-09-13
+
+The non-contract `push-inputs` CLI dispatch bug is fixed: the generic path now
+executes `push_inputs_action` rather than returning a nested lambda, while the
+contract path continues to execute `push_contract_inputs_action`. The focused
+generic dispatch regression passes.
+
+`scripts/cloud/bootstrap_cloud_host.py` is now the generic WSL entrypoint for
+bringing one arbitrary configured host profile to `READY`. It derives the clean
+current branch and exact published HEAD locally, creates a temporary verified
+Git bundle, and reuses the existing bundle deployment and generic frozen-input
+transfer/validation paths. It does not hardcode an S1M2 branch, six-host set,
+machine ID, or scientific workload.
+
+The remote stages are ordered and fail closed: root SSH sanity; idempotent
+prerequisites; exact-mount reuse or guarded operator-supplied blank-disk setup;
+CPython 3.11.9 under `/opt/python-3.11.9`; exact-HEAD repo deployment/reuse;
+guarded data-backed symlinks; venv and CPU-only PyTorch/project dependencies;
+incremental canonical/representation transfer; authoritative validation; and
+final READY validation. Conflicting mounts, root/system disks, unexpected
+partitions/signatures/mounts, dirty/conflicting repos, wrong Python, invalid
+venvs, and conflicting symlinks fail closed. Recognizable tool-owned partial
+disk setup can resume. Receipts contain stage state and nested deployment/input
+receipt references without secrets. `--dry-run` performs no VM/SSH operation.
+
+Focused local validation passed 7 bootstrap tests plus the generic bridge
+dispatch regression. No SSH, VM mutation, package/Python installation, rsync,
+scientific workload, benchmark, or long validation ran.
+
+```text
+GENERIC_PUSH_INPUTS_DISPATCH=PASS_LOCAL
+GENERIC_CLOUD_HOST_BOOTSTRAP=PASS_LOCAL
+REMOTE_OPERATIONS_RUN=NO
+SCIENTIFIC_SEMANTICS_CHANGED=NO
+FULL_M0_AUTHORIZED=NO
+NEXT_ACTION=RESEARCHER_DRY_RUN_NEW_HOST_BOOTSTRAP
+```

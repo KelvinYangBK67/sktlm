@@ -201,6 +201,31 @@ paper/release run should preserve these alongside its exact Git commit, frozen
 input fingerprint, experiment config, and run provenance. Completed historical
 runs are not restarted or retroactively modified solely to add these files.
 
+## Cloud host bootstrap
+
+From WSL, add any new machine as a host profile in the local
+`.sktlm-bridge.toml`, then inspect the plan and prepare the host with:
+
+```bash
+PYTHONPATH=src python3 scripts/cloud/bootstrap_cloud_host.py \
+  --host-profile core-XX --data-device /dev/vdb --dry-run
+
+PYTHONPATH=src python3 scripts/cloud/bootstrap_cloud_host.py \
+  --host-profile core-XX --data-device /dev/vdb
+```
+
+The idempotent command prepares or reuses the configured data mount, installs
+the host prerequisites and CPython 3.11.9, deploys the clean published branch
+at the exact local HEAD by verified Git bundle, creates the guarded cloud
+layout and venv, installs CPU-only PyTorch plus project dependencies, transfers
+the frozen canonical/representation inputs, and runs authoritative remote input
+validation. It writes machine-readable receipts under
+`artifacts/cloud_transfers/`. Disk initialization is allowed only for the
+operator-supplied blank device (or a recognizable interrupted bootstrap state)
+and otherwise fails closed. This command only brings a host to `READY`; it does
+not launch a scientific or production workload. Do not use the local Windows
+`.venv` for this WSL control-plane command.
+
 ## License
 
 Project-authored code, configs, tests, and documentation are licensed under the
