@@ -13,6 +13,7 @@ from sktlm.latent.grammar import StructuredSandhiGrammar
 from sktlm.latent.inference import infer_segment
 from sktlm.latent.lazy_candidates import (
     build_lazy_candidate_graph,
+    lazy_candidate_graph_statistics,
     materialize_lazy_candidate_graph,
 )
 from sktlm.latent.phonology import Phoneme, PhonologicalForm, parse_iast_form
@@ -766,6 +767,32 @@ def test_compact_structural_trie_matches_legacy_shared_oracle(surface: str) -> N
     assert compact.piece_occurrence_support == legacy.piece_occurrence_support
     assert compact.counters.compact_trie_compiles > 0
     assert compact.counters.support_truncation_tokens == 0
+
+
+def test_compact_compile_reports_exact_legal_span_count() -> None:
+    default_grammar = StructuredSandhiGrammar.from_default_inventory()
+    cases = (
+        ("rama", StructuredSandhiGrammar(())),
+        ("devo'pi", default_grammar),
+        ("tattvamasi", default_grammar),
+        ("rāmo'pi rāmaśca", default_grammar),
+        ("tattvamasidevo'pitattvamasi", default_grammar),
+    )
+    for surface, grammar in cases:
+        segment = next(iter_observed_segments(surface))
+        graph = build_lazy_candidate_graph(segment, grammar)
+        reference = lazy_candidate_graph_statistics(graph)[
+            "lexical_span_hypotheses"
+        ]
+        result = infer_composed_segment(
+            graph,
+            ComposedPieceInference(
+                _production_scorer(),
+                model_config=PieceModelConfig(max_piece_length=2),
+            ),
+            whitespace_merge_penalty=8.0,
+        )
+        assert result.candidate_span_hypotheses == reference
 
 
 def test_compact_route_does_not_materialize_forms_per_span(monkeypatch) -> None:

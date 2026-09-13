@@ -566,10 +566,26 @@ def _record_candidate_telemetry(
         "raw_internal_matches",
         "retained_internal_matches",
         "lattice_nodes",
-        "lexical_span_hypotheses",
         "overflowed_tokens",
     ):
         telemetry.observe(f"{phase}_{name}_per_segment", int(statistics[name]))
+    if "lexical_span_hypotheses" in statistics:
+        telemetry.observe(
+            f"{phase}_lexical_span_hypotheses_per_segment",
+            int(statistics["lexical_span_hypotheses"]),
+        )
+
+
+def _record_exact_hypothesis_count(
+    telemetry: RuntimeTelemetry,
+    inference: ComposedSegmentInference,
+    *,
+    phase: str,
+) -> None:
+    telemetry.observe(
+        f"{phase}_lexical_span_hypotheses_per_segment",
+        inference.candidate_span_hypotheses,
+    )
 
 
 def _canonical_json(value: Any) -> str:
@@ -1405,7 +1421,9 @@ def _write_training_shard(
             candidate_counts = (
                 candidate_graph_statistics(graph)
                 if config.model == S1M1_MODEL
-                else lazy_candidate_graph_statistics(graph)
+                else lazy_candidate_graph_statistics(
+                    graph, defer_legal_span_count=True
+                )
             )
             if candidate_profile is not None:
                 _record_candidate_telemetry(
@@ -1450,6 +1468,9 @@ def _write_training_shard(
                     inference.timings,
                     phase="training",
                 )
+                _record_exact_hypothesis_count(
+                    engineering, inference, phase="training"
+                )
             inference_seconds += time.perf_counter() - started
             started = time.perf_counter()
             counts.update(
@@ -1470,7 +1491,7 @@ def _write_training_shard(
                 candidate_edges=(
                     candidate_counts['lexical_edges']
                     if config.model == S1M1_MODEL
-                    else candidate_counts['lexical_span_hypotheses']
+                    else inference.candidate_span_hypotheses
                 ),
             )
             if len(counts) + len(piece_counts) >= config.flush_types:
@@ -1613,7 +1634,9 @@ def _write_training_bundle_shard(
                     profile=candidate_profile,
                 )
                 candidate_seconds += time.perf_counter() - started
-                candidate_counts = lazy_candidate_graph_statistics(graph)
+                candidate_counts = lazy_candidate_graph_statistics(
+                    graph, defer_legal_span_count=True
+                )
                 _record_candidate_telemetry(
                     engineering,
                     candidate_profile,
@@ -1640,6 +1663,9 @@ def _write_training_bundle_shard(
                 _record_composed_timings(
                     engineering, inference.timings, phase="training"
                 )
+                _record_exact_hypothesis_count(
+                    engineering, inference, phase="training"
+                )
                 inference_seconds += time.perf_counter() - started
                 started = time.perf_counter()
                 segment_metrics = PassMetrics()
@@ -1649,7 +1675,7 @@ def _write_training_bundle_shard(
                     overflowed_tokens=graph.overflowed_tokens,
                     candidate_factors=candidate_counts["factors"],
                     candidate_nodes=candidate_counts["lattice_nodes"],
-                    candidate_edges=candidate_counts["lexical_span_hypotheses"],
+                    candidate_edges=inference.candidate_span_hypotheses,
                 )
                 record = {
                     "schema_version": "sktlm-s1m2-training-segment-result/v1",
@@ -2833,7 +2859,9 @@ def _training_pass(
                 candidate_counts = (
                     candidate_graph_statistics(graph)
                     if config.model == S1M1_MODEL
-                    else lazy_candidate_graph_statistics(graph)
+                    else lazy_candidate_graph_statistics(
+                        graph, defer_legal_span_count=True
+                    )
                 )
                 if candidate_profile is not None:
                     _record_candidate_telemetry(
@@ -2881,6 +2909,9 @@ def _training_pass(
                         phase="training",
                         timings=inference.timings,
                     )
+                    _record_exact_hypothesis_count(
+                        telemetry, inference, phase="training"
+                    )
                 telemetry.elapsed('training_inference', started)
                 started = telemetry.now()
                 counts.update(
@@ -2901,7 +2932,7 @@ def _training_pass(
                     candidate_edges=(
                         candidate_counts["lexical_edges"]
                         if config.model == S1M1_MODEL
-                        else candidate_counts["lexical_span_hypotheses"]
+                        else inference.candidate_span_hypotheses
                     ),
                 )
                 if len(counts) + len(piece_counts) >= config.flush_types:
@@ -3456,7 +3487,9 @@ def _write_inspection_shard(
             candidate_values = (
                 candidate_graph_statistics(graph)
                 if config.model == S1M1_MODEL
-                else lazy_candidate_graph_statistics(graph)
+                else lazy_candidate_graph_statistics(
+                    graph, defer_legal_span_count=True
+                )
             )
             if candidate_profile is not None:
                 _record_candidate_telemetry(
@@ -3492,6 +3525,9 @@ def _write_inspection_shard(
                     engineering,
                     inference.timings,
                     phase="inspection",
+                )
+                _record_exact_hypothesis_count(
+                    engineering, inference, phase="inspection"
                 )
             inference_seconds += time.perf_counter() - started
             started = time.perf_counter()
@@ -3607,7 +3643,7 @@ def _write_inspection_shard(
                 "candidate_edges": (
                     candidate_values["lexical_edges"]
                     if config.model == S1M1_MODEL
-                    else candidate_values["lexical_span_hypotheses"]
+                    else inference.candidate_span_hypotheses
                 ),
                 "expected_piece_tokens": getattr(
                     inference, "expected_piece_tokens", 0.0
@@ -3832,7 +3868,9 @@ def _write_inspection_bundle_shard(
                     profile=candidate_profile,
                 )
                 candidate_seconds += time.perf_counter() - started
-                candidate_values = lazy_candidate_graph_statistics(graph)
+                candidate_values = lazy_candidate_graph_statistics(
+                    graph, defer_legal_span_count=True
+                )
                 _record_candidate_telemetry(
                     engineering,
                     candidate_profile,
@@ -3851,6 +3889,9 @@ def _write_inspection_bundle_shard(
                 )
                 _record_composed_timings(
                     engineering, inference.timings, phase="inspection"
+                )
+                _record_exact_hypothesis_count(
+                    engineering, inference, phase="inspection"
                 )
                 inference_seconds += time.perf_counter() - started
 
@@ -3939,9 +3980,7 @@ def _write_inspection_bundle_shard(
                     "overflowed_tokens": graph.overflowed_tokens,
                     "candidate_factors": candidate_values["factors"],
                     "candidate_nodes": candidate_values["lattice_nodes"],
-                    "candidate_edges": candidate_values[
-                        "lexical_span_hypotheses"
-                    ],
+                    "candidate_edges": inference.candidate_span_hypotheses,
                     "expected_piece_tokens": inference.expected_piece_tokens,
                     "piece_segmentation_entropy": (
                         inference.piece_segmentation_entropy
@@ -5389,7 +5428,9 @@ def _inspection_pass(
                 candidate_counts = (
                     candidate_graph_statistics(graph)
                     if config.model == S1M1_MODEL
-                    else lazy_candidate_graph_statistics(graph)
+                    else lazy_candidate_graph_statistics(
+                        graph, defer_legal_span_count=True
+                    )
                 )
                 if candidate_profile is not None:
                     _record_candidate_telemetry(
@@ -5423,6 +5464,9 @@ def _inspection_pass(
                         phase="inspection",
                         timings=inference.timings,
                     )
+                    _record_exact_hypothesis_count(
+                        telemetry, inference, phase="inspection"
+                    )
                 telemetry.elapsed('inspection_inference', started)
                 started = telemetry.now()
                 counts.update(
@@ -5444,7 +5488,7 @@ def _inspection_pass(
                     candidate_edges=(
                         candidate_counts["lexical_edges"]
                         if config.model == S1M1_MODEL
-                        else candidate_counts["lexical_span_hypotheses"]
+                        else inference.candidate_span_hypotheses
                     ),
                 )
                 serialization_started = telemetry.now()

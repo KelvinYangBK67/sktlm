@@ -207,6 +207,7 @@ class ComposedSegmentInference:
     top_analysis_mass: float
     piece_occurrence_support: dict[PhonologicalForm, int]
     total_posterior_mass: float
+    candidate_span_hypotheses: int
     counters: ComposedInferenceCounters
     timings: ComposedInferenceTimings
 
@@ -1230,6 +1231,8 @@ class ComposedPieceInference:
         )
         self._events["compact_trie_compiles"] += 1
         self._events["compact_endpoint_occurrences"] += len(hypothesis_ends)
+        self._events["lazy_span_traversals"] += len(hypothesis_ends)
+        self._events["candidate_span_hypotheses"] += len(hypothesis_ends)
         return _CompactTokenSupport(
             topology=topology,
             hypothesis_offsets=hypothesis_offsets,
@@ -2285,9 +2288,6 @@ def _evaluate_lazy_token_compact(
     offsets = support.hypothesis_offsets
     ends = support.hypothesis_ends
     endpoint_ids = support.hypothesis_endpoints
-    for _hypothesis_index in range(len(ends)):
-        engine.record_lazy_span(hypothesis=True)
-
     alpha = [-math.inf] * node_count
     alpha[0] = 0.0
     started = time.perf_counter()
@@ -3276,6 +3276,9 @@ def infer_composed_segment(
                 )
         evaluations = tuple(factor_scores)
         engine.record_graph(graph)
+    candidate_span_hypotheses = engine.counter_delta(
+        before
+    ).candidate_span_hypotheses
     started = time.perf_counter()
     forward = _outer_forward(graph, evaluations)
     engine.add_timing("outer_forward_seconds", started)
@@ -3566,6 +3569,7 @@ def infer_composed_segment(
         top_analysis_mass=sum(item.probability for item in analyses),
         piece_occurrence_support=piece_occurrence_support,
         total_posterior_mass=posterior_mass,
+        candidate_span_hypotheses=candidate_span_hypotheses,
         counters=engine.counter_delta(before),
         timings=engine.timing_delta(timing_before),
     )

@@ -377,11 +377,15 @@ def _count_legal_spans(lattice: LazyTokenLattice) -> int:
 
     return count
 
-def lazy_candidate_graph_statistics(graph: LazyCandidateGraph) -> dict[str, int]:
+def lazy_candidate_graph_statistics(
+    graph: LazyCandidateGraph,
+    *,
+    defer_legal_span_count: bool = False,
+) -> dict[str, int]:
     lattices = [
         factor.lattice for factor in graph.factors if factor.lattice is not None
     ]
-    return {
+    statistics = {
         "boundary_options": sum(len(options) for options in graph.boundary_options),
         "factors": len(graph.factors),
         "merged_factors": sum(factor.is_merge for factor in graph.factors),
@@ -393,16 +397,17 @@ def lazy_candidate_graph_statistics(graph: LazyCandidateGraph) -> dict[str, int]
             lattice.retained_internal_matches for lattice in lattices
         ),
         "lattice_nodes": sum(len(lattice.nodes) for lattice in lattices),
-        # Preserve the historical exact metric without reconstructing complete
-        # lexical forms or transient LazyLexicalSpan objects.
-        "lexical_span_hypotheses": sum(
-            _count_legal_spans(lattice) for lattice in lattices
-        ),
         "overflowed_tokens": graph.overflowed_tokens,
         "historical_match_pressure_tokens": (
             graph.historical_match_pressure_tokens
         ),
     }
+    if not defer_legal_span_count:
+        # Reference/non-inference callers retain the exact structural counter.
+        statistics["lexical_span_hypotheses"] = sum(
+            _count_legal_spans(lattice) for lattice in lattices
+        )
+    return statistics
 
 
 def materialize_lazy_candidate_graph(graph: LazyCandidateGraph) -> CandidateGraph:
