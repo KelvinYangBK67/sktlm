@@ -382,6 +382,7 @@ def test_execution_bundles_seek_to_exact_utf8_line_ranges(tmp_path: Path) -> Non
 
 def test_bundle_scheduler_is_bit_exact_with_legacy_document_scheduler(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     manifest, documents = _fixture(tmp_path)
     plan_root = _write_plan(
@@ -398,6 +399,9 @@ def test_bundle_scheduler_is_bit_exact_with_legacy_document_scheduler(
         repo_root=Path("."),
         stop_after_training=True,
     )
+    monkeypatch.setattr(
+        training, "_retire_training_bundle_shards", lambda *_args: None
+    )
     bundled = run_training(
         bundled_config,
         repo_root=Path("."),
@@ -408,6 +412,14 @@ def test_bundle_scheduler_is_bit_exact_with_legacy_document_scheduler(
     assert (legacy.run_dir / "iteration_metrics.json").read_bytes() == (
         bundled.run_dir / "iteration_metrics.json"
     ).read_bytes()
+    markers = tuple(
+        (bundled.run_dir / "shards").rglob("*.complete.json")
+    )
+    assert markers
+    for marker_path in markers:
+        marker = json.loads(marker_path.read_text(encoding="utf-8"))
+        shard = marker_path.parent / marker["segment_shard"]
+        assert marker["segment_shard_sha256"] == _sha256(shard)
     for document_index in range(len(documents)) if not training.COMPACT_EXACT_S1M2 else ():
         name = f"document_{document_index:08d}.bin"
         document = documents[document_index]

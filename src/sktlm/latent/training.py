@@ -1567,11 +1567,12 @@ def _write_training_bundle_shard(
     piece_counters_before = _WORKER_PIECE_ENGINE.counter_snapshot()
     engineering = RuntimeTelemetry()
     records = 0
+    segment_digest = hashlib.sha256()
 
     try:
         with ExitStack() as resources:
             handle = resources.enter_context(
-                segment_temporary.open("w", encoding="utf-8", newline="")
+                segment_temporary.open("wb")
             )
             topology_writer: TopologyArchiveWriter | None = None
             topology_reader: TopologyArchiveReader | None = None
@@ -1675,7 +1676,7 @@ def _write_training_bundle_shard(
                     "metrics": _exact_metrics_payload(segment_metrics),
                 }
                 aggregation_seconds += time.perf_counter() - started
-                handle.write(
+                encoded_record = (
                     json.dumps(
                         record,
                         ensure_ascii=False,
@@ -1683,7 +1684,9 @@ def _write_training_bundle_shard(
                         separators=(",", ":"),
                     )
                     + "\n"
-                )
+                ).encode("utf-8")
+                segment_digest.update(encoded_record)
+                handle.write(encoded_record)
                 records += 1
             handle.flush()
             os.fsync(handle.fileno())
@@ -1708,7 +1711,7 @@ def _write_training_bundle_shard(
             ),
             "segment_count": records,
             "segment_shard": paths["segments"].name,
-            "segment_shard_sha256": _file_sha256(paths["segments"]),
+            "segment_shard_sha256": segment_digest.hexdigest(),
             "topology_shard": topology_name,
             "topology_shard_sha256": topology_sha,
             "runtime": {
