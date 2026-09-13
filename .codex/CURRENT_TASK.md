@@ -65,8 +65,8 @@ not changed; the supported claim remains
 Corrected researcher-observed PRE_CHANGE storage pressure: `/dev/vdb` exposed
 approximately 295 GiB, used approximately 281 GiB, had no available space and
 was at 100%; the current run directory was approximately 208 GiB, comprising
-approximately 106 GiB `learner.sqlite`, 103 GiB WAL, and 0.03 MiB SHM.
-Historical attempts additionally occupied approximately 7.0 GiB and 66 GiB.
+approximately 106 GiB `learner.sqlite`, 103 GiB WAL, and 203 MiB SHM.
+Historical attempts additionally occupied approximately 2.0 GiB and 66 GiB.
 These are observations, not post-change validation.
 
 NEXT_ACTION=RESEARCHER_RUN_CORE07_PASS1_FINALIZE_ONLY_RECOVERY

@@ -3075,7 +3075,7 @@ fixtures are currently blocked before this code path by an unrelated baseline
 
 Researcher-observed pre-change pressure was approximately 208 GiB for the
 current run directory, 106 GiB for `learner.sqlite`, and 103 GiB for the WAL
-(SHM approximately 0.03 MiB). The approximately 295 GiB `/dev/vdb` filesystem
+(SHM approximately 203 MiB). The approximately 295 GiB `/dev/vdb` filesystem
 was 100% used at approximately 281 GiB with no available space; historical
 attempts additionally occupied approximately 7.0 GiB and 66 GiB.
 No Full M0, representative, stress, RAM/runtime, VM, cloud, or other long
