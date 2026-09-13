@@ -671,3 +671,79 @@ def test_opt18_training_and_inspection_are_exact_restartable_phases(
     )
     assert restarted_provenance["status"] == "complete"
     assert restarted_provenance["attempt"] == 2
+
+
+def test_next_pass_only_is_restartable_and_stops_at_one_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = _write_fixture(tmp_path)
+    reference = run_training(
+        _config(tmp_path, manifest, "isolated-reference", passes=3),
+        repo_root=Path("."),
+    ).run_dir
+    config = _config(tmp_path, manifest, "isolated", passes=3)
+
+    first = run_training(config, repo_root=Path("."), next_pass_only=True)
+    first_checkpoint = json.loads(
+        (first.run_dir / "checkpoint.json").read_text(encoding="utf-8")
+    )
+    assert len(first.history) == first_checkpoint["completed_passes"] == 1
+    assert first_checkpoint["active_pass"] is None
+    assert first_checkpoint["next_document_index"] == 0
+    assert first.inspection_complete is False
+
+    resumed_config = _config(
+        tmp_path, manifest, "isolated", passes=3, resume=True
+    )
+    second = run_training(
+        resumed_config, repo_root=Path("."), next_pass_only=True
+    )
+    assert len(second.history) == 2
+
+    original_commit = LexiconStore.commit_document
+    interrupted = False
+
+    def stop_during_third_pass(
+        self: LexiconStore, checkpoint: dict[str, object]
+    ) -> None:
+        nonlocal interrupted
+        original_commit(self, checkpoint)
+        if not interrupted and checkpoint.get("next_document_index") == 1:
+            interrupted = True
+            raise RuntimeError("simulated isolated-pass interruption")
+
+    monkeypatch.setattr(LexiconStore, "commit_document", stop_during_third_pass)
+    with pytest.raises(RuntimeError, match="isolated-pass interruption"):
+        run_training(
+            resumed_config, repo_root=Path("."), next_pass_only=True
+        )
+    partial_store = LexiconStore(second.run_dir / "learner.sqlite")
+    try:
+        partial = partial_store.load_training_checkpoint()
+    finally:
+        partial_store.close()
+    assert partial is not None
+    assert partial["completed_passes"] == 2
+    assert partial["active_pass"] == 3
+    assert partial["next_document_index"] == 1
+
+    monkeypatch.setattr(LexiconStore, "commit_document", original_commit)
+    third = run_training(
+        resumed_config, repo_root=Path("."), next_pass_only=True
+    )
+    final_training = json.loads(
+        (third.run_dir / "checkpoint.json").read_text(encoding="utf-8")
+    )
+    assert len(third.history) == final_training["completed_passes"] == 3
+    assert final_training["active_pass"] is None
+    assert final_training["next_document_index"] == 0
+    assert third.inspection_complete is False
+
+    inspected = run_training(
+        config,
+        repo_root=Path("."),
+        inspection_only=True,
+    )
+    assert inspected.inspection_complete is True
+    _assert_same_science(reference, inspected.run_dir)

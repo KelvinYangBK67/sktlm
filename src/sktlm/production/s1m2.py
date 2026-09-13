@@ -1522,6 +1522,136 @@ def _manifest_path(repo_root: Path, job: dict[str, Any]) -> Path:
     return _resolve(repo_root, job["control_dir"]) / "run_manifest.json"
 
 
+def _authoritative_training_checkpoint(
+    run_dir: Path, *, require_json_mirror: bool = False
+) -> dict[str, Any]:
+    """Read the transactionally committed checkpoint from SQLite."""
+
+    database = run_dir / "learner.sqlite"
+    if not database.is_file():
+        raise RuntimeError("Production phase completed without learner.sqlite.")
+    connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)
+    try:
+        row = connection.execute(
+            "SELECT value FROM metadata WHERE key = 'training_checkpoint'"
+        ).fetchone()
+    finally:
+        connection.close()
+    if row is None:
+        raise RuntimeError("Production phase has no authoritative SQLite checkpoint.")
+    checkpoint = json.loads(str(row[0]))
+    mirror_path = run_dir / "checkpoint.json"
+    if require_json_mirror and (
+        not mirror_path.is_file() or _read_json(mirror_path) != checkpoint
+    ):
+        raise RuntimeError("SQLite and JSON training checkpoints differ.")
+    return checkpoint
+
+
+def _phase_command(
+    job: dict[str, Any], *, phase: str, resume: bool
+) -> list[str]:
+    command = _training_command(job, resume=resume)
+    if phase == "inspection":
+        command.append("--inspection-only")
+    elif phase.startswith("pass_"):
+        command.append("--next-pass-only")
+    else:
+        raise ValueError(f"Unsupported production execution phase: {phase}")
+    return command
+
+
+def _aggregate_phase_metrics(
+    phase_records: list[dict[str, Any]], *, repo_root: Path, output_dir: Path
+) -> Path:
+    """Write one compatibility summary over isolated process lifetimes."""
+
+    summaries = [
+        _read_json(
+            _resolve(repo_root, row["metrics_dir"]) / "process_tree_summary.json"
+        )
+        for row in phase_records
+    ]
+    if not summaries:
+        raise RuntimeError("Cannot aggregate an empty production phase history.")
+
+    def total(name: str) -> float:
+        return sum(float(item.get(name) or 0.0) for item in summaries)
+
+    def maximum(name: str) -> int | None:
+        values = [
+            item.get(name) for item in summaries if item.get(name) is not None
+        ]
+        return None if not values else max(int(value) for value in values)
+
+    payload = {
+        "schema_version": "sktlm-isolated-process-metrics/v1",
+        "phase_count": len(summaries),
+        "phases": [
+            {
+                "phase": row["phase"],
+                "pass_index": row["pass_index"],
+                "metrics_dir": row["metrics_dir"],
+            }
+            for row in phase_records
+        ],
+        "command": [item["command"] for item in summaries],
+        "return_code": next(
+            (int(item["return_code"]) for item in summaries if item["return_code"]),
+            0,
+        ),
+        "wall_seconds": total("wall_seconds"),
+        "peak_process_tree_rss_bytes": maximum("peak_process_tree_rss_bytes"),
+        "peak_main_process_rss_bytes": maximum("peak_main_process_rss_bytes"),
+        "peak_worker_rss_bytes": maximum("peak_worker_rss_bytes"),
+        "peak_process_count": maximum("peak_process_count"),
+        "peak_watched_run_bytes": maximum("peak_watched_run_bytes"),
+        "peak_sqlite_bytes": maximum("peak_sqlite_bytes"),
+        "peak_sqlite_wal_bytes": maximum("peak_sqlite_wal_bytes"),
+        "peak_sqlite_shm_bytes": maximum("peak_sqlite_shm_bytes"),
+        "peak_topology_archive_bytes": maximum("peak_topology_archive_bytes"),
+        "peak_pending_inspection_shard_bytes": maximum(
+            "peak_pending_inspection_shard_bytes"
+        ),
+        "completed_artifact_bytes": maximum("completed_artifact_bytes"),
+        "sampled_process_tree_cpu_seconds": total(
+            "sampled_process_tree_cpu_seconds"
+        ),
+        "sampled_process_tree_read_bytes": total(
+            "sampled_process_tree_read_bytes"
+        ),
+        "sampled_process_tree_write_bytes": total(
+            "sampled_process_tree_write_bytes"
+        ),
+        "sampled_process_tree_io_wait_seconds": total(
+            "sampled_process_tree_io_wait_seconds"
+        ),
+        "host_memory_bytes": summaries[-1].get("host_memory_bytes"),
+        "filesystem_total_bytes": summaries[-1].get("filesystem_total_bytes"),
+        "filesystem_free_bytes_before": summaries[0].get(
+            "filesystem_free_bytes_before"
+        ),
+        "filesystem_used_bytes_before": summaries[0].get(
+            "filesystem_used_bytes_before"
+        ),
+        "filesystem_free_bytes_min": min(
+            int(item["filesystem_free_bytes_min"])
+            for item in summaries
+            if item.get("filesystem_free_bytes_min") is not None
+        ),
+        "peak_filesystem_used_bytes": maximum("peak_filesystem_used_bytes"),
+        "filesystem_free_bytes_end": summaries[-1].get(
+            "filesystem_free_bytes_end"
+        ),
+        "filesystem_used_bytes_end": summaries[-1].get(
+            "filesystem_used_bytes_end"
+        ),
+    }
+    path = output_dir / "process_tree_summary.json"
+    _write_json(path, payload, overwrite=path.exists())
+    return path
+
+
 def audit_job(
     plan: dict[str, Any],
     job: dict[str, Any],
@@ -1709,50 +1839,140 @@ def run_job(
     metrics_path = _resolve(repo_root, metrics_dir)
     if metrics_path.exists():
         raise FileExistsError(f"Metrics attempt already exists: {metrics_path}")
-    training = _training_command(job, resume=resume)
-    wrapper = [
-        "python",
-        "scripts/cloud/run_with_metrics.py",
-        "--output-dir",
-        metrics_dir.as_posix(),
-        "--watch-dir",
-        job["run_dir"],
-        "--",
-        *training,
-    ]
     attempt = {
         "attempt": attempt_number,
         "resume": resume,
         "started_at": _utc_now(),
         "ended_at": None,
         "metrics_dir": metrics_dir.as_posix(),
-        "command": wrapper,
+        "phases": [],
         "return_code": None,
     }
     manifest["resume_history"].append(attempt)
     manifest["result_status"] = "RUNNING"
     _write_json(manifest_path, manifest, overwrite=manifest_path.exists())
-    result = subprocess.run(wrapper, cwd=repo_root, check=False)
-    attempt["ended_at"] = _utc_now()
-    attempt["return_code"] = result.returncode
-    manifest["end_time"] = attempt["ended_at"]
-    manifest["result_status"] = "FAILED" if result.returncode else "AUDITING"
-    _write_json(manifest_path, manifest, overwrite=True)
-    if run_dir.is_dir():
-        _write_json(
-            run_dir / "production_run_manifest.json",
-            manifest,
-            overwrite=(run_dir / "production_run_manifest.json").exists(),
+
+    while True:
+        checkpoint = (
+            _authoritative_training_checkpoint(run_dir)
+            if run_dir.is_dir()
+            else {
+                "completed_passes": 0,
+                "active_pass": None,
+                "next_document_index": 0,
+                "inspection_complete": False,
+            }
         )
-    if result.returncode:
-        return result.returncode
+        completed = int(checkpoint.get("completed_passes", 0))
+        active_pass = checkpoint.get("active_pass")
+        if active_pass is not None or completed < int(job["passes"]):
+            pass_index = (
+                int(active_pass) if active_pass is not None else completed + 1
+            )
+            phase = f"pass_{pass_index:03d}"
+        elif not checkpoint.get("inspection_complete"):
+            pass_index = None
+            phase = "inspection"
+        else:
+            break
+
+        phase_metrics_dir = metrics_dir / phase
+        training = _phase_command(
+            job,
+            phase=phase,
+            resume=run_dir.is_dir(),
+        )
+        wrapper = [
+            "python",
+            "scripts/cloud/run_with_metrics.py",
+            "--output-dir",
+            phase_metrics_dir.as_posix(),
+            "--watch-dir",
+            job["run_dir"],
+            "--",
+            *training,
+        ]
+        phase_record = {
+            "phase": phase,
+            "pass_index": pass_index,
+            "started_at": _utc_now(),
+            "ended_at": None,
+            "metrics_dir": phase_metrics_dir.as_posix(),
+            "command": wrapper,
+            "return_code": None,
+        }
+        attempt["phases"].append(phase_record)
+        _write_json(manifest_path, manifest, overwrite=True)
+        result = subprocess.run(wrapper, cwd=repo_root, check=False)
+        phase_record["ended_at"] = _utc_now()
+        phase_record["return_code"] = result.returncode
+        attempt["return_code"] = result.returncode
+        _write_json(manifest_path, manifest, overwrite=True)
+        if result.returncode:
+            attempt["ended_at"] = phase_record["ended_at"]
+            manifest["end_time"] = attempt["ended_at"]
+            manifest["result_status"] = "FAILED"
+            _write_json(manifest_path, manifest, overwrite=True)
+            if run_dir.is_dir():
+                _write_json(
+                    run_dir / "production_run_manifest.json",
+                    manifest,
+                    overwrite=(run_dir / "production_run_manifest.json").exists(),
+                )
+            return result.returncode
+
+        checkpoint = _authoritative_training_checkpoint(
+            run_dir, require_json_mirror=True
+        )
+        if pass_index is not None and (
+            checkpoint.get("completed_passes") != pass_index
+            or checkpoint.get("active_pass") is not None
+            or checkpoint.get("next_document_index") != 0
+        ):
+            raise RuntimeError(
+                f"Production {phase} did not commit its final checkpoint."
+            )
+        if (
+            phase == "inspection"
+            and checkpoint.get("inspection_complete") is not True
+        ):
+            raise RuntimeError("Production inspection did not commit completion.")
+
+    attempt["ended_at"] = _utc_now()
+    attempt["return_code"] = 0
+    manifest["end_time"] = attempt["ended_at"]
+    manifest["result_status"] = "AUDITING"
+    successful_phases = [
+        phase_record
+        for recorded_attempt in manifest["resume_history"]
+        for phase_record in recorded_attempt.get("phases", [])
+        if phase_record.get("return_code") == 0
+    ]
+    attempt["aggregated_successful_phase_count"] = len(successful_phases)
+    aggregate_summary = _aggregate_phase_metrics(
+        successful_phases, repo_root=repo_root, output_dir=metrics_path
+    )
+    if successful_phases:
+        final_phase_metrics = _resolve(
+            repo_root, successful_phases[-1]["metrics_dir"]
+        )
+        shutil.copy2(
+            final_phase_metrics / "process_tree_samples.csv",
+            metrics_path / "process_tree_samples.csv",
+        )
+    _write_json(manifest_path, manifest, overwrite=True)
+    _write_json(
+        run_dir / "production_run_manifest.json",
+        manifest,
+        overwrite=(run_dir / "production_run_manifest.json").exists(),
+    )
     for name in ("process_tree_summary.json", "process_tree_samples.csv"):
         shutil.copy2(metrics_path / name, manifest_path.parent / name)
     artifact_audit = _audit_artifacts(
         job,
         contract,
         repo_root=repo_root,
-        metrics_summary=metrics_path / "process_tree_summary.json",
+        metrics_summary=aggregate_summary,
     )
     manifest["final_audit"] = artifact_audit
     manifest["result_status"] = "PASS" if artifact_audit["valid"] else "AUDIT_FAILED"

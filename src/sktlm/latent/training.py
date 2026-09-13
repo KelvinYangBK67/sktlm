@@ -5998,14 +5998,16 @@ def run_training(
     *,
     repo_root: Path = Path("."),
     stop_after_training: bool = False,
+    next_pass_only: bool = False,
     inspection_only: bool = False,
     inspection_workers: int | None = None,
 ) -> TrainingResult:
     """Train and inspect, or execute either durable phase independently."""
 
-    if stop_after_training and inspection_only:
+    if sum((stop_after_training, next_pass_only, inspection_only)) > 1:
         raise ValueError(
-            "stop_after_training and inspection_only are mutually exclusive"
+            "stop_after_training, next_pass_only, and inspection_only are "
+            "mutually exclusive"
         )
     actual_inspection_workers = (
         config.workers if inspection_workers is None else inspection_workers
@@ -6292,7 +6294,12 @@ def run_training(
                 run_dir=run_dir,
             )
         else:
-            for pass_index in range(completed + 1, config.passes + 1):
+            final_pass = (
+                min(completed + 1, config.passes)
+                if next_pass_only
+                else config.passes
+            )
+            for pass_index in range(completed + 1, final_pass + 1):
                 _training_pass(
                     pass_index=pass_index,
                     documents=documents,
@@ -6332,7 +6339,7 @@ def run_training(
                 summary=summary,
                 runtime=runtime,
             )
-        if stop_after_training:
+        if stop_after_training or next_pass_only:
             runtime = store.runtime_payload()
             runtime["grammar_cache"] = grammar.cache_statistics()
             return TrainingResult(

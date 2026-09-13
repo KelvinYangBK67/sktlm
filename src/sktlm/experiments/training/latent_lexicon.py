@@ -125,6 +125,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Commit all requested training passes and exit before inspection.",
     )
     phases.add_argument(
+        "--next-pass-only",
+        action="store_true",
+        help=(
+            "Commit only the next unfinished (or resumed active) pass and "
+            "exit before inspection."
+        ),
+    )
+    phases.add_argument(
         "--inspection-only",
         action="store_true",
         help="Validate and inspect an existing completed training state only.",
@@ -204,13 +212,19 @@ def main(argv: list[str] | None = None) -> None:
     result = run_training(
         config,
         stop_after_training=args.stop_after_training,
+        next_pass_only=args.next_pass_only,
         inspection_only=args.inspection_only,
         inspection_workers=args.inspection_workers,
     )
     print(f"run artifacts: {result.run_dir}")
     print(f"passes: {len(result.history)}")
     if not result.inspection_complete:
-        print("inspection: pending (--stop-after-training)")
+        mode = (
+            "--next-pass-only"
+            if args.next_pass_only
+            else "--stop-after-training"
+        )
+        print(f"inspection: pending ({mode})")
         return
     if args.model == S1M1_MODEL:
         print(

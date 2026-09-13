@@ -3,6 +3,8 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import sqlite3
+from types import SimpleNamespace
 from pathlib import Path
 
 try:
@@ -187,6 +189,134 @@ def test_plan_commands_bind_exact_plan_path() -> None:
         assert job["launch_command"][4:6] == ["--plan", plan_path.as_posix()]
         assert job["resume_command"] == [*job["launch_command"], "--resume"]
         assert job["audit_command"][4:6] == ["--plan", plan_path.as_posix()]
+
+
+def test_production_run_isolates_passes_and_inspection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contract = _contract()
+    plan = s1m2.build_round1_plan(contract, identity=IDENTITY)
+    job = plan["jobs"][0]
+    source_manifest = tmp_path / "input.csv"
+    source_manifest.write_text("fixture\n", encoding="utf-8")
+    job["manifest"] = source_manifest.as_posix()
+    job["manifest_sha256"] = hashlib.sha256(
+        source_manifest.read_bytes()
+    ).hexdigest()
+    job["output_root"] = (tmp_path / "runs").as_posix()
+    job["run_dir"] = (tmp_path / "runs" / job["run_id"]).as_posix()
+    job["control_dir"] = (tmp_path / "control").as_posix()
+    job["passes"] = 3
+    job["execution_bundle_plan"] = None
+    job["execution_bundle_plan_sha256"] = None
+    job["execution_bundle_materialization_sha256"] = None
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(json.dumps(plan), encoding="utf-8")
+
+    monkeypatch.setattr(s1m2, "load_contract", lambda *args, **kwargs: contract)
+    monkeypatch.setattr(s1m2, "_validate_plan", lambda *args: None)
+    monkeypatch.setattr(s1m2, "git_identity", lambda root: IDENTITY)
+    monkeypatch.setattr(
+        s1m2,
+        "_audit_artifacts",
+        lambda *args, **kwargs: {"valid": True, "failures": []},
+    )
+    launched: list[list[str]] = []
+
+    def fake_run(command: list[str], **_: object) -> SimpleNamespace:
+        if "--output-dir" not in command:
+            return SimpleNamespace(returncode=0, stdout="")
+        launched.append(command)
+        output_dir = Path(command[command.index("--output-dir") + 1])
+        output_dir.mkdir(parents=True)
+        (output_dir / "process_tree_samples.csv").write_text(
+            "wall_seconds,peak_rss_bytes\n1,1024\n", encoding="utf-8"
+        )
+        (output_dir / "process_tree_summary.json").write_text(
+            json.dumps(
+                {
+                    "command": command,
+                    "return_code": 0,
+                    "wall_seconds": 1.0,
+                    "peak_process_tree_rss_bytes": 1024,
+                    "sampled_process_tree_cpu_seconds": 0.5,
+                    "sampled_process_tree_read_bytes": 1,
+                    "sampled_process_tree_write_bytes": 2,
+                    "sampled_process_tree_io_wait_seconds": 0.0,
+                    "peak_watched_run_bytes": 2048,
+                    "host_memory_bytes": 4096,
+                    "filesystem_free_bytes_min": 8192,
+                    "filesystem_free_bytes_end": 8192,
+                }
+            ),
+            encoding="utf-8",
+        )
+        run_dir = Path(job["run_dir"])
+        run_dir.mkdir(parents=True, exist_ok=True)
+        database = run_dir / "learner.sqlite"
+        connection = sqlite3.connect(database)
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS metadata "
+            "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+        row = connection.execute(
+            "SELECT value FROM metadata WHERE key = 'training_checkpoint'"
+        ).fetchone()
+        checkpoint = (
+            json.loads(row[0])
+            if row is not None
+            else {
+                "completed_passes": 0,
+                "active_pass": None,
+                "next_document_index": 0,
+                "history": [],
+            }
+        )
+        if "--next-pass-only" in command:
+            checkpoint["completed_passes"] += 1
+            checkpoint["history"].append({"pass": checkpoint["completed_passes"]})
+        else:
+            assert "--inspection-only" in command
+            checkpoint["inspection_complete"] = True
+        checkpoint["active_pass"] = None
+        checkpoint["next_document_index"] = 0
+        connection.execute(
+            "INSERT OR REPLACE INTO metadata(key, value) VALUES (?, ?)",
+            ("training_checkpoint", json.dumps(checkpoint, sort_keys=True)),
+        )
+        connection.commit()
+        connection.close()
+        (run_dir / "checkpoint.json").write_text(
+            json.dumps(checkpoint), encoding="utf-8"
+        )
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(s1m2.subprocess, "run", fake_run)
+    assert s1m2.run_job(
+        plan_path=plan_path,
+        job_id=job["job_id"],
+        contract_path=Path("unused.json"),
+        repo_root=Path("."),
+        host_id=job["host_role"],
+        resume=False,
+    ) == 0
+    assert len(launched) == 4
+    assert all("--next-pass-only" in command for command in launched[:3])
+    assert "--resume" not in launched[0]
+    assert all("--resume" in command for command in launched[1:])
+    assert "--inspection-only" in launched[-1]
+    run_manifest = json.loads(
+        (tmp_path / "control" / "run_manifest.json").read_text(encoding="utf-8")
+    )
+    phases = run_manifest["resume_history"][0]["phases"]
+    assert [phase["phase"] for phase in phases] == [
+        "pass_001",
+        "pass_002",
+        "pass_003",
+        "inspection",
+    ]
+    assert run_manifest["result_status"] == "PASS"
 
 
 def test_round1_winner_rule_uses_resources_for_practical_tie() -> None:

@@ -2881,3 +2881,39 @@ FULL_WORKERS=12
 FULL_ELIGIBILITY=PASS
 FULL_M0_AUTHORIZED=NO
 ```
+
+## S1M2 production process-memory closure — 2026-09-13
+
+Pass-2+ `PieceStoreScorer` workers no longer materialize the complete active
+piece lexicon as a Python dictionary. Exact counts now use indexed SQLite
+point lookup with a worker-local entry-bounded LRU, including exact OOV zero
+counts and lookup/cache/SQLite telemetry. The scoring equation and active
+piece parameters are unchanged.
+
+The trainer now provides execution-only `--next-pass-only`. It completes only
+the active partial pass or the next unfinished pass, transactionally leaves
+`completed_passes=N`, `active_pass=null`, and `next_document_index=0`, then
+returns without inspection. Default train-through-inspection behavior remains
+unchanged.
+
+Production `run_job()` now derives each phase from the authoritative SQLite
+checkpoint and launches pass 1, resumed later passes, and inspection as
+separate `run_with_metrics.py` process trees. Each phase has its own metrics
+directory and manifest record (phase/pass, command, timestamps, return code).
+Successful phase metrics are aggregated across resume attempts for existing
+audit/resource consumers. A nonzero phase exits immediately; audit runs only
+after all configured passes and inspection complete.
+
+Tiny focused validation passed for bounded scorer exactness/LRU accounting,
+three isolated passes with partial-pass restart, inspection equivalence to the
+default lifecycle, and mocked production phase orchestration. No production,
+representative, stress, Full M0, VM/cloud, RAM, or runtime workload was run.
+
+```text
+PIECE_SCORER_BOUNDED_SQLITE_LRU=PASS_LOCAL
+TRAINING_PASS_PROCESS_ISOLATION=PASS_LOCAL
+SCIENTIFIC_CONFIGURATION_CHANGED=NO
+SCIENTIFIC_EQUATIONS_CHANGED=NO
+FULL_M0_AUTHORIZED=NO
+NEXT_ACTION=RESEARCHER_RUN_RAM_AND_CANONICAL_EQUIVALENCE_PROBES
+```
