@@ -2917,3 +2917,49 @@ SCIENTIFIC_EQUATIONS_CHANGED=NO
 FULL_M0_AUTHORIZED=NO
 NEXT_ACTION=RESEARCHER_RUN_RAM_AND_CANONICAL_EQUIVALENCE_PROBES
 ```
+
+## S1M2 Round 4 RAM-neutral runtime optimization — 2026-09-13
+
+Round 4 is locally implemented as six sequential, independently pushed
+commits based on `535f4e618563d88b9d85109d03bfaf1b049664dc`:
+
+- `f7db7266995e35b487acf98ddb5f347fe8cd6363` records deterministic UTF-8
+  line byte offsets in execution-plan schema v2 and seeks workers directly to
+  bundle ranges. Existing v1 plans fail closed and require rematerialization.
+- `9d58ebfe73cc34ed7b8afa9eac0d5d7a51e84656` hashes exact emitted training
+  bundle-shard bytes while writing, avoiding the post-write full-file reread.
+- `82dc24f38589c92b43bd28e16593be97239abb17` obtains the exact legal-span
+  count from compact support compilation and removes the duplicate O(n²)
+  production telemetry traversal.
+- `007fb51dac30c614d91bbdf60b0539c4d6409c39` keeps canonical reducer
+  accumulators string-keyed and materializes each unique phonological form only
+  at an authoritative store flush.
+- `5ee2ca52bee4722f7f9a7ff1d4346fc60bcbd0e7` constructs compact support
+  directly into packed parent/depth/symbol arrays plus build-only child maps,
+  eliminating transient `_SharedPrefixNode` objects on that path.
+- `3b937abd4a64d5f6b48034d716112bdedca918e8` precomputes the fixed
+  initial/noninitial piece-length prior table once per engine.
+
+Focused validation passed: direct-seek UTF-8 range and stale-offset validation
+(2 tests); streaming-vs-reread shard digest and scientific state (1 test);
+reference-vs-compiled exact legal-span counts (1 test); bundled-vs-legacy
+authoritative training state (1 test); compact-vs-legacy inference plus no
+transient compact node objects (3 cases); and bit-exact fixed priors plus
+compact/shared inference (3 cases). No representative, stress, worker
+calibration, Full M0, VM/cloud, RAM, runtime, or other long validation ran.
+
+Scientific equations, candidates, scoring, posterior, support, canonical
+reduction order, floating-point accumulation order, frozen inputs and training
+identity are unchanged. No worker, inflight, lookahead, cache, retained-factor,
+or other RAM bound increased. Execution-plan v2 identity changes only the
+reconstructible execution plan.
+
+```text
+ROUND4_STATUS=PASS_LOCAL
+ROUND4_CODE_HEAD=3b937abd4a64d5f6b48034d716112bdedca918e8
+SCIENTIFIC_SEMANTICS_CHANGED=NO
+RAM_BOUND_INCREASED=NO
+LONG_VALIDATION_RUN=NO
+FULL_M0_AUTHORIZED=NO
+NEXT_ACTION=RESEARCHER_RUN_ROUND4_MANUAL_GATES
+```

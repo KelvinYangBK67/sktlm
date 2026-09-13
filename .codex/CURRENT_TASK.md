@@ -2,31 +2,38 @@
 
 DATE=2026-09-13
 BRANCH=exp/s1m2-reusable-pieces
-STATUS=PRODUCTION_PROCESS_MEMORY_CLOSURE_IMPLEMENTED
+STATUS=ROUND4_RUNTIME_OPTIMIZATION_IMPLEMENTED
 
-COMPACT_PRODUCTION_AUDIT=PASS
-LEGACY_TOPOLOGY_REQUIRED=NO
-ROUND3_STATUS=PASS
-ROUND3_VM_REQUIRED=NO
-ROUND2_FORMAL_RESULT=PRESERVED_FAIL_CANDIDATE_OVERFLOW
-ROUND2_FORMAL_WINNER=PRESERVED_NONE
-ROUND2_ENGINEERING_PREFERENCE_RETAINED=12
-WORKER_SELECTION_REOPENED=NO
-CANDIDATE_OVERFLOW_BLOCKER=RESOLVED_BY_COMPACT_EXACT_INFERENCE
-FULL_WORKERS=12
-FULL_ELIGIBILITY=PASS
+ROUND4_START_HEAD=535f4e618563d88b9d85109d03bfaf1b049664dc
+ROUND4_CODE_HEAD=3b937abd4a64d5f6b48034d716112bdedca918e8
+DIRECT_SEEK_EXECUTION_BUNDLES=PASS_LOCAL
+STREAMING_BUNDLE_SHARD_SHA=PASS_LOCAL
+DUPLICATE_LEGAL_SPAN_TRAVERSAL_REMOVED=PASS_LOCAL
+STRING_KEY_CANONICAL_REDUCER=PASS_LOCAL
+COMPACT_TRANSIENT_TRIE=PASS_LOCAL
+FIXED_PIECE_DP_PRIORS=PASS_LOCAL
+SCIENTIFIC_SEMANTICS_CHANGED=NO
+RAM_BOUND_INCREASED=NO
+LONG_VALIDATION_RUN=NO
 FULL_M0_AUTHORIZED=NO
-PIECE_SCORER_BOUNDED_SQLITE_LRU=PASS_LOCAL
-TRAINING_PASS_PROCESS_ISOLATION=PASS_LOCAL
-SCIENTIFIC_IDENTITY_CHANGED=NO
 
-The formal Round3 closure binds the immutable Round2 result, frozen production
-contract, compact implementation commits, and existing exactness/worker/tail
-evidence by SHA-256. Full-plan construction requires this closure and preserves
-the existing six-cell and Devanagari-continuous bundle wiring.
+Round 4 removed repeated document-prefix reads, post-write shard rereads,
+duplicate legal-span telemetry scans, repeated reducer form construction,
+transient compact-trie node objects, and repeated fixed-prior construction.
+All changes are execution-only. Candidate membership, inference, posterior,
+support, scoring, canonical reduction and floating-point accumulation order are
+unchanged. Worker, inflight, lookahead, cache and retained-factor bounds were
+not increased.
 
-NEXT_ACTION=RESEARCHER_RUN_RAM_AND_CANONICAL_EQUIVALENCE_PROBES
+Execution bundle plans now use schema/planner implementation v2 and contain a
+deterministic UTF-8 byte offset for each bundle's first source line. Existing
+v1 plans fail closed and must be rematerialized before a run uses this HEAD;
+this changes execution-plan identity, not scientific training identity.
 
-Do not launch Full M0, VM work, representative/stress runs, or production
-calibration automatically. The next action is manual validation of per-phase
-RSS release and canonical scientific output equivalence.
+NEXT_ACTION=RESEARCHER_RUN_ROUND4_MANUAL_GATES
+
+Do not automatically launch Full M0, VM/cloud work, representative/stress
+workloads, worker calibration, RAM/runtime benchmarks, or long equivalence
+runs. The researcher should manually rematerialize any needed v2 execution
+plan, run a short 12-worker Pass-2 RAM/runtime probe, and perform the canonical
+scientific-equivalence comparison.
