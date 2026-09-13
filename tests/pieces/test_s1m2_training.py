@@ -184,7 +184,7 @@ def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(
         "inspection_piece_counts",
         "surface_usage",
     }
-    assert result.runtime["counters"]["sqlite_pass_diagnostic_tables_retired"] == 4
+    assert result.runtime["counters"]["sqlite_pass_diagnostic_tables_retired"] == 2
     assert storage["after_bytes"]["total"] < storage["before_bytes"]["total"]
     assert "same transaction" in storage["transient_lifecycle"][
         "training_pass_diagnostics"

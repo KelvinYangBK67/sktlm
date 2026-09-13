@@ -34,7 +34,7 @@ S1M2_RECONSTRUCTIBLE_TABLES = (
 )
 S1M2_PASS_DIAGNOSTIC_TABLES = (
     "lexical_diagnostics",
-    "piece_inventory",
+    "lexical_diagnostics_next",
 )
 
 
@@ -257,6 +257,34 @@ class LexiconStore:
         sizes["total"] = sum(sizes.values())
         return sizes
 
+    def storage_bytes(self) -> dict[str, int]:
+        """Measure the three SQLite files at one explicit lifecycle boundary."""
+
+        return self._storage_bytes()
+
+    def checkpoint_and_truncate_wal_at_pass_boundary(self) -> dict[str, Any]:
+        """Fail closed while reclaiming WAL after a committed training pass."""
+
+        if self.connection.in_transaction:
+            raise RuntimeError("Pass-boundary WAL checkpoint requires no transaction.")
+        before = self._storage_bytes()
+        started = time.perf_counter()
+        result = self.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+        elapsed = time.perf_counter() - started
+        if result is None or len(result) != 3 or int(result[0]) != 0:
+            raise RuntimeError(f"Pass-boundary WAL checkpoint failed: {result!r}")
+        after = self._storage_bytes()
+        self.telemetry.add_seconds(
+            "sqlite_pass_boundary_wal_checkpoint_seconds", elapsed
+        )
+        self.telemetry.increment("sqlite_pass_boundary_wal_checkpoints")
+        return {
+            "before_bytes": before,
+            "after_bytes": after,
+            "sqlite_result": [int(value) for value in result],
+            "seconds": elapsed,
+        }
+
     def compact_completed_piece_state(self) -> dict[str, Any]:
         """Retain authoritative S1M2 parameters, not exported inspection indexes."""
 
@@ -457,25 +485,14 @@ class LexiconStore:
             self.connection.execute(
                 "ALTER TABLE piece_counts_next RENAME TO piece_inventory"
             )
-            self.connection.execute("DROP TABLE IF EXISTS lexical_diagnostics")
-            self.connection.execute(
-                "ALTER TABLE lexical_diagnostics_next RENAME TO lexical_diagnostics"
-            )
             self.connection.execute("DROP TABLE IF EXISTS piece_lexicon")
             self.connection.execute(
-                "CREATE TABLE piece_lexicon ("
-                "form_key TEXT PRIMARY KEY, "
-                "expected_count REAL NOT NULL, "
-                "occurrence_support INTEGER NOT NULL"
-                ") WITHOUT ROWID"
+                "DELETE FROM piece_inventory WHERE expected_count <= 0.0 OR "
+                "(instr(form_key, '.') != 0 AND occurrence_support < ?)",
+                (min_reuse_occurrences,),
             )
             self.connection.execute(
-                "INSERT INTO piece_lexicon("
-                "form_key, expected_count, occurrence_support"
-                ") SELECT form_key, expected_count, occurrence_support "
-                "FROM piece_inventory WHERE expected_count > 0.0 AND "
-                "(instr(form_key, '.') = 0 OR occurrence_support >= ?)",
-                (min_reuse_occurrences,),
+                "ALTER TABLE piece_inventory RENAME TO piece_lexicon"
             )
             active = self.connection.execute(
                 "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) "
@@ -489,12 +506,15 @@ class LexiconStore:
                     "active_piece_count_total": float(active[1]),
                 }
             )
+            retired = 0
             for table in S1M2_PASS_DIAGNOSTIC_TABLES:
-                self.connection.execute(f"DROP TABLE {table}")
+                if self.has_table(table):
+                    self.connection.execute(f"DROP TABLE {table}")
+                    retired += 1
             self._set_training_checkpoint(checkpoint)
         self.telemetry.increment(
             "sqlite_pass_diagnostic_tables_retired",
-            len(S1M2_PASS_DIAGNOSTIC_TABLES),
+            retired,
         )
         if int(active[0]) == 0 or float(active[1]) <= 0.0:
             raise ValueError("Piece activation produced an empty active state.")

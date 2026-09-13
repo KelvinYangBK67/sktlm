@@ -3048,6 +3048,46 @@ FULL_M0_AUTHORIZED=NO
 NEXT_ACTION=RESEARCHER_RERUN_GENERIC_BOOTSTRAP_WITHOUT_CONFIG_BRANCH
 ```
 
+## S1M2 SQLite storage lifecycle optimization - 2026-09-13
+
+The S1M2 pass-finalization path now avoids a simultaneous full
+`piece_inventory`/`piece_lexicon` copy. It renames `piece_counts_next`, deletes
+rows rejected by the unchanged positive-count and minimum-reuse predicates,
+then renames the surviving `WITHOUT ROWID` primary-key table directly to
+`piece_lexicon`. The authoritative completed-pass checkpoint is still written
+inside the same transaction. `lexical_diagnostics_next` is pass-local and is
+retired there; inspection aggregation tables remain available through their
+existing artifact-finalization lifecycle.
+
+After that transaction commits and parallel workers/read-only connections have
+ended, a fail-closed pass-boundary `PRAGMA wal_checkpoint(TRUNCATE)` reclaims
+the WAL. Storage telemetry now exposes database, WAL, SHM, and total bytes
+before finalize, after finalize, and after WAL truncation, plus checkpoint
+duration/count. This adds no hot-loop I/O, transaction, VACUUM, worker, cache,
+or inference change.
+
+Focused storage lifecycle validation passed 3 tests covering exact reference
+filter equivalence, schema/primary-key preservation, absence of a full-table
+copy, WAL truncation, authoritative checkpoint/row preservation, reopen/resume,
+and pass-boundary-only placement. The selected existing end-to-end training
+fixtures are currently blocked before this code path by an unrelated baseline
+`IndexError` in composed fixed-prior lookup; no unrelated fix was attempted.
+
+Researcher-observed pre-change pressure was approximately 108 GiB for the
+current run directory, 106 GiB for `learner.sqlite`, and 2.03 GiB for the WAL.
+No Full M0, representative, stress, RAM/runtime, VM, cloud, or other long
+validation ran, so the production disk target remains unvalidated.
+
+```text
+STORAGE_OPTIMIZATION_STATUS=PASS_LOCAL
+SCIENTIFIC_SEMANTICS_CHANGED=NO
+TRANSACTION_FREQUENCY_UNCHANGED=YES
+HOT_LOOP_EXTRA_IO=0
+FULL_M0_DISK_TARGET_VALIDATED=NO
+FULL_M0_AUTHORIZED=NO
+NEXT_ACTION=RESEARCHER_RUN_FULL_M0_DISK_AND_SCIENTIFIC_EQUIVALENCE_PROBES
+```
+
 ## Generic bootstrap input branch decoupling - 2026-09-13
 
 A second researcher-run bootstrap without `BridgeConfig.branch` passed bundle

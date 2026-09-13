@@ -19,7 +19,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wai
 from contextlib import ExitStack
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any, Iterable, Iterator, Mapping
 
 from sktlm.latent.candidates import (
     CandidateBuildProfile,
@@ -506,6 +506,17 @@ def _record_store_storage(
         telemetry.maximum(label, size)
         total += size
     telemetry.maximum("sqlite_total_bytes", total)
+
+
+def _record_pass_boundary_storage(
+    telemetry: RuntimeTelemetry,
+    label: str,
+    sizes: Mapping[str, int],
+) -> None:
+    for component in ("database", "wal", "shm", "total"):
+        telemetry.gauges[
+            f"sqlite_storage_{label}_{component}_bytes"
+        ] = int(sizes[component])
 
 
 def _record_run_storage(
@@ -3031,6 +3042,9 @@ def _training_pass(
         }
     )
     started = telemetry.now()
+    storage_before_finalize = (
+        store.storage_bytes() if config.model == S1M2_MODEL else None
+    )
     if config.model == S1M1_MODEL:
         store.finalize_count_pass(
             alpha=config.lexical_alpha,
@@ -3053,6 +3067,20 @@ def _training_pass(
             }
         )
         telemetry.elapsed('piece_finalize', started)
+        storage_after_finalize = store.storage_bytes()
+        wal_checkpoint = store.checkpoint_and_truncate_wal_at_pass_boundary()
+        assert storage_before_finalize is not None
+        _record_pass_boundary_storage(
+            telemetry, "before_finalize", storage_before_finalize
+        )
+        _record_pass_boundary_storage(
+            telemetry, "after_finalize", storage_after_finalize
+        )
+        _record_pass_boundary_storage(
+            telemetry,
+            "after_wal_truncate",
+            wal_checkpoint["after_bytes"],
+        )
     _timed_checkpoint(run_dir, checkpoint, telemetry)
     return summary
 

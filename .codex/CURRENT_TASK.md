@@ -2,68 +2,49 @@
 
 DATE=2026-09-13
 BRANCH=exp/s1m2-reusable-pieces
-STATUS=GENERIC_CLOUD_HOST_BRANCH_DECOUPLED
+STATUS=S1M2_SQLITE_STORAGE_LIFECYCLE_OPTIMIZED_LOCAL
 
-ROUND4_START_HEAD=535f4e618563d88b9d85109d03bfaf1b049664dc
-ROUND4_CODE_HEAD=3b937abd4a64d5f6b48034d716112bdedca918e8
-DIRECT_SEEK_EXECUTION_BUNDLES=PASS_LOCAL
-STREAMING_BUNDLE_SHARD_SHA=PASS_LOCAL
-DUPLICATE_LEGAL_SPAN_TRAVERSAL_REMOVED=PASS_LOCAL
-STRING_KEY_CANONICAL_REDUCER=PASS_LOCAL
-COMPACT_TRANSIENT_TRIE=PASS_LOCAL
-FIXED_PIECE_DP_PRIORS=PASS_LOCAL
+START_HEAD=e8c5de49739d34953d058edeba55a6062fd766f7
 SCIENTIFIC_SEMANTICS_CHANGED=NO
-RAM_BOUND_INCREASED=NO
-LONG_VALIDATION_RUN=NO
-GENERIC_PUSH_INPUTS_DISPATCH=PASS_LOCAL
-GENERIC_CLOUD_HOST_BOOTSTRAP=PASS_LOCAL
+SCIENTIFIC_OUTPUT_IDENTITY=PASS_LOCAL_SQL_REFERENCE
+WORKER_COUNT_UNCHANGED=YES
+CACHE_LIMITS_UNCHANGED=YES
+INFERENCE_PATH_UNCHANGED=YES
+TRANSACTION_FREQUENCY_UNCHANGED=YES
+HOT_LOOP_EXTRA_IO=0
+PASS_BOUNDARY_WAL_TRUNCATE=PASS_LOCAL
+PIECE_FINALIZE_NO_FULL_COPY=PASS_LOCAL
+TRANSIENT_TABLE_LIFECYCLE=PASS_LOCAL
+RESUME_SAFETY=PASS_LOCAL
 REMOTE_OPERATIONS_RUN=NO
-BOOTSTRAP_CODE_HEAD=21492879a779507b578d690a010fa24af36d63f6
-BOOTSTRAP_HARDENING_HEAD=208b795
-ROOT_DISK_FAIL_CLOSED=PASS_REAL_VM
-BLANK_DISK_INIT=PASS_REAL_VM
-READY_HOST_RERUN=PASS_REAL_VM
-GENERIC_INPUT_TRANSFER=PASS_REAL_VM
-FINAL_REMOTE_VALIDATION=PASS_REAL_VM
-BRANCH_DERIVATION=PASS_LOCAL
-PYTHON_PARTIAL_RECOVERY=PASS_LOCAL
-VENV_PARTIAL_RECOVERY=PASS_LOCAL
-FAILED_STAGE_SUMMARY=PASS_LOCAL
-BUNDLE_BRANCH_FIX=PASS_LOCAL
-INPUT_TRANSFER_BRANCH_FIX=PASS_LOCAL
-END_TO_END_BOOTSTRAP_TEST=PASS_LOCAL
-STANDALONE_PUSH_INPUTS_COMPAT=PASS_LOCAL
-GENERIC_BOOTSTRAP_CONFIG_BRANCH_DEPENDENCIES=0
+LONG_VALIDATION_RUN=NO
+FULL_M0_RUN=NO
 FULL_M0_AUTHORIZED=NO
 
-Round 4 removed repeated document-prefix reads, post-write shard rereads,
-duplicate legal-span telemetry scans, repeated reducer form construction,
-transient compact-trie node objects, and repeated fixed-prior construction.
-All changes are execution-only. Candidate membership, inference, posterior,
-support, scoring, canonical reduction and floating-point accumulation order are
-unchanged. Worker, inflight, lookahead, cache and retained-factor bounds were
-not increased.
+S1M2 pass finalization now filters `piece_counts_next` in place and renames it
+to `piece_lexicon`, preserving the exact positive-count and reuse-support
+selection without creating and filling a second full active table. The
+transaction still atomically installs the authoritative piece state and
+completed-pass checkpoint. Pass-only lexical diagnostics are retired in that
+same transaction.
 
-Execution bundle plans now use schema/planner implementation v2 and contain a
-deterministic UTF-8 byte offset for each bundle's first source line. Existing
-v1 plans fail closed and must be rematerialized before a run uses this HEAD;
-this changes execution-plan identity, not scientific training identity.
+After the committed S1M2 pass and worker/read-only connection teardown, the
+trainer performs a fail-closed `PRAGMA wal_checkpoint(TRUNCATE)`. Telemetry
+records database/WAL/SHM/total bytes before finalize, after finalize, and after
+WAL truncation, plus checkpoint count and duration. No VACUUM was added.
 
-The generic WSL bootstrap command now prepares an arbitrary configured host
-through guarded disk/mount setup, prerequisite and CPython 3.11.9 installation,
-exact published-HEAD Git-bundle deployment, guarded layout/venv setup, CPU-only
-dependencies, frozen-input transfer, and authoritative validation. It is
-idempotent, receipt-backed, and never launches a workload.
+The dedicated lifecycle tests pass (3 tests). A pre-existing focused training
+fixture fails before reaching this change, in composed inference prior lookup
+with `IndexError: tuple index out of range`; it was not changed or bypassed.
 
-Bootstrap release identity now comes from the clean attached local branch and
-exact published HEAD; `.sktlm-bridge.toml` no longer needs `branch` for this
-workflow. Recognizable partial CPython/venv directories are repaired only at
-their exact tool-owned paths, while unknown conflicts fail closed.
+The researcher-observed Full continuous storage pressure motivating this work
+was approximately 108 GiB for the current run directory, approximately 106
+GiB for `learner.sqlite`, and approximately 2.03 GiB for its WAL. These are
+observations, not post-change validation.
 
-NEXT_ACTION=RESEARCHER_RERUN_GENERIC_BOOTSTRAP_WITHOUT_CONFIG_BRANCH
+NEXT_ACTION=RESEARCHER_RUN_FULL_M0_DISK_AND_SCIENTIFIC_EQUIVALENCE_PROBES
 
-Do not automatically bootstrap a real host or launch Full M0, representative,
-stress, calibration, RAM/runtime, or scientific workloads. The researcher may
-first run this from WSL:
-
-    PYTHONPATH=src python3 scripts/cloud/bootstrap_cloud_host.py --host-profile core-XX --data-device /dev/vdb --dry-run
+Do not automatically launch Full M0, representative, stress, RAM/runtime, VM,
+cloud, or other long validation. Validate post-change disk peaks and canonical
+scientific artifacts on the researcher-controlled workload before declaring
+the Full M0 disk target closed.
