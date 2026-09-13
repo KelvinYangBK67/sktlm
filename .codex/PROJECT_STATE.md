@@ -3001,3 +3001,31 @@ SCIENTIFIC_SEMANTICS_CHANGED=NO
 FULL_M0_AUTHORIZED=NO
 NEXT_ACTION=RESEARCHER_DRY_RUN_NEW_HOST_BOOTSTRAP
 ```
+
+## Generic bootstrap real-host closure and resume hardening 鈥?2026-09-13
+
+Researcher-run validation on fresh `core-10` confirmed the existing guarded
+disk design without any Codex remote operation: the root disk was rejected at
+`data_disk`, a blank `/dev/vdb` was initialized successfully, and a complete
+rerun reused the ready host. Generic frozen-input transfer and final remote
+validation also passed.
+
+Bootstrap now derives its deployment branch solely from the clean attached
+local checkout and requires that branch's published HEAD to equal the exact
+local HEAD. `BridgeConfig.branch` is no longer required or consulted by this
+workflow. Recognizable incomplete state at exactly `/opt/python-3.11.9` or the
+configured `venv-py311` is repaired in place; unknown conflicts still fail
+closed, and deletion remains restricted to those exact tool-owned paths.
+Known failed stages are rendered explicitly in the operator summary.
+
+```text
+ROOT_DISK_FAIL_CLOSED=PASS_REAL_VM
+BLANK_DISK_INIT=PASS_REAL_VM
+READY_HOST_RERUN=PASS_REAL_VM
+GENERIC_INPUT_TRANSFER=PASS_REAL_VM
+FINAL_REMOTE_VALIDATION=PASS_REAL_VM
+BOOTSTRAP_RESUME_HARDENING=PASS_LOCAL
+REMOTE_OPERATIONS_RUN_BY_CODEX=NO
+FULL_M0_AUTHORIZED=NO
+NEXT_ACTION=RESEARCHER_VALIDATE_PARTIAL_PYTHON_AND_VENV_RECOVERY_IF_DESIRED
+```

@@ -2,7 +2,7 @@
 
 DATE=2026-09-13
 BRANCH=exp/s1m2-reusable-pieces
-STATUS=GENERIC_CLOUD_HOST_BOOTSTRAP_IMPLEMENTED
+STATUS=GENERIC_CLOUD_HOST_BOOTSTRAP_HARDENED
 
 ROUND4_START_HEAD=535f4e618563d88b9d85109d03bfaf1b049664dc
 ROUND4_CODE_HEAD=3b937abd4a64d5f6b48034d716112bdedca918e8
@@ -19,6 +19,16 @@ GENERIC_PUSH_INPUTS_DISPATCH=PASS_LOCAL
 GENERIC_CLOUD_HOST_BOOTSTRAP=PASS_LOCAL
 REMOTE_OPERATIONS_RUN=NO
 BOOTSTRAP_CODE_HEAD=21492879a779507b578d690a010fa24af36d63f6
+BOOTSTRAP_HARDENING_HEAD=208b795
+ROOT_DISK_FAIL_CLOSED=PASS_REAL_VM
+BLANK_DISK_INIT=PASS_REAL_VM
+READY_HOST_RERUN=PASS_REAL_VM
+GENERIC_INPUT_TRANSFER=PASS_REAL_VM
+FINAL_REMOTE_VALIDATION=PASS_REAL_VM
+BRANCH_DERIVATION=PASS_LOCAL
+PYTHON_PARTIAL_RECOVERY=PASS_LOCAL
+VENV_PARTIAL_RECOVERY=PASS_LOCAL
+FAILED_STAGE_SUMMARY=PASS_LOCAL
 FULL_M0_AUTHORIZED=NO
 
 Round 4 removed repeated document-prefix reads, post-write shard rereads,
@@ -40,7 +50,12 @@ exact published-HEAD Git-bundle deployment, guarded layout/venv setup, CPU-only
 dependencies, frozen-input transfer, and authoritative validation. It is
 idempotent, receipt-backed, and never launches a workload.
 
-NEXT_ACTION=RESEARCHER_DRY_RUN_NEW_HOST_BOOTSTRAP
+Bootstrap release identity now comes from the clean attached local branch and
+exact published HEAD; `.sktlm-bridge.toml` no longer needs `branch` for this
+workflow. Recognizable partial CPython/venv directories are repaired only at
+their exact tool-owned paths, while unknown conflicts fail closed.
+
+NEXT_ACTION=RESEARCHER_VALIDATE_PARTIAL_PYTHON_AND_VENV_RECOVERY_IF_DESIRED
 
 Do not automatically bootstrap a real host or launch Full M0, representative,
 stress, calibration, RAM/runtime, or scientific workloads. The researcher may
