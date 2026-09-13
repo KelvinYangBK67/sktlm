@@ -36,12 +36,7 @@ from sktlm.latent.continuous_structure import (
     _manifest_rows,
 )
 from sktlm.latent.execution_bundles import PLANNER_IMPLEMENTATION
-from sktlm.latent.frontend import ObservedSegment
-from sktlm.latent.training import (
-    CorpusDocument,
-    TrainingConfig,
-    _iter_document_segments as _iter_training_segments,
-)
+from sktlm.latent.frontend import ObservedSegment, iter_observed_segments
 
 DEFAULT_CONFIG = Path("configs/benchmarks/s1m2_continuous_selection.json")
 DEFAULT_OUTPUT_DIR = Path("artifacts/s1m2_execution_bundle_plans")
@@ -56,6 +51,7 @@ class SegmentRecord:
     relative_path: str
     ordinal: int
     line_number: int
+    line_byte_offset: int
     segment_index: int
     phonemes: int
     pressure: int
@@ -69,6 +65,7 @@ class BundleRecord:
     first_segment_ordinal: int
     last_segment_ordinal_exclusive: int
     first_line_number: int
+    first_line_byte_offset: int
     first_segment_index: int
     last_line_number: int
     last_segment_index: int
@@ -134,37 +131,46 @@ def _iter_document_segments(
     max_lines_per_document: int | None,
 ) -> Iterator[SegmentRecord]:
     ordinal = 0
-    document = CorpusDocument(
-        relative_path=relative_path,
-        path=path,
-        document_id=relative_path.replace("/", ":"),
-        freeze_id="planner-read-only",
-    )
-    config = TrainingConfig(
-        script=script,
-        condition=condition,
-        max_segment_tokens=max_segment_tokens,
-        max_lines_per_document=max_lines_per_document,
-    )
-    for line_number, segment_index, segment in _iter_training_segments(
-        document, config
-    ):
-        phonemes = _segment_phoneme_count(segment)
-        if phonemes < 1:
-            raise ValueError(
-                f"Trainer emitted an empty ObservedSegment in {relative_path}: "
-                f"{line_number}:{segment_index}"
-            )
-        yield SegmentRecord(
-            document_index=document_index,
-            relative_path=relative_path,
-            ordinal=ordinal,
-            line_number=line_number,
-            segment_index=segment_index,
-            phonemes=phonemes,
-            pressure=phonemes * phonemes,
-        )
-        ordinal += 1
+    with path.open("rb") as handle:
+        line_number = 0
+        while True:
+            line_byte_offset = handle.tell()
+            encoded_line = handle.readline()
+            if not encoded_line:
+                break
+            line_number += 1
+            if (
+                max_lines_per_document is not None
+                and line_number > max_lines_per_document
+            ):
+                break
+            line = encoded_line.decode("utf-8")
+            if not line.strip():
+                continue
+            for segment_index, segment in enumerate(
+                iter_observed_segments(
+                    line.rstrip("\r\n"),
+                    max_tokens=max_segment_tokens,
+                    script=script,
+                )
+            ):
+                phonemes = _segment_phoneme_count(segment)
+                if phonemes < 1:
+                    raise ValueError(
+                        "Trainer emitted an empty ObservedSegment in "
+                        f"{relative_path}: {line_number}:{segment_index}"
+                    )
+                yield SegmentRecord(
+                    document_index=document_index,
+                    relative_path=relative_path,
+                    ordinal=ordinal,
+                    line_number=line_number,
+                    line_byte_offset=line_byte_offset,
+                    segment_index=segment_index,
+                    phonemes=phonemes,
+                    pressure=phonemes * phonemes,
+                )
+                ordinal += 1
 
 
 def _quantile(values: Sequence[int], q: float) -> int:
@@ -308,6 +314,7 @@ def _make_bundle(
         first_segment_ordinal=first.ordinal,
         last_segment_ordinal_exclusive=last.ordinal + 1,
         first_line_number=first.line_number,
+        first_line_byte_offset=first.line_byte_offset,
         first_segment_index=first.segment_index,
         last_line_number=last.line_number,
         last_segment_index=last.segment_index,
@@ -469,13 +476,14 @@ def _plan_at_pressure(
 
 def _bundle_payload(bundle: BundleRecord) -> dict[str, Any]:
     return {
-        "schema_version": "sktlm-s1m2-execution-bundle/v1",
+        "schema_version": "sktlm-s1m2-execution-bundle/v2",
         "document_index": bundle.document_index,
         "relative_path": bundle.relative_path,
         "bundle_index": bundle.bundle_index,
         "first_segment_ordinal": bundle.first_segment_ordinal,
         "last_segment_ordinal_exclusive": bundle.last_segment_ordinal_exclusive,
         "first_line_number": bundle.first_line_number,
+        "first_line_byte_offset": bundle.first_line_byte_offset,
         "first_segment_index": bundle.first_segment_index,
         "last_line_number": bundle.last_line_number,
         "last_segment_index": bundle.last_segment_index,
@@ -538,6 +546,7 @@ def _plan_digest(
         digest.update((
             f"{b.document_index}\t{b.relative_path}\t{b.bundle_index}\t"
             f"{b.first_segment_ordinal}\t{b.last_segment_ordinal_exclusive}\t"
+            f"{b.first_line_byte_offset}\t"
             f"{b.segment_count}\t{b.phonemes}\t{b.pressure}\n"
         ).encode("utf-8"))
     return digest.hexdigest()
@@ -645,7 +654,7 @@ def main() -> int:
     scan_signature = sig.hexdigest()
 
     scan_summary = {
-        "schema_version": "sktlm-s1m2-execution-bundle-scan/v1",
+            "schema_version": "sktlm-s1m2-execution-bundle-scan/v2",
         "planner_implementation": PLANNER_IMPLEMENTATION,
         "segment_enumerator": "sktlm.latent.training._iter_document_segments",
         "git_head": _git_head(repo_root),
@@ -710,7 +719,7 @@ def main() -> int:
         )
         candidate_dir.mkdir(parents=True, exist_ok=True)
         plan_summary = {
-            "schema_version": "sktlm-s1m2-execution-bundle-plan/v1",
+            "schema_version": "sktlm-s1m2-execution-bundle-plan/v2",
             "planner_implementation": PLANNER_IMPLEMENTATION,
             "scan_signature_sha256": scan_signature,
             "plan_sha256": plan_sha,

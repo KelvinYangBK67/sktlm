@@ -948,15 +948,17 @@ def _iter_execution_bundle_segments(
     last_seen: tuple[int, int] | None = None
     phonemes = 0
     pressure = 0
-    with document.path.open("r", encoding="utf-8") as handle:
-        for line_number, line in enumerate(handle, 1):
+    with document.path.open("rb") as handle:
+        handle.seek(bundle.first_line_byte_offset)
+        for line_number, encoded_line in enumerate(
+            handle, bundle.first_line_number
+        ):
+            line = encoded_line.decode("utf-8")
             if (
                 config.max_lines_per_document is not None
                 and line_number > config.max_lines_per_document
             ):
                 break
-            if line_number < bundle.first_line_number:
-                continue
             if line_number > bundle.last_line_number:
                 break
             if not line.strip():

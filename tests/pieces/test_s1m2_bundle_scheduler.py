@@ -5,7 +5,7 @@ import hashlib
 import json
 import runpy
 from concurrent.futures import Future
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 
 import pytest
@@ -13,7 +13,9 @@ import pytest
 import sktlm.latent.training as training
 from sktlm.latent.execution_bundles import (
     BUNDLE_SCHEMA,
+    PLAN_SCHEMA,
     PLANNER_IMPLEMENTATION,
+    SCAN_SCHEMA,
     ExecutionBundle,
     ExecutionBundlePlan,
     _plan_digest,
@@ -36,6 +38,13 @@ from sktlm.pieces.topology_archive import TopologyArchiveReader, _topology_paylo
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _text_sha256(path: Path) -> str:
+    text = path.read_text(encoding="utf-8")
+    return hashlib.sha256(
+        text.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
+    ).hexdigest()
 
 
 def _fixture(tmp_path: Path) -> tuple[Path, tuple[CorpusDocument, ...]]:
@@ -119,6 +128,12 @@ def _write_plan(
         representation_digest.update(b"\0")
         representation_digest.update(_sha256(document.path).encode("ascii"))
         representation_digest.update(b"\n")
+        line_offsets: dict[int, int] = {}
+        with document.path.open("rb") as source:
+            line_number = 1
+            while encoded := source.readline():
+                line_offsets[line_number] = source.tell() - len(encoded)
+                line_number += 1
         for ordinal, (line_number, segment_index, segment) in enumerate(segments):
             phonemes = sum(len(token.phonemes) for token in segment.tokens)
             segment_digest.update(
@@ -148,6 +163,7 @@ def _write_plan(
                     first_segment_ordinal=first,
                     last_segment_ordinal_exclusive=first + len(selected),
                     first_line_number=first_line,
+                    first_line_byte_offset=line_offsets[first_line],
                     first_segment_index=first_segment,
                     last_line_number=last_line,
                     last_segment_index=last_segment,
@@ -168,8 +184,7 @@ def _write_plan(
             }
         )
 
-    planner_config = tmp_path / "planner-config.json"
-    planner_config.write_text("{}\n", encoding="utf-8", newline="")
+    planner_config = Path("configs/benchmarks/s1m2_continuous_selection.json")
     plans_root = tmp_path / "plans"
     root = plans_root / name
     root.mkdir(parents=True, exist_ok=True)
@@ -177,10 +192,10 @@ def _write_plan(
         segment_digest.digest() + representation_digest.digest()
     ).hexdigest()
     scan = {
-        "schema_version": "sktlm-s1m2-execution-bundle-scan/v1",
+        "schema_version": SCAN_SCHEMA,
         "planner_implementation": PLANNER_IMPLEMENTATION,
-        "config": str(planner_config),
-        "config_sha256": _sha256(planner_config),
+        "config": planner_config.as_posix(),
+        "config_sha256": _text_sha256(planner_config),
         "manifest": str(manifest),
         "manifest_sha256": _sha256(manifest),
         "script": "devanagari",
@@ -204,7 +219,7 @@ def _write_plan(
         max_segments_per_bundle=segments_per_bundle,
     )
     summary = {
-        "schema_version": "sktlm-s1m2-execution-bundle-plan/v1",
+        "schema_version": PLAN_SCHEMA,
         "planner_implementation": PLANNER_IMPLEMENTATION,
         "scan_signature_sha256": scan_signature,
         "plan_sha256": plan_sha,
@@ -321,6 +336,50 @@ def test_planner_uses_training_segment_identity_and_plan_is_complete(
         )
 
 
+def test_execution_bundles_seek_to_exact_utf8_line_ranges(tmp_path: Path) -> None:
+    manifest, documents = _fixture(tmp_path)
+    plan_root = _write_plan(
+        tmp_path,
+        name="direct_seek",
+        manifest=manifest,
+        documents=documents,
+        segments_per_bundle=1,
+    )
+    config = _config(tmp_path, manifest, "direct-seek", plan=plan_root)
+    plan = load_execution_bundle_plan(
+        plan_root,
+        repo_root=Path("."),
+        manifest=manifest,
+        documents=documents,
+        script="devanagari",
+        condition="continuous",
+        max_segment_tokens=128,
+        max_lines_per_document=None,
+    )
+    for document, bundles in zip(documents, plan.by_document, strict=True):
+        reference = list(_iter_document_segments(document, config))
+        observed = [
+            item
+            for bundle in bundles
+            for item in training._iter_execution_bundle_segments(
+                document, config, bundle
+            )
+        ]
+        assert observed == reference
+        assert bundles[0].first_line_byte_offset == 0
+        if len(bundles) > 1:
+            stale = replace(
+                bundles[-1],
+                first_line_byte_offset=bundles[-1].first_line_byte_offset + 1,
+            )
+            with pytest.raises((RuntimeError, UnicodeDecodeError)):
+                list(
+                    training._iter_execution_bundle_segments(
+                        document, config, stale
+                    )
+                )
+
+
 def test_bundle_scheduler_is_bit_exact_with_legacy_document_scheduler(
     tmp_path: Path,
 ) -> None:
@@ -411,6 +470,7 @@ def test_bundle_scheduler_refills_while_canonical_first_bundle_waits(
             first_segment_ordinal=index,
             last_segment_ordinal_exclusive=index + 1,
             first_line_number=1,
+            first_line_byte_offset=0,
             first_segment_index=index,
             last_line_number=1,
             last_segment_index=index,
@@ -513,6 +573,7 @@ def test_inspection_bundle_scheduler_refills_and_reduces_canonically(
                 first_segment_ordinal=bundle_index,
                 last_segment_ordinal_exclusive=bundle_index + 1,
                 first_line_number=1,
+                first_line_byte_offset=0,
                 first_segment_index=bundle_index,
                 last_line_number=1,
                 last_segment_index=bundle_index,

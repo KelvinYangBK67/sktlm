@@ -10,10 +10,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Sequence
 
 
-PLANNER_IMPLEMENTATION = "sktlm-s1m2-execution-bundle-planner/v1"
-SCAN_SCHEMA = "sktlm-s1m2-execution-bundle-scan/v1"
-PLAN_SCHEMA = "sktlm-s1m2-execution-bundle-plan/v1"
-BUNDLE_SCHEMA = "sktlm-s1m2-execution-bundle/v1"
+PLANNER_IMPLEMENTATION = "sktlm-s1m2-execution-bundle-planner/v2"
+SCAN_SCHEMA = "sktlm-s1m2-execution-bundle-scan/v2"
+PLAN_SCHEMA = "sktlm-s1m2-execution-bundle-plan/v2"
+BUNDLE_SCHEMA = "sktlm-s1m2-execution-bundle/v2"
 
 
 def _sha256(path: Path) -> str:
@@ -53,6 +53,7 @@ class ExecutionBundle:
     first_segment_ordinal: int
     last_segment_ordinal_exclusive: int
     first_line_number: int
+    first_line_byte_offset: int
     first_segment_index: int
     last_line_number: int
     last_segment_index: int
@@ -115,6 +116,7 @@ def _plan_digest(
                 f"{bundle.document_index}\t{bundle.relative_path}\t"
                 f"{bundle.bundle_index}\t{bundle.first_segment_ordinal}\t"
                 f"{bundle.last_segment_ordinal_exclusive}\t"
+                f"{bundle.first_line_byte_offset}\t"
                 f"{bundle.segment_count}\t{bundle.phonemes}\t"
                 f"{bundle.pressure}\n"
             ).encode("utf-8")
@@ -241,6 +243,7 @@ def load_execution_bundle_plan(
                 payload["last_segment_ordinal_exclusive"]
             ),
             first_line_number=int(payload["first_line_number"]),
+            first_line_byte_offset=int(payload["first_line_byte_offset"]),
             first_segment_index=int(payload["first_segment_index"]),
             last_line_number=int(payload["last_line_number"]),
             last_segment_index=int(payload["last_segment_index"]),
@@ -256,6 +259,7 @@ def load_execution_bundle_plan(
             or bundle.segment_count
             != bundle.last_segment_ordinal_exclusive - bundle.first_segment_ordinal
             or bundle.first_line_number < 1
+            or bundle.first_line_byte_offset < 0
             or bundle.first_segment_index < 0
             or bundle.last_line_number < bundle.first_line_number
             or bundle.last_segment_index < 0
