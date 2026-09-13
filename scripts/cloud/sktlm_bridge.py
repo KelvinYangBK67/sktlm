@@ -2687,30 +2687,30 @@ def main(
                 contract,
             )
         if args.command == "push-inputs":
+            if contract is not None:
+                action = lambda receipt: push_contract_inputs_action(
+                    receipt,
+                    config,
+                    contract,
+                    repo_root,
+                    active_runner,
+                    verify_after=not args.no_verify,
+                )
+            else:
+                action = lambda receipt: push_inputs_action(
+                    receipt,
+                    config,
+                    repo_root,
+                    active_runner,
+                    verify_after=not args.no_verify,
+                )
             return _run_receipted_cli(
                 "push-inputs",
                 "local_to_remote",
                 repo_root,
                 config,
                 active_runner,
-                (
-                    lambda receipt: push_contract_inputs_action(
-                        receipt,
-                        config,
-                        contract,
-                        repo_root,
-                        active_runner,
-                        verify_after=not args.no_verify,
-                    )
-                    if contract is not None
-                    else lambda receipt: push_inputs_action(
-                        receipt,
-                        config,
-                        repo_root,
-                        active_runner,
-                        verify_after=not args.no_verify,
-                    )
-                ),
+                action,
                 contract,
             )
         if args.command == "pull-results":

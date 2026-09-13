@@ -459,6 +459,45 @@ def test_failed_sync_operation_still_writes_redacted_receipt(
     assert "<redacted>" in text
 
 
+def test_generic_push_inputs_dispatch_executes_action(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = remote_config(
+        host_profile="core-09",
+        machine_id="core-09",
+        host_role="generic-bootstrap",
+        available_host_profiles=("core-09",),
+    )
+    monkeypatch.setattr(bridge, "discover_repo_root", lambda _runner: tmp_path)
+    monkeypatch.setattr(bridge, "load_config", lambda *_args, **_kwargs: config)
+    calls: list[str] = []
+
+    def push_inputs(*_args: object, **_kwargs: object) -> dict[str, object]:
+        calls.append("generic")
+        return {"valid": True}
+
+    def run_receipted(
+        _operation: str,
+        _direction: str,
+        _repo_root: Path,
+        _config: object,
+        _runner: object,
+        action: Callable[[dict[str, object]], object],
+        _contract: object,
+    ) -> int:
+        result = action({})
+        assert result == {"valid": True}
+        assert not callable(result)
+        return 0
+
+    monkeypatch.setattr(bridge, "push_inputs_action", push_inputs)
+    monkeypatch.setattr(bridge, "_run_receipted_cli", run_receipted)
+
+    assert bridge.main(["push-inputs", "--host-profile", "core-09"]) == 0
+    assert calls == ["generic"]
+
+
 def audited_scientific_fixture(
     root: Path,
 ) -> tuple[dict[str, object], list[dict[str, object]]]:
