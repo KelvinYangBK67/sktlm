@@ -868,15 +868,20 @@ def test_compact_candidates_keep_matches_beyond_legacy_pressure_limit() -> None:
     assert legacy.overflowed_tokens > 0
 
 
-def test_piece_store_flat_counts_preserve_exact_scoring_equation() -> None:
+def test_piece_store_bounded_lru_preserves_exact_scoring_equation() -> None:
     connection = sqlite3.connect(":memory:")
     connection.execute(
         "CREATE TABLE piece_lexicon (form_key TEXT PRIMARY KEY, "
         "expected_count REAL NOT NULL)"
     )
     active = parse_iast_form("ani")
+    second = parse_iast_form("api")
+    missing = parse_iast_form("iti")
     connection.execute(
         "INSERT INTO piece_lexicon VALUES (?, ?)", (active.key, 3.25)
+    )
+    connection.execute(
+        "INSERT INTO piece_lexicon VALUES (?, ?)", (second.key, 1.5)
     )
     scorer = PieceStoreScorer(
         connection,
@@ -886,22 +891,26 @@ def test_piece_store_flat_counts_preserve_exact_scoring_equation() -> None:
         complexity_beta=0.25,
         complexity_tau=1.0,
         base_stop_probability=0.5,
-        cache_size=8,
+        cache_size=2,
         telemetry=RuntimeTelemetry(),
     )
 
-    for piece, count in ((active, 3.25), (parse_iast_form("api"), 0.0)):
-        amplitude = scorer.complexity_weight * (
-            scorer.complexity_kappa
-            + scorer.complexity_beta * len(piece.symbols)
+    reference = {active.key: 3.25, second.key: 1.5}
+    sequence = (active, missing, second, active, active)
+    assert [scorer.score(piece) for piece in sequence] == [
+        scorer.score_from_count_and_length(
+            reference.get(piece.key, 0.0), len(piece.symbols)
         )
-        expected = math.log(max(scorer.probability(piece, count), 1e-300)) - (
-            amplitude
-            * math.log1p(1.0 / (scorer.complexity_tau + count))
-        )
-        assert scorer.score(piece) == expected
-        assert scorer._lookup(piece.key) == count
-    assert scorer.sqlite_selects == 1
+        for piece in sequence
+    ]
+    assert len(scorer._cache) <= 2
+    assert tuple(scorer._cache) == (second.key, active.key)
+    assert scorer.score_calls == 5
+    assert scorer.store_lookups == 5
+    assert scorer.cache_hits == 1
+    assert scorer.cache_misses == 4
+    assert scorer.sqlite_selects == 4
+    assert scorer.sqlite_seconds >= 0.0
 
 
 def test_shared_inspection_piece_reference_bound_falls_back() -> None:

@@ -119,7 +119,7 @@ class LexiconScorer:
 
 
 class PieceStoreScorer:
-    """P1a scorer over one flat immutable copy of the active piece state."""
+    """P1a scorer with exact SQLite lookup and a bounded worker-local LRU."""
 
     def __init__(
         self,
@@ -147,6 +147,7 @@ class PieceStoreScorer:
         self.base_measure = GeometricPhonemeBaseMeasure(base_stop_probability)
         self.cache_size = cache_size
         self.telemetry = telemetry
+        self._cache: OrderedDict[str, float] = OrderedDict()
         self.score_calls = 0
         self.cache_hits = 0
         self.cache_misses = 0
@@ -161,21 +162,27 @@ class PieceStoreScorer:
         self.active_piece_types = int(row[0])
         self.total_count = float(row[1])
         self.denominator = self.total_count + alpha
-        # Exact active-piece counts are immutable for a pass. A flat key map
-        # avoids replicating a Python node/dict trie in every spawned worker.
-        started = time.perf_counter()
-        self._counts = {
-            str(form_key): float(expected_count)
-            for form_key, expected_count in connection.execute(
-                "SELECT form_key, expected_count FROM piece_lexicon"
-            )
-        }
-        self.sqlite_seconds += time.perf_counter() - started
-        self.sqlite_selects += 1
 
     def _lookup(self, key: str) -> float:
         self.store_lookups += 1
-        return self._counts.get(key, 0.0)
+        cached = self._cache.get(key)
+        if cached is not None:
+            self.cache_hits += 1
+            self._cache.move_to_end(key)
+            return cached
+        self.cache_misses += 1
+        started = time.perf_counter()
+        row = self.connection.execute(
+            "SELECT expected_count FROM piece_lexicon WHERE form_key = ?",
+            (key,),
+        ).fetchone()
+        self.sqlite_seconds += time.perf_counter() - started
+        self.sqlite_selects += 1
+        count = 0.0 if row is None else float(row[0])
+        self._cache[key] = count
+        if len(self._cache) > self.cache_size:
+            self._cache.popitem(last=False)
+        return count
 
     def probability(self, piece: PhonologicalForm, count: float) -> float:
         return (
@@ -874,7 +881,9 @@ class LexiconStore:
                 "cache_misses": scorer.cache_misses,
                 "sqlite_selects": scorer.sqlite_selects,
                 "sqlite_seconds": scorer.sqlite_seconds,
+                "store_lookups": scorer.store_lookups,
                 "cache_size": scorer.cache_size,
+                "cache_entries": len(scorer._cache),
                 "active_piece_types": scorer.active_piece_types,
                 "active_count_total": scorer.total_count,
             }
