@@ -90,6 +90,20 @@ def test_direct_form_dp_matches_p0_without_piece_lattice(text: str) -> None:
     assert composed.multi_piece_mass == pytest.approx(1.0 - composed.whole_form_mass)
 
 
+def test_fixed_piece_priors_are_precomputed_bit_exactly() -> None:
+    config = PieceModelConfig(max_piece_length=5, rho=0.37)
+    engine = ComposedPieceInference(_TableScorer(), model_config=config)
+
+    for noninitial in (False, True):
+        for length in range(1, config.max_piece_length + 1):
+            expected = composed_module._raw_prior_score(
+                int(noninitial),
+                int(noninitial) + length,
+                rho=config.rho,
+            )
+            assert engine._piece_priors[noninitial][length].hex() == expected.hex()
+
+
 def test_batched_inner_top_k_matches_p0_order_and_weights() -> None:
     form = parse_iast_form("dakaniyat")
     config = PieceModelConfig(max_piece_length=3, rho=0.37)

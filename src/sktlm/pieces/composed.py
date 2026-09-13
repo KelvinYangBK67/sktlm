@@ -674,6 +674,17 @@ class ComposedPieceInference:
         self.model_config = model_config
         self.cache_config = cache_config
         self.inspection_top_k = inspection_top_k
+        self._piece_priors = tuple(
+            (0.0,) + tuple(
+                _raw_prior_score(
+                    int(noninitial),
+                    int(noninitial) + length,
+                    rho=model_config.rho,
+                )
+                for length in range(1, model_config.max_piece_length + 1)
+            )
+            for noninitial in (False, True)
+        )
         self._piece_scores: OrderedDict[
             tuple[Phoneme, ...], tuple[PhonologicalForm, float, int]
         ] = OrderedDict()
@@ -816,7 +827,7 @@ class ComposedPieceInference:
                 self.model_config.max_piece_length,
             ):
                 transition_count += 1
-                prior = _raw_prior_score(start, end, rho=self.model_config.rho)
+                prior = self._piece_priors[start > 0][end - start]
                 piece, piece_score = self._piece_and_score(
                     form.symbols[start:end]
                 )
@@ -957,11 +968,7 @@ class ComposedPieceInference:
                 start,
                 self.model_config.max_piece_length,
             ):
-                prior = _raw_prior_score(
-                    start,
-                    end,
-                    rho=self.model_config.rho,
-                )
+                prior = self._piece_priors[start > 0][end - start]
                 _piece, piece_score = self._piece_and_score(
                     form.symbols[start:end]
                 )
@@ -1291,14 +1298,6 @@ class ComposedPieceInference:
             self._piece_and_score(piece_symbols)
             for piece_symbols in topology.pieces
         )
-        prior_by_shape = {
-            (noninitial, length): (
-                int(noninitial) * math.log(self.model_config.rho)
-                + (length - 1) * math.log1p(-self.model_config.rho)
-            )
-            for noninitial in (False, True)
-            for length in range(1, topology.max_piece_length + 1)
-        }
         prior_alpha = [-math.inf] * len(topology.parent)
         alpha = [-math.inf] * len(topology.parent)
         singleton_scores = [-math.inf] * len(topology.parent)
@@ -1315,11 +1314,8 @@ class ComposedPieceInference:
             end = topology.transition_offsets[node_index]
             for transition_index in range(start, end):
                 source = topology.transition_sources[transition_index]
-                prior = prior_by_shape[
-                    (
-                        source > 0,
-                        topology.depth[node_index] - topology.depth[source],
-                    )
+                prior = self._piece_priors[source > 0][
+                    topology.depth[node_index] - topology.depth[source]
                 ]
                 raw = (
                     prior
@@ -1610,14 +1606,6 @@ class ComposedPieceInference:
             self._piece_and_score(piece_symbols)
             for piece_symbols in topology.pieces
         )
-        prior_by_shape = {
-            (noninitial, length): (
-                int(noninitial) * math.log(self.model_config.rho)
-                + (length - 1) * math.log1p(-self.model_config.rho)
-            )
-            for noninitial in (False, True)
-            for length in range(1, topology.max_piece_length + 1)
-        }
         prior_alpha = [-math.inf] * len(topology.parent)
         alpha = [-math.inf] * len(topology.parent)
         singleton_scores = [-math.inf] * len(topology.parent)
@@ -1634,11 +1622,8 @@ class ComposedPieceInference:
             end = topology.transition_offsets[node_index]
             for transition_index in range(start, end):
                 source = topology.transition_sources[transition_index]
-                prior = prior_by_shape[
-                    (
-                        source > 0,
-                        topology.depth[node_index] - topology.depth[source],
-                    )
+                prior = self._piece_priors[source > 0][
+                    topology.depth[node_index] - topology.depth[source]
                 ]
                 raw = (
                     prior
