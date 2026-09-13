@@ -2,7 +2,7 @@
 
 DATE=2026-09-13
 BRANCH=exp/s1m2-reusable-pieces
-STATUS=GENERIC_CLOUD_HOST_BOOTSTRAP_HARDENED
+STATUS=GENERIC_CLOUD_HOST_BUNDLE_BRANCH_FIXED
 
 ROUND4_START_HEAD=535f4e618563d88b9d85109d03bfaf1b049664dc
 ROUND4_CODE_HEAD=3b937abd4a64d5f6b48034d716112bdedca918e8
@@ -29,6 +29,7 @@ BRANCH_DERIVATION=PASS_LOCAL
 PYTHON_PARTIAL_RECOVERY=PASS_LOCAL
 VENV_PARTIAL_RECOVERY=PASS_LOCAL
 FAILED_STAGE_SUMMARY=PASS_LOCAL
+BUNDLE_BRANCH_FIX=PASS_LOCAL
 FULL_M0_AUTHORIZED=NO
 
 Round 4 removed repeated document-prefix reads, post-write shard rereads,
@@ -55,7 +56,7 @@ exact published HEAD; `.sktlm-bridge.toml` no longer needs `branch` for this
 workflow. Recognizable partial CPython/venv directories are repaired only at
 their exact tool-owned paths, while unknown conflicts fail closed.
 
-NEXT_ACTION=RESEARCHER_VALIDATE_PARTIAL_PYTHON_AND_VENV_RECOVERY_IF_DESIRED
+NEXT_ACTION=RESEARCHER_RERUN_GENERIC_BOOTSTRAP_WITHOUT_CONFIG_BRANCH
 
 Do not automatically bootstrap a real host or launch Full M0, representative,
 stress, calibration, RAM/runtime, or scientific workloads. The researcher may

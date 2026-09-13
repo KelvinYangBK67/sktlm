@@ -3029,3 +3029,21 @@ REMOTE_OPERATIONS_RUN_BY_CODEX=NO
 FULL_M0_AUTHORIZED=NO
 NEXT_ACTION=RESEARCHER_VALIDATE_PARTIAL_PYTHON_AND_VENV_RECOVERY_IF_DESIRED
 ```
+
+## Contract bundle branch propagation fix - 2026-09-13
+
+A researcher-run real bootstrap with `BridgeConfig.branch=None` exposed a
+remaining bundle-deployment dependency on config branch after dry-run passed.
+The contract-driven `git_bundle` path now validates and uses
+`ExperimentContract.branch` through local/published checks and generated
+remote deployment script. Ordinary non-contract `deploy-code` continues to
+require and use `BridgeConfig.branch`.
+
+```text
+BUNDLE_BRANCH_FIX=PASS_LOCAL
+SCIENTIFIC_SEMANTICS_CHANGED=NO
+REMOTE_OPERATIONS_RUN_BY_CODEX=NO
+LONG_VALIDATION_RUN=NO
+FULL_M0_AUTHORIZED=NO
+NEXT_ACTION=RESEARCHER_RERUN_GENERIC_BOOTSTRAP_WITHOUT_CONFIG_BRANCH
+```

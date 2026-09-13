@@ -271,6 +271,25 @@ def require_branch(config: BridgeConfig) -> str:
     return config.branch
 
 
+def _validated_contract_branch(branch: object) -> str:
+    """Return a safe contract-owned branch without consulting bridge config."""
+
+    if (
+        not isinstance(branch, str)
+        or not re.fullmatch(r"[A-Za-z0-9._/-]+", branch)
+        or branch.startswith(("-", "/"))
+        or branch.endswith((".", "/"))
+        or ".." in branch
+        or "@{" in branch
+    ):
+        raise BridgeError(f"contract branch is invalid: {branch!r}")
+    return branch
+
+
+def require_contract_branch(contract: ExperimentContract) -> str:
+    return _validated_contract_branch(contract.branch)
+
+
 def load_config(
     path: Path | None,
     overrides: Mapping[str, Any] | None = None,
@@ -1293,6 +1312,7 @@ def scp_pull_argv(
 def build_bundle_deploy_script(
     config: BridgeConfig,
     *,
+    branch: str,
     expected_head: str,
     remote_bundle: str,
     bundle_sha256: str,
@@ -1300,7 +1320,7 @@ def build_bundle_deploy_script(
     """Build the fixed remote verify/fetch/fast-forward bundle workflow."""
 
     require_remote_config(config)
-    branch = require_branch(config)
+    branch = _validated_contract_branch(branch)
     if not re.fullmatch(r"[0-9a-f]{40}", expected_head):
         raise BridgeError("expected deploy HEAD must be a full lowercase SHA-1")
     if not re.fullmatch(r"[0-9a-f]{64}", bundle_sha256):
@@ -1367,7 +1387,7 @@ def deploy_bundle_action(
     require_tool("git")
     require_tool("ssh")
     require_tool("scp")
-    branch = require_branch(config)
+    branch = require_contract_branch(contract)
     local = local_git_status(repo_root, runner)
     if not local.get("available"):
         raise BridgeError("local Git repository is unavailable")
@@ -1434,6 +1454,7 @@ def deploy_bundle_action(
         config,
         build_bundle_deploy_script(
             config,
+            branch=branch,
             expected_head=head,
             remote_bundle=remote_bundle,
             bundle_sha256=bundle_sha256,

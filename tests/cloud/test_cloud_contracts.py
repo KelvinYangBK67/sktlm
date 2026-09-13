@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -139,6 +140,7 @@ def test_bundle_transport_is_hash_bound_verified_and_fast_forward_only(
     config = bridge.bind_experiment_contract(remote_config(), contract)
     script = bridge.build_bundle_deploy_script(
         config,
+        branch=contract.branch,
         expected_head="a" * 40,
         remote_bundle="/mnt/sktlm-data/sktlm/deployment_bundles/fixture-v1/repo.bundle",
         bundle_sha256="b" * 64,
@@ -149,6 +151,85 @@ def test_bundle_transport_is_hash_bound_verified_and_fast_forward_only(
     assert "status --porcelain" in script
     assert "git reset" not in script
     assert "git pull" not in script
+
+
+@pytest.mark.parametrize("configured_branch", (None, "exp/config-is-not-authority"))
+def test_bundle_deployment_uses_contract_branch_not_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    configured_branch: str | None,
+) -> None:
+    contract = load_experiment_contract(write_contract(tmp_path / "contract.yaml"))
+    config = remote_config(branch=configured_branch)
+    head = "a" * 40
+    bundle = tmp_path / "release.bundle"
+    bundle.write_bytes(b"bundle fixture")
+    digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
+    scripts: list[str] = []
+
+    monkeypatch.setattr(bridge, "require_tool", lambda _name: None)
+    monkeypatch.setattr(
+        bridge,
+        "local_git_status",
+        lambda *_args: {
+            "available": True,
+            "dirty": False,
+            "branch": contract.branch,
+            "head": head,
+        },
+    )
+    monkeypatch.setattr(bridge, "scp_argv", lambda *_args: ["scp"])
+
+    def run_ssh(
+        _config: object, script: str, _runner: object
+    ) -> subprocess.CompletedProcess[str]:
+        scripts.append(script)
+        stdout = ""
+        if "sktlm-bundle" in script:
+            stdout = f"bundle_sha256={digest}\ndeployed_head={head}\n"
+        return subprocess.CompletedProcess(["ssh"], 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(bridge, "run_ssh", run_ssh)
+
+    def run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if argv[:3] == ["git", "bundle", "list-heads"]:
+            stdout = f"{head} refs/heads/{contract.branch}\n"
+        elif argv[:3] == ["git", "ls-remote", "--heads"]:
+            stdout = f"{head}\trefs/heads/{contract.branch}\n"
+        else:
+            stdout = ""
+        return subprocess.CompletedProcess(argv, 0, stdout=stdout, stderr="")
+
+    class Runner:
+        def run(
+            self, argv: list[str], **kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
+            return run(argv, **kwargs)
+
+    result = bridge.deploy_bundle_action(
+        {"warnings": []},
+        config,
+        contract,
+        tmp_path,
+        Runner(),  # type: ignore[arg-type]
+        bundle_path=bundle,
+        expected_bundle_sha256=digest,
+    )
+
+    assert result["valid"] is True
+    assert any(f"branch={contract.branch}" in script for script in scripts)
+    assert not any("exp/config-is-not-authority" in script for script in scripts)
+
+
+def test_bundle_deploy_script_rejects_invalid_explicit_branch() -> None:
+    with pytest.raises(bridge.BridgeError, match="contract branch is invalid"):
+        bridge.build_bundle_deploy_script(
+            remote_config(branch=None),
+            branch="../unsafe",
+            expected_head="a" * 40,
+            remote_bundle="/mnt/sktlm-data/sktlm/deployment_bundles/x/repo.bundle",
+            bundle_sha256="b" * 64,
+        )
 
 
 def test_contract_download_hashes_use_declared_inventory(tmp_path: Path) -> None:
