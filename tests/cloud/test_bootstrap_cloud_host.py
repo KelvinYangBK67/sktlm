@@ -129,6 +129,143 @@ def test_bootstrap_stage_order_is_generic_and_complete(
     ]
 
 
+@pytest.mark.parametrize("configured_branch", (None, "exp/config-not-authority"))
+def test_real_orchestration_uses_release_identity_through_inputs_and_ready(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    configured_branch: str | None,
+) -> None:
+    expected = release()
+    config = replace(remote_config(), branch=configured_branch)
+    observed: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        bootstrap, "validate_local_release", lambda *_args: expected
+    )
+    monkeypatch.setattr(bootstrap.bridge, "require_transfer_platform", lambda: None)
+    monkeypatch.setattr(bootstrap.bridge, "require_tool", lambda _name: None)
+
+    def remote_stage(
+        receipt: dict[str, object],
+        _config: object,
+        _runner: object,
+        name: str,
+        _script: str,
+    ) -> dict[str, str]:
+        receipt["stages"].append(  # type: ignore[union-attr]
+            {"name": name, "status": "PASS"}
+        )
+        return {"status": "READY"} if name == "final_validation" else {}
+
+    def deploy(
+        receipt: dict[str, object],
+        _repo_root: Path,
+        _config: object,
+        _runner: object,
+        actual_release: object,
+    ) -> None:
+        assert actual_release == expected
+        receipt["stages"].append(  # type: ignore[union-attr]
+            {"name": "deploy", "status": "PASS"}
+        )
+
+    def push_inputs(
+        subreceipt: dict[str, object],
+        _config: object,
+        _repo_root: Path,
+        _runner: object,
+        *,
+        verify_after: bool,
+        expected_branch: str,
+        expected_head: str,
+    ) -> dict[str, bool]:
+        assert verify_after is True
+        observed.append((expected_branch, expected_head))
+        subreceipt["remote_input_validation"] = {"valid": True}
+        return {"valid": True}
+
+    def execute_receipted(
+        _operation: str,
+        _direction: str,
+        repo_root: Path,
+        _config: object,
+        _runner: object,
+        action: object,
+        *_args: object,
+    ) -> tuple[dict[str, object], Path, None]:
+        subreceipt: dict[str, object] = {"warnings": []}
+        details = action(subreceipt)  # type: ignore[operator]
+        subreceipt.update(details)
+        return subreceipt, repo_root / "artifacts/input-receipt.json", None
+
+    monkeypatch.setattr(bootstrap, "_run_remote_stage", remote_stage)
+    monkeypatch.setattr(bootstrap, "_deploy_exact_head", deploy)
+    monkeypatch.setattr(bootstrap.bridge, "push_inputs_action", push_inputs)
+    monkeypatch.setattr(bootstrap.bridge, "execute_receipted", execute_receipted)
+
+    result = bootstrap.bootstrap_host(
+        repo_root=tmp_path,
+        config=config,
+        data_device="/dev/vdb",
+        dry_run=False,
+        runner=object(),
+    )
+
+    assert result["status"] == "READY"
+    assert observed == [(expected.branch, expected.head)]
+
+
+def test_bootstrap_input_remote_head_mismatch_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected = release()
+    config = replace(remote_config(), branch=None)
+    monkeypatch.setattr(bootstrap.bridge, "require_transfer_platform", lambda: None)
+    monkeypatch.setattr(bootstrap.bridge, "require_tool", lambda _name: None)
+    monkeypatch.setattr(
+        bootstrap.bridge,
+        "local_git_status",
+        lambda *_args: {
+            "available": True,
+            "dirty": False,
+            "branch": expected.branch,
+            "head": expected.head,
+        },
+    )
+    monkeypatch.setattr(
+        bootstrap.bridge, "remote_repo_head", lambda *_args: "b" * 40
+    )
+
+    with pytest.raises(bootstrap.bridge.BridgeError, match="authoritative HEAD"):
+        bootstrap.bridge.push_inputs_action(
+            {"warnings": []},
+            config,
+            tmp_path,
+            object(),  # type: ignore[arg-type]
+            verify_after=True,
+            expected_branch=expected.branch,
+            expected_head=expected.head,
+        )
+
+
+def test_standalone_push_inputs_still_requires_config_branch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = replace(remote_config(), branch=None)
+    monkeypatch.setattr(bootstrap.bridge, "require_transfer_platform", lambda: None)
+    monkeypatch.setattr(bootstrap.bridge, "require_tool", lambda _name: None)
+
+    with pytest.raises(bootstrap.bridge.BridgeError, match="branch is not configured"):
+        bootstrap.bridge.push_inputs_action(
+            {"warnings": []},
+            config,
+            tmp_path,
+            NoRemoteRunner(),  # type: ignore[arg-type]
+            verify_after=True,
+        )
+
+
 def test_dry_run_plans_without_remote_or_mutating_operations(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

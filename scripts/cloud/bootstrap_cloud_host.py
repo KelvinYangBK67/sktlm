@@ -602,6 +602,7 @@ def _push_inputs(
     repo_root: Path,
     config: Any,
     runner: Any,
+    release: LocalRelease,
 ) -> None:
     input_stage: dict[str, Any] = {
         "name": "inputs",
@@ -621,6 +622,8 @@ def _push_inputs(
             repo_root,
             runner,
             verify_after=True,
+            expected_branch=release.branch,
+            expected_head=release.head,
         ),
     )
     receipt["input_receipt"] = str(path.relative_to(repo_root))
@@ -731,7 +734,7 @@ def bootstrap_host(
             "dependencies",
             build_dependencies_script(config, release.head),
         )
-        _push_inputs(receipt, repo_root, config, runner)
+        _push_inputs(receipt, repo_root, config, runner, release)
         final = _run_remote_stage(
             receipt,
             config,
@@ -834,7 +837,7 @@ def main(argv: Sequence[str] | None = None, *, runner: Any | None = None) -> int
                 "finished_at": bridge.utc_now(),
                 "host_profile": args.host_profile,
                 "machine_id": config.machine_id,
-                "branch": config.branch,
+                "branch": None,
                 "exact_head": None,
                 "data_device": args.data_device,
                 "data_mount": config.remote_data_mount,

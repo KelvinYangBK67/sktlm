@@ -3047,3 +3047,27 @@ LONG_VALIDATION_RUN=NO
 FULL_M0_AUTHORIZED=NO
 NEXT_ACTION=RESEARCHER_RERUN_GENERIC_BOOTSTRAP_WITHOUT_CONFIG_BRANCH
 ```
+
+## Generic bootstrap input branch decoupling - 2026-09-13
+
+A second researcher-run bootstrap without `BridgeConfig.branch` passed bundle
+deployment and then exposed the same hidden config dependency in generic
+frozen-input transfer. Bootstrap now passes its validated `LocalRelease`
+branch and exact HEAD explicitly into that action. The action rechecks clean
+local state, exact local branch/HEAD, exact remote HEAD, and frozen-input
+validation. Its standalone form still requires `BridgeConfig.branch`.
+
+Static tracing of the complete generic path found no remaining config-branch
+read, bind, or requirement from preflight through final validation. A mocked
+full orchestration regression crosses deploy, dependencies, inputs, and final
+validation to `READY` with config branch absent or conflicting.
+
+```text
+BOOTSTRAP_BRANCH_DECOUPLING=PASS_LOCAL
+GENERIC_BOOTSTRAP_CONFIG_BRANCH_DEPENDENCIES=0
+SCIENTIFIC_SEMANTICS_CHANGED=NO
+REMOTE_OPERATIONS_RUN_BY_CODEX=NO
+LONG_VALIDATION_RUN=NO
+FULL_M0_AUTHORIZED=NO
+NEXT_ACTION=RESEARCHER_RERUN_GENERIC_BOOTSTRAP_WITHOUT_CONFIG_BRANCH
+```
