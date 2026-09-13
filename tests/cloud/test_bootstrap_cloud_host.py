@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import subprocess
 import sys
+from contextlib import redirect_stdout
+from dataclasses import replace
 from pathlib import Path
 from typing import Sequence
 
@@ -186,6 +189,144 @@ def test_ready_python_dependencies_and_links_are_reused() -> None:
     assert "dependencies=REUSED" in dependency_script
     assert bootstrap.CPU_TORCH_INDEX in dependency_script
     assert "/opt/python-3.11.9/bin/python3.11" in dependency_script
+
+
+def test_python_partial_install_repair_is_exact_and_bounded() -> None:
+    script = bootstrap.build_python_script()
+    assert "python_state=REPAIRED" in script
+    assert 'if [ "$prefix" != /opt/python-3.11.9 ]; then exit 40; fi' in script
+    assert 'rm -rf -- "$prefix"' in script
+    assert "! -name bin ! -name include ! -name lib ! -name share" in script
+    assert "Python prefix is an unknown conflict" in script
+    assert "printf 'python=%s" in script
+
+
+def test_partial_venv_repair_is_exact_and_invalidates_marker() -> None:
+    config = remote_config()
+    script = bootstrap.build_dependencies_script(config, "a" * 40)
+    exact_venv = "/mnt/sktlm-data/sktlm/venv-py311"
+    assert "venv_state=REPAIRED" in script
+    assert f'if [ "$venv" != {exact_venv} ]; then exit 61; fi' in script
+    assert 'rm -rf -- "$venv"' in script
+    assert 'rm -f -- "$marker" "$marker.tmp"' in script
+    assert "not a recognizable partial venv" in script
+    assert "unexpected base interpreter" in script
+    assert "printf 'venv=%s" in script
+
+
+class PublishedHeadRunner:
+    def __init__(self, stdout: str, returncode: int = 0) -> None:
+        self.stdout = stdout
+        self.returncode = returncode
+        self.calls: list[list[str]] = []
+
+    def run(
+        self, argv: Sequence[str], **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        self.calls.append(list(argv))
+        return subprocess.CompletedProcess(
+            list(argv), self.returncode, stdout=self.stdout, stderr=""
+        )
+
+
+def test_release_derives_published_branch_when_config_branch_is_none(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    branch = "exp/local-release"
+    head = "b" * 40
+    config = replace(remote_config(), branch=None)
+    runner = PublishedHeadRunner(f"{head}\trefs/heads/{branch}\n")
+    monkeypatch.setattr(bootstrap.bridge, "require_tool", lambda _name: None)
+    monkeypatch.setattr(
+        bootstrap.bridge,
+        "local_git_status",
+        lambda *_args: {
+            "available": True,
+            "dirty": False,
+            "branch": branch,
+            "head": head,
+        },
+    )
+
+    actual = bootstrap.validate_local_release(tmp_path, config, runner)
+
+    assert actual == bootstrap.LocalRelease(branch=branch, head=head)
+    assert runner.calls == [
+        [
+            "git",
+            "ls-remote",
+            "--heads",
+            config.repository_url,
+            f"refs/heads/{branch}",
+        ]
+    ]
+    assert bootstrap._bootstrap_contract(config, actual.branch).branch == branch
+
+
+def test_release_rejects_detached_head(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(bootstrap.bridge, "require_tool", lambda _name: None)
+    monkeypatch.setattr(
+        bootstrap.bridge,
+        "local_git_status",
+        lambda *_args: {
+            "available": True,
+            "dirty": False,
+            "branch": "",
+            "head": "b" * 40,
+        },
+    )
+    with pytest.raises(bootstrap.BootstrapError, match="detached"):
+        bootstrap.validate_local_release(
+            tmp_path, replace(remote_config(), branch=None), NoRemoteRunner()
+        )
+
+
+@pytest.mark.parametrize(
+    ("remote_stdout", "returncode"),
+    (("", 0), (f"{'c' * 40}\trefs/heads/exp/local-release\n", 0), ("", 2)),
+)
+def test_release_rejects_unpublished_or_mismatched_head(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    remote_stdout: str,
+    returncode: int,
+) -> None:
+    monkeypatch.setattr(bootstrap.bridge, "require_tool", lambda _name: None)
+    monkeypatch.setattr(
+        bootstrap.bridge,
+        "local_git_status",
+        lambda *_args: {
+            "available": True,
+            "dirty": False,
+            "branch": "exp/local-release",
+            "head": "b" * 40,
+        },
+    )
+    with pytest.raises(bootstrap.BootstrapError, match="published branch HEAD"):
+        bootstrap.validate_local_release(
+            tmp_path,
+            replace(remote_config(), branch=None),
+            PublishedHeadRunner(remote_stdout, returncode),
+        )
+
+
+def test_failed_data_disk_summary_is_not_unknown(tmp_path: Path) -> None:
+    receipt = {
+        "host_profile": "core-10",
+        "exact_head": "a" * 40,
+        "status": "FAILED",
+        "failed_stage": "data_disk",
+        "stages": [{"name": "data_disk", "status": "FAILED", "result": {}}],
+    }
+    output = io.StringIO()
+    with redirect_stdout(output):
+        bootstrap._print_summary(receipt, tmp_path / "receipt.json")
+    assert "DATA_DISK=FAILED" in output.getvalue()
+    assert "UNKNOWN" not in output.getvalue()
 
 
 def test_exact_remote_head_reuses_repository_without_deployment(

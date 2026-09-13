@@ -255,18 +255,35 @@ printf 'data_mount=%s\n' "$target"
 def build_python_script() -> str:
     return f"""# sktlm-bootstrap-stage:python
 set -eu
+prefix={shlex.quote(PYTHON_PREFIX)}
 python_bin={shlex.quote(PYTHON_BIN)}
 expected={shlex.quote(PYTHON_VERSION)}
+python_state=INSTALLED
 if [ -x "$python_bin" ]; then
-  actual=$("$python_bin" -c 'import platform; print(platform.python_version())')
-  if [ "$actual" != "$expected" ]; then
-    printf 'existing production Python has wrong version: %s\n' "$actual" >&2
+  if actual=$("$python_bin" -c 'import platform; print(platform.python_version())' 2>/dev/null) \
+     && [ "$actual" = "$expected" ] \
+     && "$python_bin" -c 'import _posixsubprocess, subprocess' >/dev/null 2>&1; then
+    printf 'python=REUSED\n'
+    printf 'python_version=%s\n' "$actual"
+    exit 0
+  fi
+  python_state=REPAIRED
+elif [ -e "$prefix" ] || [ -L "$prefix" ]; then
+  if [ -L "$prefix" ] || [ ! -d "$prefix" ]; then
+    printf 'production Python prefix is an unknown conflict\n' >&2
     exit 40
   fi
-  "$python_bin" -c 'import _posixsubprocess, subprocess'
-  printf 'python=REUSED\n'
-  printf 'python_version=%s\n' "$actual"
-  exit 0
+  unknown=$(find "$prefix" -mindepth 1 -maxdepth 1 \
+    ! -name bin ! -name include ! -name lib ! -name share -print -quit)
+  if [ -n "$unknown" ]; then
+    printf 'production Python prefix is not a recognizable partial install: %s\n' "$unknown" >&2
+    exit 40
+  fi
+  python_state=REPAIRED
+fi
+if [ "$python_state" = REPAIRED ]; then
+  if [ "$prefix" != {shlex.quote(PYTHON_PREFIX)} ]; then exit 40; fi
+  rm -rf -- "$prefix"
 fi
 
 build_dir=$(mktemp -d /tmp/sktlm-python-{PYTHON_VERSION}.XXXXXX)
@@ -287,7 +304,7 @@ if [ "$actual" != "$expected" ]; then
   exit 41
 fi
 "$python_bin" -c 'import _posixsubprocess, subprocess'
-printf 'python=INSTALLED\n'
+printf 'python=%s\n' "$python_state"
 printf 'python_version=%s\n' "$actual"
 """.strip()
 
@@ -374,15 +391,40 @@ venv={shlex.quote(venv)}
 marker={shlex.quote(marker)}
 expected_head={shlex.quote(expected_head)}
 python_bin={shlex.quote(PYTHON_BIN)}
+venv_state=REUSED
 if [ "$(git -C "$repo" rev-parse HEAD)" != "$expected_head" ]; then
   printf 'dependency install repo HEAD mismatch\n' >&2
   exit 60
 fi
-if [ ! -x "$venv/bin/python" ]; then
-  if [ ! -d "$venv" ] || [ -n "$(find "$venv" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
-    printf 'existing venv path is invalid\n' >&2
+if [ -L "$venv" ] || {{ [ -e "$venv" ] && [ ! -d "$venv" ]; }}; then
+  printf 'existing venv path is an unknown conflict\n' >&2
+  exit 61
+fi
+if [ -x "$venv/bin/python" ]; then
+  if base=$("$venv/bin/python" -c 'import os,sys; print(os.path.realpath(sys._base_executable))' 2>/dev/null); then
+    if [ "$base" != "$(readlink -f "$python_bin")" ]; then
+      printf 'venv uses an unexpected base interpreter: %s\n' "$base" >&2
+      exit 62
+    fi
+  else
+    venv_state=REPAIRED
+  fi
+elif [ -d "$venv" ]; then
+  unknown=$(find "$venv" -mindepth 1 -maxdepth 1 \
+    ! -name bin ! -name include ! -name lib ! -name lib64 \
+    ! -name pyvenv.cfg ! -name share -print -quit)
+  if [ -n "$unknown" ]; then
+    printf 'existing venv path is not a recognizable partial venv: %s\n' "$unknown" >&2
     exit 61
   fi
+  venv_state=REPAIRED
+else
+  venv_state=INSTALLED
+fi
+if [ "$venv_state" != REUSED ]; then
+  if [ "$venv" != {shlex.quote(venv)} ]; then exit 61; fi
+  rm -rf -- "$venv"
+  rm -f -- "$marker" "$marker.tmp"
   "$python_bin" -m venv "$venv"
 fi
 base=$("$venv/bin/python" -c 'import os,sys; print(os.path.realpath(sys._base_executable))')
@@ -393,6 +435,7 @@ fi
 pyproject_sha=$(sha256sum "$repo/pyproject.toml" | awk '{{print $1}}')
 wanted=$(printf 'head=%s\npyproject_sha256=%s\npython=%s\n' "$expected_head" "$pyproject_sha" {shlex.quote(PYTHON_VERSION)})
 if [ -f "$marker" ] && [ "$(cat "$marker")" = "$wanted" ] && "$venv/bin/python" -m pip check >/dev/null 2>&1; then
+  printf 'venv=%s\n' "$venv_state"
   printf 'dependencies=REUSED\n'
   exit 0
 fi
@@ -403,6 +446,7 @@ export PIP_CACHE_DIR={shlex.quote(posixpath.join(cloud, 'pip-cache'))}
 "$venv/bin/python" -m pip check
 printf '%s' "$wanted" > "$marker.tmp"
 mv -- "$marker.tmp" "$marker"
+printf 'venv=%s\n' "$venv_state"
 printf 'dependencies=INSTALLED\n'
 """.strip()
 
@@ -434,11 +478,11 @@ printf 'inputs=PASS\n'
 """.strip()
 
 
-def _bootstrap_contract(config: Any) -> ExperimentContract:
+def _bootstrap_contract(config: Any, branch: str) -> ExperimentContract:
     machine = config.machine_id or config.host_profile or "host"
     return ExperimentContract(
         contract_id=f"bootstrap-{machine}",
-        branch=bridge.require_branch(config),
+        branch=branch,
         deployment=Deployment(mode="git_bundle", require_published_head=True),
         input_sets=(),
         remote_run_root="artifacts",
@@ -457,13 +501,11 @@ def _bootstrap_contract(config: Any) -> ExperimentContract:
 def validate_local_release(repo_root: Path, config: Any, runner: Any) -> LocalRelease:
     bridge.require_tool("git")
     local = bridge.local_git_status(repo_root, runner)
-    branch = bridge.require_branch(config)
     if not local.get("available") or local.get("dirty"):
         raise BootstrapError("bootstrap requires a clean local Git checkout")
-    if local.get("branch") != branch:
-        raise BootstrapError(
-            f"local branch {local.get('branch')!r} does not match {branch!r}"
-        )
+    branch = str(local.get("branch") or "")
+    if not branch:
+        raise BootstrapError("bootstrap refuses a detached local HEAD")
     head = str(local.get("head"))
     if not re.fullmatch(r"[0-9a-f]{40}", head):
         raise BootstrapError("local HEAD is not a full SHA-1")
@@ -527,7 +569,7 @@ def _deploy_exact_head(
             deploy_stage["status"] = "FAILED"
             deploy_stage["finished_at"] = bridge.utc_now()
             raise BootstrapError("failed to create exact-HEAD Git bundle")
-        contract = _bootstrap_contract(config)
+        contract = _bootstrap_contract(config, release.branch)
         deployed, path, error = bridge.execute_receipted(
             "bootstrap-deploy-code",
             "local_to_remote",
@@ -728,21 +770,28 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _print_summary(receipt: Mapping[str, Any], receipt_path: Path) -> None:
+    stages = {stage["name"]: stage for stage in receipt["stages"]}
     results = {
         stage["name"]: stage.get("result", {}) for stage in receipt["stages"]
     }
+
+    def stage_value(name: str, key: str, fallback: str) -> str:
+        stage = stages.get(name, {})
+        value = results.get(name, {}).get(key)
+        if value is not None:
+            return str(value)
+        status = stage.get("status")
+        if status in {"FAILED", "PLANNED"}:
+            return str(status)
+        return fallback
+
     print(f"HOST_PROFILE={receipt.get('host_profile')}")
-    print(f"SSH={results.get('ssh', {}).get('ssh', 'PLANNED')}")
-    print(
-        "DATA_DISK="
-        + results.get("data_disk", {}).get(
-            "data_disk", "PLANNED" if receipt.get("status") == "PLANNED" else "UNKNOWN"
-        )
-    )
+    print(f"SSH={stage_value('ssh', 'ssh', 'NOT_RUN')}")
+    print(f"DATA_DISK={stage_value('data_disk', 'data_disk', 'NOT_RUN')}")
     print(f"PYTHON={results.get('python', {}).get('python_version', PYTHON_VERSION)}")
     print(f"REPO_HEAD={receipt.get('exact_head')}")
-    print(f"VENV={results.get('final_validation', {}).get('venv', 'PLANNED')}")
-    print(f"INPUTS={results.get('final_validation', {}).get('inputs', 'PLANNED')}")
+    print(f"VENV={stage_value('final_validation', 'venv', 'NOT_RUN')}")
+    print(f"INPUTS={stage_value('final_validation', 'inputs', 'NOT_RUN')}")
     print(
         "REMOTE_VALIDATION="
         + ("PASS" if receipt.get("status") == "READY" else str(receipt.get("status")))
