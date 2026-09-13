@@ -108,7 +108,7 @@ FULL_EXECUTION_BUNDLE_SPECS = {
             "full_m0_devanagari_surface_word_tp279047"
         ),
         "execution_bundle_plan_sha256": (
-            "c696c95c29c19166e81887e0372078000ce3cce6289b74556d2527709eaf90e3"
+            "b4d2d5ecc4419016207d7887c804966db65423b37d6ac6b481d93f2d3eb198bb"
         ),
         "script": "devanagari",
         "condition": "surface_word",
@@ -119,7 +119,7 @@ FULL_EXECUTION_BUNDLE_SPECS = {
             "full_m0_devanagari_legacy_joined_tp279047"
         ),
         "execution_bundle_plan_sha256": (
-            "2831e3a36fe903f8ab80f2c698f5efc05652dfbf7fa7fd368451a2f532d60ad5"
+            "aeb3bfa0b5d0d96965125f4e0d735708f4ccf44d4104a06f1df7002ce5a21063"
         ),
         "script": "devanagari",
         "condition": "legacy_joined",
@@ -182,8 +182,8 @@ FULL_HOST_ROLE_BY_CELL = {
     "s1m2_m0_iast_surface_word": "core-01",
     "s1m2_m0_iast_legacy_joined": "core-02",
     "s1m2_m0_prime_iast_continuous": "core-07",
-    "s1m2_m0_devanagari_surface_word": "core-04",
-    "s1m2_m0_devanagari_legacy_joined": "core-05",
+    "s1m2_m0_devanagari_surface_word": "core-09",
+    "s1m2_m0_devanagari_legacy_joined": "core-10",
     "s1m2_m0_devanagari_continuous": "core-08",
 }
 WORKER_CALIBRATION_DOCUMENTS = 72
