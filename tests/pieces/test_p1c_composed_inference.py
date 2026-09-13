@@ -721,7 +721,6 @@ def test_compact_structural_trie_matches_legacy_shared_oracle(surface: str) -> N
         graph,
         ComposedPieceInference(_production_scorer(), model_config=config),
     )
-
     def run(*, legacy: bool):
         return infer_composed_segment(
             graph,
@@ -810,6 +809,7 @@ def test_compact_route_does_not_materialize_forms_per_span(monkeypatch) -> None:
     monkeypatch.setattr(
         composed_module.ComposedPieceInference, "_legal_pieces", forbidden
     )
+    monkeypatch.setattr(composed_module, "_SharedPrefixNode", forbidden)
     result = infer_composed_segment(
         graph,
         ComposedPieceInference(

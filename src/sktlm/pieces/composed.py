@@ -1074,22 +1074,22 @@ class ComposedPieceInference:
     ) -> _CompactTokenSupport:
         """Build packed exact support directly from boundary-node geometry."""
 
-        nodes = [_SharedPrefixNode(parent=-1, symbol=None, depth=0)]
+        parents = array("i", [-1])
+        depths = array("I", [0])
+        node_symbols: list[Phoneme | None] = [None]
+        child_maps: list[dict[Phoneme, int]] = [{}]
 
-        def extend(parent: int, symbols: tuple[Phoneme, ...]) -> int:
+        def extend(parent: int, added_symbols: tuple[Phoneme, ...]) -> int:
             current = parent
-            for symbol in symbols:
-                child = nodes[current].children.get(symbol)
+            for symbol in added_symbols:
+                child = child_maps[current].get(symbol)
                 if child is None:
-                    child = len(nodes)
-                    nodes[current].children[symbol] = child
-                    nodes.append(
-                        _SharedPrefixNode(
-                            parent=current,
-                            symbol=symbol,
-                            depth=nodes[current].depth + 1,
-                        )
-                    )
+                    child = len(parents)
+                    child_maps[current][symbol] = child
+                    parents.append(current)
+                    depths.append(depths[current] + 1)
+                    node_symbols.append(symbol)
+                    child_maps.append({})
                 current = child
             return current
 
@@ -1124,7 +1124,7 @@ class ComposedPieceInference:
                 if gap_has_avagraha and not identity_edge:
                     continue
                 endpoint = extend(surface_node, right.left_underlying)
-                if nodes[endpoint].depth == 0:
+                if depths[endpoint] == 0:
                     continue
                 if not identity_edge and not (
                     surface_has_vowel
@@ -1140,24 +1140,25 @@ class ComposedPieceInference:
                 hypothesis_endpoints.append(endpoint_id)
             hypothesis_offsets.append(len(hypothesis_ends))
 
+        del child_maps
+
         max_piece_length = self.model_config.max_piece_length
         piece_ids: dict[tuple[Phoneme, ...], int] = {}
         pieces: list[tuple[Phoneme, ...]] = []
         offsets = array("I", [0])
         sources = array("I")
         transition_piece_ids = array("I")
-        for node_index in range(1, len(nodes)):
-            node = nodes[node_index]
+        for node_index in range(1, len(parents)):
             cursor = node_index
             suffix_reversed: list[Phoneme] = []
             descending: list[tuple[int, int]] = []
             for _piece_length in range(
-                1, min(node.depth, max_piece_length) + 1
+                1, min(depths[node_index], max_piece_length) + 1
             ):
-                symbol = nodes[cursor].symbol
+                symbol = node_symbols[cursor]
                 assert symbol is not None
                 suffix_reversed.append(symbol)
-                source = nodes[cursor].parent
+                source = parents[cursor]
                 piece_symbols = tuple(reversed(suffix_reversed))
                 piece_id = piece_ids.get(piece_symbols)
                 if piece_id is None:
@@ -1179,10 +1180,10 @@ class ComposedPieceInference:
         occurrence_root_nodes = array("I")
         occurrence_root_piece_ids = array("I")
         if occurrence_support:
-            first_child = array("i", [-1]) * len(nodes)
-            next_sibling = array("i", [-1]) * len(nodes)
-            for child in range(len(nodes) - 1, 0, -1):
-                parent = nodes[child].parent
+            first_child = array("i", [-1]) * len(parents)
+            next_sibling = array("i", [-1]) * len(parents)
+            for child in range(len(parents) - 1, 0, -1):
+                parent = parents[child]
                 next_sibling[child] = first_child[parent]
                 first_child[parent] = child
             active_piece_depth = array("I", [0]) * len(pieces)
@@ -1218,9 +1219,9 @@ class ComposedPieceInference:
 
         topology = _CompactSharedFormTopology(
             max_piece_length=max_piece_length,
-            parent=array("i", (node.parent for node in nodes)),
-            depth=array("I", (node.depth for node in nodes)),
-            symbols=tuple(node.symbol for node in nodes),
+            parent=parents,
+            depth=depths,
+            symbols=tuple(node_symbols),
             transition_offsets=offsets,
             transition_sources=sources,
             transition_piece_ids=transition_piece_ids,
