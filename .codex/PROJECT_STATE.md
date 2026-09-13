@@ -3073,8 +3073,11 @@ and pass-boundary-only placement. The selected existing end-to-end training
 fixtures are currently blocked before this code path by an unrelated baseline
 `IndexError` in composed fixed-prior lookup; no unrelated fix was attempted.
 
-Researcher-observed pre-change pressure was approximately 108 GiB for the
-current run directory, 106 GiB for `learner.sqlite`, and 2.03 GiB for the WAL.
+Researcher-observed pre-change pressure was approximately 208 GiB for the
+current run directory, 106 GiB for `learner.sqlite`, and 103 GiB for the WAL
+(SHM approximately 0.03 MiB). The approximately 295 GiB `/dev/vdb` filesystem
+was 100% used at approximately 281 GiB with no available space; historical
+attempts additionally occupied approximately 7.0 GiB and 66 GiB.
 No Full M0, representative, stress, RAM/runtime, VM, cloud, or other long
 validation ran, so the production disk target remains unvalidated.
 
@@ -3110,4 +3113,48 @@ REMOTE_OPERATIONS_RUN_BY_CODEX=NO
 LONG_VALIDATION_RUN=NO
 FULL_M0_AUTHORIZED=NO
 NEXT_ACTION=RESEARCHER_RERUN_GENERIC_BOOTSTRAP_WITHOUT_CONFIG_BRANCH
+```
+
+## Legacy S1M2 Pass 1 finalize-only recovery - 2026-09-13
+
+A narrow recovery path now permits a completed-document legacy v1 S1M2 Pass 1
+to cross the Round 4 v2 execution-plan boundary without reprocessing its
+documents. Admission requires the authoritative SQLite checkpoint, active
+Pass 1 and zero completed passes, exact document and active-metrics completion,
+non-empty active piece counts, lexical diagnostics, exact supported v1 schema
+and planner, a fully validated requested v2 plan, matching representation-set
+and segment-sequence identities, and the existing unchanged scientific config
+and provenance checks. Partial and mismatched states fail closed.
+
+The recovery path explicitly bypasses all worker-pool, bundle-dispatch, corpus
+iteration, candidate, and inference work. It derives the pass summary from the
+durable active metrics and counts, then uses the existing optimized in-place
+piece finalization and pass-boundary WAL truncation. Completed Pass 1 state,
+the current v2 checkpoint payload, and complete old/new migration provenance
+are committed in one authoritative SQLite transaction. An explicit
+`BEGIN IMMEDIATE` now ensures the finalize DDL participates in that transaction;
+a synthetic abort proved that piece tables and the v1 checkpoint both roll
+back together. External checkpoint JSON is synchronized only after commit.
+
+Focused validation passed 10 tests, including the real `run_training()` gate,
+zero work behavior, exact finalized piece state, current v2 Pass 2 admission,
+partial/wrong-pass rejection, representation and segment mismatch rejection,
+missing/empty authoritative state rejection, scientific config rejection, and
+atomic rollback. No core host, VM, remote, Full M0, corpus scan, long workload,
+or plan materialization beyond tiny synthetic fixtures was run.
+
+```text
+LEGACY_V1_FINALIZE_ONLY_RECOVERY=PASS_LOCAL
+V1_TO_V2_EXECUTION_PLAN_MIGRATION=PASS_LOCAL
+ATOMIC_PLAN_AND_PASS_TRANSITION=PASS_LOCAL
+COMPLETED_DOCUMENTS_REPROCESSED=0
+RECOVERY_WORKER_POOLS_STARTED=0
+RECOVERY_DOCUMENT_ITERATIONS=0
+CORE07_PASS1_RECOVERY_PATH=PASS_LOCAL
+CORE07_PASS1_RECOVERED=NO
+SCIENTIFIC_OUTPUT_IDENTITY=PASS_LOCAL_SQL_REFERENCE
+FULL_END_TO_END_IDENTITY_VALIDATED=NO
+FULL_M0_DISK_TARGET_VALIDATED=NO
+FULL_M0_AUTHORIZED=NO
+NEXT_ACTION=RESEARCHER_RUN_CORE07_PASS1_FINALIZE_ONLY_RECOVERY
 ```

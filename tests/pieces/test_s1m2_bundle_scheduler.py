@@ -4,6 +4,7 @@ import csv
 import hashlib
 import json
 import runpy
+import sqlite3
 from concurrent.futures import Future
 from dataclasses import asdict, replace
 from pathlib import Path
@@ -268,6 +269,115 @@ def _piece_state(run_dir: Path) -> tuple[tuple[str, float, int], ...]:
         )
     finally:
         store.close()
+
+
+def _legacy_v1_checkpoint(
+    plan: ExecutionBundlePlan,
+    *,
+    document_count: int,
+) -> dict[str, object]:
+    current = plan.checkpoint_payload()
+    return {
+        "completed_passes": 0,
+        "active_pass": 1,
+        "next_document_index": document_count,
+        "active_metrics": asdict(PassMetrics(documents=document_count, lines=7)),
+        "history": [],
+        "execution_bundle_plan": {
+            **current,
+            "schema_version": training.LEGACY_EXECUTION_BUNDLE_PLAN_SCHEMA,
+            "planner_implementation": training.LEGACY_EXECUTION_BUNDLE_PLANNER,
+            "plan_sha256": "1" * 64,
+            "materialization_sha256": "2" * 64,
+            "scan_signature_sha256": "3" * 64,
+        },
+    }
+
+
+def _legacy_finalize_fixture(
+    tmp_path: Path,
+) -> tuple[
+    TrainingConfig,
+    tuple[CorpusDocument, ...],
+    ExecutionBundlePlan,
+    LexiconStore,
+    Path,
+    dict[str, object],
+]:
+    manifest, documents = _fixture(tmp_path)
+    plan_root = _write_plan(
+        tmp_path,
+        name="legacy-finalize-v2",
+        manifest=manifest,
+        documents=documents,
+        segments_per_bundle=1,
+    )
+    config = replace(
+        _config(
+            tmp_path,
+            manifest,
+            "legacy-finalize",
+            plan=plan_root,
+            resume=True,
+        ),
+        passes=3,
+    )
+    plan = load_execution_bundle_plan(
+        plan_root,
+        repo_root=Path("."),
+        manifest=manifest,
+        documents=documents,
+        script=config.script,
+        condition=config.condition,
+        max_segment_tokens=config.max_segment_tokens,
+        max_lines_per_document=config.max_lines_per_document,
+    )
+    run_dir = config.output_root / config.run_id
+    run_dir.mkdir(parents=True)
+    store = LexiconStore(run_dir / "learner.sqlite")
+    checkpoint = _legacy_v1_checkpoint(plan, document_count=len(documents))
+    signature = training._config_signature(config)
+    store.set_metadata("config_signature", signature)
+    store.begin_piece_count_pass(resume=False, checkpoint=checkpoint)
+    with store.connection:
+        store.connection.executemany(
+            "INSERT INTO piece_counts_next VALUES (?, ?, ?)",
+            (
+                ("V_A", 3.0, 1),
+                ("V_A.V_A", 2.0, 1),
+                ("V_A.C_K", 4.0, 2),
+            ),
+        )
+        store.connection.execute(
+            "INSERT INTO lexical_diagnostics_next VALUES (?, ?)",
+            ("V_A", 3.0),
+        )
+    training._save_checkpoint(run_dir, checkpoint)
+    training._write_json(run_dir / "config.json", config.payload())
+    rules_path = Path("data/rules/external_sandhi.tsv")
+    grammar = training.StructuredSandhiGrammar.from_default_inventory()
+    training._write_json(
+        run_dir / "provenance.json",
+        {
+            "implementation": S1M2_MODEL,
+            "freeze_id": EXPECTED_FREEZE_ID,
+            "manifest_sha256": training._file_sha256(manifest),
+            "rules_sha256": training._file_sha256(rules_path),
+            "external_rule_count": len(grammar.rules),
+            "script": config.script,
+            "condition": config.condition,
+            "document_count": len(documents),
+            "document_list_sha256": None,
+            "config_signature": signature,
+            "seed": config.seed,
+            "training_execution_bundle_plan": {
+                **checkpoint["execution_bundle_plan"],
+                "plan_root": plan.root.as_posix(),
+                "bundle_count": len(plan.bundles),
+            },
+        },
+    )
+    return config, documents, plan, store, run_dir, checkpoint
 
 
 def test_planner_uses_training_segment_identity_and_plan_is_complete(
@@ -844,3 +954,319 @@ def test_bundle_resume_reuses_ready_shards_and_rejects_plan_change(
     assert any(document_index == 1 for document_index, _ in resumed_bundle_keys)
     assert reference.history == resumed.history
     assert _piece_state(reference.run_dir) == _piece_state(resumed.run_dir)
+
+
+def test_legacy_v1_complete_pass_finalizes_without_corpus_or_workers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, documents, plan, store, run_dir, checkpoint = _legacy_finalize_fixture(
+        tmp_path
+    )
+    calls = {"worker_pools": 0, "document_iterations": 0, "bundles": 0}
+
+    def forbidden_pool(*args: object, **kwargs: object) -> PassMetrics:
+        calls["worker_pools"] += 1
+        raise AssertionError("finalize-only recovery created a worker pool")
+
+    def forbidden_iteration(*args: object, **kwargs: object) -> object:
+        calls["document_iterations"] += 1
+        raise AssertionError("finalize-only recovery iterated a document")
+
+    monkeypatch.setattr(training, "_parallel_training_documents", forbidden_pool)
+    monkeypatch.setattr(training, "_parallel_training_bundles", forbidden_pool)
+    monkeypatch.setattr(training, "_profiled_document_segments", forbidden_iteration)
+    try:
+        migration = training._prepare_legacy_v1_finalize_only_migration(
+            config=config,
+            continuing=True,
+            checkpoint=checkpoint,
+            database_checkpoint=store.load_training_checkpoint(),
+            documents=documents,
+            store=store,
+            execution_plan=plan,
+        )
+        assert migration is not None
+        training._training_pass(
+            pass_index=1,
+            documents=documents,
+            grammar=training.StructuredSandhiGrammar.from_default_inventory(),
+            store=store,
+            config=config,
+            run_dir=run_dir,
+            checkpoint=checkpoint,
+            telemetry=store.telemetry,
+            execution_plan=plan,
+            legacy_finalize_only_migration=migration,
+        )
+        assert calls == {
+            "worker_pools": 0,
+            "document_iterations": 0,
+            "bundles": 0,
+        }
+        assert tuple(
+            store.connection.execute(
+                "SELECT form_key, expected_count, occurrence_support "
+                "FROM piece_lexicon ORDER BY form_key"
+            )
+        ) == (("V_A", 3.0, 1), ("V_A.C_K", 4.0, 2))
+        authoritative = store.load_training_checkpoint()
+        assert authoritative is not None
+        assert authoritative["completed_passes"] == 1
+        assert authoritative["active_pass"] is None
+        assert authoritative["next_document_index"] == 0
+        assert authoritative["active_metrics"] is None
+        assert authoritative["execution_bundle_plan"] == plan.checkpoint_payload()
+        migration_record = authoritative["execution_plan_migrations"][-1]
+        assert migration_record["reason"] == training.LEGACY_FINALIZE_ONLY_REASON
+        assert migration_record["old_plan_sha256"] == "1" * 64
+        assert migration_record["from_execution_bundle_plan"][
+            "schema_version"
+        ] == training.LEGACY_EXECUTION_BUNDLE_PLAN_SCHEMA
+        assert store.telemetry.counters["legacy_finalize_only_recoveries"] == 1
+        assert store.telemetry.counters[
+            "sqlite_pass_boundary_wal_checkpoints"
+        ] == 1
+
+        assert (
+            training._prepare_legacy_v1_finalize_only_migration(
+                config=config,
+                continuing=True,
+                checkpoint=authoritative,
+                database_checkpoint=authoritative,
+                documents=documents,
+                store=store,
+                execution_plan=plan,
+            )
+            is None
+        )
+        assert authoritative["execution_bundle_plan"] == plan.checkpoint_payload()
+    finally:
+        store.close()
+
+
+def test_legacy_v1_run_training_recovers_then_admits_normal_v2_pass2(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, _documents, plan, store, run_dir, _checkpoint = (
+        _legacy_finalize_fixture(tmp_path)
+    )
+    store.close()
+    worker_pools = 0
+    document_iterations = 0
+
+    def forbidden_pool(*args: object, **kwargs: object) -> PassMetrics:
+        nonlocal worker_pools
+        worker_pools += 1
+        raise AssertionError("finalize-only recovery created a worker pool")
+
+    def forbidden_iteration(*args: object, **kwargs: object) -> object:
+        nonlocal document_iterations
+        document_iterations += 1
+        raise AssertionError("finalize-only recovery iterated a document")
+
+    monkeypatch.setattr(training, "_parallel_training_documents", forbidden_pool)
+    monkeypatch.setattr(training, "_parallel_training_bundles", forbidden_pool)
+    monkeypatch.setattr(training, "_profiled_document_segments", forbidden_iteration)
+    recovered = run_training(config, repo_root=Path("."), next_pass_only=True)
+    assert recovered.history[-1]["pass"] == 1
+    assert worker_pools == 0
+    assert document_iterations == 0
+
+    pass2_calls = 0
+
+    def admit_pass2(**kwargs: object) -> dict[str, object]:
+        nonlocal pass2_calls
+        pass2_calls += 1
+        assert kwargs["pass_index"] == 2
+        assert kwargs["execution_plan"] == plan
+        assert kwargs["legacy_finalize_only_migration"] is None
+        return {}
+
+    monkeypatch.setattr(training, "_training_pass", admit_pass2)
+    run_training(config, repo_root=Path("."), next_pass_only=True)
+    assert pass2_calls == 1
+    authoritative = LexiconStore(run_dir / "learner.sqlite")
+    try:
+        checkpoint = authoritative.load_training_checkpoint()
+        assert checkpoint is not None
+        assert checkpoint["execution_bundle_plan"] == plan.checkpoint_payload()
+    finally:
+        authoritative.close()
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    (
+        ("next_document_index", 1, "every document"),
+        ("active_pass", 2, "active Pass 1"),
+        ("completed_passes", 1, "only Pass 1"),
+    ),
+)
+def test_legacy_v1_incomplete_or_wrong_pass_fails_closed(
+    tmp_path: Path,
+    field: str,
+    value: int,
+    message: str,
+) -> None:
+    config, documents, plan, store, _run_dir, checkpoint = _legacy_finalize_fixture(
+        tmp_path
+    )
+    checkpoint[field] = value
+    try:
+        with pytest.raises(RuntimeError, match=message):
+            training._prepare_legacy_v1_finalize_only_migration(
+                config=config,
+                continuing=True,
+                checkpoint=checkpoint,
+                database_checkpoint=checkpoint,
+                documents=documents,
+                store=store,
+                execution_plan=plan,
+            )
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize(
+    ("identity", "message"),
+    (
+        ("representation_set_sha256", "representation identity"),
+        ("segment_sequence_sha256", "segment sequence"),
+    ),
+)
+def test_legacy_v1_scientific_corpus_identity_mismatch_fails_closed(
+    tmp_path: Path,
+    identity: str,
+    message: str,
+) -> None:
+    config, documents, plan, store, _run_dir, checkpoint = _legacy_finalize_fixture(
+        tmp_path
+    )
+    checkpoint["execution_bundle_plan"][identity] = "f" * 64
+    try:
+        with pytest.raises(RuntimeError, match=message):
+            training._prepare_legacy_v1_finalize_only_migration(
+                config=config,
+                continuing=True,
+                checkpoint=checkpoint,
+                database_checkpoint=checkpoint,
+                documents=documents,
+                store=store,
+                execution_plan=plan,
+            )
+    finally:
+        store.close()
+
+
+def test_legacy_v1_missing_authoritative_or_piece_state_fails_closed(
+    tmp_path: Path,
+) -> None:
+    config, documents, plan, store, _run_dir, checkpoint = _legacy_finalize_fixture(
+        tmp_path
+    )
+    try:
+        with pytest.raises(RuntimeError, match="authoritative SQLite checkpoint"):
+            training._prepare_legacy_v1_finalize_only_migration(
+                config=config,
+                continuing=True,
+                checkpoint=checkpoint,
+                database_checkpoint=None,
+                documents=documents,
+                store=store,
+                execution_plan=plan,
+            )
+        with store.connection:
+            store.connection.execute("DELETE FROM piece_counts_next")
+        with pytest.raises(RuntimeError, match="non-empty piece_counts_next"):
+            training._prepare_legacy_v1_finalize_only_migration(
+                config=config,
+                continuing=True,
+                checkpoint=checkpoint,
+                database_checkpoint=checkpoint,
+                documents=documents,
+                store=store,
+                execution_plan=plan,
+            )
+        with store.connection:
+            store.connection.execute(
+                "INSERT INTO piece_counts_next VALUES (?, ?, ?)",
+                ("V_A", 1.0, 1),
+            )
+            store.connection.execute("DROP TABLE lexical_diagnostics_next")
+        with pytest.raises(RuntimeError, match="lexical_diagnostics_next"):
+            training._prepare_legacy_v1_finalize_only_migration(
+                config=config,
+                continuing=True,
+                checkpoint=checkpoint,
+                database_checkpoint=checkpoint,
+                documents=documents,
+                store=store,
+                execution_plan=plan,
+            )
+    finally:
+        store.close()
+
+
+def test_legacy_v1_plan_migration_rolls_back_with_piece_finalize(
+    tmp_path: Path,
+) -> None:
+    config, documents, plan, store, run_dir, checkpoint = _legacy_finalize_fixture(
+        tmp_path
+    )
+    original = json.loads(json.dumps(checkpoint))
+    with store.connection:
+        store.connection.execute(
+            "CREATE TRIGGER fail_legacy_finalize BEFORE DELETE ON piece_counts_next "
+            "BEGIN SELECT RAISE(ABORT, 'synthetic finalize failure'); END"
+        )
+    try:
+        migration = training._prepare_legacy_v1_finalize_only_migration(
+            config=config,
+            continuing=True,
+            checkpoint=checkpoint,
+            database_checkpoint=store.load_training_checkpoint(),
+            documents=documents,
+            store=store,
+            execution_plan=plan,
+        )
+        assert migration is not None
+        with pytest.raises(sqlite3.IntegrityError, match="synthetic finalize failure"):
+            training._training_pass(
+                pass_index=1,
+                documents=documents,
+                grammar=training.StructuredSandhiGrammar.from_default_inventory(),
+                store=store,
+                config=config,
+                run_dir=run_dir,
+                checkpoint=checkpoint,
+                telemetry=store.telemetry,
+                execution_plan=plan,
+                legacy_finalize_only_migration=migration,
+            )
+        assert store.load_training_checkpoint() == original
+        assert json.loads((run_dir / "checkpoint.json").read_text("utf-8")) == original
+        assert store.has_table("piece_counts_next")
+        assert not store.has_table("piece_lexicon")
+    finally:
+        store.close()
+
+
+def test_legacy_v1_recovery_keeps_scientific_config_fail_closed(
+    tmp_path: Path,
+) -> None:
+    manifest, _documents = _fixture(tmp_path)
+    config = replace(
+        _config(tmp_path, manifest, "bad-scientific-config", resume=True),
+        passes=3,
+    )
+    run_dir = config.output_root / config.run_id
+    run_dir.mkdir(parents=True)
+    store = LexiconStore(run_dir / "learner.sqlite")
+    try:
+        store.set_metadata("config_signature", "not-the-requested-signature")
+    finally:
+        store.close()
+    with pytest.raises(ValueError, match="Checkpoint config"):
+        run_training(config, repo_root=Path("."), next_pass_only=True)

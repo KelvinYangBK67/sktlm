@@ -480,6 +480,7 @@ class LexiconStore:
         all_piece_types = int(row[0])
         if all_piece_types == 0 or float(row[1]) <= 0.0:
             raise ValueError("Piece count pass produced an empty inventory.")
+        self.connection.execute("BEGIN IMMEDIATE")
         with self.connection:
             self.connection.execute("DROP TABLE IF EXISTS piece_inventory")
             self.connection.execute(
@@ -499,6 +500,8 @@ class LexiconStore:
                 "FROM piece_lexicon"
             ).fetchone()
             assert active is not None
+            if int(active[0]) == 0 or float(active[1]) <= 0.0:
+                raise ValueError("Piece activation produced an empty active state.")
             checkpoint["history"][-1].update(
                 {
                     "piece_types": all_piece_types,
@@ -516,8 +519,6 @@ class LexiconStore:
             "sqlite_pass_diagnostic_tables_retired",
             retired,
         )
-        if int(active[0]) == 0 or float(active[1]) <= 0.0:
-            raise ValueError("Piece activation produced an empty active state.")
         return all_piece_types, int(active[0]), float(active[1])
 
     def piece_scorer(

@@ -30,6 +30,8 @@ from sktlm.latent.candidates import (
 )
 from sktlm.latent.frontend import ObservedSegment, iter_observed_segments
 from sktlm.latent.execution_bundles import (
+    PLAN_SCHEMA,
+    PLANNER_IMPLEMENTATION,
     ExecutionBundle,
     ExecutionBundlePlan,
     load_execution_bundle_plan,
@@ -77,6 +79,11 @@ from sktlm.pieces.topology_archive import (
     TopologyArchiveWriter,
     archive_header,
 )
+
+
+LEGACY_EXECUTION_BUNDLE_PLAN_SCHEMA = "sktlm-s1m2-execution-bundle-plan/v1"
+LEGACY_EXECUTION_BUNDLE_PLANNER = "sktlm-s1m2-execution-bundle-planner/v1"
+LEGACY_FINALIZE_ONLY_REASON = "round4_finalize_only_legacy_v1_resume"
 
 
 EXPECTED_FREEZE_ID = "9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40"
@@ -2715,16 +2722,25 @@ def _training_pass(
     checkpoint: dict[str, Any],
     telemetry: RuntimeTelemetry,
     execution_plan: ExecutionBundlePlan | None = None,
+    legacy_finalize_only_migration: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     resuming = checkpoint.get("active_pass") == pass_index
     start_document = int(checkpoint.get("next_document_index", 0)) if resuming else 0
     metrics = _metrics_from_mapping(checkpoint.get("active_metrics") if resuming else None)
+    finalize_only_resume = legacy_finalize_only_migration is not None
+    if finalize_only_resume and (
+        pass_index != 1
+        or not resuming
+        or start_document != len(documents)
+        or config.model != S1M2_MODEL
+    ):
+        raise RuntimeError("Invalid legacy finalize-only pass state.")
     vocabulary = store.load_frozen_vocabulary()
     if config.vocab_budget is not None and pass_index > 1 and vocabulary is None:
         raise RuntimeError("Pass 2+ requires the frozen pass-1 vocabulary.")
     scorer = None
     piece_engine = None
-    if config.workers == 1:
+    if config.workers == 1 and not finalize_only_resume:
         if config.model == S1M1_MODEL:
             scorer = (
                 NeutralFormScorer()
@@ -2755,20 +2771,23 @@ def _training_pass(
                 model_config=config.piece_model_config,
                 cache_config=config.piece_cache_config,
             )
-    checkpoint.update(
-        {
-            "active_pass": pass_index,
-            "next_document_index": start_document,
-            "active_metrics": asdict(metrics),
-        }
-    )
-    if config.model == S1M1_MODEL:
-        store.begin_count_pass(resume=resuming, checkpoint=checkpoint)
+    if not finalize_only_resume:
+        checkpoint.update(
+            {
+                "active_pass": pass_index,
+                "next_document_index": start_document,
+                "active_metrics": asdict(metrics),
+            }
+        )
+        if config.model == S1M1_MODEL:
+            store.begin_count_pass(resume=resuming, checkpoint=checkpoint)
+        else:
+            store.begin_piece_count_pass(resume=resuming, checkpoint=checkpoint)
+        _timed_checkpoint(run_dir, checkpoint, telemetry)
     else:
-        store.begin_piece_count_pass(resume=resuming, checkpoint=checkpoint)
-    _timed_checkpoint(run_dir, checkpoint, telemetry)
+        telemetry.increment("legacy_finalize_only_recoveries")
 
-    if config.workers > 1:
+    if config.workers > 1 and not finalize_only_resume:
         if execution_plan is None:
             metrics = _parallel_training_documents(
                 pass_index=pass_index,
@@ -2799,7 +2818,10 @@ def _training_pass(
             )
         start_document = len(documents)
 
-    for document_index in range(start_document, len(documents)):
+    document_indices: Iterable[int] = (
+        () if finalize_only_resume else range(start_document, len(documents))
+    )
+    for document_index in document_indices:
         document = documents[document_index]
         counts: Counter[PhonologicalForm] = Counter()
         piece_counts: Counter[PhonologicalForm] = Counter()
@@ -3032,6 +3054,17 @@ def _training_pass(
     else:
         summary["piece_types"] = vocabulary_size
         summary["piece_count_total"] = total_count
+    if legacy_finalize_only_migration is not None:
+        migrations = checkpoint.get("execution_plan_migrations", [])
+        if not isinstance(migrations, list):
+            raise RuntimeError("Execution-plan migration provenance is malformed.")
+        checkpoint["execution_plan_migrations"] = [
+            *migrations,
+            legacy_finalize_only_migration,
+        ]
+        checkpoint["execution_bundle_plan"] = dict(
+            legacy_finalize_only_migration["to_execution_bundle_plan"]
+        )
     checkpoint["history"].append(summary)
     checkpoint.update(
         {
@@ -6062,6 +6095,114 @@ def _complete_inspection_provenance(
     _write_json(run_dir / "inspection_provenance.json", completed)
 
 
+def _checkpoint_sha256(payload: Mapping[str, Any], key: str) -> str:
+    value = payload.get(key)
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise RuntimeError(f"Legacy execution plan has invalid {key}.")
+    return value
+
+
+def _prepare_legacy_v1_finalize_only_migration(
+    *,
+    config: TrainingConfig,
+    continuing: bool,
+    checkpoint: dict[str, Any],
+    database_checkpoint: dict[str, Any] | None,
+    documents: tuple[CorpusDocument, ...],
+    store: LexiconStore,
+    execution_plan: ExecutionBundlePlan | None,
+) -> dict[str, Any] | None:
+    """Admit only a fully committed legacy-v1 Pass 1 for atomic finalization."""
+
+    stored = checkpoint.get("execution_bundle_plan")
+    if not isinstance(stored, Mapping) or not (
+        stored.get("schema_version") == LEGACY_EXECUTION_BUNDLE_PLAN_SCHEMA
+        and stored.get("planner_implementation")
+        == LEGACY_EXECUTION_BUNDLE_PLANNER
+    ):
+        return None
+    if config.model != S1M2_MODEL or not continuing:
+        raise RuntimeError("Legacy execution-plan recovery requires an S1M2 resume.")
+    if database_checkpoint is None:
+        raise RuntimeError(
+            "Legacy execution-plan recovery requires an authoritative SQLite checkpoint."
+        )
+    if int(checkpoint.get("completed_passes", -1)) != 0:
+        raise RuntimeError("Legacy execution-plan recovery supports only Pass 1.")
+    if checkpoint.get("active_pass") != 1:
+        raise RuntimeError("Legacy execution-plan recovery requires active Pass 1.")
+    document_count = len(documents)
+    if int(checkpoint.get("next_document_index", -1)) != document_count:
+        raise RuntimeError(
+            "Legacy execution-plan recovery requires every document to be committed."
+        )
+    active_metrics = checkpoint.get("active_metrics")
+    if not isinstance(active_metrics, Mapping) or int(
+        active_metrics.get("documents", -1)
+    ) != document_count:
+        raise RuntimeError(
+            "Legacy execution-plan recovery metrics do not cover every document."
+        )
+    if not store.has_table("piece_counts_next"):
+        raise RuntimeError(
+            "Legacy execution-plan recovery requires piece_counts_next."
+        )
+    row = store.connection.execute("SELECT COUNT(*) FROM piece_counts_next").fetchone()
+    if row is None or int(row[0]) == 0:
+        raise RuntimeError(
+            "Legacy execution-plan recovery requires non-empty piece_counts_next."
+        )
+    if not store.has_table("lexical_diagnostics_next"):
+        raise RuntimeError(
+            "Legacy execution-plan recovery requires lexical_diagnostics_next."
+        )
+    if execution_plan is None:
+        raise RuntimeError(
+            "Legacy execution-plan recovery requires a validated current v2 plan."
+        )
+    requested = execution_plan.checkpoint_payload()
+    if (
+        requested.get("schema_version") != PLAN_SCHEMA
+        or requested.get("planner_implementation") != PLANNER_IMPLEMENTATION
+    ):
+        raise RuntimeError(
+            "Legacy execution-plan recovery requires the current v2 planner."
+        )
+    old_representation = _checkpoint_sha256(stored, "representation_set_sha256")
+    old_segments = _checkpoint_sha256(stored, "segment_sequence_sha256")
+    if old_representation != requested["representation_set_sha256"]:
+        raise RuntimeError(
+            "Legacy execution-plan representation identity does not match v2."
+        )
+    if old_segments != requested["segment_sequence_sha256"]:
+        raise RuntimeError(
+            "Legacy execution-plan segment sequence does not match v2."
+        )
+    existing_migrations = checkpoint.get("execution_plan_migrations", [])
+    if not isinstance(existing_migrations, list):
+        raise RuntimeError("Execution-plan migration provenance is malformed.")
+    return {
+        "reason": LEGACY_FINALIZE_ONLY_REASON,
+        "pass": 1,
+        "from_schema": LEGACY_EXECUTION_BUNDLE_PLAN_SCHEMA,
+        "to_schema": PLAN_SCHEMA,
+        "old_plan_sha256": _checkpoint_sha256(stored, "plan_sha256"),
+        "new_plan_sha256": requested["plan_sha256"],
+        "old_materialization_sha256": _checkpoint_sha256(
+            stored, "materialization_sha256"
+        ),
+        "new_materialization_sha256": requested["materialization_sha256"],
+        "representation_set_sha256": old_representation,
+        "segment_sequence_sha256": old_segments,
+        "from_execution_bundle_plan": dict(stored),
+        "to_execution_bundle_plan": requested,
+    }
+
+
 def run_training(
     config: TrainingConfig,
     *,
@@ -6287,7 +6428,19 @@ def run_training(
             and int(checkpoint.get("next_document_index", 0)) == 0
             and not checkpoint.get("history")
         )
+        legacy_finalize_only_migration = None
         if not inspection_only and training_incomplete:
+            legacy_finalize_only_migration = (
+                _prepare_legacy_v1_finalize_only_migration(
+                    config=config,
+                    continuing=continuing,
+                    checkpoint=checkpoint,
+                    database_checkpoint=database_checkpoint,
+                    documents=documents,
+                    store=store,
+                    execution_plan=execution_plan,
+                )
+            )
             if stored_execution_plan is None and requested_execution_plan is not None:
                 if not fresh_training_state:
                     raise RuntimeError(
@@ -6301,7 +6454,10 @@ def run_training(
                     raise RuntimeError(
                         "Active bundled training requires its original execution plan."
                     )
-                if stored_execution_plan != requested_execution_plan:
+                if (
+                    stored_execution_plan != requested_execution_plan
+                    and legacy_finalize_only_migration is None
+                ):
                     raise RuntimeError(
                         "Execution bundle plan does not match the active checkpoint."
                     )
@@ -6379,6 +6535,11 @@ def run_training(
                     checkpoint=checkpoint,
                     telemetry=telemetry,
                     execution_plan=execution_plan,
+                    legacy_finalize_only_migration=(
+                        legacy_finalize_only_migration
+                        if pass_index == 1
+                        else None
+                    ),
                 )
             _write_json(
                 run_dir / "iteration_metrics.json",
