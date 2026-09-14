@@ -104,6 +104,57 @@ def test_fixed_piece_priors_are_precomputed_bit_exactly() -> None:
             assert engine._piece_priors[noninitial][length].hex() == expected.hex()
 
 
+@pytest.mark.parametrize("text", ("ram", "rama", "dakaniyatpautra"))
+def test_long_whole_form_prior_and_score_only_match_p0(text: str) -> None:
+    form = parse_iast_form(text)
+    config = PieceModelConfig(max_piece_length=3, rho=0.37)
+    engine = ComposedPieceInference(_TableScorer(), model_config=config)
+    reference = evaluate_piece_lattice(
+        build_piece_lattice(form, max_piece_length=config.max_piece_length),
+        _TableScorer(),
+        rho=config.rho,
+        top_k=None,
+    )
+
+    expected_whole_prior = composed_module._raw_prior_score(
+        0, len(form.symbols), rho=config.rho
+    )
+    assert engine._piece_prior(0, len(form.symbols)).hex() == (
+        expected_whole_prior.hex()
+    )
+    assert engine._score_form(form) == pytest.approx(
+        reference.log_score, rel=1e-10, abs=1e-12
+    )
+
+
+@pytest.mark.parametrize(
+    ("written", "script"),
+    (
+        ("tattvamasi devo'pi", "iast"),
+        (transliterate_iast_to_devanagari("tattvamasi devopi"), "devanagari"),
+    ),
+)
+def test_long_merged_word_composed_path_keeps_whole_form(
+    written: str,
+    script: str,
+) -> None:
+    graph = build_lazy_candidate_graph(
+        next(iter_observed_segments(written, script=script)),
+        StructuredSandhiGrammar(()),
+    )
+    result = infer_composed_segment(
+        graph,
+        ComposedPieceInference(
+            _TableScorer(),
+            model_config=PieceModelConfig(max_piece_length=3, rho=0.37),
+        ),
+        whitespace_merge_penalty=8.0,
+    )
+
+    assert result.total_posterior_mass == pytest.approx(1.0, abs=1e-12)
+    assert result.expected_whole_form_uses > 0.0
+
+
 def test_batched_inner_top_k_matches_p0_order_and_weights() -> None:
     form = parse_iast_form("dakaniyat")
     config = PieceModelConfig(max_piece_length=3, rho=0.37)

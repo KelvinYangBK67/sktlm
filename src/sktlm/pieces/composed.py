@@ -697,6 +697,16 @@ class ComposedPieceInference:
         self._timings: dict[str, float] = defaultdict(float)
         self._initial_store_lookups = int(getattr(scorer, "store_lookups", 0))
 
+    def _piece_prior(self, start: int, end: int) -> float:
+        """Return the exact P0 prior, including the legal long whole-form edge."""
+
+        piece_length = end - start
+        if piece_length <= self.model_config.max_piece_length:
+            return self._piece_priors[start > 0][piece_length]
+        if start != 0:
+            raise RuntimeError("Only an initial whole-form edge may exceed the bound.")
+        return _raw_prior_score(start, end, rho=self.model_config.rho)
+
     def _store_lookups(self) -> int:
         return max(
             0,
@@ -827,7 +837,7 @@ class ComposedPieceInference:
                 self.model_config.max_piece_length,
             ):
                 transition_count += 1
-                prior = self._piece_priors[start > 0][end - start]
+                prior = self._piece_prior(start, end)
                 piece, piece_score = self._piece_and_score(
                     form.symbols[start:end]
                 )
@@ -968,7 +978,7 @@ class ComposedPieceInference:
                 start,
                 self.model_config.max_piece_length,
             ):
-                prior = self._piece_priors[start > 0][end - start]
+                prior = self._piece_prior(start, end)
                 _piece, piece_score = self._piece_and_score(
                     form.symbols[start:end]
                 )
@@ -1314,9 +1324,9 @@ class ComposedPieceInference:
             end = topology.transition_offsets[node_index]
             for transition_index in range(start, end):
                 source = topology.transition_sources[transition_index]
-                prior = self._piece_priors[source > 0][
-                    topology.depth[node_index] - topology.depth[source]
-                ]
+                prior = self._piece_prior(
+                    topology.depth[source], topology.depth[node_index]
+                )
                 raw = (
                     prior
                     + pieces_and_scores[
@@ -1622,9 +1632,9 @@ class ComposedPieceInference:
             end = topology.transition_offsets[node_index]
             for transition_index in range(start, end):
                 source = topology.transition_sources[transition_index]
-                prior = self._piece_priors[source > 0][
-                    topology.depth[node_index] - topology.depth[source]
-                ]
+                prior = self._piece_prior(
+                    topology.depth[source], topology.depth[node_index]
+                )
                 raw = (
                     prior
                     + pieces_and_scores[
