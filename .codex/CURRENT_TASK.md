@@ -2,17 +2,19 @@
 
 DATE=2026-09-14
 BRANCH=exp/s1m2-reusable-pieces
-STATUS=CI_CLEAN_CHECKOUT_CLOSURE_PASS_LOCAL
+STATUS=FULL_EXECUTION_SCOPE_PASS_LOCAL
 
 IMPLEMENTATION_HEAD=41ce1a6542d8e31105c1458bc3edbfae3f2592ee
 ROUND4_LONG_WHOLE_PRIOR_REGRESSION=FIXED
 SCIENTIFIC_SEMANTICS_CHANGED=NO
 P0_REFERENCE_EQUIVALENCE=PASS_LOCAL
-PYTEST_COLLECTION=PASS_787_COLLECTED
+PYTEST_COLLECTION=PASS_795_COLLECTED
 CI_COLLECTION_FIX=PASS_LOCAL
 CI_CLEAN_CHECKOUT_ARTIFACT_DEPENDENCY=FIXED_LOCAL
 GITHUB_CI=UNKNOWN_PENDING_RERUN
 FULL_AUTHORIZATION_GATE=PASS_LOCAL
+SCIENTIFIC_SIX_CELL_UNIVERSE=FROZEN
+PRODUCTION_EXECUTION_SCOPE=EXPLICIT_SUBSET_SUPPORTED
 CHILD_INTERPRETER_BINDING=PASS_LOCAL
 LAUNCH_FAILURE_BOOKKEEPING=PASS_LOCAL
 FAILED_RUN_RESET_PROTOCOL=PASS_LOCAL
@@ -40,6 +42,20 @@ and performs cheap Full filesystem/memory/interpreter admission before spawn.
 Full host and execution-bundle declarations are contract-owned and final plans
 bind their exact plan and materialization identities.
 
+Full plan construction now accepts an optional repeatable cell selection.
+Omitting it preserves the six-job default. An explicit non-empty selection is
+validated against the frozen six-cell universe, rejects duplicates, and emits
+jobs in frozen contract order. Only selected bundle materializations are
+loaded; `execution_cell_ids`, `FULL_EXECUTION_SCOPE`, and the unchanged
+`FULL_M0_SIX_CELL_CONFIG=FROZEN` enter the plan hash and exact authorization.
+
+The intended current execution set is M0-prime IAST continuous/core-07,
+Devanagari continuous/core-08, Devanagari surface_word/core-09, and Devanagari
+legacy_joined/core-10. The emitted canonical order follows the frozen contract:
+M0-prime IAST continuous, Devanagari surface_word, Devanagari legacy_joined,
+then Devanagari continuous. IAST surface_word and legacy_joined are already
+complete and are not selected for re-execution.
+
 The second legacy recovery state is implemented for authoritative SQLite with
 finalized Pass 1 and an inactive boundary. It admits only an exact v1-to-v2
 execution-identity migration with matching representation and segment
@@ -58,7 +74,9 @@ explicitly PARTIAL.
 
 Local validation:
 
-- `python -m pytest --collect-only -q`: 787 collected, zero errors.
+- `python -m pytest --collect-only -q`: 795 collected, zero errors (8 focused
+  execution-scope cases added).
+- Full execution-scope focused production suites: 41 passed.
 - focused Round 4 suites: 134 passed; VM-ops compatibility: 7 passed.
 - clean-checkout artifact closure: 3 targeted tests passed; both complete
   affected test files passed 39 tests. The bootstrap test retains the real
@@ -70,17 +88,17 @@ Local validation:
   not repeated to avoid redundant validation; final whole-suite confirmation
   is deferred to CI.
 
-Four tracked Full bundle materializations are still legacy v1 (IAST surface,
-IAST legacy, M0-prime IAST continuous, and Devanagari continuous). This turn
-was explicitly forbidden to rematerialize full-corpus plans. The authoritative
-production validator therefore correctly blocks those cells until the
-researcher supplies their v2 production inputs; Devanagari surface/legacy are
-already v2.
+Four tracked Full bundle materializations are still legacy v1, but the already
+completed IAST surface/legacy cells are outside the intended execution scope
+and no longer block its plan. The two selected continuous cells still require
+researcher-supplied v2 production inputs; Devanagari surface/legacy are already
+v2. This turn did not materialize any plan.
 
-NEXT_ACTION=RESEARCHER_REMATERIALIZE_FOUR_LEGACY_V1_FULL_BUNDLE_PLANS
+NEXT_ACTION=RESEARCHER_REMATERIALIZE_TWO_SELECTED_CONTINUOUS_V1_FULL_BUNDLE_PLANS
 
-Researcher sequence begins by rematerializing the four legacy v1 Full bundle
-plans as exact v2 production inputs. Only after those inputs exist should the
-new HEAD be deployed, explicit Full authorization generated, failed jobs reset,
+Researcher sequence begins by rematerializing the M0-prime IAST continuous and
+Devanagari continuous Full bundle plans as exact v2 production inputs. Only
+after those selected inputs exist should the new HEAD be deployed, the scoped
+four-cell final plan and explicit authorization generated, failed jobs reset,
 the guarded core-07 migration run, and formal jobs launched. Codex did not
 perform any of those operations.

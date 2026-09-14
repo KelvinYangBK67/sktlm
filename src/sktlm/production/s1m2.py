@@ -127,6 +127,32 @@ def _full_host_roles(contract: dict[str, Any]) -> dict[str, str]:
         raise ValueError("Full production cells must use distinct host roles.")
     return result
 
+
+def _full_execution_cell_ids(
+    contract: dict[str, Any],
+    selected_cell_ids: Iterable[str] | None,
+) -> tuple[str, ...]:
+    """Return an explicit Full execution scope in frozen contract order."""
+
+    canonical = tuple(str(cell["cell_id"]) for cell in contract["cells"])
+    if selected_cell_ids is None:
+        return canonical
+    if isinstance(selected_cell_ids, (str, bytes)):
+        raise ValueError("Full execution cell selection must be a sequence.")
+    requested = tuple(selected_cell_ids)
+    if not requested:
+        raise ValueError("Full execution cell selection must not be empty.")
+    if any(not isinstance(cell_id, str) for cell_id in requested):
+        raise ValueError("Full execution cell IDs must be strings.")
+    if len(requested) != len(set(requested)):
+        raise ValueError("Full execution cell selection contains duplicates.")
+    unknown = set(requested) - set(canonical)
+    if unknown:
+        raise ValueError(f"Unknown Full execution cell IDs: {sorted(unknown)}")
+    requested_set = set(requested)
+    return tuple(cell_id for cell_id in canonical if cell_id in requested_set)
+
+
 CORE_HOST_ROLES = tuple(f"core-{index:02d}" for index in range(1, 7))
 WORKER_CALIBRATION_DOCUMENTS = 72
 WORKER_CALIBRATION_STRUCTURE_SHA256 = (
@@ -1074,15 +1100,18 @@ def build_final_plan(
     metrics_root: Path = Path("artifacts/cloud_metrics"),
     identity: dict[str, Any],
     repo_root: Path = Path("."),
+    selected_cell_ids: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     validate_round3_closure(
         round3_closure, contract, round2, repo_root=repo_root
     )
     winner = int(round3_closure["retained_workers"])
+    execution_cell_ids = _full_execution_cell_ids(contract, selected_cell_ids)
 
     full_bundles: dict[str, dict[str, str]] = {}
     bundle_specs = _full_execution_bundle_specs(contract)
-    for bundle_cell_id, bundle_spec in bundle_specs.items():
+    for bundle_cell_id in execution_cell_ids:
+        bundle_spec = bundle_specs[bundle_cell_id]
         declaration = {
             **bundle_spec,
             "target_pressure": contract["round2"]["target_pressure"],
@@ -1109,6 +1138,8 @@ def build_final_plan(
     jobs = []
     full_host_roles = _full_host_roles(contract)
     for cell in contract["cells"]:
+        if cell["cell_id"] not in execution_cell_ids:
+            continue
         host_role = full_host_roles[cell["cell_id"]]
         bundle_kwargs = {}
         full_bundle = full_bundles.get(cell["cell_id"])
@@ -1161,6 +1192,12 @@ def build_final_plan(
             "LEGACY_3H_GATE": "NOT_APPLICABLE",
             "FULL_M0_AUTHORIZED": "NO",
             "FULL_M0_SIX_CELL_CONFIG": "FROZEN",
+            "FULL_EXECUTION_SCOPE": (
+                "ALL_SIX"
+                if len(execution_cell_ids) == len(contract["cells"])
+                else "EXPLICIT_SUBSET"
+            ),
+            "execution_cell_ids": list(execution_cell_ids),
             "FULL_M0_LAUNCH_PLAN": "PREPARED",
             "FULL_M0_PROCESS_RUNNING": "NO",
         }
@@ -1214,20 +1251,41 @@ def _validate_plan(plan: dict[str, Any], contract: dict[str, Any]) -> None:
             item["workers"] for item in declarations
         ):
             raise ValueError("Round 2 plan differs from the frozen host mapping.")
-    elif plan_type in {"bounded", "full"}:
-        workload_id = "bounded_interface" if plan_type == "bounded" else "full"
-        expected_cells = [(cell["cell_id"], workload_id) for cell in contract["cells"]]
+    elif plan_type == "bounded":
+        expected_cells = [
+            (cell["cell_id"], "bounded_interface") for cell in contract["cells"]
+        ]
         if actual_cells != expected_cells:
-            raise ValueError(f"{plan_type} plan differs from the six-cell contract.")
-        if plan_type == "full":
-            expected_host_roles = tuple(
-                _full_host_roles(contract)[cell["cell_id"]]
-                for cell in contract["cells"]
+            raise ValueError("bounded plan differs from the six-cell contract.")
+    elif plan_type == "full":
+        raw_execution_cell_ids = plan.get("execution_cell_ids")
+        if not isinstance(raw_execution_cell_ids, list):
+            raise ValueError("Full plan lacks explicit execution_cell_ids.")
+        execution_cell_ids = _full_execution_cell_ids(
+            contract, raw_execution_cell_ids
+        )
+        if raw_execution_cell_ids != list(execution_cell_ids):
+            raise ValueError(
+                "Full plan execution_cell_ids are not in frozen canonical order."
             )
-            if tuple(job.get("host_role") for job in jobs) != expected_host_roles:
-                raise ValueError(
-                    "Full plan differs from the deployed host mapping."
-                )
+        expected_cells = [(cell_id, "full") for cell_id in execution_cell_ids]
+        if actual_cells != expected_cells:
+            raise ValueError("Full plan jobs differ from its execution scope.")
+        expected_host_roles = tuple(
+            _full_host_roles(contract)[cell_id] for cell_id in execution_cell_ids
+        )
+        if tuple(job.get("host_role") for job in jobs) != expected_host_roles:
+            raise ValueError("Full plan differs from the deployed host mapping.")
+        expected_scope = (
+            "ALL_SIX"
+            if len(execution_cell_ids) == len(contract["cells"])
+            else "EXPLICIT_SUBSET"
+        )
+        if (
+            plan.get("FULL_EXECUTION_SCOPE") != expected_scope
+            or plan.get("FULL_M0_SIX_CELL_CONFIG") != "FROZEN"
+        ):
+            raise ValueError("Full plan has invalid execution-scope metadata.")
     else:
         raise ValueError(f"Unsupported production plan type: {plan_type}")
     if plan_type not in {"round1", "round2"}:
@@ -1556,7 +1614,7 @@ def build_full_authorization(
         "git_sha": plan["git_sha"],
         "branch": plan["branch"],
         "job_ids": [job["job_id"] for job in plan["jobs"]],
-        "cell_ids": [job["cell_id"] for job in plan["jobs"]],
+        "cell_ids": list(plan["execution_cell_ids"]),
     }
     payload["authorization_sha256"] = _canonical_sha256(payload)
     return payload
@@ -1567,6 +1625,7 @@ def _validate_full_authorization(
     plan: dict[str, Any],
     contract: dict[str, Any],
 ) -> None:
+    _validate_plan(plan, contract)
     if authorization.get("schema_version") != FULL_AUTHORIZATION_SCHEMA:
         raise ValueError("Unsupported Full authorization schema.")
     expected_sha = _canonical_sha256(
@@ -1585,7 +1644,7 @@ def _validate_full_authorization(
         "git_sha": plan["git_sha"],
         "branch": plan["branch"],
         "job_ids": [job["job_id"] for job in plan["jobs"]],
-        "cell_ids": [job["cell_id"] for job in plan["jobs"]],
+        "cell_ids": list(plan["execution_cell_ids"]),
     }
     for name, value in expected.items():
         if authorization.get(name) != value:
@@ -3005,6 +3064,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     item.add_argument("--round2-result", required=True, type=Path)
     item.add_argument("--round3-closure", required=True, type=Path)
     item.add_argument("--output", required=True, type=Path)
+    item.add_argument("--cell-id", action="append")
     item = commands.add_parser("run")
     item.add_argument("--plan", required=True, type=Path)
     item.add_argument("--job-id", required=True)
@@ -3237,6 +3297,7 @@ def main(argv: list[str] | None = None) -> None:
             contract_path=args.contract,
             identity=identity,
             repo_root=repo_root,
+            selected_cell_ids=args.cell_id,
         )
         _write_plan_commands(plan, output)
         _validate_plan(plan, contract)

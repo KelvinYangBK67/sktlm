@@ -3281,3 +3281,46 @@ FULL_M0_AUTHORIZED=NO
 FULL_BUNDLE_MATERIALIZATION_RUN=NO
 NEXT_ACTION=RESEARCHER_REMATERIALIZE_FOUR_LEGACY_V1_FULL_BUNDLE_PLANS
 ```
+
+## S1M2 scoped Full execution plans - 2026-09-14
+
+The frozen production contract continues to define exactly six scientific
+cells, six host mappings, and six Full bundle declarations. Final production
+plan construction now independently accepts an optional explicit execution
+subset. Omission preserves the prior all-six behavior; explicit selection must
+be non-empty, unique, and drawn from the frozen cells, then is canonicalized to
+contract order before jobs and plan identity are built.
+
+Only selected cells invoke the authoritative bundle loader, receive jobs, and
+enter the exact Full authorization. Unselected bundle materializations are not
+read or validated and cannot block that invocation. Selected cells retain all
+existing contract, bundle SHA/materialization, manifest, scientific config,
+host, Git, plan-SHA, and authorization validation. The plan records
+`execution_cell_ids`, `FULL_EXECUTION_SCOPE=ALL_SIX|EXPLICIT_SUBSET`, and
+`FULL_M0_SIX_CELL_CONFIG=FROZEN`; all are covered by its canonical SHA.
+
+The intended current execution set is M0-prime IAST continuous/core-07,
+Devanagari continuous/core-08, Devanagari surface_word/core-09, and Devanagari
+legacy_joined/core-10. Its canonical emitted order is the frozen contract order:
+M0-prime IAST continuous, Devanagari surface_word, Devanagari legacy_joined,
+and Devanagari continuous. IAST surface_word and legacy_joined are already
+complete and are not re-executed. Accordingly, only the two selected continuous
+bundle materializations still require v1-to-v2 researcher closure.
+
+Focused production validation passed 41 tests and collection passed with 795
+tests (8 new execution-scope cases) and zero errors. No full suite, SSH, VM,
+cloud, workload, authorization generation, bundle materialization, or Full M0
+run occurred.
+
+```text
+SCIENTIFIC_SIX_CELL_UNIVERSE=FROZEN
+PRODUCTION_EXECUTION_SCOPE=EXPLICIT_SUBSET_SUPPORTED
+CURRENT_EXECUTION_CELLS=4
+SCIENTIFIC_SEMANTICS_CHANGED=NO
+PYTEST_COLLECTION=PASS_795_COLLECTED
+FULL_M0_AUTHORIZED=NO
+REMOTE_OPERATIONS_RUN=NO
+FULL_M0_RUN=NO
+FULL_BUNDLE_MATERIALIZATION_RUN=NO
+NEXT_ACTION=RESEARCHER_REMATERIALIZE_TWO_SELECTED_CONTINUOUS_V1_FULL_BUNDLE_PLANS
+```

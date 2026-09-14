@@ -112,7 +112,7 @@ def test_full_authorization_is_exact_plan_bound(
     contract = s1m2.load_contract(repo_root=Path("."), verify_files=False)
     plan = {"plan_type": "full", "plan_sha256": "b" * 64, "git_sha": IDENTITY["git_sha"],
             "branch": IDENTITY["branch"], "production_contract_sha256": s1m2._canonical_sha256(contract),
-            "jobs": [{"job_id": "j", "cell_id": "c"}]}
+            "execution_cell_ids": ["c"], "jobs": [{"job_id": "j", "cell_id": "c"}]}
     monkeypatch.setattr(s1m2, "_validate_plan", lambda *args: None)
     authorization = s1m2.build_full_authorization(plan, contract, identity=IDENTITY)
     s1m2._validate_full_authorization(authorization, plan, contract)
