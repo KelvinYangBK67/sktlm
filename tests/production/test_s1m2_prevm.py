@@ -224,22 +224,61 @@ def test_round1_plan_has_six_jobs_and_only_workers_vary() -> None:
 
 
 def test_worker_calibration_selector_is_frozen_distinct_and_nonstress() -> None:
-    structure_path = Path(
-        "artifacts/s1m2_structure/"
-        "s1m2_continuous_structure_v1_attempt01/structure.json"
-    )
-    assert hashlib.sha256(structure_path.read_bytes()).hexdigest() == (
-        "03ebdf71afc80f82492d9d36cc593ab50c380fd3b0b57689862ea8e98c7b39f8"
-    )
-    structure = json.loads(structure_path.read_text(encoding="utf-8"))
+    def document(path: str, pressure: int) -> dict[str, object]:
+        return {
+            "relative_path": path,
+            "span_squared_phonemes": pressure,
+            "continuous_spans": {"max": pressure + 1},
+            "phonemes": pressure + 2,
+        }
+
+    stress = ["synthetic/stress_a.txt", "synthetic/stress_b.txt"]
+    candidates = [
+        document(f"synthetic/document_{index:03d}.txt", index)
+        for index in range(144)
+    ]
+    structure = {
+        "cells": {
+            "m0_devanagari_continuous": {
+                "script": "devanagari",
+                "documents": [
+                    document(stress[0], 1000),
+                    *reversed(candidates),
+                    document(stress[1], 1001),
+                ],
+            }
+        },
+        "selection": {"stress": stress},
+    }
     selected = s1m2.select_worker_calibration_documents(structure)
-    tracked = Path(
-        "configs/benchmarks/s1m2_worker_calibration_documents.txt"
-    ).read_text(encoding="utf-8").splitlines()
-    assert selected == tracked
+    assert selected == [
+        f"synthetic/document_{index:03d}.txt" for index in range(0, 144, 2)
+    ]
     assert selected == s1m2.select_worker_calibration_documents(structure)
     assert len(selected) == len(set(selected)) == 72
-    assert not set(selected).intersection(structure["selection"]["stress"])
+    assert not set(selected).intersection(stress)
+
+    tracked_path = Path(
+        "configs/benchmarks/s1m2_worker_calibration_documents.txt"
+    )
+    tracked = tracked_path.read_text(encoding="utf-8").splitlines()
+    tracked_stress = {
+        line
+        for line in Path(
+            "configs/benchmarks/s1m2_continuous_stress_documents.txt"
+        ).read_text(encoding="utf-8").splitlines()
+        if line and not line.startswith("#")
+    }
+    workload = _contract()["workloads"]["worker_calibration"]
+    assert workload["structure_sha256"] == (
+        s1m2.WORKER_CALIBRATION_STRUCTURE_SHA256
+    )
+    assert workload["document_list"] == tracked_path.as_posix()
+    assert workload["document_list_sha256"] == hashlib.sha256(
+        tracked_path.read_bytes()
+    ).hexdigest()
+    assert workload["documents"] == len(tracked) == len(set(tracked)) == 72
+    assert not set(tracked).intersection(tracked_stress)
 
 
 def test_plan_commands_bind_exact_plan_path() -> None:

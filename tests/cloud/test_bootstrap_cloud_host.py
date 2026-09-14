@@ -408,7 +408,25 @@ def test_production_profile_has_distinct_ready_state(
     assert result["readiness_profile"] == "s1m2-production"
 
 
-def test_production_input_contract_binds_exact_cell_bundle_and_contract() -> None:
+def test_production_input_contract_binds_exact_cell_bundle_and_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sktlm.production import s1m2
+
+    production = s1m2.load_contract(repo_root=Path("."), verify_files=False)
+    load_calls: list[tuple[Path, Path, bool]] = []
+
+    def load_verified_contract(
+        path: Path,
+        *,
+        repo_root: Path,
+        verify_files: bool,
+    ) -> dict[str, object]:
+        load_calls.append((path, repo_root, verify_files))
+        assert verify_files is True
+        return production
+
+    monkeypatch.setattr(s1m2, "load_contract", load_verified_contract)
     transfer, details = bootstrap._production_input_contract(
         Path("."),
         Path("configs/production/s1m2_six_cell.json"),
@@ -428,6 +446,14 @@ def test_production_input_contract_binds_exact_cell_bundle_and_contract() -> Non
         "--cell-id",
         "s1m2_m0_devanagari_surface_word",
     )
+    assert load_calls == [
+        (
+            Path("configs/production/s1m2_six_cell.json"),
+            Path("."),
+            True,
+        )
+    ]
+    assert details["sha256"] == s1m2._canonical_sha256(production)
 
 
 def test_production_input_contract_fails_when_authoritative_input_is_missing(

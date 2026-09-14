@@ -3244,3 +3244,40 @@ FULL_M0_RUN=NO
 FULL_M0_AUTHORIZED=NO
 NEXT_ACTION=RESEARCHER_DEPLOY_AUTHORIZE_RESET_MIGRATE_AND_LAUNCH
 ```
+
+## S1M2 clean-checkout CI artifact closure - 2026-09-14
+
+The two remaining GitHub Actions failures at Round 4 HEAD `60ffeaf` were test
+dependencies on local gitignored research artifacts, not scientific failures.
+The production-bootstrap test now loads the tracked six-cell contract without
+external-file verification only to construct its controlled fixture, then
+asserts that the real bootstrap boundary still requests `verify_files=True`,
+selects core-09's exact Devanagari surface-word cell/bundle, binds the validator
+cell ID, and carries the canonical production-contract identity. The separate
+missing-authoritative-input regression remains fail closed.
+
+The worker-calibration selector test now uses an in-memory static-structure
+fixture to prove deterministic 72-stratum selection, distinctness, ordering,
+and two-stress-document exclusion. Historical provenance is checked separately
+from tracked bytes: the frozen contract structure SHA, tracked document-list
+path/SHA/count, and disjoint tracked stress list. Ordinary CI no longer reads
+the gitignored historical structure artifact or pretends that synthetic data
+proves its historical SHA.
+
+Targeted validation passed 3 tests, both affected files passed 39 tests, and
+collection remained exactly 787 tests with zero errors. GitHub Actions has not
+yet confirmed the pushed closure. No scientific/production implementation,
+production verification semantics, frozen input, worker selection, or six-cell
+definition changed; no skip/xfail or generated artifact was added.
+
+```text
+CI_CLEAN_CHECKOUT_ARTIFACT_DEPENDENCY=FIXED_LOCAL
+PYTEST_COLLECTION=PASS_787_COLLECTED
+GITHUB_CI=UNKNOWN_PENDING_RERUN
+SCIENTIFIC_SEMANTICS_CHANGED=NO
+REMOTE_OPERATIONS_RUN=NO
+FULL_M0_RUN=NO
+FULL_M0_AUTHORIZED=NO
+FULL_BUNDLE_MATERIALIZATION_RUN=NO
+NEXT_ACTION=RESEARCHER_REMATERIALIZE_FOUR_LEGACY_V1_FULL_BUNDLE_PLANS
+```

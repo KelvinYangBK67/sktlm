@@ -2,7 +2,7 @@
 
 DATE=2026-09-14
 BRANCH=exp/s1m2-reusable-pieces
-STATUS=ROUND4_PRODUCTION_HARDENING_PASS_LOCAL
+STATUS=CI_CLEAN_CHECKOUT_CLOSURE_PASS_LOCAL
 
 IMPLEMENTATION_HEAD=41ce1a6542d8e31105c1458bc3edbfae3f2592ee
 ROUND4_LONG_WHOLE_PRIOR_REGRESSION=FIXED
@@ -10,6 +10,8 @@ SCIENTIFIC_SEMANTICS_CHANGED=NO
 P0_REFERENCE_EQUIVALENCE=PASS_LOCAL
 PYTEST_COLLECTION=PASS_787_COLLECTED
 CI_COLLECTION_FIX=PASS_LOCAL
+CI_CLEAN_CHECKOUT_ARTIFACT_DEPENDENCY=FIXED_LOCAL
+GITHUB_CI=UNKNOWN_PENDING_RERUN
 FULL_AUTHORIZATION_GATE=PASS_LOCAL
 CHILD_INTERPRETER_BINDING=PASS_LOCAL
 LAUNCH_FAILURE_BOOKKEEPING=PASS_LOCAL
@@ -58,6 +60,11 @@ Local validation:
 
 - `python -m pytest --collect-only -q`: 787 collected, zero errors.
 - focused Round 4 suites: 134 passed; VM-ops compatibility: 7 passed.
+- clean-checkout artifact closure: 3 targeted tests passed; both complete
+  affected test files passed 39 tests. The bootstrap test retains the real
+  tracked six-cell/core-09 wiring while controlling only the external file
+  verifier boundary; the selector test now separates synthetic algorithm
+  coverage from tracked list/hash provenance.
 - one earlier full-suite run reached 770 passed and 8 failed; each exposed
   failure surface was fixed and rerun in focused suites. The complete suite was
   not repeated to avoid redundant validation; final whole-suite confirmation
@@ -70,10 +77,10 @@ production validator therefore correctly blocks those cells until the
 researcher supplies their v2 production inputs; Devanagari surface/legacy are
 already v2.
 
-NEXT_ACTION=RESEARCHER_DEPLOY_AUTHORIZE_RESET_MIGRATE_AND_LAUNCH
+NEXT_ACTION=RESEARCHER_REMATERIALIZE_FOUR_LEGACY_V1_FULL_BUNDLE_PLANS
 
-Researcher sequence: deploy the new HEAD and exact v2 production inputs;
-generate the explicit Full authorization; use `reset-failed` for core-09 and
-core-10; run the guarded core-07 finalized-Pass1 identity-only migration; then
-launch the authorized formal jobs. Codex did not perform any of these remote
-actions.
+Researcher sequence begins by rematerializing the four legacy v1 Full bundle
+plans as exact v2 production inputs. Only after those inputs exist should the
+new HEAD be deployed, explicit Full authorization generated, failed jobs reset,
+the guarded core-07 migration run, and formal jobs launched. Codex did not
+perform any of those operations.
