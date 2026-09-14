@@ -3158,3 +3158,89 @@ FULL_M0_DISK_TARGET_VALIDATED=NO
 FULL_M0_AUTHORIZED=NO
 NEXT_ACTION=RESEARCHER_RUN_CORE07_PASS1_FINALIZE_ONLY_RECOVERY
 ```
+
+## S1M2 Round 4 production hardening closure - 2026-09-14
+
+Implementation commit `41ce1a6542d8e31105c1458bc3edbfae3f2592ee`
+closes the local Round 4 production/control-plane work. The preceding semantic
+repair commit restores the exact fixed P0 whole-form prior for legal forms
+longer than the configured maximum piece length; short and maximum-length
+spans remain table-backed, while illegal long internal spans fail closed.
+
+Production Full execution now requires a standalone canonical authorization
+artifact bound to the exact plan SHA, contract SHA, Git SHA/branch, job list,
+and cell list. Missing, modified, cross-plan, cross-contract, cross-Git, and
+cross-job artifacts fail before state creation or process spawn. Runtime child
+and metrics-wrapper commands use the current interpreter; portable frozen plan
+commands continue to record `python`, while generated remote operator commands
+bind `./.venv/bin/python`.
+
+An `OSError` while launching any phase now closes phase and attempt timestamps,
+records bounded exception type/errno/message without inventing a return code,
+durably marks the control manifest FAILED, mirrors it when a run directory
+exists, and re-raises. `reset-failed` can discard only the exact planned
+run/control paths for a matching FAILED manifest under the clean new
+plan/branch/HEAD. It rejects RUNNING, PASS, AUDITING, successful audit,
+ambiguous identity, overlap, traversal, arbitrary paths, and receipt overwrite;
+the surviving PREPARED/RESET receipt binds old/new plan and Git identities,
+old status/run ID, timestamp, and reason.
+
+The trainer additionally accepts exactly one finalized legacy boundary:
+authoritative SQLite `completed_passes=1`, inactive pass, document index zero,
+no active metrics/transient next tables, exact Pass 1 history/piece invariants,
+supported v1 identity, authoritative-loader-validated v2 plan, and exact
+representation/segment identities. The transaction changes only checkpoint
+execution-plan identity plus its migration provenance, then updates JSON and
+provenance mirrors and enters ordinary Pass 2. Telemetry explicitly records
+zero completed documents reprocessed, recovery worker pools, and recovery
+document iterations. Stale JSON cannot override SQLite.
+
+Production bundle validation is now a thin wrapper over the trainer's complete
+authoritative loader. Full host and six-cell bundle declarations moved from
+Python constants to the production contract, and the cloud registry now agrees
+that Devanagari surface/legacy Full jobs use core-09/core-10. The final plan
+still binds each loaded materialization exactly. Four existing tracked Full
+plans remain v1 and were not rematerialized under this task's prohibition, so
+their production-aware bootstrap/plan admission correctly remains blocked
+until researcher-supplied v2 materializations are deployed.
+
+Bootstrap distinguishes `GENERIC_READY` from `S1M2_PRODUCTION_READY`.
+Production mode selects the host's exact contract cell, transfers its non-Git
+production input/bundle set, and runs cell-specific authoritative validation in
+the remote venv. Its receipt binds release HEAD, contract path/SHA, input
+validation, and readiness profile. CPython 3.11.9 source is verified against a
+fixed SHA-256 before extraction. Dependency setup emits Python and pip versions,
+critical direct package versions, and canonical sorted `pip freeze --all`
+SHA-256 on install and reuse; without a reliable tracked Linux lock, the
+environment lock status remains PARTIAL.
+
+Local collection completed with 787 tests and zero errors. Final focused suites
+completed with 134 passes plus 7 VM-ops compatibility passes. An earlier full
+suite attempt completed in under five minutes with 770 passes and 8 failures;
+those failure surfaces were fixed and rerun focused, but the whole suite was
+not repeated. No SSH, VM/cloud operation, representative/stress workload, RAM
+or runtime benchmark, corpus/representation regeneration, Full plan
+rematerialization, or Full M0 run occurred.
+
+```text
+ROUND4_LONG_WHOLE_PRIOR_REGRESSION=FIXED
+SCIENTIFIC_SEMANTICS_CHANGED=NO
+P0_REFERENCE_EQUIVALENCE=PASS_LOCAL
+PYTEST_COLLECTION=PASS_787_COLLECTED
+CI_COLLECTION_FIX=PASS_LOCAL
+FULL_AUTHORIZATION_GATE=PASS_LOCAL
+CHILD_INTERPRETER_BINDING=PASS_LOCAL
+LAUNCH_FAILURE_BOOKKEEPING=PASS_LOCAL
+FAILED_RUN_RESET_PROTOCOL=PASS_LOCAL
+LEGACY_V1_PASS1_FINALIZED_MIGRATION=PASS_LOCAL
+STATUS_SQLITE_AUTHORITATIVE=PASS_LOCAL
+PRODUCTION_BOOTSTRAP_PROFILE=PASS_LOCAL
+BUNDLE_VALIDATION_SINGLE_AUTHORITY=PASS_LOCAL
+LAUNCH_PREFLIGHT=PASS_LOCAL
+FULL_TEST_SUITE=FOCUSED_PASS_FULL_RERUN_DEFERRED_TO_CI
+FULL_ENVIRONMENT_LOCK=PARTIAL
+REMOTE_OPERATIONS_RUN=NO
+FULL_M0_RUN=NO
+FULL_M0_AUTHORIZED=NO
+NEXT_ACTION=RESEARCHER_DEPLOY_AUTHORIZE_RESET_MIGRATE_AND_LAUNCH
+```

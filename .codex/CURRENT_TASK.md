@@ -1,77 +1,79 @@
 # CURRENT TASK
 
-DATE=2026-09-13
+DATE=2026-09-14
 BRANCH=exp/s1m2-reusable-pieces
-STATUS=LEGACY_S1M2_PASS1_FINALIZE_ONLY_RECOVERY_READY_LOCAL
+STATUS=ROUND4_PRODUCTION_HARDENING_PASS_LOCAL
 
-START_HEAD=e8c5de49739d34953d058edeba55a6062fd766f7
+IMPLEMENTATION_HEAD=41ce1a6542d8e31105c1458bc3edbfae3f2592ee
+ROUND4_LONG_WHOLE_PRIOR_REGRESSION=FIXED
 SCIENTIFIC_SEMANTICS_CHANGED=NO
-SCIENTIFIC_OUTPUT_IDENTITY=PASS_LOCAL_SQL_REFERENCE
-WORKER_COUNT_UNCHANGED=YES
-CACHE_LIMITS_UNCHANGED=YES
-INFERENCE_PATH_UNCHANGED=YES
-TRANSACTION_FREQUENCY_UNCHANGED=YES
-HOT_LOOP_EXTRA_IO=0
-PASS_BOUNDARY_WAL_TRUNCATE=PASS_LOCAL
-PIECE_FINALIZE_NO_FULL_COPY=PASS_LOCAL
-TRANSIENT_TABLE_LIFECYCLE=PASS_LOCAL
-RESUME_SAFETY=PASS_LOCAL
+P0_REFERENCE_EQUIVALENCE=PASS_LOCAL
+PYTEST_COLLECTION=PASS_787_COLLECTED
+CI_COLLECTION_FIX=PASS_LOCAL
+FULL_AUTHORIZATION_GATE=PASS_LOCAL
+CHILD_INTERPRETER_BINDING=PASS_LOCAL
+LAUNCH_FAILURE_BOOKKEEPING=PASS_LOCAL
+FAILED_RUN_RESET_PROTOCOL=PASS_LOCAL
+LEGACY_V1_PASS1_FINALIZED_MIGRATION=PASS_LOCAL
+STATUS_SQLITE_AUTHORITATIVE=PASS_LOCAL
+PRODUCTION_BOOTSTRAP_PROFILE=PASS_LOCAL
+BUNDLE_VALIDATION_SINGLE_AUTHORITY=PASS_LOCAL
+LAUNCH_PREFLIGHT=PASS_LOCAL
+FULL_ENVIRONMENT_LOCK=PARTIAL
 REMOTE_OPERATIONS_RUN=NO
-LONG_VALIDATION_RUN=NO
 FULL_M0_RUN=NO
 FULL_M0_AUTHORIZED=NO
-FULL_END_TO_END_IDENTITY_VALIDATED=NO
-LEGACY_V1_FINALIZE_ONLY_RECOVERY=PASS_LOCAL
-V1_TO_V2_EXECUTION_PLAN_MIGRATION=PASS_LOCAL
-ATOMIC_PLAN_AND_PASS_TRANSITION=PASS_LOCAL
-COMPLETED_DOCUMENTS_REPROCESSED=0
-RECOVERY_WORKER_POOLS_STARTED=0
-RECOVERY_DOCUMENT_ITERATIONS=0
-PASS2_NORMAL_V2_ADMISSION=PASS_LOCAL
-CORE07_PASS1_RECOVERY_PATH=PASS_LOCAL
-CORE07_PASS1_RECOVERED=NO
 
-S1M2 pass finalization now filters `piece_counts_next` in place and renames it
-to `piece_lexicon`, preserving the exact positive-count and reuse-support
-selection without creating and filling a second full active table. The
-transaction still atomically installs the authoritative piece state and
-completed-pass checkpoint. Pass-only lexical diagnostics are retired in that
-same transaction.
+Round 4 restores the exact fixed P0 prior for a legal whole form longer than
+`piece_max_length`; bounded internal spans still use the precomputed table and
+illegal long internal spans fail closed. No scientific equation, candidate,
+posterior, grammar, frozen input, worker count, cache bound, or canonical
+reduction order changed.
 
-After the committed S1M2 pass and worker/read-only connection teardown, the
-trainer performs a fail-closed `PRAGMA wal_checkpoint(TRUNCATE)`. Telemetry
-records database/WAL/SHM/total bytes before finalize, after finalize, and after
-WAL truncation, plus checkpoint count and duration. No VACUUM was added.
+The production control plane now requires a separately generated exact Full
+authorization artifact, uses the current interpreter for child phases, records
+subprocess launch exceptions as durable FAILED state, offers a path-bounded
+FAILED-only reset with a surviving receipt, reads status from SQLite first,
+and performs cheap Full filesystem/memory/interpreter admission before spawn.
+Full host and execution-bundle declarations are contract-owned and final plans
+bind their exact plan and materialization identities.
 
-The narrow recovery path accepts only an authoritative SQLite S1M2 checkpoint
-for active Pass 1 with zero completed passes, all configured documents already
-committed, matching active metrics, non-empty `piece_counts_next`, present
-`lexical_diagnostics_next`, and the exact supported v1 plan/planner identity.
-The requested plan must first pass the complete current v2 loader, and its
-representation-set and segment-sequence identities must exactly match v1.
+The second legacy recovery state is implemented for authoritative SQLite with
+finalized Pass 1 and an inactive boundary. It admits only an exact v1-to-v2
+execution-identity migration with matching representation and segment
+identities and unchanged finalized piece/history invariants. It performs no
+Pass 1 finalization or completed-document/worker/inference recovery work, then
+enters the normal v2 Pass 2 path.
 
-Recovery performs no corpus iteration, candidate/inference work, bundle
-dispatch, or worker-pool creation. It uses the optimized in-place piece
-finalization and WAL truncation. Pass completion, v2 plan identity, and a
-preservation-oriented v1-to-v2 migration record are written atomically in the
-same authoritative SQLite transaction. Pass 2 then returns to the ordinary v2
-resume path. The core-07 database has not been touched by Codex.
+Generic bootstrap remains distinct from S1M2 production bootstrap. Production
+mode selects the Full cell assigned to the host, transfers that cell's
+non-Git bundle/input set, runs the authoritative cell-specific validator in the
+remote venv, and reports `S1M2_PRODUCTION_READY` only after exact validation.
+CPython 3.11.9 source is checksum-verified. Reused and installed environments
+emit Python/pip/direct-package versions and canonical `pip freeze --all` SHA;
+there is no reliable tracked Linux dependency lock, so reproducibility remains
+explicitly PARTIAL.
 
-Focused recovery validation passes 10 tests. Full scientific output identity
-remains unvalidated because the unrelated composed-prior fixture failure was
-not changed; the supported claim remains
-`SCIENTIFIC_OUTPUT_IDENTITY=PASS_LOCAL_SQL_REFERENCE`.
+Local validation:
 
-Corrected researcher-observed PRE_CHANGE storage pressure: `/dev/vdb` exposed
-approximately 295 GiB, used approximately 281 GiB, had no available space and
-was at 100%; the current run directory was approximately 208 GiB, comprising
-approximately 106 GiB `learner.sqlite`, 103 GiB WAL, and 203 MiB SHM.
-Historical attempts additionally occupied approximately 2.0 GiB and 66 GiB.
-These are observations, not post-change validation.
+- `python -m pytest --collect-only -q`: 787 collected, zero errors.
+- focused Round 4 suites: 134 passed; VM-ops compatibility: 7 passed.
+- one earlier full-suite run reached 770 passed and 8 failed; each exposed
+  failure surface was fixed and rerun in focused suites. The complete suite was
+  not repeated to avoid redundant validation; final whole-suite confirmation
+  is deferred to CI.
 
-NEXT_ACTION=RESEARCHER_RUN_CORE07_PASS1_FINALIZE_ONLY_RECOVERY
+Four tracked Full bundle materializations are still legacy v1 (IAST surface,
+IAST legacy, M0-prime IAST continuous, and Devanagari continuous). This turn
+was explicitly forbidden to rematerialize full-corpus plans. The authoritative
+production validator therefore correctly blocks those cells until the
+researcher supplies their v2 production inputs; Devanagari surface/legacy are
+already v2.
 
-Do not automatically launch Full M0, representative, stress, RAM/runtime, VM,
-cloud, or other long validation. Validate post-change disk peaks and canonical
-scientific artifacts on the researcher-controlled workload before declaring
-the Full M0 disk target closed.
+NEXT_ACTION=RESEARCHER_DEPLOY_AUTHORIZE_RESET_MIGRATE_AND_LAUNCH
+
+Researcher sequence: deploy the new HEAD and exact v2 production inputs;
+generate the explicit Full authorization; use `reset-failed` for core-09 and
+core-10; run the guarded core-07 finalized-Pass1 identity-only migration; then
+launch the authorized formal jobs. Codex did not perform any of these remote
+actions.
