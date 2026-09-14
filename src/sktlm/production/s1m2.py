@@ -214,6 +214,16 @@ def _canonical_sha256(payload: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _require_lower_sha256(value: Any, *, label: str) -> str:
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise ValueError(f"{label} must be a lowercase SHA-256.")
+    return value
+
+
 def _read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -876,12 +886,18 @@ def _evidence_path(repo_root: Path, path: Path) -> str:
 
 
 def _validate_historical_round2(
-    round2: dict[str, Any], contract: dict[str, Any]
+    round2: dict[str, Any], expected_contract_sha256: str
 ) -> None:
     if round2.get("schema_version") != ROUND2_SCHEMA:
         raise ValueError("Unsupported Round 2 result schema.")
-    if round2.get("production_contract_sha256") != _canonical_sha256(contract):
-        raise ValueError("Round 2 result does not bind the production contract.")
+    expected_contract_sha256 = _require_lower_sha256(
+        expected_contract_sha256,
+        label="Expected historical production contract identity",
+    )
+    if round2.get("production_contract_sha256") != expected_contract_sha256:
+        raise ValueError(
+            "Round 2 result does not bind the expected historical production contract."
+        )
     if round2.get("ROUND2_STATUS") != "FAIL":
         raise ValueError("Round 3 requires the immutable Round 2 FAIL result.")
     if round2.get("WINNER_WORKERS") is not None:
@@ -970,9 +986,11 @@ def validate_round3_closure(
     )
     if closure.get("closure_sha256") != expected_hash:
         raise ValueError("Round 3 closure SHA-256 mismatch.")
-    if closure.get("production_contract_sha256") != _canonical_sha256(contract):
-        raise ValueError("Round 3 closure does not bind the production contract.")
-    _validate_historical_round2(round2, contract)
+    historical_contract_sha256 = _require_lower_sha256(
+        closure.get("production_contract_sha256"),
+        label="Round 3 historical production contract identity",
+    )
+    _validate_historical_round2(round2, historical_contract_sha256)
     round2_path = _resolve(repo_root, closure.get("round2_result_path", ""))
     if not round2_path.is_file():
         raise ValueError("Round 3 closure Round 2 artifact is missing.")
@@ -1039,14 +1057,15 @@ def build_round3_closure(
 ) -> dict[str, Any]:
     round2_path = _resolve(repo_root, round2_result_path)
     round2 = _read_json(round2_path)
-    _validate_historical_round2(round2, contract)
+    current_contract_sha256 = _canonical_sha256(contract)
+    _validate_historical_round2(round2, current_contract_sha256)
     real = _read_json(_resolve(repo_root, real_offender_path))
     worker = _read_json(_resolve(repo_root, worker_equivalence_path))
     tails = tuple(_read_json(_resolve(repo_root, path)) for path in tail_paths)
     _validate_round3_evidence(real, worker, tails)
     closure = {
         "schema_version": ROUND3_CLOSURE_SCHEMA,
-        "production_contract_sha256": _canonical_sha256(contract),
+        "production_contract_sha256": current_contract_sha256,
         "round2_result_path": _evidence_path(repo_root, round2_path),
         "round2_result_sha256": _sha256(round2_path),
         "round2_payload_sha256": _canonical_sha256(round2),

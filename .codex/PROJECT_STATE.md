@@ -3324,3 +3324,48 @@ FULL_M0_RUN=NO
 FULL_BUNDLE_MATERIALIZATION_RUN=NO
 NEXT_ACTION=RESEARCHER_REMATERIALIZE_TWO_SELECTED_CONTINUOUS_V1_FULL_BUNDLE_PLANS
 ```
+
+## S1M2 historical qualification/current execution identity split - 2026-09-14
+
+The immutable Round 2 result and issued Round 3 closure both bind historical
+production-contract SHA-256
+`f8684597c061f6608569042e69fa8a0fed9badd14a413976abcd12a8d62cd92d`.
+The current production contract binds SHA-256
+`c32c195901f989d7b41ab0875f31d05280a36b3462e93d73ceeb2a185c920809`
+because the two selected continuous Full execution-bundle declarations now
+reference their exact v2 artifacts. This later execution-artifact update does
+not change or invalidate the earlier scientific qualification evidence.
+
+Round 3 validation now treats the closure's lowercase SHA-256 as the immutable
+historical qualification identity and requires the supplied Round 2 payload to
+match it exactly. All existing closure checksum, artifact byte hash, payload
+hash, evidence, formal history, compact-commit ancestry, retained-worker, and
+overflow-resolution checks remain fail closed. Validation no longer compares
+that historical identity with the current contract.
+
+This does not permit cross-contract closure creation. `build_round3_closure`
+still requires its Round 2 input to bind the current contract and records that
+current SHA in any newly issued closure. `build_final_plan` separately binds
+the current contract SHA, current Git identity, exact selected current v2
+bundle identities, jobs, and execution scope; Full authorization remains exact
+to the resulting current plan.
+
+Focused validation passed 30 tests in 1.05 seconds. Collection completed with
+801 tests and zero errors. Historical Round 2/3 artifacts were not modified or
+regenerated. No VM, SSH, workload, bundle materialization, Full authorization,
+or Full M0 execution occurred. CI confirmation remains pending.
+
+```text
+HISTORICAL_QUALIFICATION_CONTRACT_SHA256=f8684597c061f6608569042e69fa8a0fed9badd14a413976abcd12a8d62cd92d
+CURRENT_EXECUTION_CONTRACT_SHA256=c32c195901f989d7b41ab0875f31d05280a36b3462e93d73ceeb2a185c920809
+HISTORICAL_QUALIFICATION_VALIDATION=PASS_LOCAL
+NEW_ROUND3_CLOSURE_BUILD_REMAINS_CURRENT_CONTRACT_STRICT=YES
+FINAL_PLAN_CURRENT_CONTRACT_BINDING=PASS_LOCAL
+ROUND2_ROUND3_ARTIFACTS_CHANGED=NO
+PYTEST_COLLECTION=PASS_801_COLLECTED
+GITHUB_CI=UNKNOWN_PENDING_RERUN
+REMOTE_OPERATIONS_RUN=NO
+FULL_M0_RUN=NO
+FULL_M0_AUTHORIZED=NO
+NEXT_ACTION=CI_CONFIRM_THEN_RESEARCHER_GENERATE_SCOPED_FINAL_PLAN_AND_AUTHORIZATION
+```

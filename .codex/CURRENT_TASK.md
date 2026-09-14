@@ -2,13 +2,20 @@
 
 DATE=2026-09-14
 BRANCH=exp/s1m2-reusable-pieces
-STATUS=FULL_EXECUTION_SCOPE_PASS_LOCAL
+STATUS=HISTORICAL_QUALIFICATION_IDENTITY_PASS_LOCAL
 
-IMPLEMENTATION_HEAD=41ce1a6542d8e31105c1458bc3edbfae3f2592ee
+TASK_BASE_HEAD=a46cf976f54dc931d08f785deb4525156874d216
+ROUND4_HARDENING_IMPLEMENTATION_HEAD=41ce1a6542d8e31105c1458bc3edbfae3f2592ee
 ROUND4_LONG_WHOLE_PRIOR_REGRESSION=FIXED
 SCIENTIFIC_SEMANTICS_CHANGED=NO
 P0_REFERENCE_EQUIVALENCE=PASS_LOCAL
-PYTEST_COLLECTION=PASS_795_COLLECTED
+PYTEST_COLLECTION=PASS_801_COLLECTED
+HISTORICAL_QUALIFICATION_VALIDATION=PASS_LOCAL
+HISTORICAL_QUALIFICATION_CONTRACT_SHA256=f8684597c061f6608569042e69fa8a0fed9badd14a413976abcd12a8d62cd92d
+CURRENT_EXECUTION_CONTRACT_SHA256=c32c195901f989d7b41ab0875f31d05280a36b3462e93d73ceeb2a185c920809
+NEW_ROUND3_CLOSURE_BUILD_REMAINS_CURRENT_CONTRACT_STRICT=YES
+FINAL_PLAN_CURRENT_CONTRACT_BINDING=PASS_LOCAL
+ROUND2_ROUND3_ARTIFACTS_CHANGED=NO
 CI_COLLECTION_FIX=PASS_LOCAL
 CI_CLEAN_CHECKOUT_ARTIFACT_DEPENDENCY=FIXED_LOCAL
 GITHUB_CI=UNKNOWN_PENDING_RERUN
@@ -42,6 +49,15 @@ and performs cheap Full filesystem/memory/interpreter admission before spawn.
 Full host and execution-bundle declarations are contract-owned and final plans
 bind their exact plan and materialization identities.
 
+Historical Round 2/3 qualification validation is now independent of later
+execution-artifact changes in the production contract. The immutable Round 3
+closure contract SHA is syntax-checked and used as the exact expected Round 2
+contract SHA; every existing closure checksum, Round 2 artifact/payload,
+evidence, history, commit-ancestry, worker, and overflow gate remains intact.
+New closure construction remains current-contract strict, while final plans
+and authorization continue to bind the current contract, current Git identity,
+and selected current bundle materializations.
+
 Full plan construction now accepts an optional repeatable cell selection.
 Omitting it preserves the six-job default. An explicit non-empty selection is
 validated against the frozen six-cell universe, rejects duplicates, and emits
@@ -74,8 +90,8 @@ explicitly PARTIAL.
 
 Local validation:
 
-- `python -m pytest --collect-only -q`: 795 collected, zero errors (8 focused
-  execution-scope cases added).
+- historical/current contract-identity focused suites: 30 passed in 1.05s.
+- `python -m pytest --collect-only -q`: 801 collected, zero errors.
 - Full execution-scope focused production suites: 41 passed.
 - focused Round 4 suites: 134 passed; VM-ops compatibility: 7 passed.
 - clean-checkout artifact closure: 3 targeted tests passed; both complete
@@ -88,17 +104,15 @@ Local validation:
   not repeated to avoid redundant validation; final whole-suite confirmation
   is deferred to CI.
 
-Four tracked Full bundle materializations are still legacy v1, but the already
-completed IAST surface/legacy cells are outside the intended execution scope
-and no longer block its plan. The two selected continuous cells still require
-researcher-supplied v2 production inputs; Devanagari surface/legacy are already
-v2. This turn did not materialize any plan.
+The selected continuous cells are now bound to exact v2 Full bundle artifacts
+by the current production contract. The two remaining legacy v1 Full bundles
+belong to already-completed, unselected IAST surface/legacy cells and do not
+block the intended scoped invocation. This turn did not materialize a plan or
+authorization and did not modify historical Round 2/3 artifacts.
 
-NEXT_ACTION=RESEARCHER_REMATERIALIZE_TWO_SELECTED_CONTINUOUS_V1_FULL_BUNDLE_PLANS
+NEXT_ACTION=CI_CONFIRM_THEN_RESEARCHER_GENERATE_SCOPED_FINAL_PLAN_AND_AUTHORIZATION
 
-Researcher sequence begins by rematerializing the M0-prime IAST continuous and
-Devanagari continuous Full bundle plans as exact v2 production inputs. Only
-after those selected inputs exist should the new HEAD be deployed, the scoped
-four-cell final plan and explicit authorization generated, failed jobs reset,
-the guarded core-07 migration run, and formal jobs launched. Codex did not
-perform any of those operations.
+After CI confirms this commit, the researcher may generate the scoped
+four-cell final plan and its explicit authorization from the current contract,
+then proceed with the separately guarded deployment/reset/migration/launch
+sequence. Codex did not perform any of those operations.

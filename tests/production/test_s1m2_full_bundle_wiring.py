@@ -21,6 +21,10 @@ FOUR_CELL_SCOPE = (
     "s1m2_m0_devanagari_surface_word",
     "s1m2_m0_devanagari_legacy_joined",
 )
+HISTORICAL_CONTRACT_SHA256 = (
+    "f8684597c061f6608569042e69fa8a0fed9badd14a413976abcd12a8d62cd92d"
+)
+OTHER_HISTORICAL_CONTRACT_SHA256 = "2" * 64
 
 
 def _round2_fail(contract: dict) -> dict:
@@ -40,6 +44,109 @@ def _closure() -> dict:
         "round2_result_sha256": "f" * 64,
         "retained_workers": 12,
     }
+
+
+def _write_json(path: Path, payload: dict) -> None:
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _round3_evidence_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    contract: dict,
+) -> tuple[Path, dict, dict]:
+    round2_path = tmp_path / "round2.json"
+    round2 = _round2_fail(contract)
+    real_path = tmp_path / "raw520.json"
+    worker_path = tmp_path / "workers.json"
+    tail_paths = tuple(
+        tmp_path / f"raw{raw}.json" for raw in (1002, 1410, 1841, 2484)
+    )
+    _write_json(round2_path, round2)
+    _write_json(
+        real_path,
+        {
+            "status": "PASS",
+            "gate": "REAL_OFFENDER_COMPACT_VS_LEGACY_EXACTNESS",
+            "case": {
+                "raw_internal_matches": 520,
+                "retained_internal_matches": 520,
+            },
+            "compact": {
+                "support_truncation_tokens": 0,
+                "shared_batch_fallbacks": 0,
+            },
+            "scientific_equivalence": {"posterior": "PASS"},
+        },
+    )
+    _write_json(
+        worker_path,
+        {
+            "status": "PASS",
+            "gate": "COMPACT_LOCAL_WORKER_SCIENTIFIC_EQUIVALENCE",
+            "workers": [2, 4],
+            "same_bundle_plan": True,
+            "training_history": "EXACT",
+            "piece_lexicon_state": "EXACT",
+            "scientific_artifacts_all_byte_identical": True,
+            "worker_selection_reopened": False,
+            "round2_engineering_preference_retained": 12,
+            "scientific_artifacts": {"summary.json": {"equal": True}},
+        },
+    )
+    for raw, path in zip((1002, 1410, 1841, 2484), tail_paths, strict=True):
+        _write_json(
+            path,
+            {
+                "status": "PASS",
+                "gate": "COMPACT_PRODUCTION_PASS1_TAIL",
+                "case": {"raw": raw, "retained": raw},
+                "compact": {
+                    "support_truncation_tokens": 0,
+                    "shared_batch_fallbacks": 0,
+                },
+                "posterior_mass": 1.0,
+            },
+        )
+
+    # Commit ancestry is an external Git boundary already covered by the Round 3
+    # closure tests; retain every closure field and artifact check exercised here.
+    monkeypatch.setattr(s1m2, "_git_is_ancestor", lambda *args: True)
+    closure = s1m2.build_round3_closure(
+        contract,
+        round2_path,
+        real_offender_path=real_path,
+        worker_equivalence_path=worker_path,
+        tail_paths=tail_paths,
+        repo_root=tmp_path,
+    )
+    return round2_path, round2, closure
+
+
+def _rebind_historical_contract(
+    round2_path: Path,
+    round2: dict,
+    closure: dict,
+    historical_contract_sha256: str,
+) -> tuple[dict, dict]:
+    rebound_round2 = copy.deepcopy(round2)
+    rebound_round2["production_contract_sha256"] = historical_contract_sha256
+    _write_json(round2_path, rebound_round2)
+
+    rebound_closure = copy.deepcopy(closure)
+    rebound_closure["production_contract_sha256"] = historical_contract_sha256
+    rebound_closure["round2_result_sha256"] = s1m2._sha256(round2_path)
+    rebound_closure["round2_payload_sha256"] = s1m2._canonical_sha256(
+        rebound_round2
+    )
+    rebound_closure["closure_sha256"] = s1m2._canonical_sha256(
+        {
+            key: value
+            for key, value in rebound_closure.items()
+            if key != "closure_sha256"
+        }
+    )
+    return rebound_round2, rebound_closure
 
 
 def _install_bundle_loader(
@@ -72,6 +179,172 @@ def _install_bundle_loader(
     monkeypatch.setattr(
         s1m2, "validate_round3_closure", lambda *args, **kwargs: None
     )
+
+
+def test_historical_round2_uses_explicit_exact_contract_identity() -> None:
+    contract = s1m2.load_contract(repo_root=Path("."), verify_files=False)
+    round2 = _round2_fail(contract)
+    round2["production_contract_sha256"] = HISTORICAL_CONTRACT_SHA256
+
+    s1m2._validate_historical_round2(round2, HISTORICAL_CONTRACT_SHA256)
+    with pytest.raises(ValueError, match="expected historical production contract"):
+        s1m2._validate_historical_round2(
+            round2, OTHER_HISTORICAL_CONTRACT_SHA256
+        )
+
+
+def test_round3_validation_preserves_historical_contract_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    current_contract = s1m2.load_contract(
+        repo_root=Path("."), verify_files=False
+    )
+    round2_path, round2, closure = _round3_evidence_fixture(
+        monkeypatch, tmp_path, current_contract
+    )
+    round2, closure = _rebind_historical_contract(
+        round2_path,
+        round2,
+        closure,
+        HISTORICAL_CONTRACT_SHA256,
+    )
+
+    assert s1m2._canonical_sha256(current_contract) != HISTORICAL_CONTRACT_SHA256
+    s1m2.validate_round3_closure(
+        closure,
+        current_contract,
+        round2,
+        repo_root=tmp_path,
+    )
+
+
+def test_round3_validation_rejects_historical_round2_closure_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    current_contract = s1m2.load_contract(
+        repo_root=Path("."), verify_files=False
+    )
+    round2_path, round2, closure = _round3_evidence_fixture(
+        monkeypatch, tmp_path, current_contract
+    )
+    round2, closure = _rebind_historical_contract(
+        round2_path,
+        round2,
+        closure,
+        HISTORICAL_CONTRACT_SHA256,
+    )
+    closure["production_contract_sha256"] = OTHER_HISTORICAL_CONTRACT_SHA256
+    closure["closure_sha256"] = s1m2._canonical_sha256(
+        {key: value for key, value in closure.items() if key != "closure_sha256"}
+    )
+
+    with pytest.raises(ValueError, match="expected historical production contract"):
+        s1m2.validate_round3_closure(
+            closure,
+            current_contract,
+            round2,
+            repo_root=tmp_path,
+        )
+
+
+def test_round3_validation_rejects_noncanonical_historical_contract_sha(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    current_contract = s1m2.load_contract(
+        repo_root=Path("."), verify_files=False
+    )
+    _, round2, closure = _round3_evidence_fixture(
+        monkeypatch, tmp_path, current_contract
+    )
+    closure["production_contract_sha256"] = "A" * 64
+    closure["closure_sha256"] = s1m2._canonical_sha256(
+        {key: value for key, value in closure.items() if key != "closure_sha256"}
+    )
+
+    with pytest.raises(ValueError, match="must be a lowercase SHA-256"):
+        s1m2.validate_round3_closure(
+            closure,
+            current_contract,
+            round2,
+            repo_root=tmp_path,
+        )
+
+
+def test_round3_builder_requires_round2_to_bind_current_contract(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    current_contract = s1m2.load_contract(
+        repo_root=Path("."), verify_files=False
+    )
+    round2_path, round2, closure = _round3_evidence_fixture(
+        monkeypatch, tmp_path, current_contract
+    )
+    round2, _ = _rebind_historical_contract(
+        round2_path,
+        round2,
+        closure,
+        HISTORICAL_CONTRACT_SHA256,
+    )
+
+    evidence = closure["evidence"]
+    with pytest.raises(ValueError, match="expected historical production contract"):
+        s1m2.build_round3_closure(
+            current_contract,
+            round2_path,
+            real_offender_path=Path(evidence["real_offender_exactness"]["path"]),
+            worker_equivalence_path=Path(
+                evidence["local_worker_equivalence"]["path"]
+            ),
+            tail_paths=tuple(
+                Path(entry["path"]) for entry in evidence["pressure_tail"]
+            ),
+            repo_root=tmp_path,
+        )
+
+
+def test_final_plan_binds_current_not_historical_contract_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    current_contract = s1m2.load_contract(
+        repo_root=Path("."), verify_files=False
+    )
+    round2_path, round2, closure = _round3_evidence_fixture(
+        monkeypatch, tmp_path, current_contract
+    )
+    round2, closure = _rebind_historical_contract(
+        round2_path,
+        round2,
+        closure,
+        HISTORICAL_CONTRACT_SHA256,
+    )
+    monkeypatch.setattr(
+        s1m2,
+        "_bundle_plan_details",
+        lambda _root, declaration, *_args, **_kwargs: {
+            "path": declaration["execution_bundle_plan"],
+            "plan_sha256": declaration["execution_bundle_plan_sha256"],
+            "materialization_sha256": "d" * 64,
+        },
+    )
+
+    plan = s1m2.build_final_plan(
+        current_contract,
+        round2,
+        closure,
+        identity=IDENTITY,
+        repo_root=tmp_path,
+        selected_cell_ids=["s1m2_m0_devanagari_continuous"],
+    )
+
+    current_contract_sha256 = s1m2._canonical_sha256(current_contract)
+    assert plan["production_contract_sha256"] == current_contract_sha256
+    assert plan["production_contract_sha256"] != HISTORICAL_CONTRACT_SHA256
+    assert closure["production_contract_sha256"] == HISTORICAL_CONTRACT_SHA256
 
 
 def test_full_plan_binds_bundles_to_both_continuous_cells(
