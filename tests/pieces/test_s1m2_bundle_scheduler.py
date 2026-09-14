@@ -1096,6 +1096,148 @@ def test_legacy_v1_run_training_recovers_then_admits_normal_v2_pass2(
         authoritative.close()
 
 
+def test_finalized_legacy_v1_pass1_migrates_identity_only_before_pass2(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, documents, plan, store, run_dir, checkpoint = _legacy_finalize_fixture(
+        tmp_path
+    )
+    migration = training._prepare_legacy_v1_finalize_only_migration(
+        config=config,
+        continuing=True,
+        checkpoint=checkpoint,
+        database_checkpoint=store.load_training_checkpoint(),
+        documents=documents,
+        store=store,
+        execution_plan=plan,
+    )
+    assert migration is not None
+    training._training_pass(
+        pass_index=1,
+        documents=documents,
+        grammar=training.StructuredSandhiGrammar.from_default_inventory(),
+        store=store,
+        config=config,
+        run_dir=run_dir,
+        checkpoint=checkpoint,
+        telemetry=store.telemetry,
+        execution_plan=plan,
+        legacy_finalize_only_migration=migration,
+    )
+    finalized = store.load_training_checkpoint()
+    assert finalized is not None
+    finalized["execution_bundle_plan"] = migration["from_execution_bundle_plan"]
+    finalized["execution_plan_migrations"] = []
+    store.save_training_checkpoint(finalized)
+    training._save_checkpoint(
+        run_dir,
+        {
+            **finalized,
+            "completed_passes": 0,
+            "active_pass": 1,
+            "next_document_index": len(documents),
+        },
+    )
+    store.close()
+
+    pass2_calls = 0
+
+    def admit_pass2(**kwargs: object) -> dict[str, object]:
+        nonlocal pass2_calls
+        pass2_calls += 1
+        assert kwargs["pass_index"] == 2
+        assert kwargs["legacy_finalize_only_migration"] is None
+        authoritative = kwargs["store"].load_training_checkpoint()  # type: ignore[union-attr]
+        assert authoritative["execution_bundle_plan"] == plan.checkpoint_payload()
+        record = authoritative["execution_plan_migrations"][-1]
+        assert record["reason"] == training.LEGACY_FINALIZED_IDENTITY_REASON
+        assert record["migration_kind"] == "execution_identity_only"
+        assert record["scientific_state_changed"] is False
+        counters = kwargs["telemetry"].counters  # type: ignore[union-attr]
+        assert counters["legacy_finalized_completed_documents_reprocessed"] == 0
+        assert counters["legacy_finalized_recovery_worker_pools_started"] == 0
+        assert counters["legacy_finalized_recovery_document_iterations"] == 0
+        return {}
+
+    monkeypatch.setattr(training, "_training_pass", admit_pass2)
+    run_training(config, repo_root=Path("."), next_pass_only=True)
+    assert pass2_calls == 1
+    provenance = json.loads((run_dir / "provenance.json").read_text("utf-8"))
+    assert provenance["training_execution_bundle_plan"]["plan_sha256"] == (
+        plan.plan_sha256
+    )
+    reopened = LexiconStore(run_dir / "learner.sqlite")
+    try:
+        authoritative = reopened.load_training_checkpoint()
+        assert authoritative is not None
+        assert authoritative["completed_passes"] == 1
+        assert authoritative["active_pass"] is None
+        assert authoritative["next_document_index"] == 0
+        assert not reopened.has_table("piece_counts_next")
+        assert not reopened.has_table("lexical_diagnostics_next")
+    finally:
+        reopened.close()
+
+
+@pytest.mark.parametrize(
+    ("identity", "message"),
+    (
+        ("representation_set_sha256", "representation identity"),
+        ("segment_sequence_sha256", "segment sequence"),
+    ),
+)
+def test_finalized_legacy_v1_identity_mismatch_fails_closed(
+    tmp_path: Path,
+    identity: str,
+    message: str,
+) -> None:
+    config, documents, plan, store, run_dir, checkpoint = _legacy_finalize_fixture(
+        tmp_path
+    )
+    migration = training._prepare_legacy_v1_finalize_only_migration(
+        config=config,
+        continuing=True,
+        checkpoint=checkpoint,
+        database_checkpoint=store.load_training_checkpoint(),
+        documents=documents,
+        store=store,
+        execution_plan=plan,
+    )
+    assert migration is not None
+    training._training_pass(
+        pass_index=1,
+        documents=documents,
+        grammar=training.StructuredSandhiGrammar.from_default_inventory(),
+        store=store,
+        config=config,
+        run_dir=run_dir,
+        checkpoint=checkpoint,
+        telemetry=store.telemetry,
+        execution_plan=plan,
+        legacy_finalize_only_migration=migration,
+    )
+    finalized = store.load_training_checkpoint()
+    assert finalized is not None
+    finalized["execution_bundle_plan"] = dict(
+        migration["from_execution_bundle_plan"]
+    )
+    finalized["execution_bundle_plan"][identity] = "f" * 64
+    store.save_training_checkpoint(finalized)
+    try:
+        with pytest.raises(RuntimeError, match=message):
+            training._prepare_legacy_v1_finalized_identity_migration(
+                config=config,
+                continuing=True,
+                checkpoint=finalized,
+                database_checkpoint=store.load_training_checkpoint(),
+                store=store,
+                execution_plan=plan,
+            )
+    finally:
+        store.close()
+
+
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     (

@@ -77,7 +77,7 @@ def test_bootstrap_stage_order_is_generic_and_complete(
     ) -> dict[str, str]:
         events.append(name)
         receipt["stages"].append({"name": name, "status": "PASS"})  # type: ignore[index,union-attr]
-        return {"status": "READY"} if name == "final_validation" else {}
+        return {"status": "GENERIC_READY"} if name == "final_validation" else {}
 
     def deploy(
         receipt: dict[str, object], *_args: object, **_kwargs: object
@@ -113,7 +113,7 @@ def test_bootstrap_stage_order_is_generic_and_complete(
         runner=object(),
     )
 
-    assert result["status"] == "READY"
+    assert result["status"] == "GENERIC_READY"
     assert events == [
         "ssh",
         "prerequisites",
@@ -154,7 +154,7 @@ def test_real_orchestration_uses_release_identity_through_inputs_and_ready(
         receipt["stages"].append(  # type: ignore[union-attr]
             {"name": name, "status": "PASS"}
         )
-        return {"status": "READY"} if name == "final_validation" else {}
+        return {"status": "GENERIC_READY"} if name == "final_validation" else {}
 
     def deploy(
         receipt: dict[str, object],
@@ -210,7 +210,7 @@ def test_real_orchestration_uses_release_identity_through_inputs_and_ready(
         runner=object(),
     )
 
-    assert result["status"] == "READY"
+    assert result["status"] == "GENERIC_READY"
     assert observed == [(expected.branch, expected.head)]
 
 
@@ -308,6 +308,8 @@ def test_ready_python_dependencies_and_links_are_reused() -> None:
         "wget -q"
     )
     assert "import _posixsubprocess, subprocess" in python_script
+    assert bootstrap.PYTHON_SOURCE_SHA256 in python_script
+    assert "sha256sum -c -" in python_script
 
     prerequisite_script = bootstrap.build_prerequisites_script()
     assert "prerequisites=REUSED" in prerequisite_script
@@ -326,6 +328,130 @@ def test_ready_python_dependencies_and_links_are_reused() -> None:
     assert "dependencies=REUSED" in dependency_script
     assert bootstrap.CPU_TORCH_INDEX in dependency_script
     assert "/opt/python-3.11.9/bin/python3.11" in dependency_script
+    assert "environment_lock=PARTIAL" in dependency_script
+    assert "environment_pip_freeze_sha256" in dependency_script
+    assert "environment_direct_versions" in dependency_script
+
+    validation_script = bootstrap.build_final_validation_script(
+        remote_config(), "a" * 40
+    )
+    assert "json.loads" in validation_script
+    assert "grep -Eq" not in validation_script
+    assert "GENERIC_READY" in validation_script
+
+
+def test_production_profile_has_distinct_ready_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected = release()
+    production_inputs = bootstrap._bootstrap_contract(remote_config(), expected.branch)
+    monkeypatch.setattr(
+        bootstrap, "validate_local_release", lambda *_args: expected
+    )
+    monkeypatch.setattr(
+        bootstrap,
+        "_production_input_contract",
+        lambda *_args: (
+            production_inputs,
+            {"path": "configs/production/s1m2_six_cell.json", "sha256": "b" * 64},
+        ),
+    )
+    monkeypatch.setattr(bootstrap.bridge, "require_transfer_platform", lambda: None)
+    monkeypatch.setattr(bootstrap.bridge, "require_tool", lambda _name: None)
+
+    def remote_stage(
+        receipt: dict[str, object],
+        _config: object,
+        _runner: object,
+        name: str,
+        script: str,
+    ) -> dict[str, str]:
+        receipt["stages"].append({"name": name, "status": "PASS"})  # type: ignore[union-attr]
+        if name == "final_validation":
+            assert "S1M2_PRODUCTION_READY" in script
+            return {"status": "S1M2_PRODUCTION_READY"}
+        return {}
+
+    monkeypatch.setattr(bootstrap, "_run_remote_stage", remote_stage)
+    monkeypatch.setattr(
+        bootstrap,
+        "_deploy_exact_head",
+        lambda receipt, *_args: receipt["stages"].append(  # type: ignore[union-attr]
+            {"name": "deploy", "status": "PASS"}
+        ),
+    )
+
+    def inputs(
+        receipt: dict[str, object],
+        *_args: object,
+        production_inputs: object,
+    ) -> None:
+        assert production_inputs is not None
+        receipt["stages"].extend(  # type: ignore[union-attr]
+            (
+                {"name": "inputs", "status": "PASS"},
+                {"name": "input_receipt", "status": "PASS"},
+            )
+        )
+
+    monkeypatch.setattr(bootstrap, "_push_inputs", inputs)
+    result = bootstrap.bootstrap_host(
+        repo_root=tmp_path,
+        config=remote_config(),
+        data_device="/dev/vdb",
+        dry_run=False,
+        runner=object(),
+        production_contract_path=Path("configs/production/s1m2_six_cell.json"),
+    )
+    assert result["status"] == "S1M2_PRODUCTION_READY"
+    assert result["readiness_profile"] == "s1m2-production"
+
+
+def test_production_input_contract_binds_exact_cell_bundle_and_contract() -> None:
+    transfer, details = bootstrap._production_input_contract(
+        Path("."),
+        Path("configs/production/s1m2_six_cell.json"),
+        release(),
+        remote_config("core-09"),
+    )
+    derived = next(
+        item for item in transfer.input_sets if item.input_id == "derived_m0_prime"
+    )
+    assert details["cell_id"] == "s1m2_m0_devanagari_surface_word"
+    assert details["bundle_plan_count"] == 1
+    assert (
+        "artifacts/s1m2_execution_bundle_plans/"
+        "full_m0_devanagari_surface_word_tp279047"
+    ) in derived.paths
+    assert derived.validator_argv[-2:] == (
+        "--cell-id",
+        "s1m2_m0_devanagari_surface_word",
+    )
+
+
+def test_production_input_contract_fails_when_authoritative_input_is_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sktlm.production import s1m2
+
+    contract = tmp_path / "contract.json"
+    contract.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        s1m2,
+        "load_contract",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            FileNotFoundError("missing frozen production input")
+        ),
+    )
+    with pytest.raises(bootstrap.BootstrapError, match="input validation failed"):
+        bootstrap._production_input_contract(
+            tmp_path,
+            contract,
+            release(),
+            remote_config("core-09"),
+        )
 
 
 def test_python_partial_install_repair_is_exact_and_bounded() -> None:

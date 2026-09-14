@@ -575,6 +575,7 @@ def load_round2_plan(
             job,
             contract["workloads"][job["workload_id"]],
             contract["scientific_config"],
+            manifest=job["manifest"],
         )
         if (
             details["plan_sha256"] != job["execution_bundle_plan_sha256"]

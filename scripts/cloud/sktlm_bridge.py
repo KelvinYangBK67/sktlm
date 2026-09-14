@@ -1645,6 +1645,8 @@ def push_contract_inputs_action(
     runner: SystemRunner,
     *,
     verify_after: bool,
+    expected_branch: str | None = None,
+    expected_head: str | None = None,
 ) -> Mapping[str, Any]:
     """Validate and transfer only the input sets declared by the contract."""
 
@@ -1653,7 +1655,18 @@ def push_contract_inputs_action(
     require_tool("git")
     require_tool("ssh")
     require_tool("rsync")
-    branch = require_branch(config)
+    if (expected_branch is None) != (expected_head is None):
+        raise BridgeError(
+            "explicit contract-input release identity requires branch and HEAD"
+        )
+    if expected_branch is None:
+        branch = require_branch(config)
+    else:
+        branch = _validated_contract_branch(expected_branch)
+        if not re.fullmatch(r"[0-9a-f]{40}", expected_head or ""):
+            raise BridgeError(
+                "explicit contract-input release HEAD must be a full lowercase SHA-1"
+            )
     local = local_git_status(repo_root, runner)
     if not local.get("available"):
         raise BridgeError("local Git repository is unavailable")
@@ -1664,11 +1677,17 @@ def push_contract_inputs_action(
             f"local branch is {local.get('branch')!r}, expected {branch!r}"
         )
     local_head = str(local.get("head"))
+    if expected_head is not None and local_head != expected_head:
+        raise BridgeError(
+            "local HEAD does not match the explicit contract-input release HEAD"
+        )
     remote_head = remote_repo_head(config, runner)
     receipt["remote_repo_head"] = remote_head
-    if remote_head != local_head:
+    authoritative_head = expected_head or local_head
+    if remote_head != authoritative_head:
         raise BridgeError(
-            f"remote repo HEAD {remote_head} does not match local HEAD {local_head}; deploy-code first"
+            f"remote repo HEAD {remote_head} does not match authoritative HEAD "
+            f"{authoritative_head}; deploy-code first"
         )
 
     receipt["local_input_validation"] = validate_contract_inputs_local(

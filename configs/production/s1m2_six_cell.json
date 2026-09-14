@@ -71,6 +71,22 @@
     {"cell_id": "s1m2_m0_devanagari_legacy_joined", "substrate": "M0", "script": "devanagari", "condition": "legacy_joined", "manifest_key": "m0_manifest"},
     {"cell_id": "s1m2_m0_devanagari_continuous", "substrate": "M0", "script": "devanagari", "condition": "continuous", "manifest_key": "m0_manifest"}
   ],
+  "full_host_role_by_cell": {
+    "s1m2_m0_iast_surface_word": "core-01",
+    "s1m2_m0_iast_legacy_joined": "core-02",
+    "s1m2_m0_prime_iast_continuous": "core-07",
+    "s1m2_m0_devanagari_surface_word": "core-09",
+    "s1m2_m0_devanagari_legacy_joined": "core-10",
+    "s1m2_m0_devanagari_continuous": "core-08"
+  },
+  "full_execution_bundle_plans": {
+    "s1m2_m0_iast_surface_word": {"execution_bundle_plan": "artifacts/s1m2_execution_bundle_plans/full_m0_iast_surface_word_tp279047", "execution_bundle_plan_sha256": "a672a4c46de043c68a3b5921e885774f08fcad1b721a9f6afc25acb2134d3092", "script": "iast", "condition": "surface_word"},
+    "s1m2_m0_iast_legacy_joined": {"execution_bundle_plan": "artifacts/s1m2_execution_bundle_plans/full_m0_iast_legacy_joined_tp279047", "execution_bundle_plan_sha256": "e54f7ab98a1afb4236802a7d02d72e2ea7550ebbbd72cffd662698182e722897", "script": "iast", "condition": "legacy_joined"},
+    "s1m2_m0_prime_iast_continuous": {"execution_bundle_plan": "artifacts/s1m2_execution_bundle_plans/full_m0_prime_iast_continuous_tp279047", "execution_bundle_plan_sha256": "9b88f7dd64d48f11b5730723f49acbec0a01ecb71c9391d1aea7a8ca5385cfca", "script": "iast_m0_prime", "condition": "continuous"},
+    "s1m2_m0_devanagari_surface_word": {"execution_bundle_plan": "artifacts/s1m2_execution_bundle_plans/full_m0_devanagari_surface_word_tp279047", "execution_bundle_plan_sha256": "b4d2d5ecc4419016207d7887c804966db65423b37d6ac6b481d93f2d3eb198bb", "script": "devanagari", "condition": "surface_word"},
+    "s1m2_m0_devanagari_legacy_joined": {"execution_bundle_plan": "artifacts/s1m2_execution_bundle_plans/full_m0_devanagari_legacy_joined_tp279047", "execution_bundle_plan_sha256": "aeb3bfa0b5d0d96965125f4e0d735708f4ccf44d4104a06f1df7002ce5a21063", "script": "devanagari", "condition": "legacy_joined"},
+    "s1m2_m0_devanagari_continuous": {"execution_bundle_plan": "artifacts/s1m2_execution_bundle_plans/full_m0_devanagari_continuous_tp279047", "execution_bundle_plan_sha256": "9c828b6612d3e60b443511907dc2f731a08548be07caf513ea346e43b7d6414a", "script": "devanagari", "condition": "continuous"}
+  },
   "workloads": {
     "bounded_interface": {"document_list": "configs/benchmarks/s1m2_prevm_bounded_documents.txt", "document_list_sha256": "a4e3e637e8c9c870db592c8b145454c2a16687ea0f3e8a5f40b108d9e6a75976", "max_lines_per_document": 1, "passes": 1, "classification": "bounded_interface_only"},
     "smoke": {"document_list": "configs/benchmarks/latent_smoke_documents.txt", "document_list_sha256": "0ea7aaa132186c749e1505e058ea57ea78a4971d9e0d440f5b684c9e14fa9ce9", "max_lines_per_document": 2, "classification": "production_path_smoke"},

@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Sequence
 
-from sktlm.cloud.contracts import Deployment, ExperimentContract
+from sktlm.cloud.contracts import Deployment, ExperimentContract, InputSet
 
 
 BRIDGE_PATH = Path(__file__).with_name("sktlm_bridge.py")
@@ -37,6 +37,9 @@ PYTHON_BIN = f"{PYTHON_PREFIX}/bin/python3.11"
 PYTHON_SOURCE_URL = (
     f"https://www.python.org/ftp/python/{PYTHON_VERSION}/"
     f"Python-{PYTHON_VERSION}.tar.xz"
+)
+PYTHON_SOURCE_SHA256 = (
+    "9b1e896523fc510691126c864406d9360a3d1e986acbda59cda57b5abda45b87"
 )
 CPU_TORCH_INDEX = "https://download.pytorch.org/whl/cpu"
 DEVICE_RE = re.compile(r"/dev/[A-Za-z0-9._/+-]+\Z")
@@ -293,6 +296,7 @@ cleanup() {{
 trap cleanup EXIT HUP INT TERM
 cd "$build_dir"
 wget -q --https-only -- {shlex.quote(PYTHON_SOURCE_URL)}
+printf '%s  %s\n' {shlex.quote(PYTHON_SOURCE_SHA256)} Python-{PYTHON_VERSION}.tar.xz | sha256sum -c -
 tar -xf Python-{PYTHON_VERSION}.tar.xz
 cd Python-{PYTHON_VERSION}
 ./configure --prefix={shlex.quote(PYTHON_PREFIX)} --with-ensurepip=install
@@ -392,6 +396,14 @@ marker={shlex.quote(marker)}
 expected_head={shlex.quote(expected_head)}
 python_bin={shlex.quote(PYTHON_BIN)}
 venv_state=REUSED
+emit_environment() {{
+  freeze_sha=$("$venv/bin/python" -m pip freeze --all | LC_ALL=C sort | sha256sum | awk '{{print $1}}')
+  printf 'environment_lock=PARTIAL\n'
+  printf 'environment_python=%s\n' "$("$venv/bin/python" -c 'import platform; print(platform.python_version())')"
+  printf 'environment_pip=%s\n' "$("$venv/bin/python" -m pip --version)"
+  printf 'environment_pip_freeze_sha256=%s\n' "$freeze_sha"
+  "$venv/bin/python" -c 'import importlib.metadata as m,json; names=("numpy","regex","sentencepiece","PyYAML","torch","sktlm"); print("environment_direct_versions="+json.dumps({{n:m.version(n) for n in names}},sort_keys=True,separators=(",",":")))'
+}}
 if [ "$(git -C "$repo" rev-parse HEAD)" != "$expected_head" ]; then
   printf 'dependency install repo HEAD mismatch\n' >&2
   exit 60
@@ -437,6 +449,7 @@ wanted=$(printf 'head=%s\npyproject_sha256=%s\npython=%s\n' "$expected_head" "$p
 if [ -f "$marker" ] && [ "$(cat "$marker")" = "$wanted" ] && "$venv/bin/python" -m pip check >/dev/null 2>&1; then
   printf 'venv=%s\n' "$venv_state"
   printf 'dependencies=REUSED\n'
+  emit_environment
   exit 0
 fi
 export PIP_CACHE_DIR={shlex.quote(posixpath.join(cloud, 'pip-cache'))}
@@ -448,10 +461,13 @@ printf '%s' "$wanted" > "$marker.tmp"
 mv -- "$marker.tmp" "$marker"
 printf 'venv=%s\n' "$venv_state"
 printf 'dependencies=INSTALLED\n'
+emit_environment
 """.strip()
 
 
-def build_final_validation_script(config: Any, expected_head: str) -> str:
+def build_final_validation_script(
+    config: Any, expected_head: str, *, readiness: str = "GENERIC_READY"
+) -> str:
     repo = config.remote_repo
     cloud = config.remote_cloud_root
     return f"""# sktlm-bootstrap-stage:final_validation
@@ -469,8 +485,20 @@ for path in artifacts data/canonical data/representations .venv; do
   if [ ! -L "$repo/$path" ]; then exit 74; fi
 done
 if [ ! -f "$cloud/artifacts/cloud_input_verification.json" ]; then exit 75; fi
-if ! grep -Eq '"valid"[[:space:]]*:[[:space:]]*true' "$cloud/artifacts/cloud_input_verification.json"; then exit 76; fi
-printf 'status=READY\n'
+"$repo/.venv/bin/python" - "$cloud/artifacts/cloud_input_verification.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+    raise SystemExit(f"invalid bootstrap input receipt: {{exc}}")
+if not isinstance(payload, dict) or payload.get("valid") is not True:
+    raise SystemExit("bootstrap input receipt does not report exact valid=true")
+PY
+printf 'status=%s\n' {shlex.quote(readiness)}
 printf 'repo_head=%s\n' "$actual"
 printf 'python_version=%s\n' "$version"
 printf 'venv=READY\n'
@@ -496,6 +524,109 @@ def _bootstrap_contract(config: Any, branch: str) -> ExperimentContract:
         host_registry=None,
         host_assignments=(),
     )
+
+
+def _production_input_contract(
+    repo_root: Path,
+    production_contract_path: Path,
+    release: LocalRelease,
+    config: Any,
+) -> tuple[ExperimentContract, dict[str, Any]]:
+    """Build a transfer contract for every non-Git S1M2 production input."""
+
+    from sktlm.production import s1m2
+
+    resolved = (
+        production_contract_path
+        if production_contract_path.is_absolute()
+        else repo_root / production_contract_path
+    ).resolve()
+    try:
+        relative_contract = resolved.relative_to(repo_root.resolve()).as_posix()
+    except ValueError as exc:
+        raise BootstrapError("production contract must be inside the repository") from exc
+    try:
+        production = s1m2.load_contract(
+            Path(relative_contract), repo_root=repo_root, verify_files=True
+        )
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise BootstrapError(
+            f"S1M2 production contract/input validation failed: {exc}"
+        ) from exc
+    if production["deployment"]["branch"] != release.branch:
+        raise BootstrapError("production contract branch differs from local release")
+    cloud_path = repo_root / production["deployment"]["cloud_contract"]
+    try:
+        cloud = s1m2.load_experiment_contract(cloud_path)
+    except (OSError, ValueError) as exc:
+        raise BootstrapError("S1M2 cloud contract validation failed") from exc
+    matching_cells = [
+        cell_id
+        for cell_id, host_role in production["full_host_role_by_cell"].items()
+        if host_role == config.host_profile
+    ]
+    if len(matching_cells) != 1:
+        raise BootstrapError(
+            "production bootstrap host profile must map to exactly one Full cell"
+        )
+    cell_id = matching_cells[0]
+    bundle_paths = (
+        str(
+            production["full_execution_bundle_plans"][cell_id][
+                "execution_bundle_plan"
+            ]
+        ),
+    )
+    augmented_inputs = tuple(
+        InputSet(
+            input_id=item.input_id,
+            paths=(
+                (*item.paths, *bundle_paths)
+                if item.input_id == "derived_m0_prime"
+                else item.paths
+            ),
+            validator_argv=(
+                (
+                    "python",
+                    "-m",
+                    "sktlm.production.s1m2",
+                    "--contract",
+                    relative_contract,
+                    "validate-production-inputs",
+                    "--cell-id",
+                    cell_id,
+                )
+                if item.input_id == "derived_m0_prime"
+                else item.validator_argv
+            ),
+        )
+        for item in cloud.input_sets
+    )
+    if not any(item.input_id == "derived_m0_prime" for item in augmented_inputs):
+        raise BootstrapError("production cloud contract lacks derived_m0_prime inputs")
+    transfer = ExperimentContract(
+        contract_id=f"{cloud.contract_id}-production-inputs",
+        branch=release.branch,
+        deployment=cloud.deployment,
+        input_sets=augmented_inputs,
+        remote_run_root=cloud.remote_run_root,
+        optional_metrics_root=cloud.optional_metrics_root,
+        audit_argv=cloud.audit_argv,
+        audit_inventory_key=cloud.audit_inventory_key,
+        profiles=cloud.profiles,
+        required_audited_files=cloud.required_audited_files,
+        local_collection_root=cloud.local_collection_root,
+        completion_schema=cloud.completion_schema,
+        host_registry=cloud.host_registry,
+        host_assignments=cloud.host_assignments,
+    )
+    return transfer, {
+        "path": relative_contract,
+        "sha256": s1m2._canonical_sha256(production),
+        "input_contract_id": transfer.contract_id,
+        "bundle_plan_count": len(bundle_paths),
+        "cell_id": cell_id,
+    }
 
 
 def validate_local_release(repo_root: Path, config: Any, runner: Any) -> LocalRelease:
@@ -603,6 +734,7 @@ def _push_inputs(
     config: Any,
     runner: Any,
     release: LocalRelease,
+    production_inputs: ExperimentContract | None = None,
 ) -> None:
     input_stage: dict[str, Any] = {
         "name": "inputs",
@@ -610,13 +742,8 @@ def _push_inputs(
         "started_at": bridge.utc_now(),
     }
     receipt["stages"].append(input_stage)
-    pushed, path, error = bridge.execute_receipted(
-        "bootstrap-push-inputs",
-        "local_to_remote",
-        repo_root,
-        config,
-        runner,
-        lambda subreceipt: bridge.push_inputs_action(
+    if production_inputs is None:
+        action = lambda subreceipt: bridge.push_inputs_action(
             subreceipt,
             config,
             repo_root,
@@ -624,22 +751,50 @@ def _push_inputs(
             verify_after=True,
             expected_branch=release.branch,
             expected_head=release.head,
-        ),
+        )
+    else:
+        action = lambda subreceipt: bridge.push_contract_inputs_action(
+            subreceipt,
+            config,
+            production_inputs,
+            repo_root,
+            runner,
+            verify_after=True,
+            expected_branch=release.branch,
+            expected_head=release.head,
+        )
+    pushed, path, error = bridge.execute_receipted(
+        "bootstrap-push-inputs",
+        "local_to_remote",
+        repo_root,
+        config,
+        runner,
+        action,
     )
     receipt["input_receipt"] = str(path.relative_to(repo_root))
     if error is not None or pushed.get("valid") is not True:
         input_stage["status"] = "FAILED"
         input_stage["finished_at"] = bridge.utc_now()
         raise BootstrapError("frozen input transfer/validation failed")
-    validation = pushed.get("remote_input_validation")
+    validation_key = (
+        "remote_input_validation"
+        if production_inputs is None
+        else "remote_validator_result"
+    )
+    validation = pushed.get(validation_key)
     if not isinstance(validation, Mapping) or validation.get("valid") is not True:
         input_stage["status"] = "FAILED"
         input_stage["finished_at"] = bridge.utc_now()
         raise BootstrapError("remote authoritative input validation is missing")
     input_stage["status"] = "PASS"
     input_stage["finished_at"] = bridge.utc_now()
+    verification = {
+        "valid": True,
+        "profile": "generic" if production_inputs is None else "s1m2-production",
+        "remote_validation": validation,
+    }
     validation_text = json.dumps(
-        validation, ensure_ascii=False, indent=2, sort_keys=True
+        verification, ensure_ascii=False, indent=2, sort_keys=True
     ) + "\n"
     verification_path = posixpath.join(
         config.remote_cloud_root, "artifacts/cloud_input_verification.json"
@@ -664,9 +819,19 @@ def bootstrap_host(
     data_device: str | None,
     dry_run: bool,
     runner: Any,
+    production_contract_path: Path | None = None,
 ) -> dict[str, Any]:
     bridge.require_remote_config(config)
     release = validate_local_release(repo_root, config, runner)
+    production_inputs = None
+    production_details = None
+    if production_contract_path is not None:
+        production_inputs, production_details = _production_input_contract(
+            repo_root, production_contract_path, release, config
+        )
+    readiness = (
+        "GENERIC_READY" if production_inputs is None else "S1M2_PRODUCTION_READY"
+    )
     receipt: dict[str, Any] = {
         "schema": SCHEMA,
         "operation": "bootstrap-cloud-host",
@@ -682,6 +847,10 @@ def bootstrap_host(
         "remote_repo": config.remote_repo,
         "remote_cloud_root": config.remote_cloud_root,
         "python_version": PYTHON_VERSION,
+        "readiness_profile": (
+            "generic" if production_inputs is None else "s1m2-production"
+        ),
+        "production_contract": production_details,
         "stages": [],
         "status": "PLANNED" if dry_run else "RUNNING",
     }
@@ -734,17 +903,28 @@ def bootstrap_host(
             "dependencies",
             build_dependencies_script(config, release.head),
         )
-        _push_inputs(receipt, repo_root, config, runner, release)
+        _push_inputs(
+            receipt,
+            repo_root,
+            config,
+            runner,
+            release,
+            production_inputs=production_inputs,
+        )
         final = _run_remote_stage(
             receipt,
             config,
             runner,
             "final_validation",
-            build_final_validation_script(config, release.head),
+            build_final_validation_script(
+                config, release.head, readiness=readiness
+            ),
         )
-        if final.get("status") != "READY":
-            raise BootstrapError("remote final validation did not report READY")
-        receipt["status"] = "READY"
+        if final.get("status") != readiness:
+            raise BootstrapError(
+                f"remote final validation did not report {readiness}"
+            )
+        receipt["status"] = readiness
     except BootstrapError as exc:
         receipt["status"] = "FAILED"
         receipt["failed_stage"] = next(
@@ -769,6 +949,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--host-profile", required=True)
     parser.add_argument("--data-device")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--production-contract", type=Path)
     return parser
 
 
@@ -797,7 +978,11 @@ def _print_summary(receipt: Mapping[str, Any], receipt_path: Path) -> None:
     print(f"INPUTS={stage_value('final_validation', 'inputs', 'NOT_RUN')}")
     print(
         "REMOTE_VALIDATION="
-        + ("PASS" if receipt.get("status") == "READY" else str(receipt.get("status")))
+        + (
+            "PASS"
+            if receipt.get("status") in {"GENERIC_READY", "S1M2_PRODUCTION_READY"}
+            else str(receipt.get("status"))
+        )
     )
     print(f"STATUS={receipt.get('status')}")
     if receipt.get("failed_stage"):
@@ -826,6 +1011,7 @@ def main(argv: Sequence[str] | None = None, *, runner: Any | None = None) -> int
             data_device=args.data_device,
             dry_run=args.dry_run,
             runner=active_runner,
+            production_contract_path=args.production_contract,
         )
     except (BootstrapError, bridge.BridgeError, OSError) as exc:
         error = exc

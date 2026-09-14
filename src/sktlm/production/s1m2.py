@@ -22,14 +22,16 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from importlib import metadata
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
 from sktlm.cloud.contracts import load_experiment_contract
+from sktlm.latent.execution_bundles import load_execution_bundle_plan
 from sktlm.latent.training import (
     COMPACT_EXACT_S1M2,
     S1M2_MODEL,
     TrainingConfig,
+    load_documents,
     run_training,
 )
 
@@ -44,6 +46,8 @@ ROUND2_SCHEMA = "sktlm-s1m2-round2-result/v1"
 ROUND2_ATTESTATION_SCHEMA = "sktlm-s1m2-round2-attestation/v1"
 ROUND3_CLOSURE_SCHEMA = "sktlm-s1m2-round3-closure/v1"
 BOUND_VALIDATION_SCHEMA = "sktlm-s1m2-bounded-validation/v1"
+FULL_AUTHORIZATION_SCHEMA = "sktlm-s1m2-full-authorization/v1"
+FAILED_RESET_SCHEMA = "sktlm-s1m2-failed-reset/v1"
 SCRIPT_NEUTRAL_ARTIFACTS = (
     "piece_inventory.tsv",
     "lexical_diagnostics.tsv",
@@ -51,80 +55,6 @@ SCRIPT_NEUTRAL_ARTIFACTS = (
 )
 ROUND1_WORKERS = (4, 8, 12, 16, 20, 24)
 ROUND2_PRIMARY_WORKERS = (12, 16, 24)
-FULL_EXECUTION_BUNDLE_CELL_ID = "s1m2_m0_devanagari_continuous"
-FULL_EXECUTION_BUNDLE_PLAN = (
-    "artifacts/s1m2_execution_bundle_plans/"
-    "full_m0_devanagari_continuous_tp279047"
-)
-FULL_EXECUTION_BUNDLE_PLAN_SHA256 = (
-    "9c828b6612d3e60b443511907dc2f731a08548be07caf513ea346e43b7d6414a"
-)
-FULL_IAST_EXECUTION_BUNDLE_CELL_ID = "s1m2_m0_prime_iast_continuous"
-FULL_IAST_EXECUTION_BUNDLE_PLAN = (
-    "artifacts/s1m2_execution_bundle_plans/"
-    "full_m0_prime_iast_continuous_tp279047"
-)
-FULL_IAST_EXECUTION_BUNDLE_PLAN_SHA256 = (
-    "9b88f7dd64d48f11b5730723f49acbec0a01ecb71c9391d1aea7a8ca5385cfca"
-)
-FULL_EXECUTION_BUNDLE_SPECS = {
-    FULL_EXECUTION_BUNDLE_CELL_ID: {
-        "execution_bundle_plan": FULL_EXECUTION_BUNDLE_PLAN,
-        "execution_bundle_plan_sha256": FULL_EXECUTION_BUNDLE_PLAN_SHA256,
-        "script": "devanagari",
-        "condition": "continuous",
-    },
-    FULL_IAST_EXECUTION_BUNDLE_CELL_ID: {
-        "execution_bundle_plan": FULL_IAST_EXECUTION_BUNDLE_PLAN,
-        "execution_bundle_plan_sha256": FULL_IAST_EXECUTION_BUNDLE_PLAN_SHA256,
-        "script": "iast_m0_prime",
-        "condition": "continuous",
-    },
-    "s1m2_m0_iast_surface_word": {
-        "execution_bundle_plan": (
-            "artifacts/s1m2_execution_bundle_plans/"
-            "full_m0_iast_surface_word_tp279047"
-        ),
-        "execution_bundle_plan_sha256": (
-            "a672a4c46de043c68a3b5921e885774f08fcad1b721a9f6afc25acb2134d3092"
-        ),
-        "script": "iast",
-        "condition": "surface_word",
-    },
-    "s1m2_m0_iast_legacy_joined": {
-        "execution_bundle_plan": (
-            "artifacts/s1m2_execution_bundle_plans/"
-            "full_m0_iast_legacy_joined_tp279047"
-        ),
-        "execution_bundle_plan_sha256": (
-            "e54f7ab98a1afb4236802a7d02d72e2ea7550ebbbd72cffd662698182e722897"
-        ),
-        "script": "iast",
-        "condition": "legacy_joined",
-    },
-    "s1m2_m0_devanagari_surface_word": {
-        "execution_bundle_plan": (
-            "artifacts/s1m2_execution_bundle_plans/"
-            "full_m0_devanagari_surface_word_tp279047"
-        ),
-        "execution_bundle_plan_sha256": (
-            "b4d2d5ecc4419016207d7887c804966db65423b37d6ac6b481d93f2d3eb198bb"
-        ),
-        "script": "devanagari",
-        "condition": "surface_word",
-    },
-    "s1m2_m0_devanagari_legacy_joined": {
-        "execution_bundle_plan": (
-            "artifacts/s1m2_execution_bundle_plans/"
-            "full_m0_devanagari_legacy_joined_tp279047"
-        ),
-        "execution_bundle_plan_sha256": (
-            "aeb3bfa0b5d0d96965125f4e0d735708f4ccf44d4104a06f1df7002ce5a21063"
-        ),
-        "script": "devanagari",
-        "condition": "legacy_joined",
-    },
-}
 COMPACT_EXACT_INFERENCE_COMMIT = "7752da2c453804a000dac83a36bd4aa58b9a0b8c"
 COMPACT_OCCURRENCE_SUPPORT_FIX_COMMIT = (
     "ba4cc5f99752e66d01944869bea92b77b0dd32b7"
@@ -148,28 +78,32 @@ ROUND3_TAIL_EVIDENCE = tuple(
 def _full_execution_bundle_specs(
     contract: dict[str, Any],
 ) -> dict[str, dict[str, str]]:
-    """Return legacy Full bundle defaults plus explicit cell declarations."""
+    """Return the contract-owned Full execution bundle declarations."""
 
-    result = {
-        str(cell_id): dict(spec)
-        for cell_id, spec in FULL_EXECUTION_BUNDLE_SPECS.items()
-    }
     declared = contract.get("full_execution_bundle_plans")
-    if declared is None:
-        return result
     if not isinstance(declared, dict):
         raise ValueError("Full execution bundle declarations must be a mapping.")
 
     cells = {cell["cell_id"]: cell for cell in contract["cells"]}
+    if set(declared) != set(cells):
+        raise ValueError("Full execution bundle declarations must cover all six cells.")
+    result: dict[str, dict[str, str]] = {}
     for cell_id, spec in declared.items():
         cell = cells.get(cell_id)
+        plan_path = str(spec.get("execution_bundle_plan", "")) if isinstance(spec, dict) else ""
+        relative_plan = PurePosixPath(plan_path)
+        plan_sha = str(spec.get("execution_bundle_plan_sha256", "")) if isinstance(spec, dict) else ""
         if (
             cell is None
             or not isinstance(spec, dict)
             or spec.get("script") != cell["script"]
             or spec.get("condition") != cell["condition"]
-            or not spec.get("execution_bundle_plan")
-            or len(str(spec.get("execution_bundle_plan_sha256", ""))) != 64
+            or not plan_path
+            or "\\" in plan_path
+            or relative_plan.is_absolute()
+            or ".." in relative_plan.parts
+            or len(plan_sha) != 64
+            or any(character not in "0123456789abcdef" for character in plan_sha)
         ):
             raise ValueError(
                 f"Invalid Full execution bundle declaration: {cell_id}"
@@ -177,15 +111,23 @@ def _full_execution_bundle_specs(
         result[str(cell_id)] = dict(spec)
     return result
 
+
+def _full_host_roles(contract: dict[str, Any]) -> dict[str, str]:
+    declared = contract.get("full_host_role_by_cell")
+    cells = {str(cell["cell_id"]) for cell in contract["cells"]}
+    if not isinstance(declared, dict) or set(declared) != cells:
+        raise ValueError("Full host mapping must cover all six production cells.")
+    result = {str(cell_id): str(host) for cell_id, host in declared.items()}
+    if any(
+        len(host) != 7 or not host.startswith("core-") or not host[5:].isdigit()
+        for host in result.values()
+    ):
+        raise ValueError("Full host mapping contains an invalid host role.")
+    if len(set(result.values())) != len(result):
+        raise ValueError("Full production cells must use distinct host roles.")
+    return result
+
 CORE_HOST_ROLES = tuple(f"core-{index:02d}" for index in range(1, 7))
-FULL_HOST_ROLE_BY_CELL = {
-    "s1m2_m0_iast_surface_word": "core-01",
-    "s1m2_m0_iast_legacy_joined": "core-02",
-    "s1m2_m0_prime_iast_continuous": "core-07",
-    "s1m2_m0_devanagari_surface_word": "core-09",
-    "s1m2_m0_devanagari_legacy_joined": "core-10",
-    "s1m2_m0_devanagari_continuous": "core-08",
-}
 WORKER_CALIBRATION_DOCUMENTS = 72
 WORKER_CALIBRATION_STRUCTURE_SHA256 = (
     "03ebdf71afc80f82492d9d36cc593ab50c380fd3b0b57689862ea8e98c7b39f8"
@@ -340,6 +282,8 @@ def load_contract(
     }
     if combinations != expected:
         raise ValueError("Six-cell script/condition mapping is not the frozen mapping.")
+    _full_execution_bundle_specs(contract)
+    _full_host_roles(contract)
     continuous_iast = [
         item for item in cells if item.get("condition") == "continuous"
         and item.get("script") in {"iast", "iast_m0_prime"}
@@ -451,9 +395,11 @@ def _flag(name: str) -> str:
     return "--" + name.replace("_", "-")
 
 
-def _training_command(job: dict[str, Any], *, resume: bool = False) -> list[str]:
+def _training_command(
+    job: dict[str, Any], *, resume: bool = False, executable: str = "python"
+) -> list[str]:
     command = [
-        "python",
+        executable,
         "-m",
         "sktlm.experiments.training.latent_lexicon",
         "--manifest",
@@ -677,61 +623,84 @@ def _bundle_plan_details(
     declaration: dict[str, Any],
     workload: dict[str, Any],
     scientific_config: dict[str, Any],
+    *,
+    manifest: str,
 ) -> dict[str, str]:
+    """Validate a production bundle with the trainer's authoritative loader."""
+
     relative = str(declaration["execution_bundle_plan"])
-    root = _resolve(repo_root, relative).resolve()
-    required = tuple(
-        root / name
-        for name in ("scan_summary.json", "summary.json", "bundles.jsonl", "documents.tsv")
+    manifest_path = _resolve(repo_root, manifest)
+    document_list_value = workload.get("document_list")
+    document_list = (
+        None
+        if document_list_value is None
+        else Path(str(document_list_value))
     )
-    missing = [path for path in required if not path.is_file()]
-    if missing:
-        raise RuntimeError(
-            "Round 2 bundle plans must be materialized before plan generation: "
-            + ", ".join(str(path) for path in missing)
-        )
-    scan = _read_json(required[0])
-    summary = _read_json(required[1])
-    plan_sha = str(summary.get("plan_sha256", ""))
-    if len(plan_sha) != 64 or any(
-        character not in "0123456789abcdef" for character in plan_sha
-    ):
-        raise ValueError("Round 2 execution bundle plan has no valid plan SHA-256.")
-    expected = {
-        "script": declaration.get("script", "devanagari"),
-        "condition": declaration.get("condition", "continuous"),
-        "max_segment_tokens": scientific_config["max_segment_tokens"],
-        "max_lines_per_document": workload.get("max_lines_per_document"),
-        "target_pressure": declaration.get("target_pressure", 279047),
-        "max_segments_per_bundle": declaration.get(
-            "max_segments_per_bundle", 256
+    documents = load_documents(
+        manifest_path,
+        repo_root=repo_root,
+        max_documents=None,
+        document_list=(
+            None if document_list is None else _resolve(repo_root, document_list)
         ),
-    }
-    for name, value in expected.items():
-        payload = summary if name in {"target_pressure", "max_segments_per_bundle"} else scan
-        if payload.get(name) != value:
-            raise ValueError(f"Round 2 bundle plan has invalid {name}.")
-    for name in ("script", "condition", "max_segment_tokens", "max_lines_per_document"):
-        if summary.get(name) != expected[name]:
-            raise ValueError(f"Round 2 bundle-plan summary has invalid {name}.")
-    if (
-        scan.get("document_list") != workload["document_list"]
-        or scan.get("document_list_sha256") != workload["document_list_sha256"]
+        script=str(declaration["script"]),
+        condition=str(declaration["condition"]),
+    )
+    loaded = load_execution_bundle_plan(
+        Path(relative),
+        repo_root=repo_root,
+        manifest=manifest_path,
+        documents=documents,
+        script=str(declaration["script"]),
+        condition=str(declaration["condition"]),
+        max_segment_tokens=int(scientific_config["max_segment_tokens"]),
+        max_lines_per_document=workload.get("max_lines_per_document"),
+        document_list=document_list,
+    )
+    summary = _read_json(loaded.root / "summary.json")
+    for name, default in (
+        ("target_pressure", 279047),
+        ("max_segments_per_bundle", 256),
     ):
-        raise ValueError("Round 2 bundle plan document-list identity differs.")
+        if summary.get(name) != declaration.get(name, default):
+            raise ValueError(f"Execution bundle plan has invalid {name}.")
     declared_sha = declaration.get("execution_bundle_plan_sha256")
-    if declared_sha is not None and declared_sha != plan_sha:
-        raise ValueError("Round 2 declared bundle-plan identity differs.")
-    digest = hashlib.sha256()
-    for path in required:
-        digest.update(path.name.encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(path.read_bytes())
-        digest.update(b"\0")
+    if declared_sha is not None and declared_sha != loaded.plan_sha256:
+        raise ValueError("Declared bundle-plan identity differs.")
     return {
         "path": relative,
-        "plan_sha256": plan_sha,
-        "materialization_sha256": digest.hexdigest(),
+        "plan_sha256": loaded.plan_sha256,
+        "materialization_sha256": loaded.materialization_sha256,
+    }
+
+
+def validate_production_inputs(
+    contract: dict[str, Any], cell_id: str, *, repo_root: Path
+) -> dict[str, Any]:
+    """Validate the exact Full input and bundle identity for one host cell."""
+
+    cell = _cell(contract, cell_id)
+    declaration = _full_execution_bundle_specs(contract)[cell_id]
+    details = _bundle_plan_details(
+        repo_root,
+        {
+            **declaration,
+            "target_pressure": contract["round2"]["target_pressure"],
+            "max_segments_per_bundle": contract["round2"][
+                "max_segments_per_bundle"
+            ],
+        },
+        contract["workloads"]["full"],
+        contract["scientific_config"],
+        manifest=_manifest_details(contract, cell)[0],
+    )
+    if details["plan_sha256"] != declaration["execution_bundle_plan_sha256"]:
+        raise ValueError(f"Full bundle-plan identity differs for {cell_id}.")
+    return {
+        "valid": True,
+        "cell_id": cell_id,
+        "manifest": _manifest_details(contract, cell)[0],
+        "execution_bundle_plan": details,
     }
 
 
@@ -755,12 +724,20 @@ def build_round2_plan(
     jobs = []
     for declaration in contract["round2"]["jobs"]:
         workload_id = str(declaration["workload"])
+        cell = _cell(contract, str(declaration["cell_id"]))
         if workload_id not in details:
             details[workload_id] = _bundle_plan_details(
                 repo_root,
-                declaration,
+                {
+                    **declaration,
+                    "script": cell["script"],
+                    "condition": cell["condition"],
+                },
                 contract["workloads"][workload_id],
                 contract["scientific_config"],
+                manifest=_manifest_details(
+                    contract, cell
+                )[0],
             )
         bundle = details[workload_id]
         jobs.append(
@@ -1116,6 +1093,9 @@ def build_final_plan(
             declaration,
             contract["workloads"]["full"],
             contract["scientific_config"],
+            manifest=_manifest_details(
+                contract, _cell(contract, bundle_cell_id)
+            )[0],
         )
         if (
             full_bundle["plan_sha256"]
@@ -1127,8 +1107,9 @@ def build_final_plan(
         full_bundles[bundle_cell_id] = full_bundle
 
     jobs = []
+    full_host_roles = _full_host_roles(contract)
     for cell in contract["cells"]:
-        host_role = FULL_HOST_ROLE_BY_CELL[cell["cell_id"]]
+        host_role = full_host_roles[cell["cell_id"]]
         bundle_kwargs = {}
         full_bundle = full_bundles.get(cell["cell_id"])
         if full_bundle is not None:
@@ -1240,7 +1221,7 @@ def _validate_plan(plan: dict[str, Any], contract: dict[str, Any]) -> None:
             raise ValueError(f"{plan_type} plan differs from the six-cell contract.")
         if plan_type == "full":
             expected_host_roles = tuple(
-                FULL_HOST_ROLE_BY_CELL[cell["cell_id"]]
+                _full_host_roles(contract)[cell["cell_id"]]
                 for cell in contract["cells"]
             )
             if tuple(job.get("host_role") for job in jobs) != expected_host_roles:
@@ -1548,10 +1529,261 @@ def _authoritative_training_checkpoint(
     return checkpoint
 
 
+def build_full_authorization(
+    plan: dict[str, Any],
+    contract: dict[str, Any],
+    *,
+    identity: dict[str, Any],
+) -> dict[str, Any]:
+    """Create an explicit, plan-specific researcher launch authorization."""
+
+    _validate_plan(plan, contract)
+    if plan.get("plan_type") != "full":
+        raise ValueError("Full authorization can bind only a Full plan.")
+    if identity.get("dirty_worktree") is not False:
+        raise RuntimeError("Full authorization requires a clean Git worktree.")
+    if (
+        identity.get("git_sha") != plan.get("git_sha")
+        or identity.get("branch") != plan.get("branch")
+    ):
+        raise RuntimeError("Full authorization Git identity differs from the plan.")
+    payload = {
+        "schema_version": FULL_AUTHORIZATION_SCHEMA,
+        "authorized": True,
+        "created_at": _utc_now(),
+        "plan_sha256": plan["plan_sha256"],
+        "production_contract_sha256": plan["production_contract_sha256"],
+        "git_sha": plan["git_sha"],
+        "branch": plan["branch"],
+        "job_ids": [job["job_id"] for job in plan["jobs"]],
+        "cell_ids": [job["cell_id"] for job in plan["jobs"]],
+    }
+    payload["authorization_sha256"] = _canonical_sha256(payload)
+    return payload
+
+
+def _validate_full_authorization(
+    authorization: dict[str, Any],
+    plan: dict[str, Any],
+    contract: dict[str, Any],
+) -> None:
+    if authorization.get("schema_version") != FULL_AUTHORIZATION_SCHEMA:
+        raise ValueError("Unsupported Full authorization schema.")
+    expected_sha = _canonical_sha256(
+        {
+            key: value
+            for key, value in authorization.items()
+            if key != "authorization_sha256"
+        }
+    )
+    if authorization.get("authorization_sha256") != expected_sha:
+        raise ValueError("Full authorization SHA-256 mismatch.")
+    expected = {
+        "authorized": True,
+        "plan_sha256": plan["plan_sha256"],
+        "production_contract_sha256": _canonical_sha256(contract),
+        "git_sha": plan["git_sha"],
+        "branch": plan["branch"],
+        "job_ids": [job["job_id"] for job in plan["jobs"]],
+        "cell_ids": [job["cell_id"] for job in plan["jobs"]],
+    }
+    for name, value in expected.items():
+        if authorization.get(name) != value:
+            raise ValueError(f"Full authorization has invalid {name}.")
+
+
+def _nearest_existing_path(path: Path) -> Path:
+    candidate = path.resolve(strict=False)
+    while not candidate.exists():
+        if candidate.parent == candidate:
+            raise RuntimeError(f"No existing parent for production path: {path}")
+        candidate = candidate.parent
+    return candidate
+
+
+def _host_memory_bytes() -> int:
+    try:
+        return int(os.sysconf("SC_PHYS_PAGES")) * int(os.sysconf("SC_PAGE_SIZE"))
+    except (AttributeError, OSError, ValueError):
+        if os.name != "nt":
+            return 0
+        import ctypes
+
+        class MemoryStatus(ctypes.Structure):
+            _fields_ = [
+                ("length", ctypes.c_ulong),
+                ("memory_load", ctypes.c_ulong),
+                ("total_physical", ctypes.c_ulonglong),
+                ("available_physical", ctypes.c_ulonglong),
+                ("total_page_file", ctypes.c_ulonglong),
+                ("available_page_file", ctypes.c_ulonglong),
+                ("total_virtual", ctypes.c_ulonglong),
+                ("available_virtual", ctypes.c_ulonglong),
+                ("available_extended_virtual", ctypes.c_ulonglong),
+            ]
+
+        status = MemoryStatus()
+        status.length = ctypes.sizeof(status)
+        if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+            return 0
+        return int(status.total_physical)
+
+
+def _full_launch_preflight(
+    job: dict[str, Any], contract: dict[str, Any], *, repo_root: Path
+) -> dict[str, Any]:
+    """Perform cheap fail-closed host admission before any Full subprocess."""
+
+    executable = Path(sys.executable)
+    if not executable.is_file() or not os.access(executable, os.X_OK):
+        raise RuntimeError("Production interpreter is not executable.")
+    run_root = _resolve(repo_root, job["output_root"])
+    metrics_root = _resolve(repo_root, job["metrics_root"])
+    run_probe = _nearest_existing_path(run_root)
+    metrics_probe = _nearest_existing_path(metrics_root)
+    run_space = shutil.disk_usage(run_probe)
+    metrics_space = shutil.disk_usage(metrics_probe)
+    minimum_free = int(contract["gates"]["storage_min_free_bytes_end"])
+    if min(run_space.free, metrics_space.free) < minimum_free:
+        raise RuntimeError("Full launch filesystem free-space gate failed.")
+    if os.name == "posix":
+        root_device = os.stat(Path(repo_root.anchor or "/")).st_dev
+        if os.stat(run_probe).st_dev == root_device:
+            raise RuntimeError("Full run path is not on the dedicated data filesystem.")
+        if os.stat(metrics_probe).st_dev == root_device:
+            raise RuntimeError("Full metrics path is not on the dedicated data filesystem.")
+    host_memory = _host_memory_bytes()
+    memory_fraction = float(contract["gates"]["memory_max_host_fraction"])
+    if host_memory <= 0 or not 0.0 < memory_fraction <= 1.0:
+        raise RuntimeError("Full launch host-memory gate could not be established.")
+    return {
+        "status": "PASS",
+        "checked_at": _utc_now(),
+        "python_executable": str(executable),
+        "run_filesystem_free_bytes": run_space.free,
+        "metrics_filesystem_free_bytes": metrics_space.free,
+        "required_free_bytes": minimum_free,
+        "host_memory_bytes": host_memory,
+        "memory_max_host_fraction": memory_fraction,
+    }
+
+
+def _safe_job_subpath(repo_root: Path, root: str, child: str) -> Path:
+    root_path = _resolve(repo_root, root).resolve(strict=False)
+    child_path = _resolve(repo_root, child).resolve(strict=False)
+    if child_path == root_path or not child_path.is_relative_to(root_path):
+        raise RuntimeError("Production reset path escapes its declared root.")
+    return child_path
+
+
+def reset_failed_job(
+    plan: dict[str, Any],
+    job: dict[str, Any],
+    contract: dict[str, Any],
+    *,
+    repo_root: Path,
+    host_id: str,
+    confirmed_job_id: str,
+    receipt_path: Path | None = None,
+) -> dict[str, Any]:
+    """Discard only one exactly identified FAILED run and preserve a receipt."""
+
+    _validate_plan(plan, contract)
+    if confirmed_job_id != job["job_id"]:
+        raise RuntimeError("Failed-run reset confirmation does not match the job ID.")
+    if host_id != job["host_role"]:
+        raise RuntimeError("Failed-run reset host role differs from the plan.")
+    identity = git_identity(repo_root)
+    if identity.get("dirty_worktree") or (
+        identity.get("git_sha"), identity.get("branch")
+    ) != (plan.get("git_sha"), plan.get("branch")):
+        raise RuntimeError("Failed-run reset requires the new plan's clean Git identity.")
+    run_dir = _safe_job_subpath(
+        repo_root, job["output_root"], job["run_dir"]
+    )
+    control_dir = _safe_job_subpath(
+        repo_root, job["metrics_root"], job["control_dir"]
+    )
+    if (
+        run_dir == control_dir
+        or run_dir.is_relative_to(control_dir)
+        or control_dir.is_relative_to(run_dir)
+    ):
+        raise RuntimeError("Failed-run reset paths overlap.")
+    manifest_path = control_dir / "run_manifest.json"
+    if not manifest_path.is_file():
+        raise RuntimeError("Failed-run reset requires one control manifest.")
+    manifest = _read_json(manifest_path)
+    if manifest.get("result_status") != "FAILED":
+        raise RuntimeError("Only a FAILED production run may be reset.")
+    expected_run_identity = {
+        "cell_id": job["cell_id"],
+        "workload_id": job["workload_id"],
+        "run_id": job["run_id"],
+        "metrics_id": job["metrics_id"],
+        "host_id": host_id,
+    }
+    for name, value in expected_run_identity.items():
+        if manifest.get(name) != value:
+            raise RuntimeError(f"Failed-run manifest has invalid {name}.")
+    final_audit = manifest.get("final_audit")
+    if isinstance(final_audit, dict) and final_audit.get("valid") is True:
+        raise RuntimeError("A successfully audited run cannot be reset.")
+    run_manifest_path = run_dir / "production_run_manifest.json"
+    if run_manifest_path.is_file():
+        run_manifest = _read_json(run_manifest_path)
+        for name, value in expected_run_identity.items():
+            if run_manifest.get(name) != value:
+                raise RuntimeError("Run/control manifests are ambiguous; reset refused.")
+        if run_manifest.get("result_status") != "FAILED":
+            raise RuntimeError("Run/control manifests disagree on FAILED state.")
+    reset_root = _resolve(repo_root, job["metrics_root"]) / "reset_receipts"
+    output = receipt_path or (
+        reset_root
+        / f"{job['job_id']}-{_utc_now().replace(':', '').replace('-', '')}.json"
+    )
+    output = _resolve(repo_root, output)
+    resolved_output = output.resolve(strict=False)
+    if resolved_output.is_relative_to(run_dir) or resolved_output.is_relative_to(
+        control_dir
+    ):
+        raise RuntimeError("Reset receipt must survive outside discarded paths.")
+    if output.exists():
+        raise FileExistsError(f"Refusing to overwrite reset receipt: {output}")
+    payload = {
+        "schema_version": FAILED_RESET_SCHEMA,
+        "status": "PREPARED",
+        "reset_at": _utc_now(),
+        "job_id": job["job_id"],
+        "cell_id": job["cell_id"],
+        "host_id": host_id,
+        "discarded_run_dir": str(run_dir),
+        "discarded_control_dir": str(control_dir),
+        "old_plan_sha256": manifest.get("plan_sha256"),
+        "old_git_sha": manifest.get("git_sha"),
+        "old_result_status": manifest["result_status"],
+        "old_run_id": manifest["run_id"],
+        "new_plan_sha256": plan["plan_sha256"],
+        "new_git_sha": plan["git_sha"],
+        "reason": "explicit_discard_of_exact_failed_run_before_clean_restart",
+    }
+    _write_json(output, payload)
+    if run_dir.exists():
+        shutil.rmtree(run_dir)
+    if control_dir.exists():
+        shutil.rmtree(control_dir)
+    payload["status"] = "RESET"
+    payload["completed_at"] = _utc_now()
+    _write_json(output, payload, overwrite=True)
+    return {**payload, "receipt_path": str(output)}
+
+
 def _phase_command(
     job: dict[str, Any], *, phase: str, resume: bool
 ) -> list[str]:
-    command = _training_command(job, resume=resume)
+    command = _training_command(
+        job, resume=resume, executable=sys.executable
+    )
     if phase == "inspection":
         command.append("--inspection-only")
     elif phase.startswith("pass_"):
@@ -1718,10 +1950,21 @@ def run_job(
     repo_root: Path,
     host_id: str,
     resume: bool,
+    authorization_path: Path | None = None,
+    loaded_contract: dict[str, Any] | None = None,
+    loaded_plan: dict[str, Any] | None = None,
 ) -> int:
     repo_root = repo_root.resolve()
-    contract = load_contract(contract_path, repo_root=repo_root)
-    plan = _read_json(_resolve(repo_root, plan_path))
+    contract = (
+        loaded_contract
+        if loaded_contract is not None
+        else load_contract(contract_path, repo_root=repo_root)
+    )
+    plan = (
+        loaded_plan
+        if loaded_plan is not None
+        else _read_json(_resolve(repo_root, plan_path))
+    )
     _validate_plan(plan, contract)
     identity = git_identity(repo_root)
     if identity["dirty_worktree"]:
@@ -1745,6 +1988,7 @@ def run_job(
             job,
             contract["workloads"][job["workload_id"]],
             contract["scientific_config"],
+            manifest=job["manifest"],
         )
         if (
             bundle["plan_sha256"] != job["execution_bundle_plan_sha256"]
@@ -1752,6 +1996,20 @@ def run_job(
             != job["execution_bundle_materialization_sha256"]
         ):
             raise RuntimeError("Job execution bundle materialization differs.")
+    authorization: dict[str, Any] | None = None
+    launch_preflight: dict[str, Any] | None = None
+    if plan.get("plan_type") == "full":
+        if authorization_path is None:
+            raise RuntimeError(
+                "Full M0 launch requires an explicit authorization artifact."
+            )
+        authorization = _read_json(_resolve(repo_root, authorization_path))
+        _validate_full_authorization(authorization, plan, contract)
+        launch_preflight = _full_launch_preflight(
+            job, contract, repo_root=repo_root
+        )
+    elif authorization_path is not None:
+        raise RuntimeError("Full authorization is not valid for a non-Full plan.")
     run_dir = _resolve(repo_root, job["run_dir"])
     manifest_path = _manifest_path(repo_root, job)
     if resume and not run_dir.is_dir():
@@ -1769,6 +2027,10 @@ def run_job(
         manifest = _read_json(manifest_path)
         if manifest.get("result_status") == "PASS":
             raise RuntimeError("Completed jobs cannot be rerun or resumed.")
+        if manifest.get("result_status") in {"RUNNING", "AUDITING"}:
+            raise RuntimeError(
+                "A RUNNING or AUDITING job cannot start a conflicting execution."
+            )
         expected_manifest = {
             "schema_version": RUN_SCHEMA,
             "plan_sha256": plan["plan_sha256"],
@@ -1794,6 +2056,10 @@ def run_job(
                 "execution_bundle_materialization_sha256"
             ),
         }
+        if authorization is not None:
+            expected_manifest["full_authorization_sha256"] = authorization[
+                "authorization_sha256"
+            ]
         for name, value in expected_manifest.items():
             if manifest.get(name) != value:
                 raise RuntimeError(f"Existing run manifest has invalid {name}.")
@@ -1833,6 +2099,12 @@ def run_job(
             "resume_history": [],
             "result_status": "RUNNING",
             "final_audit": None,
+            "full_authorization_sha256": (
+                None
+                if authorization is None
+                else authorization["authorization_sha256"]
+            ),
+            "launch_preflight": launch_preflight,
         }
     attempt_number = len(manifest["resume_history"]) + 1
     metrics_dir = Path(job["control_dir"]) / f"attempt_{attempt_number:03d}"
@@ -1883,7 +2155,7 @@ def run_job(
             resume=run_dir.is_dir(),
         )
         wrapper = [
-            "python",
+            sys.executable,
             "scripts/cloud/run_with_metrics.py",
             "--output-dir",
             phase_metrics_dir.as_posix(),
@@ -1903,7 +2175,31 @@ def run_job(
         }
         attempt["phases"].append(phase_record)
         _write_json(manifest_path, manifest, overwrite=True)
-        result = subprocess.run(wrapper, cwd=repo_root, check=False)
+        try:
+            result = subprocess.run(wrapper, cwd=repo_root, check=False)
+        except OSError as exc:
+            phase_record["ended_at"] = _utc_now()
+            phase_record["launch_error"] = {
+                "type": type(exc).__name__,
+                "errno": exc.errno,
+                "message": str(exc)[:2048],
+            }
+            attempt["ended_at"] = phase_record["ended_at"]
+            attempt["launch_error"] = copy.deepcopy(
+                phase_record["launch_error"]
+            )
+            manifest["end_time"] = attempt["ended_at"]
+            manifest["result_status"] = "FAILED"
+            _write_json(manifest_path, manifest, overwrite=True)
+            if run_dir.is_dir():
+                _write_json(
+                    run_dir / "production_run_manifest.json",
+                    manifest,
+                    overwrite=(run_dir / "production_run_manifest.json").exists(),
+                )
+            raise RuntimeError(
+                f"Production {phase} subprocess could not be launched."
+            ) from exc
         phase_record["ended_at"] = _utc_now()
         phase_record["return_code"] = result.returncode
         attempt["return_code"] = result.returncode
@@ -2034,11 +2330,22 @@ def job_status(
     _validate_plan(plan, contract)
     run_dir = _resolve(repo_root, job["run_dir"])
     control_dir = _resolve(repo_root, job["control_dir"])
-    checkpoint = (
-        _read_json(run_dir / "checkpoint.json")
-        if (run_dir / "checkpoint.json").is_file()
-        else {}
-    )
+    database = run_dir / "learner.sqlite"
+    mirror_path = run_dir / "checkpoint.json"
+    if database.is_file():
+        checkpoint = _authoritative_training_checkpoint(run_dir)
+        checkpoint_source = "learner.sqlite"
+        checkpoint_mirror_matches = (
+            mirror_path.is_file() and _read_json(mirror_path) == checkpoint
+        )
+    elif mirror_path.is_file():
+        checkpoint = _read_json(mirror_path)
+        checkpoint_source = "checkpoint.json"
+        checkpoint_mirror_matches = True
+    else:
+        checkpoint = {}
+        checkpoint_source = "none"
+        checkpoint_mirror_matches = None
     manifest = (
         _read_json(control_dir / "run_manifest.json")
         if (control_dir / "run_manifest.json").is_file()
@@ -2074,7 +2381,10 @@ def job_status(
         "workload": job["workload_id"],
         "result_status": manifest.get("result_status", "NOT_STARTED"),
         "completed_passes": checkpoint.get("completed_passes", 0),
+        "active_pass": checkpoint.get("active_pass"),
         "next_document_index": checkpoint.get("next_document_index", 0),
+        "checkpoint_source": checkpoint_source,
+        "checkpoint_mirror_matches": checkpoint_mirror_matches,
         "elapsed_seconds": (
             None if not sample.get("wall_seconds") else float(sample["wall_seconds"])
         ),
@@ -2637,7 +2947,7 @@ def run_bounded_validation(
 def _write_plan_commands(plan: dict[str, Any], plan_path: Path) -> None:
     for job in plan["jobs"]:
         job["launch_command"] = [
-            "python", "-m", "sktlm.production.s1m2", "run",
+            "./.venv/bin/python", "-m", "sktlm.production.s1m2", "run",
             "--plan", plan_path.as_posix(), "--job-id", job["job_id"],
             "--host-id", job["host_role"],
         ]
@@ -2645,7 +2955,7 @@ def _write_plan_commands(plan: dict[str, Any], plan_path: Path) -> None:
         job["resume_command"] = [*job["launch_command"], "--resume"]
         job["resume_command_shell"] = shlex.join(job["resume_command"])
         job["audit_command"] = [
-            "python", "-m", "sktlm.production.s1m2", "audit",
+            "./.venv/bin/python", "-m", "sktlm.production.s1m2", "audit",
             "--plan", plan_path.as_posix(), "--job-id", job["job_id"],
         ]
         job["audit_command_shell"] = shlex.join(job["audit_command"])
@@ -2660,6 +2970,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--contract", type=Path, default=CONTRACT_PATH)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("validate-contract")
+    item = commands.add_parser("validate-production-inputs")
+    item.add_argument("--cell-id", required=True)
     for name in ("plan-round1", "plan-bounded"):
         item = commands.add_parser(name)
         item.add_argument("--output", required=True, type=Path)
@@ -2698,6 +3010,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     item.add_argument("--job-id", required=True)
     item.add_argument("--host-id", default=socket.gethostname())
     item.add_argument("--resume", action="store_true")
+    item.add_argument("--authorization", type=Path)
+    item = commands.add_parser("authorize-full")
+    item.add_argument("--plan", required=True, type=Path)
+    item.add_argument("--output", required=True, type=Path)
+    item = commands.add_parser("reset-failed")
+    item.add_argument("--plan", required=True, type=Path)
+    item.add_argument("--job-id", required=True)
+    item.add_argument("--host-id", default=socket.gethostname())
+    item.add_argument("--confirm-discard-failed", required=True)
+    item.add_argument("--receipt", type=Path)
     item = commands.add_parser("audit")
     item.add_argument("--plan", required=True, type=Path)
     item.add_argument("--job-id", required=True)
@@ -2717,8 +3039,15 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "validate-contract":
         print(json.dumps({"status": "PASS", "contract_sha256": _canonical_sha256(contract)}, indent=2))
         return
+    if args.command == "validate-production-inputs":
+        result = validate_production_inputs(
+            contract, args.cell_id, repo_root=repo_root
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        return
     output_payload: dict[str, Any]
     if args.command == "run":
+        plan = _read_json(_resolve(repo_root, args.plan))
         raise SystemExit(
             run_job(
                 plan_path=args.plan,
@@ -2727,8 +3056,32 @@ def main(argv: list[str] | None = None) -> None:
                 repo_root=repo_root,
                 host_id=args.host_id,
                 resume=args.resume,
+                authorization_path=args.authorization,
+                loaded_contract=contract,
+                loaded_plan=plan,
             )
         )
+    if args.command == "authorize-full":
+        plan = _read_json(_resolve(repo_root, args.plan))
+        authorization = build_full_authorization(
+            plan, contract, identity=git_identity(repo_root)
+        )
+        _write_json(_resolve(repo_root, args.output), authorization)
+        print(json.dumps(authorization, ensure_ascii=False, indent=2, sort_keys=True))
+        return
+    if args.command == "reset-failed":
+        plan = _read_json(_resolve(repo_root, args.plan))
+        result = reset_failed_job(
+            plan,
+            _job_from_plan(plan, args.job_id),
+            contract,
+            repo_root=repo_root,
+            host_id=args.host_id,
+            confirmed_job_id=args.confirm_discard_failed,
+            receipt_path=args.receipt,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        return
     if args.command == "validate-bounded":
         result = run_bounded_validation(
             contract,

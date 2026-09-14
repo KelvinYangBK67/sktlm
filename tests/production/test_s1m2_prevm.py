@@ -65,6 +65,69 @@ def _round3_closure() -> dict[str, object]:
     }
 
 
+def _mock_bundle_details(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        s1m2,
+        "_bundle_plan_details",
+        lambda _root, declaration, *_args, **_kwargs: {
+            "path": declaration["execution_bundle_plan"],
+            "plan_sha256": declaration.get("execution_bundle_plan_sha256")
+            or "a" * 64,
+            "materialization_sha256": "b" * 64,
+        },
+    )
+
+
+def _valid_round2_attestations(
+    plan: dict[str, object], contract: dict[str, object]
+) -> list[dict[str, object]]:
+    attestations = []
+    for job in plan["jobs"]:
+        workers = int(job["workers"])
+        attestations.append(
+            {
+                "schema_version": s1m2.ROUND2_ATTESTATION_SCHEMA,
+                "job_id": job["job_id"],
+                "host_role": job["host_role"],
+                "workload": job["workload_id"],
+                "workers": workers,
+                "valid": True,
+                "failures": [],
+                "wall_seconds": 100.0 + workers,
+                "peak_process_tree_rss_bytes": 1024 * workers,
+                "peak_watched_run_bytes": 2048 * workers,
+                "sampled_process_tree_cpu_seconds": 50.0 * workers,
+                "canonical_reducer_stall_seconds": float(workers),
+                "bundle_true_inflight": workers,
+                "bundle_ready_shard": 1,
+                "completed_passes": contract["passes"],
+                "candidate_overflow": 0,
+                "host_memory_bytes": 1024**4,
+                "filesystem_free_bytes_end": 30 * 1024**3,
+                "git_sha": plan["git_sha"],
+                "execution_bundle_plan": job["execution_bundle_plan"],
+                "execution_bundle_plan_sha256": job[
+                    "execution_bundle_plan_sha256"
+                ],
+                "execution_bundle_materialization_sha256": job[
+                    "execution_bundle_materialization_sha256"
+                ],
+                "plan_identity": {
+                    "schema_version": plan["schema_version"],
+                    "plan_type": plan["plan_type"],
+                    "plan_sha256": plan["plan_sha256"],
+                    "git_sha": plan["git_sha"],
+                    "branch": plan["branch"],
+                },
+                "production_contract_identity": {
+                    "path": plan["contract_path"],
+                    "sha256": plan["production_contract_sha256"],
+                },
+            }
+        )
+    return attestations
+
+
 def test_six_cell_contract_is_exact_and_iast_continuous_is_m0_prime(
     tmp_path: Path,
 ) -> None:
@@ -450,6 +513,7 @@ def test_round2_and_final_plans_use_round3_retained_worker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     contract = _contract()
+    _mock_bundle_details(monkeypatch)
     round2 = s1m2.build_round2_plan(contract, identity=IDENTITY)
     s1m2._validate_plan(round2, contract)
     assert len(round2["jobs"]) == 6
@@ -461,7 +525,10 @@ def test_round2_and_final_plans_use_round3_retained_worker(
     assert round2["launch_mode"] == "six_way_parallel"
     assert [
         (job["cell_id"], job["workload_id"]) for job in round2["jobs"]
-    ] == [tuple(item) for item in contract["round2"]["jobs"]]
+    ] == [
+        (item["cell_id"], item["workload"])
+        for item in contract["round2"]["jobs"]
+    ]
 
     monkeypatch.setattr(s1m2, "validate_round3_closure", lambda *args, **kwargs: None)
     final = s1m2.build_final_plan(
@@ -473,90 +540,47 @@ def test_round2_and_final_plans_use_round3_retained_worker(
     assert {job["workers"] for job in final["jobs"]} == {12}
     assert final["FULL_M0_PROCESS_RUNNING"] == "NO"
     assert [job["host_role"] for job in final["jobs"]] == [
-        "core-01", "core-02", "core-03", "core-04", "core-05", "core-06"
+        contract["full_host_role_by_cell"][cell["cell_id"]]
+        for cell in contract["cells"]
     ]
 
 
-def test_round2_gates_are_machine_readable(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_round2_result_is_machine_readable(monkeypatch: pytest.MonkeyPatch) -> None:
     contract = _contract()
+    _mock_bundle_details(monkeypatch)
     plan = s1m2.build_round2_plan(contract, identity=IDENTITY)
-
-    def fake_audit(*args: object, **kwargs: object) -> dict[str, object]:
-        return {
-            "valid": True,
-            "failures": [],
-            "artifact_audit": {
-                "run_dir": "missing-test-run-dir",
-                "metrics": {
-                    "wall_seconds": 100.0,
-                    "peak_process_tree_rss_bytes": 1024,
-                    "peak_watched_run_bytes": 1024,
-                    "sampled_process_tree_cpu_seconds": 50.0,
-                    "sampled_process_tree_read_bytes": 10,
-                    "sampled_process_tree_write_bytes": 20,
-                    "host_memory_bytes": 32768,
-                    "filesystem_free_bytes_end": 30 * 1024**3,
-                },
-            },
-        }
-
-    monkeypatch.setattr(s1m2, "audit_job", fake_audit)
-    result = s1m2.evaluate_round2(plan, contract, repo_root=Path("."))
+    result = s1m2.aggregate_round2_attestations(
+        plan, contract, _valid_round2_attestations(plan, contract)
+    )
     assert result["ROUND2_STATUS"] == "PASS"
-    assert result["CONTINUOUS_RUNTIME_TARGET"] == "PASS"
-    assert result["PRODUCTION_MEMORY_GATE"] == "PASS"
-    assert result["PRODUCTION_STORAGE_GATE"] == "PASS"
-    assert result["PRODUCTION_RESUME_GATE"] == "PASS"
-    assert result["PRODUCTION_PROVENANCE_GATE"] == "PASS"
-    assert result["S1M2_SIX_CELL_INTERFACE_GATE"] == "PASS"
+    assert result["WINNER_WORKERS"] == 12
+    assert result["W20_REQUIRED"] == "no"
+    assert len(result["jobs"]) == 6
+    assert all(row["valid"] for row in result["jobs"])
 
 
-@pytest.mark.parametrize("target_workload", ["stress", "smoke"])
+@pytest.mark.parametrize("target_workload", ["representative", "stress"])
 def test_round2_storage_gate_fails_closed_on_actual_peak_for_all_job_classes(
     monkeypatch: pytest.MonkeyPatch,
     target_workload: str,
 ) -> None:
     contract = _contract()
+    _mock_bundle_details(monkeypatch)
     plan = s1m2.build_round2_plan(contract, identity=IDENTITY)
     storage_max = int(contract["gates"]["storage_max_bytes"])
-    target_job_id = next(
-        job["job_id"]
-        for job in plan["jobs"]
-        if job["workload_id"] == target_workload
-    )
-
-    def fake_audit(
-        _plan: object,
-        job: dict[str, object],
-        _contract_value: object,
-        *,
-        repo_root: Path,
-    ) -> dict[str, object]:
-        peak_storage = (
-            storage_max + 1 if job["job_id"] == target_job_id else 1024
-        )
-        return {
-            "valid": True,
-            "failures": [],
-            "artifact_audit": {
-                "run_dir": str(repo_root / "missing-test-run-dir"),
-                "metrics": {
-                    "wall_seconds": 100.0,
-                    "peak_process_tree_rss_bytes": 1024,
-                    "peak_watched_run_bytes": peak_storage,
-                    "sampled_process_tree_cpu_seconds": 50.0,
-                    "sampled_process_tree_read_bytes": 10,
-                    "sampled_process_tree_write_bytes": 20,
-                    "host_memory_bytes": 32768,
-                    "filesystem_free_bytes_end": 30 * 1024**3,
-                },
-            },
-        }
-
-    monkeypatch.setattr(s1m2, "audit_job", fake_audit)
-    result = s1m2.evaluate_round2(plan, contract, repo_root=Path("."))
-    assert result["PRODUCTION_STORAGE_GATE"] == "FAIL"
+    attestations = _valid_round2_attestations(plan, contract)
+    targets = [
+        item for item in attestations if item["workload"] == target_workload
+    ]
+    for target in targets:
+        target["peak_watched_run_bytes"] = storage_max + 1
+    result = s1m2.aggregate_round2_attestations(plan, contract, attestations)
     assert result["ROUND2_STATUS"] == "FAIL"
+    failed = [
+        row for row in result["jobs"] if row["workload"] == target_workload
+    ]
+    assert len(failed) == 3
+    assert all("storage safety gate failed" in row["failures"] for row in failed)
 
 
 def test_bounded_script_neutral_gate_covers_all_three_conditions() -> None:
@@ -595,6 +619,7 @@ def test_cloud_registry_contains_all_prevm_planned_identities(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     contract = _contract()
+    _mock_bundle_details(monkeypatch)
     round1 = s1m2.build_round1_plan(contract, identity=IDENTITY)
     round2 = s1m2.build_round2_plan(contract, identity=IDENTITY)
     monkeypatch.setattr(s1m2, "validate_round3_closure", lambda *args, **kwargs: None)
@@ -619,6 +644,14 @@ def test_cloud_registry_contains_all_prevm_planned_identities(
     assert registry["s1m2_prevm"]["full_m0_process_running"] is False
     assert registry["s1m2_prevm"]["launch_mode"] == "SIX_WAY_PARALLEL"
     assert registry["s1m2_prevm"]["host_roles"] == list(s1m2.CORE_HOST_ROLES)
+    expected_hosts = {
+        "round1": list(s1m2.CORE_HOST_ROLES),
+        "round2": list(s1m2.CORE_HOST_ROLES),
+        "full": [
+            contract["full_host_role_by_cell"][cell["cell_id"]]
+            for cell in contract["cells"]
+        ],
+    }
     for phase in ("round1", "round2", "full"):
         rows = [row for row in planned if row["phase"] == phase]
-        assert [row["host_role"] for row in rows] == list(s1m2.CORE_HOST_ROLES)
+        assert [row["host_role"] for row in rows] == expected_hosts[phase]

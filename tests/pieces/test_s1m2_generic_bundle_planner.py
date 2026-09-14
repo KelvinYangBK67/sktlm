@@ -5,6 +5,7 @@ import csv
 import hashlib
 import json
 import runpy
+import shutil
 import sys
 from pathlib import Path
 
@@ -50,6 +51,9 @@ def _fixture(tmp_path: Path) -> tuple[Path, Path, tuple]:
     config = tmp_path / "configs" / "planner.json"
     config.parent.mkdir(parents=True)
     config.write_text('{"purpose":"tiny"}\n', encoding="utf-8", newline="")
+    rules = tmp_path / "data" / "rules" / "external_sandhi.tsv"
+    rules.parent.mkdir(parents=True)
+    shutil.copy2(Path("data/rules/external_sandhi.tsv"), rules)
     documents = load_documents(
         manifest,
         repo_root=Path("."),
@@ -143,13 +147,11 @@ def test_surface_word_planner_load_and_generic_full_binding(
 
     contract = copy.deepcopy(s1m2.load_contract(repo_root=Path("."), verify_files=False))
     surface = contract["cells"][0]
-    contract["full_execution_bundle_plans"] = {
-        surface["cell_id"]: {
+    contract["full_execution_bundle_plans"][surface["cell_id"]] = {
             "execution_bundle_plan": "synthetic/surface",
             "execution_bundle_plan_sha256": "a" * 64,
             "script": surface["script"],
             "condition": surface["condition"],
-        }
     }
     monkeypatch.setattr(s1m2, "validate_round3_closure", lambda *args, **kwargs: None)
     monkeypatch.setattr(
@@ -184,7 +186,7 @@ def test_surface_word_planner_load_and_generic_full_binding(
     )
     assert job["execution_bundle_plan"] == "synthetic/surface"
 
-    for cell_id, spec in s1m2.FULL_EXECUTION_BUNDLE_SPECS.items():
+    for cell_id, spec in contract["full_execution_bundle_plans"].items():
         if cell_id == surface["cell_id"]:
             continue
         default_job = next(
@@ -207,10 +209,10 @@ def test_surface_word_bundled_training_is_scientifically_exact(
     plan_root, _config, _documents = _plan(tmp_path, monkeypatch)
     manifest = tmp_path / "representations.csv"
     reference = run_training(
-        _training_config(tmp_path, manifest, "reference", None), repo_root=Path(".")
+        _training_config(tmp_path, manifest, "reference", None), repo_root=tmp_path
     )
     bundled = run_training(
-        _training_config(tmp_path, manifest, "bundled", plan_root), repo_root=Path(".")
+        _training_config(tmp_path, manifest, "bundled", plan_root), repo_root=tmp_path
     )
     assert reference.history == bundled.history
     assert _piece_state(reference.run_dir) == _piece_state(bundled.run_dir)

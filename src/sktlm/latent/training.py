@@ -84,6 +84,7 @@ from sktlm.pieces.topology_archive import (
 LEGACY_EXECUTION_BUNDLE_PLAN_SCHEMA = "sktlm-s1m2-execution-bundle-plan/v1"
 LEGACY_EXECUTION_BUNDLE_PLANNER = "sktlm-s1m2-execution-bundle-planner/v1"
 LEGACY_FINALIZE_ONLY_REASON = "round4_finalize_only_legacy_v1_resume"
+LEGACY_FINALIZED_IDENTITY_REASON = "round4_finalized_pass1_v1_to_v2_identity"
 
 
 EXPECTED_FREEZE_ID = "9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40"
@@ -6203,6 +6204,111 @@ def _prepare_legacy_v1_finalize_only_migration(
     }
 
 
+def _prepare_legacy_v1_finalized_identity_migration(
+    *,
+    config: TrainingConfig,
+    continuing: bool,
+    checkpoint: dict[str, Any],
+    database_checkpoint: dict[str, Any] | None,
+    store: LexiconStore,
+    execution_plan: ExecutionBundlePlan | None,
+) -> dict[str, Any] | None:
+    """Admit finalized Pass 1 by changing execution identity only."""
+
+    stored = checkpoint.get("execution_bundle_plan")
+    if not isinstance(stored, Mapping) or not (
+        stored.get("schema_version") == LEGACY_EXECUTION_BUNDLE_PLAN_SCHEMA
+        and stored.get("planner_implementation")
+        == LEGACY_EXECUTION_BUNDLE_PLANNER
+    ):
+        return None
+    completed = int(checkpoint.get("completed_passes", -1))
+    if completed == 0:
+        return None
+    if config.model != S1M2_MODEL or not continuing:
+        raise RuntimeError("Legacy finalized migration requires an S1M2 resume.")
+    if completed != 1:
+        raise RuntimeError("Legacy finalized migration supports only completed Pass 1.")
+    if database_checkpoint is None or database_checkpoint != checkpoint:
+        raise RuntimeError(
+            "Legacy finalized migration requires the authoritative SQLite checkpoint."
+        )
+    if (
+        checkpoint.get("active_pass") is not None
+        or int(checkpoint.get("next_document_index", -1)) != 0
+        or checkpoint.get("active_metrics") is not None
+    ):
+        raise RuntimeError("Legacy finalized migration requires an inactive pass boundary.")
+    history = checkpoint.get("history")
+    if (
+        not isinstance(history, list)
+        or len(history) != 1
+        or not isinstance(history[0], Mapping)
+        or int(history[0].get("pass", -1)) != 1
+    ):
+        raise RuntimeError("Legacy finalized migration requires exact Pass 1 history.")
+    for table in ("piece_counts_next", "lexical_diagnostics_next"):
+        if store.has_table(table):
+            raise RuntimeError(
+                f"Legacy finalized migration refuses active table: {table}."
+            )
+    if not store.has_table("piece_lexicon"):
+        raise RuntimeError("Legacy finalized migration requires piece_lexicon.")
+    active = store.connection.execute(
+        "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) FROM piece_lexicon"
+    ).fetchone()
+    assert active is not None
+    if (
+        int(active[0]) != int(history[0].get("active_piece_types", -1))
+        or float(active[1])
+        != float(history[0].get("active_piece_count_total", -1.0))
+    ):
+        raise RuntimeError(
+            "Legacy finalized piece state differs from Pass 1 history."
+        )
+    if execution_plan is None:
+        raise RuntimeError(
+            "Legacy finalized migration requires a validated current v2 plan."
+        )
+    requested = execution_plan.checkpoint_payload()
+    if (
+        requested.get("schema_version") != PLAN_SCHEMA
+        or requested.get("planner_implementation") != PLANNER_IMPLEMENTATION
+    ):
+        raise RuntimeError("Legacy finalized migration requires the current v2 planner.")
+    old_representation = _checkpoint_sha256(stored, "representation_set_sha256")
+    old_segments = _checkpoint_sha256(stored, "segment_sequence_sha256")
+    if old_representation != requested["representation_set_sha256"]:
+        raise RuntimeError(
+            "Legacy finalized execution-plan representation identity does not match v2."
+        )
+    if old_segments != requested["segment_sequence_sha256"]:
+        raise RuntimeError(
+            "Legacy finalized execution-plan segment sequence does not match v2."
+        )
+    migrations = checkpoint.get("execution_plan_migrations", [])
+    if not isinstance(migrations, list):
+        raise RuntimeError("Execution-plan migration provenance is malformed.")
+    return {
+        "reason": LEGACY_FINALIZED_IDENTITY_REASON,
+        "pass": 1,
+        "migration_kind": "execution_identity_only",
+        "scientific_state_changed": False,
+        "from_schema": LEGACY_EXECUTION_BUNDLE_PLAN_SCHEMA,
+        "to_schema": PLAN_SCHEMA,
+        "old_plan_sha256": _checkpoint_sha256(stored, "plan_sha256"),
+        "new_plan_sha256": requested["plan_sha256"],
+        "old_materialization_sha256": _checkpoint_sha256(
+            stored, "materialization_sha256"
+        ),
+        "new_materialization_sha256": requested["materialization_sha256"],
+        "representation_set_sha256": old_representation,
+        "segment_sequence_sha256": old_segments,
+        "from_execution_bundle_plan": dict(stored),
+        "to_execution_bundle_plan": requested,
+    }
+
+
 def run_training(
     config: TrainingConfig,
     *,
@@ -6430,6 +6536,57 @@ def run_training(
         )
         legacy_finalize_only_migration = None
         if not inspection_only and training_incomplete:
+            finalized_identity_migration = (
+                _prepare_legacy_v1_finalized_identity_migration(
+                    config=config,
+                    continuing=continuing,
+                    checkpoint=checkpoint,
+                    database_checkpoint=database_checkpoint,
+                    store=store,
+                    execution_plan=execution_plan,
+                )
+            )
+            if finalized_identity_migration is not None:
+                migrations = checkpoint.get("execution_plan_migrations", [])
+                assert isinstance(migrations, list)
+                checkpoint = {
+                    **checkpoint,
+                    "execution_plan_migrations": [
+                        *migrations,
+                        finalized_identity_migration,
+                    ],
+                    "execution_bundle_plan": dict(
+                        finalized_identity_migration[
+                            "to_execution_bundle_plan"
+                        ]
+                    ),
+                }
+                store.save_training_checkpoint(checkpoint)
+                store.checkpoint_and_truncate_wal_at_pass_boundary()
+                telemetry.increment("legacy_finalized_identity_migrations")
+                telemetry.increment(
+                    "legacy_finalized_completed_documents_reprocessed", 0
+                )
+                telemetry.increment("legacy_finalized_recovery_worker_pools_started", 0)
+                telemetry.increment("legacy_finalized_recovery_document_iterations", 0)
+                _timed_checkpoint(run_dir, checkpoint, telemetry)
+                provenance["training_execution_bundle_plan"] = (
+                    execution_plan.provenance_payload()
+                )
+                provenance_migrations = provenance.get(
+                    "execution_plan_migrations", []
+                )
+                if not isinstance(provenance_migrations, list):
+                    raise RuntimeError(
+                        "Training execution-plan migration provenance is malformed."
+                    )
+                provenance["execution_plan_migrations"] = [
+                    *provenance_migrations,
+                    finalized_identity_migration,
+                ]
+                _write_json(provenance_path, provenance)
+                database_checkpoint = checkpoint
+                stored_execution_plan = checkpoint["execution_bundle_plan"]
             legacy_finalize_only_migration = (
                 _prepare_legacy_v1_finalize_only_migration(
                     config=config,

@@ -392,7 +392,7 @@ metrics_id = "full_m0_devanagari_surface_word_full_p3"
 cell_id = "s1m2_m0_devanagari_surface_word"
 workload_id = "full"
 workers_source = "ROUND2.WINNER_WORKERS"
-host_role = "core-04"
+host_role = "core-09"
 state = "GATE_BLOCKED"
 
 [[s1m2_prevm.planned_runs]]
@@ -402,7 +402,7 @@ metrics_id = "full_m0_devanagari_legacy_joined_full_p3"
 cell_id = "s1m2_m0_devanagari_legacy_joined"
 workload_id = "full"
 workers_source = "ROUND2.WINNER_WORKERS"
-host_role = "core-05"
+host_role = "core-10"
 state = "GATE_BLOCKED"
 
 [[s1m2_prevm.planned_runs]]

@@ -42,9 +42,9 @@ def test_full_rejects_retired_w20_worker(
     monkeypatch.setattr(
         s1m2,
         "_bundle_plan_details",
-        lambda *args, **kwargs: {
-            "path": s1m2.FULL_EXECUTION_BUNDLE_PLAN,
-            "plan_sha256": s1m2.FULL_EXECUTION_BUNDLE_PLAN_SHA256,
+        lambda _root, declaration, *_args, **_kwargs: {
+            "path": declaration["execution_bundle_plan"],
+            "plan_sha256": declaration["execution_bundle_plan_sha256"],
             "materialization_sha256": "d" * 64,
         },
     )

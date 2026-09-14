@@ -115,9 +115,9 @@ def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(
         "rule_usage.tsv",
         "summary.json",
         "timing_metrics.json",
-        "topology",
     }
     assert expected <= {path.name for path in result.run_dir.iterdir()}
+    assert not (result.run_dir / "topology").exists()
     assert len(result.history) == 2
     assert all(item["active_piece_types"] > 0 for item in result.history)
     assert result.runtime["piece_scorers"]
@@ -600,7 +600,7 @@ def test_opt18_training_and_inspection_are_exact_restartable_phases(
     assert inspection_provenance["training_workers"] == 1
     assert inspection_provenance["inspection_workers"] == 2
     assert inspection_provenance["adaptive_factor_retention"] == {
-        "formula": "sktlm-opt19-factor-summary/v1",
+        "formula": latent_training.INSPECTION_RETENTION_FORMULA,
         "segment_budget_bytes": 320 * 1024 * 1024,
     }
 

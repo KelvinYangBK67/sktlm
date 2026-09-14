@@ -48,12 +48,14 @@ def test_full_plan_binds_bundles_to_both_continuous_cells(
         declaration: dict,
         workload: dict,
         scientific_config: dict,
+        *,
+        manifest: str,
     ) -> dict[str, str]:
         assert repo_root == tmp_path.resolve()
         path = declaration["execution_bundle_plan"]
         expected_by_path = {
             spec["execution_bundle_plan"]: spec
-            for spec in s1m2.FULL_EXECUTION_BUNDLE_SPECS.values()
+            for spec in contract["full_execution_bundle_plans"].values()
         }
         assert path in expected_by_path
         spec = expected_by_path[path]
@@ -64,6 +66,10 @@ def test_full_plan_binds_bundles_to_both_continuous_cells(
         assert declaration["condition"] == spec["condition"]
         assert workload == contract["workloads"]["full"]
         assert scientific_config == contract["scientific_config"]
+        assert manifest in {
+            contract["corpus"]["m0_manifest"],
+            contract["corpus"]["m0_prime_manifest"],
+        }
         return {
             "path": path,
             "plan_sha256": spec["execution_bundle_plan_sha256"],
@@ -83,7 +89,7 @@ def test_full_plan_binds_bundles_to_both_continuous_cells(
     s1m2._validate_plan(plan, contract)
 
     expected_host_roles = tuple(
-        s1m2.FULL_HOST_ROLE_BY_CELL[cell["cell_id"]]
+        contract["full_host_role_by_cell"][cell["cell_id"]]
         for cell in contract["cells"]
     )
     assert tuple(job["host_role"] for job in plan["jobs"]) == expected_host_roles
@@ -106,8 +112,8 @@ def test_full_plan_binds_bundles_to_both_continuous_cells(
         if job.get("execution_bundle_plan") is not None
     ]
 
-    assert len(bundle_jobs) == len(s1m2.FULL_EXECUTION_BUNDLE_SPECS)
-    expected = s1m2.FULL_EXECUTION_BUNDLE_SPECS
+    assert len(bundle_jobs) == len(contract["full_execution_bundle_plans"])
+    expected = contract["full_execution_bundle_plans"]
     assert {job["cell_id"] for job in bundle_jobs} == set(expected)
 
     for job in bundle_jobs:
@@ -159,7 +165,7 @@ def test_full_plan_rejects_missing_required_bundle_binding(
     target = next(
         job
         for job in plan["jobs"]
-        if job["cell_id"] == s1m2.FULL_EXECUTION_BUNDLE_CELL_ID
+        if job["cell_id"] == "s1m2_m0_devanagari_continuous"
     )
     target.pop("execution_bundle_plan")
     target.pop("execution_bundle_plan_sha256")
