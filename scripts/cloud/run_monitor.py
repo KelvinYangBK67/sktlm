@@ -236,6 +236,7 @@ out["live_pid"] = pid
 
 manifest = None
 metrics_dir = None
+phase_metrics_dirs = []
 if manifest_path is not None:
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -245,10 +246,31 @@ if manifest_path is not None:
         history = manifest.get("resume_history") or manifest.get("attempts") or []
         if isinstance(history, list) and history:
             latest = history[-1] if isinstance(history[-1], dict) else {}
-            metrics_rel = latest.get("metrics_dir")
-            if metrics_rel:
-                metrics_dir = repo / str(metrics_rel)
+            attempt_metrics_rel = latest.get("metrics_dir")
+            phases = latest.get("phases") or []
+
+            if isinstance(phases, list):
+                for phase_record in phases:
+                    if not isinstance(phase_record, dict):
+                        continue
+                    phase_metrics_rel = phase_record.get("metrics_dir")
+                    if phase_metrics_rel:
+                        phase_metrics_dirs.append(
+                            repo / str(phase_metrics_rel)
+                        )
+
+            # Production writes live metrics per phase:
+            # attempt_NNN/pass_NNN or attempt_NNN/inspection.
+            # Prefer the newest phase while it is running; retain the old
+            # attempt-level path as a compatibility fallback.
+            if phase_metrics_dirs:
+                metrics_dir = phase_metrics_dirs[-1]
+            elif attempt_metrics_rel:
+                metrics_dir = repo / str(attempt_metrics_rel)
+
+            if metrics_dir is not None:
                 out["metrics_dir"] = str(metrics_dir)
+
             out["return_code"] = latest.get("return_code")
 
         if status == "PASS":
@@ -473,6 +495,60 @@ if metrics_dir is not None:
                 out["peak"] = payload.get("peak_process_tree_rss_bytes")
         except Exception:
             pass
+
+# Production execution isolates pass/inspection process lifetimes into
+# phase-specific metrics directories.  Live resource values above come from
+# the newest phase; fold completed phase summaries into attempt-level elapsed
+# time and peak RSS so ETA remains based on cumulative execution time.
+if phase_metrics_dirs:
+    total_wall = 0.0
+    have_wall = False
+    attempt_peak = 0.0
+    have_peak = False
+
+    # Earlier phases should already have terminal summaries.
+    for phase_metrics_dir in phase_metrics_dirs[:-1]:
+        phase_summary = phase_metrics_dir / "process_tree_summary.json"
+        if not phase_summary.is_file():
+            continue
+        try:
+            payload = json.loads(
+                phase_summary.read_text(encoding="utf-8")
+            )
+
+            value = payload.get("wall_seconds")
+            if value is not None:
+                total_wall += float(value)
+                have_wall = True
+
+            value = payload.get("peak_process_tree_rss_bytes")
+            if value is not None:
+                attempt_peak = max(attempt_peak, float(value))
+                have_peak = True
+        except Exception:
+            pass
+
+    # The newest phase is live and was already read from its samples/summary.
+    current_wall = out.get("wall")
+    if current_wall is not None:
+        try:
+            total_wall += float(current_wall)
+            have_wall = True
+        except (TypeError, ValueError):
+            pass
+
+    current_peak = out.get("peak")
+    if current_peak is not None:
+        try:
+            attempt_peak = max(attempt_peak, float(current_peak))
+            have_peak = True
+        except (TypeError, ValueError):
+            pass
+
+    if have_wall:
+        out["wall"] = total_wall
+    if have_peak:
+        out["peak"] = attempt_peak
 
 # Prefer the conventional checkpoint, with a shallow fallback for compatible
 # future stages.
