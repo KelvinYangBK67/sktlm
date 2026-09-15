@@ -1606,6 +1606,69 @@ def _authoritative_training_checkpoint(
     return checkpoint
 
 
+def _finalize_sqlite_for_audit(run_dir: Path) -> dict[str, Any]:
+    """Freeze one completed SQLite state into a sidecar-free final artifact."""
+
+    database = run_dir / "learner.sqlite"
+    if not database.is_file():
+        raise RuntimeError(
+            "Production finalization requires learner.sqlite."
+        )
+
+    connection = sqlite3.connect(database)
+    try:
+        if connection.in_transaction:
+            raise RuntimeError(
+                "SQLite finalization requires no active transaction."
+            )
+
+        checkpoint = connection.execute(
+            "PRAGMA wal_checkpoint(TRUNCATE)"
+        ).fetchone()
+        if (
+            checkpoint is None
+            or len(checkpoint) != 3
+            or int(checkpoint[0]) != 0
+        ):
+            raise RuntimeError(
+                f"Final SQLite WAL checkpoint failed: {checkpoint!r}"
+            )
+
+        journal_mode = connection.execute(
+            "PRAGMA journal_mode=DELETE"
+        ).fetchone()
+        if (
+            journal_mode is None
+            or str(journal_mode[0]).lower() != "delete"
+        ):
+            raise RuntimeError(
+                f"Final SQLite journal-mode transition failed: "
+                f"{journal_mode!r}"
+            )
+    finally:
+        connection.close()
+
+    residue = [
+        path.name
+        for path in (
+            Path(f"{database}-wal"),
+            Path(f"{database}-shm"),
+        )
+        if path.exists()
+    ]
+    if residue:
+        raise RuntimeError(
+            f"Final SQLite sidecar cleanup failed: {residue}"
+        )
+
+    return {
+        "completed_at": _utc_now(),
+        "wal_checkpoint": [int(value) for value in checkpoint],
+        "journal_mode": "delete",
+        "sidecars_absent": True,
+    }
+
+
 def build_full_authorization(
     plan: dict[str, Any],
     contract: dict[str, Any],
@@ -2312,6 +2375,7 @@ def run_job(
         ):
             raise RuntimeError("Production inspection did not commit completion.")
 
+    attempt["sqlite_finalization"] = _finalize_sqlite_for_audit(run_dir)
     attempt["ended_at"] = _utc_now()
     attempt["return_code"] = 0
     manifest["end_time"] = attempt["ended_at"]

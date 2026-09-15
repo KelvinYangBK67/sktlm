@@ -371,3 +371,43 @@ def test_reset_failed_refuses_nonfailed_state(
     assert run_dir.is_dir()
     assert control_dir.is_dir()
     assert not receipt.exists()
+
+
+def test_completed_sqlite_is_finalized_without_wal_sidecars(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    database = run_dir / "learner.sqlite"
+
+    connection = sqlite3.connect(database)
+    assert connection.execute(
+        "PRAGMA journal_mode=WAL"
+    ).fetchone()[0] == "wal"
+    connection.execute(
+        "CREATE TABLE metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+    )
+    connection.execute(
+        "INSERT INTO metadata VALUES ('fixture', 'value')"
+    )
+    connection.commit()
+    connection.close()
+
+    result = s1m2._finalize_sqlite_for_audit(run_dir)
+
+    assert result["wal_checkpoint"][0] == 0
+    assert result["journal_mode"] == "delete"
+    assert result["sidecars_absent"] is True
+    assert not Path(f"{database}-wal").exists()
+    assert not Path(f"{database}-shm").exists()
+
+    connection = sqlite3.connect(database)
+    try:
+        assert connection.execute(
+            "PRAGMA journal_mode"
+        ).fetchone()[0] == "delete"
+        assert connection.execute(
+            "PRAGMA quick_check"
+        ).fetchone()[0] == "ok"
+    finally:
+        connection.close()
