@@ -3391,13 +3391,17 @@ joined frozen-rule surface and validates exact reconstruction. This restores
 Piece parameter/count/support identity is now `(PhonologicalForm, role)`, with
 roles `WHOLE`, `LEFT`, `RIGHT`, and `INTERNAL` derived from the existing span.
 Between-pass activation no longer counts supporting token occurrences.
-Posterior host mass is aggregated by stable host lexical-form type in the
-streaming SQLite store; a multi-phoneme identity requires the default two
-distinct hosts whose aggregated support is at least the explicit conservative
-default 1.0. Singletons remain active base support. Repetition of one lexical
-whole form therefore has host diversity one and cannot qualify that whole
-identity by itself. The legal whole-form edge, including the long fallback,
-remains available.
+Host-keyed support is the outer posterior mass of a host occurrence times the
+conditional expected usage of the positional piece inside that host, summed
+across occurrences and derivations. Legal membership alone contributes no
+support, and host-keyed support conserves the ordinary expected piece count.
+The streaming SQLite store aggregates these values by stable host lexical-form
+type; a multi-phoneme identity requires the default two distinct hosts whose
+aggregated support is at least the explicit conservative default 1.0.
+Singletons remain active base support. Repetition of one lexical whole form
+therefore has host diversity one and cannot qualify that whole identity by
+itself. The legal whole-form edge, including the long fallback, remains
+available.
 
 The scoring formula and all existing scorer hyperparameters are unchanged.
 Joint lexical/piece inference, legal piece support, exact forward/backward,
@@ -3417,10 +3421,12 @@ selected streaming/parallel/bundle tests in 4.30 seconds, touched-module
 `py_compile`, and production-contract validation at SHA-256
 `12c0df4cc897f38632eb23b1d66685f3bfeb3de5854d560870b83e201f44e68e`.
 
-No Full M₀, representative/stress corpus, VM/cloud action, large database
-regeneration, RAM/runtime benchmark, commit, or push was performed. V2 has not
-established that the unchanged scorer avoids the V1 collapse; a separately
-authorized bounded real-corpus scientific and performance gate is required.
+At that implementation checkpoint no Full M₀, representative/stress corpus,
+VM/cloud action, large database regeneration, RAM/runtime benchmark, commit,
+or push was performed. The repair was subsequently published as
+`f0de3c9ef75b724e9355d7bd17f8589645f03e71`. V2 has not established that the
+unchanged scorer avoids the V1 collapse; a separately authorized bounded
+real-corpus scientific and performance gate is required.
 
 ```text
 S1M2_V1_SCIENTIFIC_FAILURE=UNCHANGED
@@ -3433,4 +3439,54 @@ SCORER_OBJECTIVE_CHANGED=NO
 FULL_M0_RUN=NO
 FULL_M0_AUTHORIZED=NO
 NEXT_ACTION=HUMAN_REVIEW_THEN_BOUNDED_V2_PREFLIGHT_DESIGN
+```
+
+## S1M2 posterior host-support blocker repair - 2026-09-16
+
+Commit `f0de3c9ef75b724e9355d7bd17f8589645f03e71` was published on
+`exp/s1m2-reusable-pieces`. A narrow follow-up repairs one scientific blocker:
+piece-host support no longer expands host lexical posterior mass over every
+legal identity. At the existing exact marginal contribution points, the same
+posterior contribution is now accumulated both into the positional expected
+piece count and into `(piece identity, host lexical form)` support. The outer
+factor posterior scales both summaries identically.
+
+Legacy/direct evaluation, merged factors, compiled shared-prefix inference,
+and compact inference all follow this definition. Shared and compact reverse
+passes retain host-indexed adjoints only for their local exact contribution
+aggregation; they do not run a second DP, construct four role DPs, scan the
+active inventory, or retain corpus occurrence history. The existing SQLite
+`(piece_key, host_key)` streaming upsert and threshold 1.0 remain unchanged.
+The tiny reference trainer likewise accumulates conditional expected usage
+rather than structural unit support.
+
+For every observed positional identity in the focused regressions,
+`sum_host piece_host_support == piece_expected_count` passed at relative
+tolerance `1e-10` and absolute tolerance `1e-12`. A deliberately downweighted
+legal whole candidate received its actual sub-0.01 conditional posterior use,
+not full host mass. Two distinct legal hosts below threshold did not qualify a
+shared piece; occurrence aggregation above threshold in both hosts did.
+Repeated whole-host rejection, role isolation, long whole fallback, and
+compact/legacy/compiled-shared exact parity remain covered. The two directly
+related test files passed 49 tests in 1.21 seconds.
+
+The configured public label remains `reusable_pieces_v1` intentionally for
+compatibility with current training dispatch, checkpoints, production
+contracts, and audit readers. A `v2` label should be introduced only through a
+separate explicit versioned migration, not this narrow fix.
+
+No scorer formula or hyperparameter, sandhi/whitespace semantics, role system,
+reuse threshold, worker/bundle/cache/topology architecture, frozen input, real
+corpus, representative/stress benchmark, VM/cloud state, or Full M₀ run was
+changed or executed.
+
+```text
+POSTERIOR_HOST_SUPPORT=EXACT_INNER_EXPECTED_USAGE
+PIECE_HOST_CONSERVATION=PASS_LOCAL
+LEGAL_MEMBERSHIP_AS_SUPPORT=REMOVED
+HOST_SUPPORT_THRESHOLD=UNCHANGED_1.0
+MODEL_LABEL=reusable_pieces_v1_COMPATIBILITY_RETAINED
+FULL_M0_RUN=NO
+FULL_M0_AUTHORIZED=NO
+NEXT_ACTION=PUBLISH_NARROW_FIX_THEN_HUMAN_DESIGN_OF_BOUNDED_V2_PREFLIGHT
 ```

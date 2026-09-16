@@ -21,6 +21,7 @@ from sktlm.pieces import (
     BaseMeasurePieceScorer,
     GeometricPhonemeBaseMeasure,
     PieceIdentity,
+    PieceModel,
     PieceRole,
     ProductionPieceConfig,
     build_piece_lattice,
@@ -86,19 +87,32 @@ def test_repeated_whole_form_does_not_create_cross_type_reuse() -> None:
     whole = PieceIdentity(form, PieceRole.WHOLE)
     result = fit_production_piece_model((form,) * 4, passes=1)
 
-    assert result.history[0].host_type_support[whole] == 1
+    assert result.history[0].host_type_support.get(whole, 0) <= 1
     assert whole not in result.active_piece_counts
 
 
-def test_prefix_reuse_qualifies_across_distinct_host_types() -> None:
-    forms = tuple(
-        parse_iast_form(text) for text in ("devam", "devasya", "devaka")
-    )
+def test_distinct_host_threshold_uses_posterior_piece_usage() -> None:
+    forms = tuple(parse_iast_form(text) for text in ("devam", "devasya"))
     prefix = PieceIdentity(parse_iast_form("deva"), PieceRole.LEFT)
-    result = fit_production_piece_model(forms, passes=1)
+    model = PieceModel.neutral()
+    usages = tuple(
+        model.evaluate(form).expected_piece_counts[prefix] for form in forms
+    )
 
-    assert result.history[0].host_type_support[prefix] == 3
-    assert prefix in result.active_piece_counts
+    low_support = fit_production_piece_model(forms, passes=1)
+    assert all(0.0 < usage < 1.0 for usage in usages)
+    assert low_support.history[0].host_type_support.get(prefix, 0) == 0
+    assert prefix not in low_support.active_piece_counts
+
+    repeated = tuple(
+        form
+        for form, usage in zip(forms, usages)
+        for _ in range(math.ceil((1.0 + 1e-9) / usage))
+    )
+    enough_support = fit_production_piece_model(repeated, passes=1)
+
+    assert enough_support.history[0].host_type_support[prefix] == 2
+    assert prefix in enough_support.active_piece_counts
 
 
 def test_positional_roles_do_not_share_counts_or_host_support() -> None:
@@ -107,11 +121,24 @@ def test_positional_roles_do_not_share_counts_or_host_support() -> None:
     )
     right = PieceIdentity(parse_iast_form("m"), PieceRole.RIGHT)
     left = PieceIdentity(parse_iast_form("m"), PieceRole.LEFT)
-    result = fit_production_piece_model(forms, passes=1)
+    model = PieceModel.neutral()
+    repeated_right_hosts = tuple(
+        form
+        for form in forms[:3]
+        for _ in range(
+            math.ceil(
+                (1.0 + 1e-9)
+                / model.evaluate(form).expected_piece_counts[right]
+            )
+        )
+    )
+    result = fit_production_piece_model(
+        repeated_right_hosts + (forms[3],), passes=1
+    )
     learned = result.history[0]
 
     assert learned.host_type_support[right] == 3
-    assert learned.host_type_support[left] == 1
+    assert learned.host_type_support.get(left, 0) <= 1
     assert learned.expected_piece_counts[right] != pytest.approx(
         learned.expected_piece_counts[left]
     )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import replace
 import math
 import sqlite3
@@ -57,6 +58,27 @@ class _RoleTableScorer:
 
     def score_piece(self, piece: PhonologicalForm, role: PieceRole) -> float:
         return -0.13 * len(piece.symbols) + self._offsets[role]
+
+
+class _LowWholePosteriorScorer:
+    def score(self, piece: PhonologicalForm) -> float:
+        return self.score_piece(piece, PieceRole.WHOLE)
+
+    def score_piece(self, piece: PhonologicalForm, role: PieceRole) -> float:
+        if piece.iast == "rama" and role is PieceRole.WHOLE:
+            return -20.0
+        return 0.0
+
+
+def _assert_piece_host_conservation(inference) -> None:
+    support_by_piece: dict[PieceIdentity, float] = defaultdict(float)
+    for (identity, _host), support in inference.piece_host_support.items():
+        support_by_piece[identity] += support
+    assert support_by_piece == pytest.approx(
+        inference.piece_expected_counts,
+        rel=1e-10,
+        abs=1e-12,
+    )
 
 
 def _production_scorer() -> BaseMeasurePieceScorer:
@@ -170,6 +192,7 @@ def test_long_merged_word_composed_path_keeps_whole_form(
 
     assert result.total_posterior_mass == pytest.approx(1.0, abs=1e-12)
     assert result.expected_whole_form_uses > 0.0
+    _assert_piece_host_conservation(result)
 
 
 def test_batched_inner_top_k_matches_p0_order_and_weights() -> None:
@@ -446,6 +469,13 @@ def test_shared_token_marginals_match_legacy_exact_path(surface: str) -> None:
         rel=1e-10,
         abs=1e-12,
     )
+    assert observed.piece_host_support == pytest.approx(
+        reference.piece_host_support,
+        rel=1e-10,
+        abs=1e-12,
+    )
+    _assert_piece_host_conservation(observed)
+    _assert_piece_host_conservation(reference)
     assert observed.rule_usage == pytest.approx(
         reference.rule_usage,
         rel=1e-10,
@@ -507,6 +537,79 @@ def test_compact_shared_dp_matches_legacy_with_role_conditioned_scores() -> None
     assert compact.piece_host_support == pytest.approx(
         legacy.piece_host_support, rel=1e-10, abs=1e-12
     )
+    _assert_piece_host_conservation(compact)
+    _assert_piece_host_conservation(legacy)
+
+
+def test_legal_piece_host_support_uses_inner_posterior_not_host_mass() -> None:
+    host = parse_iast_form("rama")
+    identity = PieceIdentity(host, PieceRole.WHOLE)
+    graph = build_lazy_candidate_graph(
+        next(iter_observed_segments("rama")),
+        StructuredSandhiGrammar(()),
+    )
+    engine = ComposedPieceInference(
+        _LowWholePosteriorScorer(),
+        model_config=PieceModelConfig(max_piece_length=4),
+    )
+
+    inference = infer_composed_segment(
+        graph,
+        engine,
+        whitespace_merge_penalty=8.0,
+    )
+    conditional_usage = engine.evaluate_form(host).expected_piece_counts[
+        identity
+    ]
+    host_mass = inference.lexical_expected_counts[host]
+
+    assert 0.0 < conditional_usage < 0.01
+    assert inference.piece_host_support[(identity, host)] == pytest.approx(
+        host_mass * conditional_usage,
+        rel=1e-10,
+        abs=1e-12,
+    )
+    assert inference.piece_host_support[(identity, host)] < host_mass
+    _assert_piece_host_conservation(inference)
+
+
+def test_merged_factor_host_support_uses_conditional_piece_usage() -> None:
+    host = parse_iast_form("rama")
+    identity = PieceIdentity(host, PieceRole.WHOLE)
+    base_graph = build_lazy_candidate_graph(
+        next(iter_observed_segments("rama")),
+        StructuredSandhiGrammar(()),
+    )
+    template = base_graph.factors[0]
+    graph = replace(
+        base_graph,
+        factors=(
+            replace(
+                template,
+                factor_id="merge:test",
+                lattice=None,
+                merged_word=host,
+            ),
+        ),
+    )
+    engine = ComposedPieceInference(
+        _LowWholePosteriorScorer(),
+        model_config=PieceModelConfig(max_piece_length=4),
+    )
+
+    inference = infer_composed_segment(
+        graph,
+        engine,
+        whitespace_merge_penalty=8.0,
+    )
+    expected_usage = engine.evaluate_form(host).expected_piece_counts[identity]
+
+    assert inference.piece_host_support[(identity, host)] == pytest.approx(
+        expected_usage,
+        rel=1e-10,
+        abs=1e-12,
+    )
+    _assert_piece_host_conservation(inference)
 
 
 def test_shared_zero_epsilon_occurrences_stay_structurally_compact() -> None:
@@ -614,6 +717,11 @@ def test_compiled_topology_reweights_changed_piece_parameters_exactly() -> None:
     assert observed.piece_expected_counts == pytest.approx(
         reference.piece_expected_counts, rel=1e-10, abs=1e-12
     )
+    assert observed.piece_host_support == pytest.approx(
+        reference.piece_host_support, rel=1e-10, abs=1e-12
+    )
+    _assert_piece_host_conservation(observed)
+    _assert_piece_host_conservation(reference)
     assert observed.rule_usage == pytest.approx(
         reference.rule_usage, rel=1e-10, abs=1e-12
     )

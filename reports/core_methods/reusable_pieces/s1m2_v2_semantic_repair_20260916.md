@@ -1,7 +1,7 @@
 # S1M2 V2 candidate and reuse-semantics repair
 
 Date: 2026-09-16
-Status: implemented locally; Full M₀ scientific validation not run
+Status: implemented and focused-local validated; Full M₀ validation not run
 
 ## Scope
 
@@ -80,15 +80,29 @@ identity on which a count is looked up is more specific.
 ## Host lexical-type qualification
 
 Between-pass activation now separates posterior expected count from reusable
-qualification. For each stable host lexical-form key `h`, lexical posterior
-mass is first aggregated across all occurrences and derivations:
+qualification. For positional identity `q = (piece, role)` and stable host
+lexical-form key `h`, support is the joint posterior expected usage:
 
 ```text
-S(piece, role, h) = aggregated posterior mass of host type h
+S(q, h)
+  = sum over host occurrences and derivations
+      outer posterior mass(h occurrence)
+      * conditional inner expected usage(q | h)
 ```
 
-Each legal positional piece identity in that host receives this host mass.
-The streaming store then counts distinct host types whose aggregated mass
+Legal membership alone contributes no support. The exact inner marginal code
+adds each piece-count contribution both to the ordinary expected count and to
+its host-keyed accumulator. Consequently every segment obeys, within floating
+point tolerance:
+
+```text
+sum_h S(q, h) = expected_piece_count(q)
+```
+
+The outer factor posterior then scales both accumulators identically. Direct,
+merged-factor, legacy, compiled shared-prefix, and compact routes all use this
+same data flow; no second DP or legal-identity-by-host expansion is performed.
+The streaming store counts distinct host types whose aggregated expected usage
 meets the explicit threshold:
 
 ```text
@@ -97,8 +111,8 @@ host_type_support(piece, role)
 ```
 
 The conservative default is `host_support_threshold = 1.0`, meaning one
-expected host occurrence after aggregation. A multi-phoneme identity is
-retained only when its qualifying host-type count is at least
+expected use of that positional piece inside the host type after aggregation.
+A multi-phoneme identity is retained only when its qualifying host-type count is at least
 `min_reuse_host_types = 2`. This default was not tuned on a corpus. Singleton
 identities remain active base support.
 
@@ -108,6 +122,15 @@ Conversely, `deva@LEFT` may qualify when supported by multiple distinct host
 forms. Support rows are accumulated by compact `(piece-role key, host-form
 key)` in SQLite and reduced between passes; token occurrence objects and the
 complete active inventory are not retained or scanned per token.
+
+## Model label compatibility
+
+The configured model label remains `reusable_pieces_v1` deliberately for
+compatibility with the existing training dispatch, production contract,
+checkpoint signatures, and audit readers. This narrow semantic repair does not
+silently introduce a new public model/config identity. If a `v2` label is
+desired, it should be introduced later as an explicit versioned migration with
+its contract and resume implications reviewed together.
 
 ## Preserved support and architecture
 
@@ -137,10 +160,16 @@ Tiny deterministic regressions cover:
 - legal long whole-form fallback;
 - exact role-conditioned agreement of the compact/shared kernel with the
   reference oracle;
+- per-identity conservation between host-keyed support and expected count;
+- a legal low-posterior piece receiving only its conditional expected usage;
+- posterior-usage threshold rejection and qualifying positive control across
+  two distinct host types;
 - streaming SQLite finalization plus serial/parallel and bundled reduction on
   tiny fixtures.
 
 No Full M₀ run, representative or stress corpus, performance/RAM benchmark,
-VM/cloud operation, hyperparameter search, commit, or push was performed.
-Whether the unchanged scoring objective still collapses after these semantic
-repairs remains a required human-run bounded scientific and performance gate.
+VM/cloud operation, or hyperparameter search was performed. The initial repair
+was published as `f0de3c9ef75b724e9355d7bd17f8589645f03e71`; this note now includes the
+narrow posterior-host-support correction. Whether the unchanged scoring
+objective still collapses after these semantic repairs remains a required
+human-run bounded scientific and performance gate.

@@ -140,9 +140,9 @@ def fit_production_piece_model(
             weighted_log_score += evaluation.log_score
             for identity, mass in evaluation.expected_piece_counts.items():
                 expected_counts[identity] += mass
-                # The observed tiny-gate occurrence has unit lexical posterior.
-                # Aggregate it by host type before applying the threshold.
-                host_support[(identity, form)] += 1.0
+                # The observed tiny-gate occurrence has unit outer lexical
+                # posterior; retain its exact conditional expected usage.
+                host_support[(identity, form)] += mass
         host_type_support: dict[PieceIdentity, int] = defaultdict(int)
         for (identity, _host), mass in host_support.items():
             if mass >= config.host_support_threshold:

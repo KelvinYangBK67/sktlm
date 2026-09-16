@@ -279,7 +279,9 @@ class _TokenSummary:
     expected_multi_piece_uses: float
     lexical_counts: dict[PhonologicalForm, float]
     piece_counts: dict[PieceIdentity, float]
-    host_form_masses: dict[PhonologicalForm, float]
+    piece_host_support: dict[
+        tuple[PieceIdentity, PhonologicalForm], float
+    ]
     boundary_mass: dict[str, float]
     boundary_meta: dict[str, LexicalBoundary]
     rule_usage: dict[str, float]
@@ -302,7 +304,9 @@ class _FactorSummary:
     expected_multi_piece_uses: float
     lexical_counts: dict[PhonologicalForm, float]
     piece_counts: dict[PieceIdentity, float]
-    host_form_masses: dict[PhonologicalForm, float]
+    piece_host_support: dict[
+        tuple[PieceIdentity, PhonologicalForm], float
+    ]
     boundary_mass: dict[str, float]
     boundary_meta: dict[str, LexicalBoundary]
     rule_usage: dict[str, float]
@@ -1487,18 +1491,29 @@ class ComposedPieceInference:
         self,
         batch: _CompactSharedFormBatch,
         endpoint_masses: dict[int, float],
-    ) -> tuple[dict[PieceIdentity, float], float]:
+    ) -> tuple[
+        dict[PieceIdentity, float],
+        float,
+        dict[tuple[PieceIdentity, PhonologicalForm], float],
+    ]:
         """Reverse the compact shared DAG with endpoint-indexed adjoints."""
 
         started = time.perf_counter()
         topology = batch.topology
         log_adjoint = [-math.inf] * len(topology.parent)
         piece_counts: dict[PieceIdentity, float] = defaultdict(float)
+        piece_host_support: dict[
+            tuple[PieceIdentity, PhonologicalForm], float
+        ] = defaultdict(float)
+        host_log_adjoints: dict[int, dict[int, float]] = {}
+        endpoint_hosts: dict[int, PhonologicalForm] = {}
         expected_raw_score = 0.0
         for endpoint_id, mass in endpoint_masses.items():
             if mass <= 0.0:
                 continue
             score = batch.endpoint_scores[endpoint_id]
+            host = self._compact_form(topology, endpoint_id)
+            endpoint_hosts[endpoint_id] = host
             seed = math.log(mass) - score.raw_log_partition
             for transition_index in range(
                 topology.transition_offsets[score.node - 1],
@@ -1519,24 +1534,31 @@ class ComposedPieceInference:
                 contribution = math.exp(
                     seed + batch.alpha[source] + raw_score
                 )
-                piece_counts[PieceIdentity(piece, role)] += contribution
+                identity = PieceIdentity(piece, role)
+                piece_counts[identity] += contribution
+                piece_host_support[(identity, host)] += contribution
                 expected_raw_score += contribution * raw_score
                 log_adjoint[source] = logaddexp(
                     log_adjoint[source],
                     seed + raw_score,
                 )
+                source_hosts = host_log_adjoints.setdefault(source, {})
+                source_hosts[endpoint_id] = logaddexp(
+                    source_hosts.get(endpoint_id, -math.inf),
+                    seed + raw_score,
+                )
             if topology.depth[score.node] > topology.max_piece_length:
                 contribution = math.exp(seed + score.whole_raw_score)
-                whole_piece = self._compact_form(topology, endpoint_id)
-                piece_counts[
-                    PieceIdentity(whole_piece, PieceRole.WHOLE)
-                ] += contribution
+                identity = PieceIdentity(host, PieceRole.WHOLE)
+                piece_counts[identity] += contribution
+                piece_host_support[(identity, host)] += contribution
                 expected_raw_score += contribution * score.whole_raw_score
 
         for node_index in range(len(topology.parent) - 1, 0, -1):
             adjoint = log_adjoint[node_index]
             if adjoint == -math.inf:
                 continue
+            node_host_adjoints = host_log_adjoints.pop(node_index)
             for transition_index in range(
                 topology.transition_offsets[node_index - 1],
                 topology.transition_offsets[node_index],
@@ -1554,14 +1576,31 @@ class ComposedPieceInference:
                 contribution = math.exp(
                     adjoint + batch.alpha[source] + raw_score
                 )
-                piece_counts[PieceIdentity(piece, role)] += contribution
+                identity = PieceIdentity(piece, role)
+                piece_counts[identity] += contribution
                 expected_raw_score += contribution * raw_score
                 log_adjoint[source] = logaddexp(
                     log_adjoint[source], adjoint + raw_score
                 )
+                source_hosts = host_log_adjoints.setdefault(source, {})
+                for endpoint_id, host_adjoint in node_host_adjoints.items():
+                    host_contribution = math.exp(
+                        host_adjoint + batch.alpha[source] + raw_score
+                    )
+                    piece_host_support[
+                        (identity, endpoint_hosts[endpoint_id])
+                    ] += host_contribution
+                    source_hosts[endpoint_id] = logaddexp(
+                        source_hosts.get(endpoint_id, -math.inf),
+                        host_adjoint + raw_score,
+                    )
         self.add_timing("inner_piece_backward_seconds", started)
         self.add_timing("inner_piece_posterior_seconds", started)
-        return dict(piece_counts), expected_raw_score
+        return (
+            dict(piece_counts),
+            expected_raw_score,
+            dict(piece_host_support),
+        )
 
     def _aggregate_compact_occurrence_support(
         self,
@@ -1871,19 +1910,28 @@ class ComposedPieceInference:
         self,
         batch: _SharedFormBatch,
         endpoint_masses: dict[str, float],
-    ) -> tuple[dict[PieceIdentity, float], float]:
+    ) -> tuple[
+        dict[PieceIdentity, float],
+        float,
+        dict[tuple[PieceIdentity, PhonologicalForm], float],
+    ]:
         """Reverse one shared DAG for posterior-weighted exact piece counts."""
 
         started = time.perf_counter()
         topology = batch.topology
         log_adjoint = [-math.inf] * len(topology.parent)
         piece_counts: dict[PieceIdentity, float] = defaultdict(float)
+        piece_host_support: dict[
+            tuple[PieceIdentity, PhonologicalForm], float
+        ] = defaultdict(float)
+        host_log_adjoints: dict[int, dict[str, float]] = {}
         expected_raw_score = 0.0
         max_piece_length = self.model_config.max_piece_length
         for form_key, mass in endpoint_masses.items():
             if mass <= 0.0:
                 continue
             score = batch.forms[form_key]
+            host = score.form
             seed = math.log(mass) - score.raw_log_partition
             for transition_index in range(
                 topology.transition_offsets[score.node - 1],
@@ -1904,23 +1952,31 @@ class ComposedPieceInference:
                 contribution = math.exp(
                     seed + batch.alpha[source] + raw_score
                 )
-                piece_counts[PieceIdentity(piece, role)] += contribution
+                identity = PieceIdentity(piece, role)
+                piece_counts[identity] += contribution
+                piece_host_support[(identity, host)] += contribution
                 expected_raw_score += contribution * raw_score
                 log_adjoint[source] = logaddexp(
                     log_adjoint[source],
                     seed + raw_score,
                 )
+                source_hosts = host_log_adjoints.setdefault(source, {})
+                source_hosts[form_key] = logaddexp(
+                    source_hosts.get(form_key, -math.inf),
+                    seed + raw_score,
+                )
             if len(score.form.symbols) > max_piece_length:
                 contribution = math.exp(seed + score.whole_raw_score)
-                piece_counts[
-                    PieceIdentity(score.whole_piece, PieceRole.WHOLE)
-                ] += contribution
+                identity = PieceIdentity(score.whole_piece, PieceRole.WHOLE)
+                piece_counts[identity] += contribution
+                piece_host_support[(identity, host)] += contribution
                 expected_raw_score += contribution * score.whole_raw_score
 
         for node_index in range(len(topology.parent) - 1, 0, -1):
             adjoint = log_adjoint[node_index]
             if adjoint == -math.inf:
                 continue
+            node_host_adjoints = host_log_adjoints.pop(node_index)
             for transition_index in range(
                 topology.transition_offsets[node_index - 1],
                 topology.transition_offsets[node_index],
@@ -1938,15 +1994,32 @@ class ComposedPieceInference:
                 contribution = math.exp(
                     adjoint + batch.alpha[source] + raw_score
                 )
-                piece_counts[PieceIdentity(piece, role)] += contribution
+                identity = PieceIdentity(piece, role)
+                piece_counts[identity] += contribution
                 expected_raw_score += contribution * raw_score
                 log_adjoint[source] = logaddexp(
                     log_adjoint[source],
                     adjoint + raw_score,
                 )
+                source_hosts = host_log_adjoints.setdefault(source, {})
+                for form_key, host_adjoint in node_host_adjoints.items():
+                    host_contribution = math.exp(
+                        host_adjoint + batch.alpha[source] + raw_score
+                    )
+                    piece_host_support[
+                        (identity, batch.forms[form_key].form)
+                    ] += host_contribution
+                    source_hosts[form_key] = logaddexp(
+                        source_hosts.get(form_key, -math.inf),
+                        host_adjoint + raw_score,
+                    )
         self.add_timing("inner_piece_backward_seconds", started)
         self.add_timing("inner_piece_posterior_seconds", started)
-        return dict(piece_counts), expected_raw_score
+        return (
+            dict(piece_counts),
+            expected_raw_score,
+            dict(piece_host_support),
+        )
 
     def _shared_legal_pieces(
         self,
@@ -2123,6 +2196,9 @@ def _evaluate_lazy_token_legacy(
 
     lexical_counts: dict[PhonologicalForm, float] = defaultdict(float)
     piece_counts: dict[PieceIdentity, float] = defaultdict(float)
+    piece_host_support: dict[
+        tuple[PieceIdentity, PhonologicalForm], float
+    ] = defaultdict(float)
     boundary_mass: dict[str, float] = defaultdict(float)
     boundary_meta: dict[str, LexicalBoundary] = {}
     rule_usage: dict[str, float] = defaultdict(float)
@@ -2155,14 +2231,16 @@ def _evaluate_lazy_token_legacy(
             expected_multi_piece_uses += mass * evaluation.multi_piece_mass
             if mass > 0.0:
                 for piece, conditional_mass in evaluation.expected_piece_counts.items():
-                    piece_counts[piece] += mass * conditional_mass
+                    contribution = mass * conditional_mass
+                    piece_counts[piece] += contribution
+                    piece_host_support[(piece, span.word)] += contribution
                     occurrence_id = (
                         f"{lattice.nodes[span.start].surface_end}:"
                         f"{lattice.nodes[span.end].surface_start}:{span.word.key}"
                     )
                     piece_occurrences[piece][occurrence_id] = max(
                         piece_occurrences[piece].get(occurrence_id, 0.0),
-                        mass * conditional_mass,
+                        contribution,
                     )
             if span.boundary is not None:
                 boundary_mass[span.boundary.boundary_id] += mass
@@ -2239,7 +2317,7 @@ def _evaluate_lazy_token_legacy(
         expected_multi_piece_uses=expected_multi_piece_uses,
         lexical_counts=dict(lexical_counts),
         piece_counts=dict(piece_counts),
-        host_form_masses=dict(lexical_counts),
+        piece_host_support=dict(piece_host_support),
         boundary_mass=dict(boundary_mass),
         boundary_meta=boundary_meta,
         rule_usage=dict(rule_usage),
@@ -2551,7 +2629,7 @@ def _evaluate_lazy_token_compact(
             if start == 0 and end == node_count - 1:
                 identity_log_score = score.log_score
 
-    piece_counts, expected_raw_score = (
+    piece_counts, expected_raw_score, piece_host_support = (
         engine._aggregate_compact_piece_marginals(batch, endpoint_masses)
     )
     lexical_counts: dict[PhonologicalForm, float] = {}
@@ -2668,7 +2746,7 @@ def _evaluate_lazy_token_compact(
         expected_multi_piece_uses=expected_multi_piece_uses,
         lexical_counts=lexical_counts,
         piece_counts=piece_counts,
-        host_form_masses=dict(lexical_counts),
+        piece_host_support=piece_host_support,
         boundary_mass=dict(boundary_mass),
         boundary_meta=boundary_meta,
         rule_usage=dict(rule_usage),
@@ -2786,7 +2864,7 @@ def _evaluate_lazy_token_shared(
             for rule_id in span.rule_ids:
                 rule_usage[rule_id] += mass / len(span.rule_ids)
 
-    piece_counts, expected_raw_score = (
+    piece_counts, expected_raw_score, piece_host_support = (
         engine._aggregate_shared_piece_marginals(batch, endpoint_masses)
     )
     # The shared route is used only for support_epsilon == 0. Every legal
@@ -2907,7 +2985,7 @@ def _evaluate_lazy_token_shared(
         expected_multi_piece_uses=expected_multi_piece_uses,
         lexical_counts=dict(lexical_counts),
         piece_counts=piece_counts,
-        host_form_masses=dict(lexical_counts),
+        piece_host_support=piece_host_support,
         boundary_mass=dict(boundary_mass),
         boundary_meta=boundary_meta,
         rule_usage=dict(rule_usage),
@@ -3123,7 +3201,13 @@ def _evaluate_factor(
             expected_multi_piece_uses=evaluation.multi_piece_mass,
             lexical_counts={factor.merged_word: 1.0},
             piece_counts=evaluation.expected_piece_counts,
-            host_form_masses={factor.merged_word: 1.0},
+            piece_host_support={
+                (identity, factor.merged_word): conditional_mass
+                for identity, conditional_mass in (
+                    evaluation.expected_piece_counts.items()
+                )
+                if conditional_mass > 0.0
+            },
             boundary_mass={},
             boundary_meta={},
             rule_usage={},
@@ -3164,7 +3248,7 @@ def _evaluate_factor(
         expected_multi_piece_uses=token.expected_multi_piece_uses,
         lexical_counts=token.lexical_counts,
         piece_counts=token.piece_counts,
-        host_form_masses=token.host_form_masses,
+        piece_host_support=token.piece_host_support,
         boundary_mass=token.boundary_mass,
         boundary_meta=token.boundary_meta,
         rule_usage=token.rule_usage,
@@ -3482,7 +3566,9 @@ def infer_composed_segment(
     rule_usage: dict[str, float] = defaultdict(float)
     boundary_mass: dict[str, float] = defaultdict(float)
     boundary_meta: dict[str, LexicalBoundary] = {}
-    host_support_mass: dict[PhonologicalForm, float] = defaultdict(float)
+    piece_host_support: dict[
+        tuple[PieceIdentity, PhonologicalForm], float
+    ] = defaultdict(float)
     factor_top_paths: list[tuple[_ComposedPath, ...]] = []
     expected_log_weight = 0.0
     expected_piece_tokens = 0.0
@@ -3549,14 +3635,14 @@ def infer_composed_segment(
         )
         _add_scaled(lexical_counts, evaluation.lexical_counts, factor_mass)
         _add_scaled(piece_counts, evaluation.piece_counts, factor_mass)
+        _add_scaled(
+            piece_host_support,
+            evaluation.piece_host_support,
+            factor_mass,
+        )
         _add_scaled(rule_usage, evaluation.rule_usage, factor_mass)
         _add_scaled(boundary_mass, evaluation.boundary_mass, factor_mass)
         boundary_meta.update(evaluation.boundary_meta)
-        for host, conditional_mass in evaluation.host_form_masses.items():
-            host_mass = factor_mass * conditional_mass
-            if host_mass <= 0.0:
-                continue
-            host_support_mass[host] += host_mass
 
         if factor.end_token < len(graph.segment.tokens):
             boundary_index = factor.end_token
@@ -3623,14 +3709,9 @@ def infer_composed_segment(
         )
         for path in decoded
     )
-    piece_host_support: dict[
-        tuple[PieceIdentity, PhonologicalForm], float
-    ] = {}
     host_types_by_piece: dict[PieceIdentity, int] = defaultdict(int)
-    for host, host_mass in host_support_mass.items():
-        for identity in engine._legal_piece_identities(host):
-            piece_host_support[(identity, host)] = host_mass
-            host_types_by_piece[identity] += 1
+    for identity, _host in piece_host_support:
+        host_types_by_piece[identity] += 1
     piece_host_type_support = {
         identity: host_types
         for identity, host_types in host_types_by_piece.items()
