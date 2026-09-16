@@ -20,7 +20,10 @@ from sktlm.latent.phonology import Phoneme, parse_iast_form
 from sktlm.pieces import (
     BaseMeasurePieceScorer,
     GeometricPhonemeBaseMeasure,
+    PieceIdentity,
+    PieceRole,
     ProductionPieceConfig,
+    build_piece_lattice,
     fit_production_piece_model,
     select_reusable_inventory,
 )
@@ -48,13 +51,13 @@ def test_geometric_base_measure_is_normalized_and_scores_unseen_pieces() -> None
 
 
 def test_fixed_pass_inventory_persists_only_singletons_and_reused_pieces() -> None:
-    singleton = parse_iast_form("a")
-    reused = parse_iast_form("ani")
-    one_off = parse_iast_form("dakani")
+    singleton = PieceIdentity(parse_iast_form("a"), PieceRole.WHOLE)
+    reused = PieceIdentity(parse_iast_form("ani"), PieceRole.RIGHT)
+    one_off = PieceIdentity(parse_iast_form("dakani"), PieceRole.WHOLE)
     selected = select_reusable_inventory(
         {singleton: 1.0, reused: 2.0, one_off: 0.5},
         {singleton: 1, reused: 2, one_off: 1},
-        min_reuse_occurrences=2,
+        min_reuse_host_types=2,
     )
     assert selected == {singleton: 1.0, reused: 2.0}
 
@@ -72,9 +75,58 @@ def test_fixed_pass_inventory_persists_only_singletons_and_reused_pieces() -> No
     assert not result.history[1].neutral
     assert result.active_piece_counts
     assert all(
-        len(piece.symbols) == 1
-        or result.history[-1].occurrence_support[piece] >= 2
-        for piece in result.active_piece_counts
+        len(identity.piece.symbols) == 1
+        or result.history[-1].host_type_support[identity] >= 2
+        for identity in result.active_piece_counts
+    )
+
+
+def test_repeated_whole_form_does_not_create_cross_type_reuse() -> None:
+    form = parse_iast_form("mahābhārata")
+    whole = PieceIdentity(form, PieceRole.WHOLE)
+    result = fit_production_piece_model((form,) * 4, passes=1)
+
+    assert result.history[0].host_type_support[whole] == 1
+    assert whole not in result.active_piece_counts
+
+
+def test_prefix_reuse_qualifies_across_distinct_host_types() -> None:
+    forms = tuple(
+        parse_iast_form(text) for text in ("devam", "devasya", "devaka")
+    )
+    prefix = PieceIdentity(parse_iast_form("deva"), PieceRole.LEFT)
+    result = fit_production_piece_model(forms, passes=1)
+
+    assert result.history[0].host_type_support[prefix] == 3
+    assert prefix in result.active_piece_counts
+
+
+def test_positional_roles_do_not_share_counts_or_host_support() -> None:
+    forms = tuple(
+        parse_iast_form(text) for text in ("devam", "phalam", "rūpam", "mat")
+    )
+    right = PieceIdentity(parse_iast_form("m"), PieceRole.RIGHT)
+    left = PieceIdentity(parse_iast_form("m"), PieceRole.LEFT)
+    result = fit_production_piece_model(forms, passes=1)
+    learned = result.history[0]
+
+    assert learned.host_type_support[right] == 3
+    assert learned.host_type_support[left] == 1
+    assert learned.expected_piece_counts[right] != pytest.approx(
+        learned.expected_piece_counts[left]
+    )
+
+
+def test_whole_form_fallback_remains_legal_past_piece_length_bound() -> None:
+    form = parse_iast_form("mahābhārata")
+    lattice = build_piece_lattice(form, max_piece_length=3)
+
+    assert any(
+        edge.start == 0
+        and edge.end == len(form.symbols)
+        and edge.piece == form
+        and edge.role is PieceRole.WHOLE
+        for edge in lattice.edges
     )
 
 

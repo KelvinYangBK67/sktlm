@@ -3,8 +3,52 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 
 from sktlm.latent.phonology import PhonologicalForm
+
+
+class PieceRole(str, Enum):
+    """Position of one piece inside its host lexical form."""
+
+    WHOLE = "WHOLE"
+    LEFT = "LEFT"
+    RIGHT = "RIGHT"
+    INTERNAL = "INTERNAL"
+
+
+@dataclass(frozen=True, slots=True)
+class PieceIdentity:
+    """A reusable parameter identity conditioned on lexical position."""
+
+    piece: PhonologicalForm
+    role: PieceRole
+
+    @property
+    def key(self) -> str:
+        return f"{self.piece.key}@{self.role.value}"
+
+    @classmethod
+    def from_key(cls, key: str) -> "PieceIdentity":
+        try:
+            form_key, role = key.rsplit("@", 1)
+        except ValueError as error:
+            raise ValueError(f"invalid positional piece key: {key!r}") from error
+        return cls(PhonologicalForm.from_key(form_key), PieceRole(role))
+
+
+def piece_role(start: int, end: int, lexical_length: int) -> PieceRole:
+    """Classify one nonempty piece span within a lexical form."""
+
+    if not 0 <= start < end <= lexical_length:
+        raise ValueError("piece span must be nonempty and inside the lexical form")
+    if start == 0 and end == lexical_length:
+        return PieceRole.WHOLE
+    if start == 0:
+        return PieceRole.LEFT
+    if end == lexical_length:
+        return PieceRole.RIGHT
+    return PieceRole.INTERNAL
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,6 +58,7 @@ class PieceEdge:
     start: int
     end: int
     piece: PhonologicalForm
+    role: PieceRole
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +106,7 @@ def build_piece_lattice(
                     start=start,
                     end=end,
                     piece=PhonologicalForm(form.symbols[start:end]),
+                    role=piece_role(start, end, length),
                 )
             )
     return PieceLattice(form=form, edges=tuple(edges))

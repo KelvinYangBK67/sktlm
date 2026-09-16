@@ -69,7 +69,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--complexity-weight", type=float, default=0.5)
     parser.add_argument("--complexity-tau", type=float, default=1.0)
     parser.add_argument("--whitespace-merge-penalty", type=float, default=8.0)
-    parser.add_argument("--no-whitespace-merge", action="store_true")
+    parser.add_argument(
+        "--no-whitespace-merge",
+        action="store_true",
+        help="Compatibility flag; observed whitespace is always a hard fence.",
+    )
     parser.add_argument("--max-internal-matches", type=int, default=512)
     parser.add_argument("--max-segment-tokens", type=int, default=128)
     parser.add_argument("--lexicon-cache-size", type=int, default=100_000)
@@ -90,7 +94,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--piece-complexity-beta", type=float, default=0.25)
     parser.add_argument("--piece-complexity-tau", type=float, default=1.0)
     parser.add_argument("--piece-base-stop-probability", type=float, default=0.5)
-    parser.add_argument("--piece-min-reuse-occurrences", type=int, default=2)
+    parser.add_argument("--piece-min-reuse-host-types", type=int, default=2)
+    parser.add_argument("--piece-host-support-threshold", type=float, default=1.0)
     parser.add_argument("--piece-support-epsilon", type=float, default=0.0)
     parser.add_argument("--piece-score-cache-entries", type=int, default=65_536)
     parser.add_argument(
@@ -172,7 +177,9 @@ def main(argv: list[str] | None = None) -> None:
         complexity_weight=args.complexity_weight,
         complexity_tau=args.complexity_tau,
         whitespace_merge_penalty=args.whitespace_merge_penalty,
-        allow_whitespace_merge=not args.no_whitespace_merge,
+        allow_whitespace_merge=(
+            False if args.model == S1M2_MODEL else not args.no_whitespace_merge
+        ),
         max_internal_matches=args.max_internal_matches,
         max_segment_tokens=args.max_segment_tokens,
         lexicon_cache_size=args.lexicon_cache_size,
@@ -193,7 +200,8 @@ def main(argv: list[str] | None = None) -> None:
         piece_complexity_beta=args.piece_complexity_beta,
         piece_complexity_tau=args.piece_complexity_tau,
         piece_base_stop_probability=args.piece_base_stop_probability,
-        piece_min_reuse_occurrences=args.piece_min_reuse_occurrences,
+        piece_min_reuse_host_types=args.piece_min_reuse_host_types,
+        piece_host_support_threshold=args.piece_host_support_threshold,
         piece_support_epsilon=args.piece_support_epsilon,
         piece_score_cache_entries=args.piece_score_cache_entries,
         piece_score_cache_bytes=args.piece_score_cache_bytes,

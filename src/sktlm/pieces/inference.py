@@ -7,8 +7,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 from sktlm.latent.phonology import PhonologicalForm
-from sktlm.pieces.lattice import PieceEdge, PieceLattice
-from sktlm.pieces.scorer import PieceScorer
+from sktlm.pieces.lattice import PieceEdge, PieceIdentity, PieceLattice
+from sktlm.pieces.scorer import PieceScorer, score_positional_piece
 
 
 def _logaddexp(left: float, right: float) -> float:
@@ -40,7 +40,7 @@ class PieceSegmentation:
 @dataclass(frozen=True, slots=True)
 class PieceEvaluation:
     log_score: float
-    expected_piece_counts: dict[PhonologicalForm, float]
+    expected_piece_counts: dict[PieceIdentity, float]
     top_segmentations: tuple[PieceSegmentation, ...]
     prior_log_normalizer: float
 
@@ -98,13 +98,18 @@ def evaluate_piece_lattice(
     if prior_log_z == -math.inf:
         raise ValueError("Piece lattice has no complete segmentation.")
 
-    distinct_pieces = {edge.piece for edge in lattice.edges}
+    distinct_pieces = {
+        PieceIdentity(edge.piece, edge.role) for edge in lattice.edges
+    }
     distinct_piece_scores = {
-        piece: scorer.score(piece)
-        for piece in sorted(distinct_pieces, key=lambda item: item.key)
+        identity: score_positional_piece(
+            scorer, identity.piece, identity.role
+        )
+        for identity in sorted(distinct_pieces, key=lambda item: item.key)
     }
     edge_scores = {
-        id(edge): prior_scores[id(edge)] + distinct_piece_scores[edge.piece]
+        id(edge): prior_scores[id(edge)]
+        + distinct_piece_scores[PieceIdentity(edge.piece, edge.role)]
         for edge in lattice.edges
     }
     alpha = _forward(lattice, edge_scores)
@@ -121,7 +126,7 @@ def evaluate_piece_lattice(
                 edge_scores[id(edge)] + beta[edge.end],
             )
 
-    expected_counts: dict[PhonologicalForm, float] = defaultdict(float)
+    expected_counts: dict[PieceIdentity, float] = defaultdict(float)
     for edge in lattice.edges:
         posterior = math.exp(
             alpha[edge.start]
@@ -129,7 +134,7 @@ def evaluate_piece_lattice(
             + beta[edge.end]
             - raw_log_z
         )
-        expected_counts[edge.piece] += posterior
+        expected_counts[PieceIdentity(edge.piece, edge.role)] += posterior
 
     top_segmentations: tuple[PieceSegmentation, ...] = ()
     if top_k is not None:

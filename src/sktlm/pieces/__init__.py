@@ -19,7 +19,14 @@ from sktlm.pieces.inference import (
     evaluate_piece_lattice,
     raw_prior_edge_score,
 )
-from sktlm.pieces.lattice import PieceEdge, PieceLattice, build_piece_lattice
+from sktlm.pieces.lattice import (
+    PieceEdge,
+    PieceIdentity,
+    PieceLattice,
+    PieceRole,
+    build_piece_lattice,
+    piece_role,
+)
 from sktlm.pieces.model import (
     PieceModel,
     PieceModelConfig,
@@ -58,8 +65,10 @@ __all__ = [
     "GeometricPhonemeBaseMeasure",
     "NeutralPieceScorer",
     "PieceEdge",
+    "PieceIdentity",
     "PieceEvaluation",
     "PieceLattice",
+    "PieceRole",
     "PieceModel",
     "PieceModelConfig",
     "PieceScorer",
@@ -76,6 +85,7 @@ __all__ = [
     "fit_production_piece_model",
     "infer_composed_segment",
     "production_model_from_counts",
+    "piece_role",
     "raw_prior_edge_score",
     "select_reusable_inventory",
 ]

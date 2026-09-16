@@ -36,7 +36,7 @@ TSV_NUMERIC_COLUMNS = frozenset(
         "model_probability",
         "number_of_contexts",
         "number_of_surface_variants",
-        "occurrence_support",
+        "host_type_support",
         "value",
     }
 )

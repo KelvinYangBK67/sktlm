@@ -8,11 +8,11 @@ from sktlm.latent.store import LexiconStore
 
 
 PIECE_ROWS = (
-    ("V_A", 2.0, 0),
-    ("C_K.C_T", 3.0, 1),
-    ("C_K.C_P", 4.0, 2),
-    ("C_M.C_N", 0.0, 10),
-    ("C_S.C_H", 5.0, 3),
+    ("V_A@WHOLE", 2.0, 0),
+    ("C_K.C_T@WHOLE", 3.0, 1),
+    ("C_K.C_P@LEFT", 4.0, 2),
+    ("C_M.C_N@RIGHT", 0.0, 10),
+    ("C_S.C_H@INTERNAL", 5.0, 3),
 )
 
 
@@ -31,8 +31,17 @@ def _populate_pass(store: LexiconStore, checkpoint: dict[str, object]) -> None:
     with store.connection:
         store.connection.executemany(
             "INSERT INTO piece_counts_next("
-            "form_key, expected_count, occurrence_support) VALUES (?, ?, ?)",
-            PIECE_ROWS,
+            "form_key, expected_count) VALUES (?, ?)",
+            ((key, count) for key, count, _support in PIECE_ROWS),
+        )
+        store.connection.executemany(
+            "INSERT INTO piece_host_support_next("
+            "piece_key, host_key, support) VALUES (?, ?, ?)",
+            (
+                (key, f"HOST_{index}", 1.0)
+                for key, _count, support in PIECE_ROWS
+                for index in range(support)
+            ),
         )
         store.connection.executemany(
             "INSERT INTO lexical_diagnostics_next(form_key, expected_count) "
@@ -52,7 +61,8 @@ def test_in_place_piece_finalize_matches_reference_and_avoids_active_copy(
         store.connection.set_trace_callback(statements.append)
 
         result = store.finalize_piece_count_pass(
-            min_reuse_occurrences=2,
+            min_reuse_host_types=2,
+            host_support_threshold=1.0,
             checkpoint=checkpoint,  # type: ignore[arg-type]
         )
 
@@ -63,7 +73,7 @@ def test_in_place_piece_finalize_matches_reference_and_avoids_active_copy(
         )
         actual_rows = tuple(
             store.connection.execute(
-                "SELECT form_key, expected_count, occurrence_support "
+                "SELECT form_key, expected_count, host_type_support "
                 "FROM piece_lexicon ORDER BY form_key"
             )
         )
@@ -113,11 +123,12 @@ def test_pass_boundary_wal_truncate_preserves_rows_checkpoint_and_connection(
         with store.connection:
             store.connection.executemany(
                 "INSERT INTO piece_counts_next("
-                "form_key, expected_count, occurrence_support) VALUES (?, ?, ?)",
-                ((f"V_A_{index:05d}", 1.0, 1) for index in range(500)),
+                "form_key, expected_count) VALUES (?, ?)",
+                ((f"V_A_{index:05d}@WHOLE", 1.0) for index in range(500)),
             )
         store.finalize_piece_count_pass(
-            min_reuse_occurrences=2,
+            min_reuse_host_types=2,
+            host_support_threshold=1.0,
             checkpoint=checkpoint,  # type: ignore[arg-type]
         )
         rows_before = tuple(store.connection.execute("SELECT * FROM piece_lexicon"))

@@ -56,6 +56,7 @@ EXPECTED_HYPERPARAMETERS = {
 }
 EXPECTED_S1M2_HYPERPARAMETERS = {
     **EXPECTED_HYPERPARAMETERS,
+    "allow_whitespace_merge": False,
     "piece_max_length": 8,
     "piece_boundary_probability": 0.5,
     "piece_alpha": 0.1,
@@ -64,7 +65,8 @@ EXPECTED_S1M2_HYPERPARAMETERS = {
     "piece_complexity_beta": 0.25,
     "piece_complexity_tau": 1.0,
     "piece_base_stop_probability": 0.5,
-    "piece_min_reuse_occurrences": 2,
+    "piece_min_reuse_host_types": 2,
+    "piece_host_support_threshold": 1.0,
     "piece_support_epsilon": 0.0,
 }
 

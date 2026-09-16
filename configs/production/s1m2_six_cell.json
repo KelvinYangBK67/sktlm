@@ -1,7 +1,7 @@
 {
   "schema_version": "sktlm-s1m2-production-contract/v1",
-  "contract_id": "s1m2-six-cell-pre-vm-v1",
-  "status": "FROZEN_PRE_VM",
+  "contract_id": "s1m2-six-cell-v2-repair-v1",
+  "status": "V2_REPAIR_AWAITING_FULL_VALIDATION",
   "model": "reusable_pieces_v1",
   "deployment": {
     "cloud_contract": "configs/cloud/s1m2_prevm.yaml",
@@ -32,7 +32,7 @@
     "complexity_weight": 0.5,
     "complexity_tau": 1.0,
     "whitespace_merge_penalty": 8.0,
-    "allow_whitespace_merge": true,
+    "allow_whitespace_merge": false,
     "max_internal_matches": 512,
     "max_segment_tokens": 128,
     "analysis_top_k": 8,
@@ -48,7 +48,8 @@
     "piece_complexity_beta": 0.25,
     "piece_complexity_tau": 1.0,
     "piece_base_stop_probability": 0.5,
-    "piece_min_reuse_occurrences": 2,
+    "piece_min_reuse_host_types": 2,
+    "piece_host_support_threshold": 1.0,
     "piece_support_epsilon": 0.0
   },
   "engineering_config": {

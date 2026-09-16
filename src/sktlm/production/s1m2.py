@@ -179,7 +179,8 @@ SCIENTIFIC_CONFIG_FIELDS = (
     "piece_complexity_beta",
     "piece_complexity_tau",
     "piece_base_stop_probability",
-    "piece_min_reuse_occurrences",
+    "piece_min_reuse_host_types",
+    "piece_host_support_threshold",
     "piece_support_epsilon",
 )
 ENGINEERING_CONFIG_FIELDS = (

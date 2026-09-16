@@ -1,11 +1,19 @@
 # S1M2 reusable-piece research reports
 
-S1M2 method implementation and Round 2 engineering calibration are closed.
-The frozen scientific gate is not: stress candidate overflow prevents a formal
-Round 2 PASS and production winner. This index orders the tracked record; the
-Round 2 closure is the current status authority.
+S1M2 V1 is a documented scientific failure: its completed Full M₀ cells
+collapsed toward whole-form memorization. A minimal V2 candidate/reuse-
+semantics repair is implemented locally but has not passed a real-corpus
+scientific or performance gate. This index preserves the implementation and
+engineering history beneath that current scientific status.
 
 ## Current authority
+
+- [V2 semantic-repair contract](s1m2_v2_semantic_repair_20260916.md) — records
+  the local hard-space, visible-boundary inversion, host-type qualification,
+  and positional-identity repair, together with its unvalidated boundary.
+- [V1 Full M₀ scientific failure](s1m2_full_m0_scientific_failure_20260915.md)
+  — records the replicated whole-form memorization collapse and why an
+  unchanged V1 rerun is not justified.
 
 - [Round 2 closure](s1m2_round2_closure_20260910.md) — separates the formal
   scientific failure, 12-worker engineering preference, scheduler findings,

@@ -144,17 +144,12 @@ class StructuredSandhiGrammar:
                 for atom in rule.surface:
                     node = node.children.setdefault(atom.match_key, _TrieNode())
                 node.rules.append(rule)
-                # In surface_word, an otherwise joined realization stays in
-                # one orthographic token. The attested exception is optional
-                # spacing immediately beside written avagraha, e.g. o' ->
-                # "o '". This is an observable frontend constraint, not a
-                # learned sandhi preference.
-                splits = tuple(
-                    split
-                    for split in range(1, len(rule.surface))
-                    if rule.surface[split - 1].kind == RealizationKind.AVAGRAHA
-                    or rule.surface[split].kind == RealizationKind.AVAGRAHA
-                )
+                # An observed lexical fence fixes *where* the boundary is,
+                # but does not make the written material on either side equal
+                # the underlying forms.  Offer every exact split of a joined
+                # frozen-rule realization to the visible-boundary matcher.
+                # Internal matching above keeps the unchanged joined route.
+                splits = tuple(range(len(rule.surface) + 1))
             else:
                 splits = (boundary_index,)
             for split in splits:

@@ -20,6 +20,7 @@ from sktlm.latent.vocabulary import (
     VocabularyEntry,
     allowed_key_sha256,
 )
+from sktlm.pieces.lattice import PieceIdentity, PieceRole
 from sktlm.pieces.scorer import GeometricPhonemeBaseMeasure
 
 
@@ -28,6 +29,7 @@ S1M2_RECONSTRUCTIBLE_TABLES = (
     "context_usage",
     "inspection_counts",
     "inspection_piece_counts",
+    "inspection_piece_host_support",
     "lexical_diagnostics",
     "piece_inventory",
     "surface_usage",
@@ -215,8 +217,11 @@ class PieceStoreScorer:
         return math.log(max(probability, 1e-300)) - penalty
 
     def score(self, piece: PhonologicalForm) -> float:
+        return self.score_piece(piece, PieceRole.WHOLE)
+
+    def score_piece(self, piece: PhonologicalForm, role: PieceRole) -> float:
         self.score_calls += 1
-        count = self._lookup(piece.key)
+        count = self._lookup(PieceIdentity(piece, role).key)
         return self.score_from_count_and_length(count, len(piece.symbols))
 
 
@@ -399,13 +404,24 @@ class LexiconStore:
             if not resume:
                 self.connection.execute("DROP TABLE IF EXISTS piece_counts_next")
                 self.connection.execute(
+                    "DROP TABLE IF EXISTS piece_host_support_next"
+                )
+                self.connection.execute(
                     "DROP TABLE IF EXISTS lexical_diagnostics_next"
                 )
             self.connection.execute(
                 "CREATE TABLE IF NOT EXISTS piece_counts_next ("
                 "form_key TEXT PRIMARY KEY, "
                 "expected_count REAL NOT NULL, "
-                "occurrence_support INTEGER NOT NULL"
+                "host_type_support INTEGER NOT NULL DEFAULT 0"
+                ") WITHOUT ROWID"
+            )
+            self.connection.execute(
+                "CREATE TABLE IF NOT EXISTS piece_host_support_next ("
+                "piece_key TEXT NOT NULL, "
+                "host_key TEXT NOT NULL, "
+                "support REAL NOT NULL, "
+                "PRIMARY KEY(piece_key, host_key)"
                 ") WITHOUT ROWID"
             )
             self.connection.execute(
@@ -417,28 +433,51 @@ class LexiconStore:
 
     def add_document_piece_counts(
         self,
-        counts: Iterable[tuple[PhonologicalForm, float, int]],
+        counts: Iterable[tuple[PieceIdentity, float]],
     ) -> None:
         if not self.connection.in_transaction:
             raise RuntimeError("Document piece counts require an open transaction.")
         rows = [
-            (piece.key, float(value), int(support))
-            for piece, value, support in counts
+            (identity.key, float(value))
+            for identity, value in counts
             if value > 0.0
         ]
         started = time.perf_counter()
         self.connection.executemany(
             "INSERT INTO piece_counts_next("
-            "form_key, expected_count, occurrence_support"
-            ") VALUES (?, ?, ?) "
+            "form_key, expected_count"
+            ") VALUES (?, ?) "
             "ON CONFLICT(form_key) DO UPDATE SET "
-            "expected_count = expected_count + excluded.expected_count, "
-            "occurrence_support = occurrence_support + excluded.occurrence_support",
+            "expected_count = expected_count + excluded.expected_count",
             rows,
         )
         self.telemetry.elapsed("sqlite_piece_count_upsert", started)
         self.telemetry.increment("sqlite_piece_count_upsert_calls")
         self.telemetry.increment("sqlite_piece_count_upsert_rows", len(rows))
+
+    def add_document_piece_host_support(
+        self,
+        support: Iterable[tuple[PieceIdentity, PhonologicalForm, float]],
+    ) -> None:
+        """Aggregate posterior support by positional piece and host type."""
+
+        if not self.connection.in_transaction:
+            raise RuntimeError("Piece host support requires an open transaction.")
+        rows = [
+            (identity.key, host.key, float(value))
+            for identity, host, value in support
+            if value > 0.0
+        ]
+        started = time.perf_counter()
+        self.connection.executemany(
+            "INSERT INTO piece_host_support_next(piece_key, host_key, support) "
+            "VALUES (?, ?, ?) ON CONFLICT(piece_key, host_key) DO UPDATE SET "
+            "support = support + excluded.support",
+            rows,
+        )
+        self.telemetry.elapsed("sqlite_piece_host_support_upsert", started)
+        self.telemetry.increment("sqlite_piece_host_support_upsert_calls")
+        self.telemetry.increment("sqlite_piece_host_support_upsert_rows", len(rows))
 
     def add_document_lexical_diagnostics(
         self,
@@ -467,10 +506,16 @@ class LexiconStore:
     def finalize_piece_count_pass(
         self,
         *,
-        min_reuse_occurrences: int,
+        min_reuse_host_types: int,
+        host_support_threshold: float,
         checkpoint: dict[str, Any],
     ) -> tuple[int, int, float]:
         """Freeze the next active map and retire reconstructible pass tables."""
+
+        if min_reuse_host_types < 2:
+            raise ValueError("min_reuse_host_types must be >= 2")
+        if host_support_threshold <= 0.0:
+            raise ValueError("host_support_threshold must be > 0")
 
         row = self.connection.execute(
             "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) "
@@ -482,6 +527,13 @@ class LexiconStore:
             raise ValueError("Piece count pass produced an empty inventory.")
         self.connection.execute("BEGIN IMMEDIATE")
         with self.connection:
+            self.connection.execute(
+                "UPDATE piece_counts_next SET host_type_support = ("
+                "SELECT COUNT(*) FROM piece_host_support_next h "
+                "WHERE h.piece_key = piece_counts_next.form_key "
+                "AND h.support >= ?)",
+                (host_support_threshold,),
+            )
             self.connection.execute("DROP TABLE IF EXISTS piece_inventory")
             self.connection.execute(
                 "ALTER TABLE piece_counts_next RENAME TO piece_inventory"
@@ -489,8 +541,8 @@ class LexiconStore:
             self.connection.execute("DROP TABLE IF EXISTS piece_lexicon")
             self.connection.execute(
                 "DELETE FROM piece_inventory WHERE expected_count <= 0.0 OR "
-                "(instr(form_key, '.') != 0 AND occurrence_support < ?)",
-                (min_reuse_occurrences,),
+                "(instr(form_key, '.') != 0 AND host_type_support < ?)",
+                (min_reuse_host_types,),
             )
             self.connection.execute(
                 "ALTER TABLE piece_inventory RENAME TO piece_lexicon"
@@ -514,6 +566,7 @@ class LexiconStore:
                 if self.has_table(table):
                     self.connection.execute(f"DROP TABLE {table}")
                     retired += 1
+            self.connection.execute("DROP TABLE piece_host_support_next")
             self._set_training_checkpoint(checkpoint)
         self.telemetry.increment(
             "sqlite_pass_diagnostic_tables_retired",
@@ -941,30 +994,71 @@ class LexiconStore:
                 "DROP TABLE IF EXISTS inspection_piece_counts"
             )
             self.connection.execute(
+                "DROP TABLE IF EXISTS inspection_piece_host_support"
+            )
+            self.connection.execute(
                 "CREATE TABLE inspection_piece_counts ("
                 "form_key TEXT PRIMARY KEY, "
                 "expected_count REAL NOT NULL, "
-                "occurrence_support INTEGER NOT NULL"
+                "host_type_support INTEGER NOT NULL DEFAULT 0"
+                ") WITHOUT ROWID"
+            )
+            self.connection.execute(
+                "CREATE TABLE inspection_piece_host_support ("
+                "piece_key TEXT NOT NULL, host_key TEXT NOT NULL, "
+                "support REAL NOT NULL, PRIMARY KEY(piece_key, host_key)"
                 ") WITHOUT ROWID"
             )
 
     def add_inspection_piece_counts(
         self,
-        counts: Iterable[tuple[PhonologicalForm, float, int]],
+        counts: Iterable[tuple[PieceIdentity, float]],
     ) -> None:
         rows = [
-            (piece.key, float(value), int(support))
-            for piece, value, support in counts
+            (identity.key, float(value))
+            for identity, value in counts
             if value > 0.0
         ]
         with self.connection:
             self.connection.executemany(
                 "INSERT INTO inspection_piece_counts("
-                "form_key, expected_count, occurrence_support"
-                ") VALUES (?, ?, ?) ON CONFLICT(form_key) DO UPDATE SET "
-                "expected_count = expected_count + excluded.expected_count, "
-                "occurrence_support = occurrence_support + excluded.occurrence_support",
+                "form_key, expected_count"
+                ") VALUES (?, ?) ON CONFLICT(form_key) DO UPDATE SET "
+                "expected_count = expected_count + excluded.expected_count",
                 rows,
+            )
+
+    def add_inspection_piece_host_support(
+        self,
+        support: Iterable[tuple[PieceIdentity, PhonologicalForm, float]],
+    ) -> None:
+        rows = [
+            (identity.key, host.key, float(value))
+            for identity, host, value in support
+            if value > 0.0
+        ]
+        with self.connection:
+            self.connection.executemany(
+                "INSERT INTO inspection_piece_host_support("
+                "piece_key, host_key, support) VALUES (?, ?, ?) "
+                "ON CONFLICT(piece_key, host_key) DO UPDATE SET "
+                "support = support + excluded.support",
+                rows,
+            )
+
+    def finalize_piece_inspection_support(self, *, threshold: float) -> None:
+        """Materialize distinct qualifying host-type counts after streaming."""
+
+        if threshold <= 0.0:
+            raise ValueError("threshold must be > 0")
+
+        with self.connection:
+            self.connection.execute(
+                "UPDATE inspection_piece_counts SET host_type_support = ("
+                "SELECT COUNT(*) FROM inspection_piece_host_support h "
+                "WHERE h.piece_key = inspection_piece_counts.form_key "
+                "AND h.support >= ?)",
+                (threshold,),
             )
 
     def add_usage(
@@ -1012,14 +1106,20 @@ class LexiconStore:
                 if self.has_table("inspection_piece_counts"):
                     self.connection.execute(
                         "INSERT INTO inspection_piece_counts("
-                        "form_key, expected_count, occurrence_support) "
-                        f"SELECT form_key, expected_count, occurrence_support "
+                        "form_key, expected_count) "
+                        f"SELECT form_key, expected_count "
                         f"FROM {alias}.piece_rows WHERE expected_count > 0.0 "
                         "ORDER BY row_number "
                         "ON CONFLICT(form_key) DO UPDATE SET expected_count = "
-                        "expected_count + excluded.expected_count, "
-                        "occurrence_support = occurrence_support + "
-                        "excluded.occurrence_support"
+                        "expected_count + excluded.expected_count"
+                    )
+                    self.connection.execute(
+                        "INSERT INTO inspection_piece_host_support("
+                        "piece_key, host_key, support) "
+                        f"SELECT piece_key, host_key, support FROM "
+                        f"{alias}.piece_host_rows WHERE support > 0.0 "
+                        "ORDER BY row_number ON CONFLICT(piece_key, host_key) "
+                        "DO UPDATE SET support = support + excluded.support"
                     )
                 self.connection.execute(
                     "INSERT INTO surface_usage(form_key, surface, expected_mass) "
@@ -1140,7 +1240,7 @@ class LexiconStore:
         denominator = float(active_row[0]) + alpha
         base = GeometricPhonemeBaseMeasure(base_stop_probability)
         query = (
-            "SELECT i.form_key, i.expected_count, i.occurrence_support, "
+            "SELECT i.form_key, i.expected_count, i.host_type_support, "
             "a.expected_count FROM inspection_piece_counts i "
             "LEFT JOIN piece_lexicon a ON a.form_key = i.form_key "
             "ORDER BY i.expected_count DESC, i.form_key"
@@ -1154,8 +1254,9 @@ class LexiconStore:
                     "piece",
                     "phoneme_ids",
                     "length",
+                    "positional_role",
                     "expected_count",
-                    "occurrence_support",
+                    "host_type_support",
                     "active",
                     "active_parameter_count",
                     "model_probability",
@@ -1163,7 +1264,8 @@ class LexiconStore:
                 )
             )
             for key, expected, support, active_raw in self.connection.execute(query):
-                piece = PhonologicalForm.from_key(str(key))
+                identity = PieceIdentity.from_key(str(key))
+                piece = identity.piece
                 active_count = 0.0 if active_raw is None else float(active_raw)
                 probability = (
                     active_count + alpha * base.probability(piece)
@@ -1180,6 +1282,7 @@ class LexiconStore:
                         piece.iast,
                         " ".join(piece.phoneme_ids),
                         len(piece.symbols),
+                        identity.role.value,
                         expected,
                         support,
                         int(active_raw is not None),
@@ -1279,8 +1382,8 @@ class LexiconStore:
             "100+": 0,
         }
         for support, types in self.connection.execute(
-            "SELECT occurrence_support, COUNT(*) FROM inspection_piece_counts "
-            "GROUP BY occurrence_support"
+            "SELECT host_type_support, COUNT(*) FROM inspection_piece_counts "
+            "GROUP BY host_type_support"
         ):
             value = int(support)
             bucket = (
@@ -1313,7 +1416,7 @@ class LexiconStore:
             "active_piece_types": int(active[0]),
             "active_piece_count_total": float(active[1]),
             "expected_count_by_length": length_counts,
-            "piece_types_by_occurrence_support": reuse_distribution,
+            "piece_types_by_host_type_support": reuse_distribution,
             "complexity_raw": complexity_raw,
             "complexity_weight": complexity_weight,
             "complexity_penalty": complexity_weight * complexity_raw,

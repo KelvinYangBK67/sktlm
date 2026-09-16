@@ -3369,3 +3369,68 @@ FULL_M0_RUN=NO
 FULL_M0_AUTHORIZED=NO
 NEXT_ACTION=CI_CONFIRM_THEN_RESEARCHER_GENERATE_SCOPED_FINAL_PLAN_AND_AUTHORIZATION
 ```
+
+## S1M2 V2 candidate and reusable-support semantic repair - 2026-09-16
+
+After the V1 Full M₀ scientific failure was established on the completed
+Devanagari surface-word and legacy-joined cells, a minimal V2 semantic repair
+was implemented locally from base HEAD
+`199cd70757dc10ff2e9b1ad971ae96dc81b3f490`. The historical failure report,
+frozen M₀ data, frozen external-sandhi inventory, and historical artifacts are
+unchanged.
+
+Observed whitespace is now a hard lexical fence: candidate construction cannot
+emit a merged lexical factor across it. Absence of whitespace remains
+noncommittal, so deleted legacy-joined boundaries and continuous boundaries
+remain latent. Visible-boundary matching now indexes every exact split of a
+joined frozen-rule surface and validates exact reconstruction. This restores
+`ū + e -> ve` across `v | e`, including
+`svayaṃbhv ekam -> svayaṃbhū | ekam`, while retaining the existing internal
+`ve -> ū | e` inverse.
+
+Piece parameter/count/support identity is now `(PhonologicalForm, role)`, with
+roles `WHOLE`, `LEFT`, `RIGHT`, and `INTERNAL` derived from the existing span.
+Between-pass activation no longer counts supporting token occurrences.
+Posterior host mass is aggregated by stable host lexical-form type in the
+streaming SQLite store; a multi-phoneme identity requires the default two
+distinct hosts whose aggregated support is at least the explicit conservative
+default 1.0. Singletons remain active base support. Repetition of one lexical
+whole form therefore has host diversity one and cannot qualify that whole
+identity by itself. The legal whole-form edge, including the long fallback,
+remains available.
+
+The scoring formula and all existing scorer hyperparameters are unchanged.
+Joint lexical/piece inference, legal piece support, exact forward/backward,
+shared-prefix topology, compact/lazy inference, bounded caches,
+streaming/sharded aggregation, execution bundling, topology reuse, canonical
+reduction, and production scheduling remain the architecture. Role metadata
+and host-support rows are carried through the existing exact paths rather than
+through four duplicated DPs or retained token histories.
+
+Tiny focused validation covers hard fences, paired visible/internal sandhi
+inversion, the full `svayaṃbhv ekam` example, repeated-whole rejection,
+cross-host qualification, role separation, long whole fallback,
+role-conditioned compact/reference exactness, SQLite lifecycle, tiny
+serial/parallel training, and bundled canonical reduction. The exact final
+checks passed: 57 direct semantic/reference/store tests in 1.60 seconds, four
+selected streaming/parallel/bundle tests in 4.30 seconds, touched-module
+`py_compile`, and production-contract validation at SHA-256
+`12c0df4cc897f38632eb23b1d66685f3bfeb3de5854d560870b83e201f44e68e`.
+
+No Full M₀, representative/stress corpus, VM/cloud action, large database
+regeneration, RAM/runtime benchmark, commit, or push was performed. V2 has not
+established that the unchanged scorer avoids the V1 collapse; a separately
+authorized bounded real-corpus scientific and performance gate is required.
+
+```text
+S1M2_V1_SCIENTIFIC_FAILURE=UNCHANGED
+S1M2_V2_SEMANTIC_REPAIR=IMPLEMENTED_LOCAL
+OBSERVED_WHITESPACE_HARD_FENCE=PASS_LOCAL
+VISIBLE_BOUNDARY_JOINED_RULE_INVERSION=PASS_LOCAL
+POSITIONAL_PIECE_IDENTITY=PASS_LOCAL
+DISTINCT_HOST_TYPE_QUALIFICATION=PASS_LOCAL
+SCORER_OBJECTIVE_CHANGED=NO
+FULL_M0_RUN=NO
+FULL_M0_AUTHORIZED=NO
+NEXT_ACTION=HUMAN_REVIEW_THEN_BOUNDED_V2_PREFLIGHT_DESIGN
+```

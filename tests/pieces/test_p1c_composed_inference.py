@@ -23,8 +23,10 @@ from sktlm.pieces import (
     BaseMeasurePieceScorer,
     ComposedCacheConfig,
     ComposedPieceInference,
+    PieceIdentity,
     PieceModel,
     PieceModelConfig,
+    PieceRole,
     build_piece_lattice,
     compile_composed_segment_topology,
     evaluate_piece_lattice,
@@ -40,6 +42,21 @@ from sktlm.representations.spacing import continuous_spacing
 class _TableScorer:
     def score(self, piece: PhonologicalForm) -> float:
         return -0.17 * len(piece.symbols) + (0.31 if piece.iast == "ani" else 0.0)
+
+
+class _RoleTableScorer:
+    _offsets = {
+        PieceRole.WHOLE: 0.73,
+        PieceRole.LEFT: 0.29,
+        PieceRole.RIGHT: -0.41,
+        PieceRole.INTERNAL: -0.83,
+    }
+
+    def score(self, piece: PhonologicalForm) -> float:
+        return self.score_piece(piece, PieceRole.WHOLE)
+
+    def score_piece(self, piece: PhonologicalForm, role: PieceRole) -> float:
+        return -0.13 * len(piece.symbols) + self._offsets[role]
 
 
 def _production_scorer() -> BaseMeasurePieceScorer:
@@ -264,7 +281,7 @@ def test_inspection_top_paths_are_bounded_and_keep_exact_concatenation() -> None
 
     assert 0 < len(inference.top_analyses) <= 5
     assert inference.top_analysis_mass <= 1.0 + 1e-12
-    assert inference.piece_occurrence_support
+    assert inference.piece_host_type_support
     for analysis in inference.top_analyses:
         assert len(analysis.words) == len(analysis.piece_segmentations)
         for word, pieces in zip(analysis.words, analysis.piece_segmentations):
@@ -434,7 +451,7 @@ def test_shared_token_marginals_match_legacy_exact_path(surface: str) -> None:
         rel=1e-10,
         abs=1e-12,
     )
-    assert observed.piece_occurrence_support == reference.piece_occurrence_support
+    assert observed.piece_host_type_support == reference.piece_host_type_support
     assert {
         item.boundary_id: item.probability
         for item in observed.boundary_posteriors
@@ -452,6 +469,43 @@ def test_shared_token_marginals_match_legacy_exact_path(surface: str) -> None:
     )
     assert observed.counters.composed_transition_count < (
         reference.counters.composed_transition_count
+    )
+
+
+def test_compact_shared_dp_matches_legacy_with_role_conditioned_scores() -> None:
+    grammar = StructuredSandhiGrammar.from_default_inventory()
+    graph = build_lazy_candidate_graph(
+        next(iter_observed_segments("tattvamasi")), grammar
+    )
+    config = PieceModelConfig(max_piece_length=3, rho=0.41)
+
+    def run(*, shared: bool):
+        return infer_composed_segment(
+            graph,
+            ComposedPieceInference(
+                _RoleTableScorer(),
+                model_config=config,
+                cache_config=ComposedCacheConfig(
+                    shared_token_marginals=shared
+                ),
+            ),
+            whitespace_merge_penalty=8.0,
+        )
+
+    compact = run(shared=True)
+    legacy = run(shared=False)
+
+    assert compact.log_partition == pytest.approx(
+        legacy.log_partition, rel=1e-10, abs=1e-12
+    )
+    assert compact.piece_expected_counts == pytest.approx(
+        legacy.piece_expected_counts, rel=1e-10, abs=1e-12
+    )
+    assert compact.lexical_expected_counts == pytest.approx(
+        legacy.lexical_expected_counts, rel=1e-10, abs=1e-12
+    )
+    assert compact.piece_host_support == pytest.approx(
+        legacy.piece_host_support, rel=1e-10, abs=1e-12
     )
 
 
@@ -565,7 +619,7 @@ def test_compiled_topology_reweights_changed_piece_parameters_exactly() -> None:
     )
     assert observed.boundary_posteriors == reference.boundary_posteriors
     assert observed.top_analyses == reference.top_analyses
-    assert observed.piece_occurrence_support == reference.piece_occurrence_support
+    assert observed.piece_host_type_support == reference.piece_host_type_support
     assert observed.counters.topology_reuses == sum(
         factor is not None for factor in topology.factors
     )
@@ -610,7 +664,7 @@ def test_opt18_shared_inspection_paths_match_legacy_exact_path(surface: str) -> 
         rel=1e-10,
         abs=1e-12,
     )
-    assert observed.piece_occurrence_support == reference.piece_occurrence_support
+    assert observed.piece_host_type_support == reference.piece_host_type_support
     assert len(observed.top_analyses) == len(reference.top_analyses)
     for actual, expected in zip(observed.top_analyses, reference.top_analyses):
         assert tuple(form.key for form in actual.words) == tuple(
@@ -751,7 +805,7 @@ def test_opt19_adaptive_factor_retention_is_exact_and_cumulatively_bounded() -> 
         "boundary_posteriors",
         "top_analyses",
         "top_analysis_mass",
-        "piece_occurrence_support",
+        "piece_host_type_support",
         "total_posterior_mass",
     ):
         assert getattr(one_pass, name) == getattr(two_pass, name)
@@ -828,7 +882,7 @@ def test_compact_structural_trie_matches_legacy_shared_oracle(surface: str) -> N
     )
     assert compact.boundary_posteriors == legacy.boundary_posteriors
     assert compact.top_analyses == legacy.top_analyses
-    assert compact.piece_occurrence_support == legacy.piece_occurrence_support
+    assert compact.piece_host_type_support == legacy.piece_host_type_support
     assert compact.counters.compact_trie_compiles > 0
     assert compact.counters.support_truncation_tokens == 0
 
@@ -888,7 +942,7 @@ def test_compact_route_does_not_materialize_forms_per_span(monkeypatch) -> None:
     assert result.counters.compact_endpoint_occurrences > 0
 
 
-def test_compact_occurrence_support_deduplicates_and_keeps_long_whole_form() -> None:
+def test_host_type_support_deduplicates_and_keeps_long_whole_form() -> None:
     grammar = StructuredSandhiGrammar(())
     config = CandidateConfig(allow_whitespace_merge=False)
     model_config = PieceModelConfig(max_piece_length=2)
@@ -916,13 +970,13 @@ def test_compact_occurrence_support_deduplicates_and_keeps_long_whole_form() -> 
             ),
         ),
     )
-    singleton = parse_iast_form("a")
-    long_whole = parse_iast_form("aaaa")
-    assert repeated.piece_occurrence_support[singleton] == 1
-    assert repeated.piece_occurrence_support[long_whole] == 1
+    singleton = PieceIdentity(parse_iast_form("a"), PieceRole.LEFT)
+    long_whole = PieceIdentity(parse_iast_form("aaaa"), PieceRole.WHOLE)
+    assert repeated.piece_host_type_support[singleton] == 1
+    assert repeated.piece_host_type_support[long_whole] == 1
     assert (
-        repeated.piece_occurrence_support
-        == repeated_legacy.piece_occurrence_support
+        repeated.piece_host_type_support
+        == repeated_legacy.piece_host_type_support
     )
 
     twice_graph = build_lazy_candidate_graph(
@@ -935,7 +989,11 @@ def test_compact_occurrence_support_deduplicates_and_keeps_long_whole_form() -> 
         ),
         whitespace_merge_penalty=8.0,
     )
-    assert twice.piece_occurrence_support[singleton] == 2
+    singleton_whole = PieceIdentity(parse_iast_form("a"), PieceRole.WHOLE)
+    assert twice.piece_host_type_support[singleton_whole] == 1
+    assert twice.piece_host_support[
+        (singleton_whole, parse_iast_form("a"))
+    ] == pytest.approx(2.0)
 
 
 def test_compact_candidates_keep_matches_beyond_legacy_pressure_limit() -> None:
@@ -969,11 +1027,15 @@ def test_piece_store_bounded_lru_preserves_exact_scoring_equation() -> None:
     active = parse_iast_form("ani")
     second = parse_iast_form("api")
     missing = parse_iast_form("iti")
+    active_identity = PieceIdentity(active, PieceRole.WHOLE)
+    second_identity = PieceIdentity(second, PieceRole.WHOLE)
     connection.execute(
-        "INSERT INTO piece_lexicon VALUES (?, ?)", (active.key, 3.25)
+        "INSERT INTO piece_lexicon VALUES (?, ?)",
+        (active_identity.key, 3.25),
     )
     connection.execute(
-        "INSERT INTO piece_lexicon VALUES (?, ?)", (second.key, 1.5)
+        "INSERT INTO piece_lexicon VALUES (?, ?)",
+        (second_identity.key, 1.5),
     )
     scorer = PieceStoreScorer(
         connection,
@@ -987,16 +1049,17 @@ def test_piece_store_bounded_lru_preserves_exact_scoring_equation() -> None:
         telemetry=RuntimeTelemetry(),
     )
 
-    reference = {active.key: 3.25, second.key: 1.5}
+    reference = {active_identity.key: 3.25, second_identity.key: 1.5}
     sequence = (active, missing, second, active, active)
     assert [scorer.score(piece) for piece in sequence] == [
         scorer.score_from_count_and_length(
-            reference.get(piece.key, 0.0), len(piece.symbols)
+            reference.get(PieceIdentity(piece, PieceRole.WHOLE).key, 0.0),
+            len(piece.symbols),
         )
         for piece in sequence
     ]
     assert len(scorer._cache) <= 2
-    assert tuple(scorer._cache) == (second.key, active.key)
+    assert tuple(scorer._cache) == (second_identity.key, active_identity.key)
     assert scorer.score_calls == 5
     assert scorer.store_lookups == 5
     assert scorer.cache_hits == 1

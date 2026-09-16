@@ -7,10 +7,24 @@ from dataclasses import dataclass
 from typing import Mapping, Protocol
 
 from sktlm.latent.phonology import Phoneme, PhonologicalForm
+from sktlm.pieces.lattice import PieceIdentity, PieceRole
 
 
 class PieceScorer(Protocol):
     def score(self, piece: PhonologicalForm) -> float: ...
+
+
+def score_positional_piece(
+    scorer: PieceScorer,
+    piece: PhonologicalForm,
+    role: PieceRole,
+) -> float:
+    """Score a positional identity while admitting legacy neutral test scorers."""
+
+    positional = getattr(scorer, "score_piece", None)
+    if positional is not None:
+        return float(positional(piece, role))
+    return float(scorer.score(piece))
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,6 +33,10 @@ class NeutralPieceScorer:
 
     def score(self, piece: PhonologicalForm) -> float:
         del piece
+        return 0.0
+
+    def score_piece(self, piece: PhonologicalForm, role: PieceRole) -> float:
+        del piece, role
         return 0.0
 
 
@@ -36,7 +54,7 @@ class ExpectedCountPieceScorer:
 
     def __init__(
         self,
-        counts: Mapping[PhonologicalForm, float],
+        counts: Mapping[PhonologicalForm | PieceIdentity, float],
         *,
         alpha: float,
         lambda_: float,
@@ -66,19 +84,36 @@ class ExpectedCountPieceScorer:
         self.vocabulary_size = len(self.counts)
         self.denominator = self.total_count + alpha * self.vocabulary_size
 
-    def probability(self, piece: PhonologicalForm) -> float:
-        return (self.counts.get(piece, 0.0) + self.alpha) / self.denominator
+    def _count(self, piece: PhonologicalForm, role: PieceRole) -> float:
+        identity = PieceIdentity(piece, role)
+        if identity in self.counts:
+            return self.counts[identity]
+        return self.counts.get(piece, 0.0)
 
-    def complexity_increment(self, piece: PhonologicalForm) -> float:
-        count = self.counts.get(piece, 0.0)
+    def probability(
+        self,
+        piece: PhonologicalForm,
+        role: PieceRole = PieceRole.WHOLE,
+    ) -> float:
+        return (self._count(piece, role) + self.alpha) / self.denominator
+
+    def complexity_increment(
+        self,
+        piece: PhonologicalForm,
+        role: PieceRole = PieceRole.WHOLE,
+    ) -> float:
+        count = self._count(piece, role)
         amplitude = self.lambda_ * (
             self.kappa + self.beta * len(piece.symbols)
         )
         return amplitude * math.log1p(1.0 / (self.tau + count))
 
     def score(self, piece: PhonologicalForm) -> float:
-        return math.log(max(self.probability(piece), 1e-300)) - (
-            self.complexity_increment(piece)
+        return self.score_piece(piece, PieceRole.WHOLE)
+
+    def score_piece(self, piece: PhonologicalForm, role: PieceRole) -> float:
+        return math.log(max(self.probability(piece, role), 1e-300)) - (
+            self.complexity_increment(piece, role)
         )
 
 
@@ -138,7 +173,7 @@ class BaseMeasurePieceScorer:
 
     def __init__(
         self,
-        counts: Mapping[PhonologicalForm, float],
+        counts: Mapping[PhonologicalForm | PieceIdentity, float],
         *,
         alpha: float,
         lambda_: float,
@@ -178,29 +213,48 @@ class BaseMeasurePieceScorer:
         self.active_hits = 0
         self.inactive_misses = 0
 
-    def probability(self, piece: PhonologicalForm) -> float:
+    def _count(self, piece: PhonologicalForm, role: PieceRole) -> float:
+        identity = PieceIdentity(piece, role)
+        if identity in self.counts:
+            return self.counts[identity]
+        return self.counts.get(piece, 0.0)
+
+    def probability(
+        self,
+        piece: PhonologicalForm,
+        role: PieceRole = PieceRole.WHOLE,
+    ) -> float:
         return (
-            self.counts.get(piece, 0.0)
+            self._count(piece, role)
             + self.alpha * self.base_measure.probability(piece)
         ) / self.denominator
 
-    def complexity_increment(self, piece: PhonologicalForm) -> float:
-        count = self.counts.get(piece, 0.0)
+    def complexity_increment(
+        self,
+        piece: PhonologicalForm,
+        role: PieceRole = PieceRole.WHOLE,
+    ) -> float:
+        count = self._count(piece, role)
         amplitude = self.lambda_ * (
             self.kappa + self.beta * len(piece.symbols)
         )
         return amplitude * math.log1p(1.0 / (self.tau + count))
 
     def score(self, piece: PhonologicalForm) -> float:
+        return self.score_piece(piece, PieceRole.WHOLE)
+
+    def score_piece(self, piece: PhonologicalForm, role: PieceRole) -> float:
         self.score_calls += 1
         self.store_lookups += 1
-        if piece in self.counts:
+        identity = PieceIdentity(piece, role)
+        if identity in self.counts or piece in self.counts:
             self.active_hits += 1
         else:
             self.inactive_misses += 1
-        probability = self.probability(piece)
+        probability = self.probability(piece, role)
         return math.log(max(probability, 1e-300)) - self.complexity_increment(
-            piece
+            piece,
+            role,
         )
 
     def payload(self) -> dict[str, float | int | str]:

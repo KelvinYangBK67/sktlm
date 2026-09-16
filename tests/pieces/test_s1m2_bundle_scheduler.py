@@ -263,7 +263,7 @@ def _piece_state(run_dir: Path) -> tuple[tuple[str, float, int], ...]:
         return tuple(
             (str(key), float(count), int(support))
             for key, count, support in store.connection.execute(
-                "SELECT form_key, expected_count, occurrence_support "
+                "SELECT form_key, expected_count, host_type_support "
                 "FROM piece_lexicon ORDER BY form_key"
             )
         )
@@ -1006,7 +1006,7 @@ def test_legacy_v1_complete_pass_finalizes_without_corpus_or_workers(
         }
         assert tuple(
             store.connection.execute(
-                "SELECT form_key, expected_count, occurrence_support "
+                "SELECT form_key, expected_count, host_type_support "
                 "FROM piece_lexicon ORDER BY form_key"
             )
         ) == (("V_A", 3.0, 1), ("V_A.C_K", 4.0, 2))

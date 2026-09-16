@@ -14,11 +14,12 @@ from typing import Iterable
 
 from sktlm.latent.phonology import Phoneme, PhonologicalForm
 from sktlm.latent.store import LexiconStore
+from sktlm.pieces.lattice import PieceIdentity
 
 
 TABLE_QUERIES = (
     "SELECT form_key, expected_count FROM inspection_counts ORDER BY form_key",
-    "SELECT form_key, expected_count, occurrence_support "
+    "SELECT form_key, expected_count, host_type_support "
     "FROM inspection_piece_counts ORDER BY form_key",
     "SELECT form_key, surface, expected_mass "
     "FROM surface_usage ORDER BY form_key, surface",
@@ -54,8 +55,9 @@ def _write_fixture(root: Path, *, rows: int, batch_size: int) -> tuple[Path, ...
         "CREATE TABLE count_rows (row_number INTEGER PRIMARY KEY, "
         "form_key TEXT NOT NULL, expected_count REAL NOT NULL);"
         "CREATE TABLE piece_rows (row_number INTEGER PRIMARY KEY, "
-        "form_key TEXT NOT NULL, expected_count REAL NOT NULL, "
-        "occurrence_support INTEGER NOT NULL);"
+        "form_key TEXT NOT NULL, expected_count REAL NOT NULL);"
+        "CREATE TABLE piece_host_rows (row_number INTEGER PRIMARY KEY, "
+        "piece_key TEXT NOT NULL, host_key TEXT NOT NULL, support REAL NOT NULL);"
         "CREATE TABLE surface_rows (row_number INTEGER PRIMARY KEY, "
         "form_key TEXT NOT NULL, surface TEXT NOT NULL, "
         "expected_mass REAL NOT NULL);"
@@ -69,20 +71,26 @@ def _write_fixture(root: Path, *, rows: int, batch_size: int) -> tuple[Path, ...
         for indices in _chunks(rows, batch_size):
             count_rows = []
             piece_rows = []
+            piece_host_rows = []
             surface_rows = []
             context_rows = []
             for index in indices:
                 key = _form(index % unique).key
+                piece_key = f"{key}@WHOLE"
                 value = 0.125 + (index % 17) / 32.0
                 surface = f"surface-{index % 31}"
                 context = f"left-{index % 13}>right-{index % 19}"
                 row_number = index + 1
                 count_rows.append((row_number, key, value))
-                piece_rows.append((row_number, key, value, 1))
+                piece_rows.append((row_number, piece_key, value))
+                piece_host_rows.append((row_number, piece_key, key, value))
                 surface_rows.append((row_number, key, surface, value))
                 context_rows.append((row_number, key, context, value))
                 handles[0].write(f"{key}\t{float(value).hex()}\n")
-                handles[1].write(f"{key}\t{float(value).hex()}\t1\n")
+                handles[1].write(
+                    f"{piece_key}\t{float(value).hex()}\t{key}\t"
+                    f"{float(value).hex()}\n"
+                )
                 handles[2].write(
                     f"{key}\t{json.dumps(surface)}\t{float(value).hex()}\n"
                 )
@@ -90,7 +98,11 @@ def _write_fixture(root: Path, *, rows: int, batch_size: int) -> tuple[Path, ...
                     f"{key}\t{json.dumps(context)}\t{float(value).hex()}\n"
                 )
             connection.executemany("INSERT INTO count_rows VALUES (?, ?, ?)", count_rows)
-            connection.executemany("INSERT INTO piece_rows VALUES (?, ?, ?, ?)", piece_rows)
+            connection.executemany("INSERT INTO piece_rows VALUES (?, ?, ?)", piece_rows)
+            connection.executemany(
+                "INSERT INTO piece_host_rows VALUES (?, ?, ?, ?)",
+                piece_host_rows,
+            )
             connection.executemany("INSERT INTO surface_rows VALUES (?, ?, ?, ?)", surface_rows)
             connection.executemany("INSERT INTO context_rows VALUES (?, ?, ?, ?)", context_rows)
         connection.commit()
@@ -113,18 +125,28 @@ def _legacy_merge(store: LexiconStore, paths: tuple[Path, ...], batch_size: int)
     if counts:
         store.add_counts(counts, table="inspection_counts")
 
-    pieces: list[tuple[PhonologicalForm, float, int]] = []
+    pieces: list[tuple[PieceIdentity, float]] = []
+    piece_hosts: list[tuple[PieceIdentity, PhonologicalForm, float]] = []
     with paths[1].open(encoding="utf-8") as handle:
         for line in handle:
-            key, value, support = line.rstrip("\n").split("\t", 2)
-            pieces.append(
-                (PhonologicalForm.from_key(key), float.fromhex(value), int(support))
+            key, value, host_key, support = line.rstrip("\n").split("\t", 3)
+            identity = PieceIdentity.from_key(key)
+            pieces.append((identity, float.fromhex(value)))
+            piece_hosts.append(
+                (
+                    identity,
+                    PhonologicalForm.from_key(host_key),
+                    float.fromhex(support),
+                )
             )
             if len(pieces) >= batch_size:
                 store.add_inspection_piece_counts(pieces)
+                store.add_inspection_piece_host_support(piece_hosts)
                 pieces.clear()
+                piece_hosts.clear()
     if pieces:
         store.add_inspection_piece_counts(pieces)
+        store.add_inspection_piece_host_support(piece_hosts)
 
     for kind, path in zip(("surfaces", "contexts"), paths[2:4], strict=True):
         usage: list[tuple[str, str, float]] = []
@@ -163,7 +185,16 @@ def run(*, rows: int, batch_size: int) -> dict[str, object]:
             started = time.perf_counter()
             candidate.merge_inspection_shard(
                 paths[4],
-                row_counts={name: rows for name in ("counts", "pieces", "surfaces", "contexts")},
+                row_counts={
+                    name: rows
+                    for name in (
+                        "counts",
+                        "pieces",
+                        "piece_hosts",
+                        "surfaces",
+                        "contexts",
+                    )
+                },
             )
             candidate_seconds = time.perf_counter() - started
             legacy_digest = _digest(legacy)

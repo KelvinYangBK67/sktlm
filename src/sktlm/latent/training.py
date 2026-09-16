@@ -71,6 +71,7 @@ from sktlm.pieces.composed import (
     compile_composed_segment_topology,
     infer_composed_segment,
 )
+from sktlm.pieces.lattice import PieceIdentity
 from sktlm.pieces.model import PieceModelConfig
 from sktlm.pieces.scorer import NeutralPieceScorer
 from sktlm.pieces.topology_archive import (
@@ -119,7 +120,7 @@ class TrainingConfig:
     complexity_weight: float = 0.5
     complexity_tau: float = 1.0
     whitespace_merge_penalty: float = 8.0
-    allow_whitespace_merge: bool = True
+    allow_whitespace_merge: bool | None = None
     max_internal_matches: int = 512
     max_segment_tokens: int = 128
     lexicon_cache_size: int = 100_000
@@ -140,7 +141,8 @@ class TrainingConfig:
     piece_complexity_beta: float = 0.25
     piece_complexity_tau: float = 1.0
     piece_base_stop_probability: float = 0.5
-    piece_min_reuse_occurrences: int = 2
+    piece_min_reuse_host_types: int = 2
+    piece_host_support_threshold: float = 1.0
     piece_support_epsilon: float = 0.0
     piece_score_cache_entries: int = 65_536
     piece_score_cache_bytes: int = 32 * 1024 * 1024
@@ -156,6 +158,12 @@ class TrainingConfig:
     def __post_init__(self) -> None:
         if self.model not in {S1M1_MODEL, S1M2_MODEL}:
             raise ValueError(f"unsupported model: {self.model}")
+        if self.allow_whitespace_merge is None:
+            object.__setattr__(
+                self,
+                "allow_whitespace_merge",
+                self.model != S1M2_MODEL,
+            )
         if self.script not in SUPPORTED_OBSERVATION_SCRIPTS:
             raise ValueError(f"unsupported formal script: {self.script}")
         if self.condition not in FORMAL_CONDITIONS:
@@ -184,6 +192,8 @@ class TrainingConfig:
             raise ValueError("complexity_tau must be > 0")
         if self.max_segment_tokens < 1:
             raise ValueError("max_segment_tokens must be >= 1")
+        if self.model == S1M2_MODEL and self.allow_whitespace_merge:
+            raise ValueError("S1M2 forbids lexical factors across observed whitespace")
         if self.lexicon_cache_size < 1 or self.flush_types < 1:
             raise ValueError("cache and flush bounds must be >= 1")
         if self.analysis_top_k < 1:
@@ -204,8 +214,10 @@ class TrainingConfig:
             raise ValueError(
                 "piece_base_stop_probability must be strictly between 0 and 1"
             )
-        if self.piece_min_reuse_occurrences < 2:
-            raise ValueError("piece_min_reuse_occurrences must be >= 2")
+        if self.piece_min_reuse_host_types < 2:
+            raise ValueError("piece_min_reuse_host_types must be >= 2")
+        if self.piece_host_support_threshold <= 0.0:
+            raise ValueError("piece_host_support_threshold must be > 0")
         if self.piece_support_epsilon < 0.0:
             raise ValueError("piece_support_epsilon must be >= 0")
         ComposedCacheConfig(
@@ -251,7 +263,8 @@ class TrainingConfig:
                 "piece_complexity_beta",
                 "piece_complexity_tau",
                 "piece_base_stop_probability",
-                "piece_min_reuse_occurrences",
+                "piece_min_reuse_host_types",
+                "piece_host_support_threshold",
                 "piece_support_epsilon",
                 "piece_score_cache_entries",
                 "piece_score_cache_bytes",
@@ -1319,9 +1332,11 @@ def _write_training_shard(
     )
     shard_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = shard_path.with_suffix(shard_path.suffix + '.tmp')
-    counts: Counter[str] = Counter()
-    piece_counts: Counter[str] = Counter()
-    piece_support: Counter[str] = Counter()
+    counts: Counter[PhonologicalForm] = Counter()
+    piece_counts: Counter[PieceIdentity] = Counter()
+    piece_host_support: Counter[
+        tuple[PieceIdentity, PhonologicalForm]
+    ] = Counter()
     metrics = PassMetrics()
     seen_lines: set[int] = set()
     row_count = 0
@@ -1348,7 +1363,7 @@ def _write_training_shard(
 
     def flush(handle: Any) -> None:
         nonlocal row_count
-        if not counts and not piece_counts:
+        if not counts and not piece_counts and not piece_host_support:
             return
         if config.model == S1M1_MODEL:
             for form, value in sorted(counts.items(), key=lambda item: item[0].key):
@@ -1361,14 +1376,19 @@ def _write_training_shard(
             for piece, value in sorted(
                 piece_counts.items(), key=lambda item: item[0].key
             ):
+                handle.write(f'P\t{piece.key}\t{float(value).hex()}\n')
+                row_count += 1
+            for (piece, host), value in sorted(
+                piece_host_support.items(),
+                key=lambda item: (item[0][0].key, item[0][1].key),
+            ):
                 handle.write(
-                    f'P\t{piece.key}\t{float(value).hex()}\t'
-                    f'{piece_support[piece]}\n'
+                    f'H\t{piece.key}\t{host.key}\t{float(value).hex()}\n'
                 )
                 row_count += 1
         counts.clear()
         piece_counts.clear()
-        piece_support.clear()
+        piece_host_support.clear()
 
     topology_path = _topology_archive_path(run_dir, document_index)
     topology_temporary = topology_path.with_suffix(topology_path.suffix + ".tmp")
@@ -1499,7 +1519,7 @@ def _write_training_shard(
             )
             if config.model == S1M2_MODEL:
                 piece_counts.update(inference.piece_expected_counts)
-                piece_support.update(inference.piece_occurrence_support)
+                piece_host_support.update(inference.piece_host_support)
             aggregation_seconds += time.perf_counter() - started
             metrics.update(
                 segment,
@@ -1513,7 +1533,10 @@ def _write_training_shard(
                     else inference.candidate_span_hypotheses
                 ),
             )
-            if len(counts) + len(piece_counts) >= config.flush_types:
+            if (
+                len(counts) + len(piece_counts) + len(piece_host_support)
+                >= config.flush_types
+            ):
                 flush(handle)
         flush(handle)
         handle.flush()
@@ -1697,7 +1720,7 @@ def _write_training_bundle_shard(
                     candidate_edges=inference.candidate_span_hypotheses,
                 )
                 record = {
-                    "schema_version": "sktlm-s1m2-training-segment-result/v1",
+                    "schema_version": "sktlm-s1m2-training-segment-result/v2",
                     "line_number": line_number,
                     "segment_index": segment_index,
                     "lexical_counts": [
@@ -1711,11 +1734,20 @@ def _write_training_bundle_shard(
                         (
                             piece.key,
                             float(value).hex(),
-                            int(inference.piece_occurrence_support[piece]),
                         )
                         for piece, value in sorted(
                             inference.piece_expected_counts.items(),
                             key=lambda item: item[0].key,
+                        )
+                    ],
+                    "piece_host_support": [
+                        (piece.key, host.key, float(value).hex())
+                        for (piece, host), value in sorted(
+                            inference.piece_host_support.items(),
+                            key=lambda item: (
+                                item[0][0].key,
+                                item[0][1].key,
+                            ),
                         )
                     ],
                     "metrics": _exact_metrics_payload(segment_metrics),
@@ -1858,9 +1890,9 @@ def _coalesce_training_bundle_shards(
     temporary = shard_path.with_suffix(shard_path.suffix + ".tmp")
     topology_path = _topology_archive_path(run_dir, document_index)
     topology_temporary = topology_path.with_suffix(topology_path.suffix + ".tmp")
-    counts: Counter[PhonologicalForm] = Counter()
-    piece_counts: Counter[PhonologicalForm] = Counter()
-    piece_support: Counter[PhonologicalForm] = Counter()
+    counts: Counter[str] = Counter()
+    piece_counts: Counter[str] = Counter()
+    piece_host_support: Counter[tuple[str, str]] = Counter()
     metrics = PassMetrics()
     seen_lines: set[int] = set()
     row_count = 0
@@ -1870,20 +1902,22 @@ def _coalesce_training_bundle_shards(
 
     def flush(handle: Any) -> None:
         nonlocal row_count
-        if not counts and not piece_counts:
+        if not counts and not piece_counts and not piece_host_support:
             return
         for form_key, value in sorted(counts.items()):
             handle.write(f"L\t{form_key}\t{float(value).hex()}\n")
             row_count += 1
         for piece_key, value in sorted(piece_counts.items()):
+            handle.write(f"P\t{piece_key}\t{float(value).hex()}\n")
+            row_count += 1
+        for (piece_key, host_key), value in sorted(piece_host_support.items()):
             handle.write(
-                f"P\t{piece_key}\t{float(value).hex()}\t"
-                f"{piece_support[piece_key]}\n"
+                f"H\t{piece_key}\t{host_key}\t{float(value).hex()}\n"
             )
             row_count += 1
         counts.clear()
         piece_counts.clear()
-        piece_support.clear()
+        piece_host_support.clear()
 
     topology_writer: TopologyArchiveWriter | None = None
     try:
@@ -1915,7 +1949,7 @@ def _coalesce_training_bundle_shards(
                             record = json.loads(line)
                             if (
                                 record.get("schema_version")
-                                != "sktlm-s1m2-training-segment-result/v1"
+                                != "sktlm-s1m2-training-segment-result/v2"
                             ):
                                 raise RuntimeError(
                                     f"Invalid bundle segment record: {paths['segments']}"
@@ -1930,9 +1964,14 @@ def _coalesce_training_bundle_shards(
                             seen_lines.add(identity[0])
                             for key, value in record["lexical_counts"]:
                                 counts[key] += float.fromhex(value)
-                            for key, value, support in record["piece_counts"]:
+                            for key, value in record["piece_counts"]:
                                 piece_counts[key] += float.fromhex(value)
-                                piece_support[key] += int(support)
+                            for piece_key, host_key, value in record[
+                                "piece_host_support"
+                            ]:
+                                piece_host_support[(piece_key, host_key)] += (
+                                    float.fromhex(value)
+                                )
                             metrics = metrics.merged(
                                 _metrics_from_exact_payload(record["metrics"])
                             )
@@ -1944,7 +1983,12 @@ def _coalesce_training_bundle_shards(
                                     topology_reader.read(*identity),
                                 )
                             record_count += 1
-                            if len(counts) + len(piece_counts) >= config.flush_types:
+                            if (
+                                len(counts)
+                                + len(piece_counts)
+                                + len(piece_host_support)
+                                >= config.flush_types
+                            ):
                                 flush(handle)
                 finally:
                     if topology_reader is not None:
@@ -2062,7 +2106,7 @@ def _apply_compact_training_bundle_shards(
     document_index = bundles[0].document_index
     lexical_counts: Counter[str] = Counter()
     piece_counts: Counter[str] = Counter()
-    piece_support: Counter[str] = Counter()
+    piece_host_support: Counter[tuple[str, str]] = Counter()
     document_metrics = PassMetrics()
     seen_lines: set[int] = set()
     runtime_totals: Counter[str] = Counter()
@@ -2081,16 +2125,25 @@ def _apply_compact_training_bundle_shards(
         if piece_counts:
             store.add_document_piece_counts(
                 (
-                    (
-                        PhonologicalForm.from_key(key),
-                        value,
-                        piece_support[key],
-                    )
+                    (PieceIdentity.from_key(key), value)
                     for key, value in sorted(piece_counts.items())
                 )
             )
             piece_counts.clear()
-            piece_support.clear()
+        if piece_host_support:
+            store.add_document_piece_host_support(
+                (
+                    (
+                        PieceIdentity.from_key(piece_key),
+                        PhonologicalForm.from_key(host_key),
+                        value,
+                    )
+                    for (piece_key, host_key), value in sorted(
+                        piece_host_support.items()
+                    )
+                )
+            )
+            piece_host_support.clear()
 
     store.begin_document_counts()
     try:
@@ -2105,7 +2158,7 @@ def _apply_compact_training_bundle_shards(
                     record = json.loads(line)
                     if (
                         record.get("schema_version")
-                        != "sktlm-s1m2-training-segment-result/v1"
+                        != "sktlm-s1m2-training-segment-result/v2"
                     ):
                         raise RuntimeError(
                             f"Invalid bundle segment record: {paths['segments']}"
@@ -2120,14 +2173,24 @@ def _apply_compact_training_bundle_shards(
                     seen_lines.add(identity[0])
                     for key, value in record["lexical_counts"]:
                         lexical_counts[key] += float.fromhex(value)
-                    for key, value, support in record["piece_counts"]:
+                    for key, value in record["piece_counts"]:
                         piece_counts[key] += float.fromhex(value)
-                        piece_support[key] += int(support)
+                    for piece_key, host_key, value in record[
+                        "piece_host_support"
+                    ]:
+                        piece_host_support[(piece_key, host_key)] += (
+                            float.fromhex(value)
+                        )
                     document_metrics = document_metrics.merged(
                         _metrics_from_exact_payload(record["metrics"])
                     )
                     record_count += 1
-                    if len(lexical_counts) + len(piece_counts) >= config.flush_types:
+                    if (
+                        len(lexical_counts)
+                        + len(piece_counts)
+                        + len(piece_host_support)
+                        >= config.flush_types
+                    ):
                         flush()
             if (
                 record_count != bundle.segment_count
@@ -2205,21 +2268,23 @@ def _apply_compact_training_bundle_shards(
 def _flush_piece_training_counts(
     store: LexiconStore,
     lexical_counts: Counter[PhonologicalForm],
-    piece_counts: Counter[PhonologicalForm],
-    piece_support: Counter[PhonologicalForm],
+    piece_counts: Counter[PieceIdentity],
+    piece_host_support: Counter[tuple[PieceIdentity, PhonologicalForm]],
 ) -> None:
     if lexical_counts:
         store.add_document_lexical_diagnostics(lexical_counts.items())
         lexical_counts.clear()
     if piece_counts:
-        store.add_document_piece_counts(
+        store.add_document_piece_counts(piece_counts.items())
+        piece_counts.clear()
+    if piece_host_support:
+        store.add_document_piece_host_support(
             (
-                (piece, count, piece_support[piece])
-                for piece, count in piece_counts.items()
+                (identity, host, value)
+                for (identity, host), value in piece_host_support.items()
             )
         )
-        piece_counts.clear()
-        piece_support.clear()
+        piece_host_support.clear()
 
 
 def _load_training_shard(
@@ -2277,7 +2342,10 @@ def _apply_training_shard(
     store.begin_document_counts()
     try:
         buffered: list[tuple[PhonologicalForm, float]] = []
-        buffered_pieces: list[tuple[PhonologicalForm, float, int]] = []
+        buffered_pieces: list[tuple[PieceIdentity, float]] = []
+        buffered_host_support: list[
+            tuple[PieceIdentity, PhonologicalForm, float]
+        ] = []
         with shard_path.open(encoding='utf-8') as handle:
             for line in handle:
                 fields = line.rstrip('\n').split('\t')
@@ -2298,17 +2366,30 @@ def _apply_training_shard(
                         store.add_document_lexical_diagnostics(buffered)
                         buffered.clear()
                 elif fields[0] == 'P':
-                    _kind, key, value, support = fields
+                    _kind, key, value = fields
                     buffered_pieces.append(
                         (
-                            PhonologicalForm.from_key(key),
+                            PieceIdentity.from_key(key),
                             float.fromhex(value),
-                            int(support),
                         )
                     )
                     if len(buffered_pieces) >= config.flush_types:
                         store.add_document_piece_counts(buffered_pieces)
                         buffered_pieces.clear()
+                elif fields[0] == 'H':
+                    _kind, piece_key, host_key, value = fields
+                    buffered_host_support.append(
+                        (
+                            PieceIdentity.from_key(piece_key),
+                            PhonologicalForm.from_key(host_key),
+                            float.fromhex(value),
+                        )
+                    )
+                    if len(buffered_host_support) >= config.flush_types:
+                        store.add_document_piece_host_support(
+                            buffered_host_support
+                        )
+                        buffered_host_support.clear()
                 else:
                     raise RuntimeError(f'Unknown S1M2 shard row: {fields[0]!r}')
         if buffered:
@@ -2318,6 +2399,8 @@ def _apply_training_shard(
                 store.add_document_lexical_diagnostics(buffered)
         if buffered_pieces:
             store.add_document_piece_counts(buffered_pieces)
+        if buffered_host_support:
+            store.add_document_piece_host_support(buffered_host_support)
         store.commit_document(next_checkpoint)
         _record_store_storage(telemetry, store.path)
     except BaseException:
@@ -2825,8 +2908,10 @@ def _training_pass(
     for document_index in document_indices:
         document = documents[document_index]
         counts: Counter[PhonologicalForm] = Counter()
-        piece_counts: Counter[PhonologicalForm] = Counter()
-        piece_support: Counter[PhonologicalForm] = Counter()
+        piece_counts: Counter[PieceIdentity] = Counter()
+        piece_host_support: Counter[
+            tuple[PieceIdentity, PhonologicalForm]
+        ] = Counter()
         seen_lines: set[int] = set()
         document_metrics = PassMetrics()
         document_started = telemetry.now()
@@ -2952,7 +3037,7 @@ def _training_pass(
                 )
                 if config.model == S1M2_MODEL:
                     piece_counts.update(inference.piece_expected_counts)
-                    piece_support.update(inference.piece_occurrence_support)
+                    piece_host_support.update(inference.piece_host_support)
                 telemetry.elapsed('training_count_aggregation', started)
                 document_metrics.update(
                     segment,
@@ -2966,7 +3051,10 @@ def _training_pass(
                         else inference.candidate_span_hypotheses
                     ),
                 )
-                if len(counts) + len(piece_counts) >= config.flush_types:
+                if (
+                    len(counts) + len(piece_counts) + len(piece_host_support)
+                    >= config.flush_types
+                ):
                     if config.model == S1M1_MODEL:
                         _flush_counts(
                             store,
@@ -2975,7 +3063,7 @@ def _training_pass(
                         )
                     else:
                         _flush_piece_training_counts(
-                            store, counts, piece_counts, piece_support
+                            store, counts, piece_counts, piece_host_support
                         )
             if config.model == S1M1_MODEL:
                 _flush_counts(
@@ -2985,7 +3073,7 @@ def _training_pass(
                 )
             else:
                 _flush_piece_training_counts(
-                    store, counts, piece_counts, piece_support
+                    store, counts, piece_counts, piece_host_support
                 )
             if topology_writer is not None:
                 topology_writer.close()
@@ -3087,7 +3175,8 @@ def _training_pass(
         telemetry.elapsed('lexicon_finalize', started)
     else:
         all_types, active_types, active_total = store.finalize_piece_count_pass(
-            min_reuse_occurrences=config.piece_min_reuse_occurrences,
+            min_reuse_host_types=config.piece_min_reuse_host_types,
+            host_support_threshold=config.piece_host_support_threshold,
             checkpoint=checkpoint,
         )
         summary["piece_types"] = all_types
@@ -3213,7 +3302,7 @@ _INSPECTION_STREAM_SHARD_KINDS = (
     "boundaries",
     "reductions",
 )
-_INSPECTION_AGGREGATE_FORMAT = "ordered_sqlite_v1"
+_INSPECTION_AGGREGATE_FORMAT = "ordered_sqlite_v2_positional_host_support"
 _INSPECTION_SHARD_KINDS = (
     *_INSPECTION_STREAM_SHARD_KINDS,
     "aggregates",
@@ -3313,12 +3402,15 @@ def _write_inspection_shard(
         kind: paths[kind].with_suffix(paths[kind].suffix + ".tmp")
         for kind in shard_kinds
     }
-    counts: Counter[str] = Counter()
-    piece_counts: Counter[str] = Counter()
-    piece_support: Counter[str] = Counter()
+    counts: Counter[PhonologicalForm] = Counter()
+    piece_counts: Counter[PieceIdentity] = Counter()
+    piece_host_support: Counter[
+        tuple[PieceIdentity, PhonologicalForm]
+    ] = Counter()
     seen_lines: set[int] = set()
     count_rows = 0
     piece_rows = 0
+    piece_host_rows = 0
     surface_rows = 0
     context_rows = 0
     reduction_rows = 0
@@ -3346,6 +3438,7 @@ def _write_inspection_shard(
     aggregate_row_numbers = {
         "counts": 0,
         "pieces": 0,
+        "piece_hosts": 0,
         "surfaces": 0,
         "contexts": 0,
     }
@@ -3368,7 +3461,10 @@ def _write_inspection_shard(
             "expected_count REAL NOT NULL);"
             "CREATE TABLE piece_rows ("
             "row_number INTEGER PRIMARY KEY, form_key TEXT NOT NULL, "
-            "expected_count REAL NOT NULL, occurrence_support INTEGER NOT NULL);"
+            "expected_count REAL NOT NULL);"
+            "CREATE TABLE piece_host_rows ("
+            "row_number INTEGER PRIMARY KEY, piece_key TEXT NOT NULL, "
+            "host_key TEXT NOT NULL, support REAL NOT NULL);"
             "CREATE TABLE surface_rows ("
             "row_number INTEGER PRIMARY KEY, form_key TEXT NOT NULL, "
             "surface TEXT NOT NULL, expected_mass REAL NOT NULL);"
@@ -3404,8 +3500,8 @@ def _write_inspection_shard(
         shard_database_seconds += time.perf_counter() - started
 
     def flush_pieces() -> None:
-        nonlocal piece_rows, shard_database_seconds
-        if not piece_counts:
+        nonlocal piece_rows, piece_host_rows, shard_database_seconds
+        if not piece_counts and not piece_host_support:
             return
         assert aggregate_connection is not None
         started = time.perf_counter()
@@ -3419,16 +3515,34 @@ def _write_inspection_shard(
                     aggregate_row_numbers["pieces"],
                     piece.key,
                     float(value),
-                    int(piece_support[piece]),
                 )
             )
         aggregate_connection.executemany(
-            "INSERT INTO piece_rows VALUES (?, ?, ?, ?)",
+            "INSERT INTO piece_rows VALUES (?, ?, ?)",
             rows,
         )
+        host_rows = []
+        for (piece, host), value in sorted(
+            piece_host_support.items(),
+            key=lambda item: (item[0][0].key, item[0][1].key),
+        ):
+            aggregate_row_numbers["piece_hosts"] += 1
+            host_rows.append(
+                (
+                    aggregate_row_numbers["piece_hosts"],
+                    piece.key,
+                    host.key,
+                    float(value),
+                )
+            )
+        aggregate_connection.executemany(
+            "INSERT INTO piece_host_rows VALUES (?, ?, ?, ?)",
+            host_rows,
+        )
         piece_rows += len(rows)
+        piece_host_rows += len(host_rows)
         piece_counts.clear()
-        piece_support.clear()
+        piece_host_support.clear()
         shard_database_seconds += time.perf_counter() - started
 
     def flush_usage_rows() -> None:
@@ -3597,7 +3711,7 @@ def _write_inspection_shard(
             )
             if config.model == S1M2_MODEL:
                 piece_counts.update(inference.piece_expected_counts)
-                piece_support.update(inference.piece_occurrence_support)
+                piece_host_support.update(inference.piece_host_support)
             aggregation_seconds += time.perf_counter() - started
 
             serialization_started = time.perf_counter()
@@ -3783,7 +3897,10 @@ def _write_inspection_shard(
                             (word.key, context, float(analysis.probability))
                         )
                     context_rows += 1
-            if len(counts) + len(piece_counts) >= config.flush_types:
+            if (
+                len(counts) + len(piece_counts) + len(piece_host_support)
+                >= config.flush_types
+            ):
                 flush_counts()
                 flush_pieces()
             if len(surface_rows_buffer) + len(context_rows_buffer) >= config.flush_types:
@@ -3821,6 +3938,7 @@ def _write_inspection_shard(
         "rows": {
             "counts": count_rows,
             "pieces": piece_rows,
+            "piece_hosts": piece_host_rows,
             "surfaces": surface_rows,
             "contexts": context_rows,
             "reductions": reduction_rows,
@@ -4089,7 +4207,7 @@ def _write_inspection_bundle_shard(
                             )
                         )
                 record = {
-                    "schema_version": "sktlm-s1m2-inspection-segment-result/v1",
+                    "schema_version": "sktlm-s1m2-inspection-segment-result/v2",
                     "line_number": line_number,
                     "segment_index": segment_index,
                     "analysis": analysis_row,
@@ -4100,12 +4218,21 @@ def _write_inspection_bundle_shard(
                         for form, value in inference.lexical_expected_counts.items()
                     ],
                     "piece_counts": [
-                        (
-                            piece.key,
-                            float(value).hex(),
-                            int(inference.piece_occurrence_support[piece]),
+                        (piece.key, float(value).hex())
+                        for piece, value in sorted(
+                            inference.piece_expected_counts.items(),
+                            key=lambda item: item[0].key,
                         )
-                        for piece, value in inference.piece_expected_counts.items()
+                    ],
+                    "piece_host_support": [
+                        (piece.key, host.key, float(value).hex())
+                        for (piece, host), value in sorted(
+                            inference.piece_host_support.items(),
+                            key=lambda item: (
+                                item[0][0].key,
+                                item[0][1].key,
+                            ),
+                        )
                     ],
                     "surface_usage": surface_usage,
                     "context_usage": context_usage,
@@ -4260,7 +4387,10 @@ def _coalesce_inspection_bundle_shards(
         "expected_count REAL NOT NULL);"
         "CREATE TABLE piece_rows ("
         "row_number INTEGER PRIMARY KEY, form_key TEXT NOT NULL, "
-        "expected_count REAL NOT NULL, occurrence_support INTEGER NOT NULL);"
+        "expected_count REAL NOT NULL);"
+        "CREATE TABLE piece_host_rows ("
+        "row_number INTEGER PRIMARY KEY, piece_key TEXT NOT NULL, "
+        "host_key TEXT NOT NULL, support REAL NOT NULL);"
         "CREATE TABLE surface_rows ("
         "row_number INTEGER PRIMARY KEY, form_key TEXT NOT NULL, "
         "surface TEXT NOT NULL, expected_mass REAL NOT NULL);"
@@ -4268,13 +4398,25 @@ def _coalesce_inspection_bundle_shards(
         "row_number INTEGER PRIMARY KEY, form_key TEXT NOT NULL, "
         "context TEXT NOT NULL, expected_mass REAL NOT NULL);"
     )
-    counts: Counter[PhonologicalForm] = Counter()
-    piece_counts: Counter[PhonologicalForm] = Counter()
-    piece_support: Counter[PhonologicalForm] = Counter()
+    counts: Counter[str] = Counter()
+    piece_counts: Counter[str] = Counter()
+    piece_host_support: Counter[tuple[str, str]] = Counter()
     surface_buffer: list[tuple[str, str, float]] = []
     context_buffer: list[tuple[str, str, float]] = []
-    row_numbers = {"counts": 0, "pieces": 0, "surfaces": 0, "contexts": 0}
-    row_counts = {"counts": 0, "pieces": 0, "surfaces": 0, "contexts": 0}
+    row_numbers = {
+        "counts": 0,
+        "pieces": 0,
+        "piece_hosts": 0,
+        "surfaces": 0,
+        "contexts": 0,
+    }
+    row_counts = {
+        "counts": 0,
+        "pieces": 0,
+        "piece_hosts": 0,
+        "surfaces": 0,
+        "contexts": 0,
+    }
     seen_lines: set[int] = set()
     reduction_rows = 0
     shard_database_seconds = 0.0
@@ -4304,16 +4446,34 @@ def _coalesce_inspection_bundle_shards(
                     row_numbers["pieces"],
                     piece_key,
                     float(value),
-                    int(piece_support[piece_key]),
                 )
             )
         if piece_rows:
             aggregate_connection.executemany(
-                "INSERT INTO piece_rows VALUES (?, ?, ?, ?)", piece_rows
+                "INSERT INTO piece_rows VALUES (?, ?, ?)", piece_rows
             )
             row_counts["pieces"] += len(piece_rows)
             piece_counts.clear()
-            piece_support.clear()
+        piece_host_rows = []
+        for (piece_key, host_key), value in sorted(
+            piece_host_support.items()
+        ):
+            row_numbers["piece_hosts"] += 1
+            piece_host_rows.append(
+                (
+                    row_numbers["piece_hosts"],
+                    piece_key,
+                    host_key,
+                    float(value),
+                )
+            )
+        if piece_host_rows:
+            aggregate_connection.executemany(
+                "INSERT INTO piece_host_rows VALUES (?, ?, ?, ?)",
+                piece_host_rows,
+            )
+            row_counts["piece_hosts"] += len(piece_host_rows)
+            piece_host_support.clear()
         shard_database_seconds += time.perf_counter() - started
 
     def flush_usage() -> None:
@@ -4382,7 +4542,7 @@ def _coalesce_inspection_bundle_shards(
                 for line in source:
                     record = json.loads(line)
                     if record.get("schema_version") != (
-                        "sktlm-s1m2-inspection-segment-result/v1"
+                        "sktlm-s1m2-inspection-segment-result/v2"
                     ):
                         raise RuntimeError("Invalid inspection segment shard.")
                     identity = (
@@ -4395,9 +4555,14 @@ def _coalesce_inspection_bundle_shards(
                     seen_lines.add(identity[0])
                     for key, value in record["lexical_counts"]:
                         counts[key] += float.fromhex(value)
-                    for key, value, support in record["piece_counts"]:
+                    for key, value in record["piece_counts"]:
                         piece_counts[key] += float.fromhex(value)
-                        piece_support[key] += int(support)
+                    for piece_key, host_key, support in record[
+                        "piece_host_support"
+                    ]:
+                        piece_host_support[(piece_key, host_key)] += (
+                            float.fromhex(support)
+                        )
                     handles["analyses"].write(
                         json.dumps(
                             record["analysis"],
@@ -4430,7 +4595,12 @@ def _coalesce_inspection_bundle_shards(
                         (key, context, float.fromhex(mass))
                         for key, context, mass in record["context_usage"]
                     )
-                    if len(counts) + len(piece_counts) >= config.flush_types:
+                    if (
+                        len(counts)
+                        + len(piece_counts)
+                        + len(piece_host_support)
+                        >= config.flush_types
+                    ):
                         flush_counts()
                     if len(surface_buffer) + len(context_buffer) >= config.flush_types:
                         flush_usage()
@@ -4557,7 +4727,8 @@ def _apply_inspection_shard(
             paths["aggregates"],
             row_counts={
                 key: int(value) for key, value in payload["rows"].items()
-                if key in {"counts", "pieces", "surfaces", "contexts"}
+                if key
+                in {"counts", "pieces", "piece_hosts", "surfaces", "contexts"}
             },
         )
         telemetry.elapsed("inspection_reducer_database_merge", merge_started)
@@ -4792,6 +4963,9 @@ def _finalize_inspection(
             usage_threshold=config.usage_posterior_threshold,
         )
     else:
+        store.finalize_piece_inspection_support(
+            threshold=config.piece_host_support_threshold
+        )
         store.export_lexical_diagnostics(
             run_dir / "lexical_diagnostics.tsv",
             usage_threshold=config.usage_posterior_threshold,
@@ -5423,8 +5597,10 @@ def _inspection_pass(
     boundaries_tmp = run_dir / "boundary_posteriors.jsonl.tmp"
     rule_usage: Counter[str] = Counter()
     counts: Counter[PhonologicalForm] = Counter()
-    piece_counts: Counter[PhonologicalForm] = Counter()
-    piece_support: Counter[PhonologicalForm] = Counter()
+    piece_counts: Counter[PieceIdentity] = Counter()
+    piece_host_support: Counter[
+        tuple[PieceIdentity, PhonologicalForm]
+    ] = Counter()
     metrics = PassMetrics()
     top1_sum = 0.0
     entropy_sum = 0.0
@@ -5530,7 +5706,7 @@ def _inspection_pass(
                 )
                 if config.model == S1M2_MODEL:
                     piece_counts.update(inference.piece_expected_counts)
-                    piece_support.update(inference.piece_occurrence_support)
+                    piece_host_support.update(inference.piece_host_support)
                 rule_usage.update(inference.rule_usage)
                 telemetry.elapsed('inspection_count_aggregation', started)
                 metrics.update(
@@ -5692,15 +5868,21 @@ def _inspection_pass(
                         )
                 if len(counts) >= config.flush_types:
                     _flush_counts(store, counts, table="inspection_counts")
-                if len(piece_counts) >= config.flush_types:
-                    store.add_inspection_piece_counts(
+                if (
+                    len(piece_counts) + len(piece_host_support)
+                    >= config.flush_types
+                ):
+                    store.add_inspection_piece_counts(piece_counts.items())
+                    store.add_inspection_piece_host_support(
                         (
-                            (piece, value, piece_support[piece])
-                            for piece, value in piece_counts.items()
+                            (piece, host, value)
+                            for (piece, host), value in (
+                                piece_host_support.items()
+                            )
                         )
                     )
                     piece_counts.clear()
-                    piece_support.clear()
+                    piece_host_support.clear()
                 if len(surface_usage) + len(context_usage) >= config.flush_types:
                     store.add_usage(
                         surfaces=surface_usage,
@@ -5709,15 +5891,16 @@ def _inspection_pass(
                     surface_usage.clear()
                     context_usage.clear()
             _flush_counts(store, counts, table="inspection_counts")
-            if piece_counts:
-                store.add_inspection_piece_counts(
+            if piece_counts or piece_host_support:
+                store.add_inspection_piece_counts(piece_counts.items())
+                store.add_inspection_piece_host_support(
                     (
-                        (piece, value, piece_support[piece])
-                        for piece, value in piece_counts.items()
+                        (piece, host, value)
+                        for (piece, host), value in piece_host_support.items()
                     )
                 )
                 piece_counts.clear()
-                piece_support.clear()
+                piece_host_support.clear()
             store.add_usage(surfaces=surface_usage, contexts=context_usage)
             metrics.documents += 1
             metrics.lines += len(seen_lines)
@@ -5878,19 +6061,21 @@ def _human_piece_report(
         "",
         "## Highest-frequency reusable pieces",
         "",
-        "| piece | length | expected count | reuse occurrences | active |",
-        "|---|---:|---:|---:|---:|",
+        "| piece | role | length | expected count | host types | active |",
+        "|---|---|---:|---:|---:|---:|",
     ]
     for key, count, support, active in store.connection.execute(
-        "SELECT i.form_key, i.expected_count, i.occurrence_support, "
+        "SELECT i.form_key, i.expected_count, i.host_type_support, "
         "CASE WHEN a.form_key IS NULL THEN 0 ELSE 1 END "
         "FROM inspection_piece_counts i LEFT JOIN piece_lexicon a "
         "ON a.form_key=i.form_key ORDER BY i.expected_count DESC, i.form_key "
         "LIMIT 20"
     ):
-        form = PhonologicalForm.from_key(str(key))
+        identity = PieceIdentity.from_key(str(key))
+        form = identity.piece
         lines.append(
-            f"| {form.iast} | {len(form.symbols)} | {float(count):.6f} | "
+            f"| {form.iast} | {identity.role.value} | {len(form.symbols)} | "
+            f"{float(count):.6f} | "
             f"{int(support)} | {int(active)} |"
         )
 
@@ -5948,8 +6133,9 @@ def _human_piece_report(
             (
                 "All legal pieces remain exactly scoreable. Persistent active "
                 "parameters are observed singletons plus pieces supported in at "
-                f"least {config.piece_min_reuse_occurrences} distinct lexical "
-                "occurrences."
+                f"least {config.piece_min_reuse_host_types} distinct host lexical "
+                "form types after aggregated posterior support reaches "
+                f"{config.piece_host_support_threshold:g} per host type."
             ),
             "No rule-use or generic sandhi reward is present.",
             "",

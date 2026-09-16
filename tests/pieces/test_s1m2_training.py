@@ -19,6 +19,7 @@ from sktlm.pieces.scorer import (
     BaseMeasurePieceScorer,
     GeometricPhonemeBaseMeasure,
 )
+from sktlm.pieces.lattice import PieceIdentity, PieceRole
 
 
 def _write_fixture(tmp_path: Path) -> Path:
@@ -82,7 +83,8 @@ def test_s1m2_configuration_identity_includes_piece_model_and_cache_bounds(
     ).payload()
     assert payload["model"] == S1M2_MODEL
     assert payload["piece_max_length"] == 3
-    assert payload["piece_min_reuse_occurrences"] == 2
+    assert payload["piece_min_reuse_host_types"] == 2
+    assert payload["piece_host_support_threshold"] == 1.0
     assert payload["piece_score_cache_entries"] == 65_536
     assert payload["piece_form_cache_bytes"] == 256 * 1024 * 1024
     assert payload["piece_shared_token_marginals"] is True
@@ -128,7 +130,9 @@ def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(
     assert result.runtime["counters"]["training_shared_prefix_nodes"] > 0
     assert result.runtime["counters"]["training_shared_form_endpoints"] > 0
     assert result.runtime["counters"].get("training_shared_batch_fallbacks", 0) == 0
-    assert result.runtime["counters"]["training_form_cache_hits"] > 0
+    # Compact/shared training does not fall back through the legacy per-form
+    # evaluation cache merely to construct host-type support.
+    assert result.runtime["counters"].get("training_form_cache_hits", 0) == 0
     assert result.runtime["counters"]["training_store_lookups"] > 0
     assert result.runtime["counters"]["training_topology_compiles"] > 0
     assert result.runtime["counters"]["training_compact_trie_compiles"] > 0
@@ -182,6 +186,7 @@ def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(
         "context_usage",
         "inspection_counts",
         "inspection_piece_counts",
+        "inspection_piece_host_support",
         "surface_usage",
     }
     assert result.runtime["counters"]["sqlite_pass_diagnostic_tables_retired"] == 2
@@ -214,7 +219,7 @@ def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(
     store = LexiconStore(result.run_dir / "learner.sqlite")
     try:
         active = {
-            PhonologicalForm.from_key(str(key)): float(count)
+            PieceIdentity.from_key(str(key)): float(count)
             for key, count in store.connection.execute(
                 "SELECT form_key, expected_count FROM piece_lexicon"
             )
@@ -237,8 +242,14 @@ def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(
             tau=1.0,
             base_measure=GeometricPhonemeBaseMeasure(0.5),
         )
-        for piece in (next(iter(active)), parse_iast_form("ghū")):
-            assert scorer.score(piece) == pytest.approx(reference.score(piece))
+        probes = (
+            next(iter(active)),
+            PieceIdentity(parse_iast_form("ghū"), PieceRole.WHOLE),
+        )
+        for identity in probes:
+            assert scorer.score_piece(identity.piece, identity.role) == pytest.approx(
+                reference.score_piece(identity.piece, identity.role)
+            )
     finally:
         store.close()
 
@@ -529,7 +540,7 @@ def _piece_state(run_dir: Path) -> tuple[tuple[str, float, int], ...]:
         return tuple(
             (str(key), float(count), int(support))
             for key, count, support in store.connection.execute(
-                "SELECT form_key, expected_count, occurrence_support "
+                "SELECT form_key, expected_count, host_type_support "
                 "FROM piece_lexicon ORDER BY form_key"
             )
         )

@@ -119,7 +119,7 @@ def _piece_state(path: Path) -> tuple:
     try:
         return tuple(
             store.connection.execute(
-                "SELECT form_key, expected_count, occurrence_support "
+                "SELECT form_key, expected_count, host_type_support "
                 "FROM piece_lexicon ORDER BY form_key"
             )
         )

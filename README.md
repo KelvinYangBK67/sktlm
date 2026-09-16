@@ -23,11 +23,10 @@ extent for one representation condition, not that the latent model is “M0”.
 S1M1 is scientifically frozen. Across its four completed controlled cells,
 visible spacing has a substantially larger effect than script: weakening
 boundary evidence makes the flat lexical objective produce a sharper posterior
-but a much larger, low-count, over-long lexicon. S1M2 implements reusable
-untyped pieces that concatenate exactly to each grammar-licensed lexical form.
-Its Round 2 engineering calibration is closed, but the stress workload exposes
-real candidate-space truncation, so no formal scientific winner or full-M0
-production authorization exists yet. See the
+but a much larger, low-count, over-long lexicon. S1M2 V1's completed Full M₀
+cells subsequently failed scientifically through whole-form memorization
+collapse. A minimal V2 candidate/reuse-semantics repair is implemented locally
+but has not passed a real-corpus scientific or performance gate. See the
 [research roadmap](docs/research_roadmap.md) for the full S1–S3 program.
 
 ## Research documentation
@@ -44,9 +43,10 @@ production authorization exists yet. See the
   — the frozen flat-lexical-identity result.
 - [M₀′ formal substrate checkpoint](reports/core_methods/latent_lexicon/m0_prime_formal_checkpoint_20260905.md)
   — the completed, validated corrected IAST-continuous representation.
-- [S1M2 Round 2 closure](reports/core_methods/reusable_pieces/s1m2_round2_closure_20260910.md)
-  — the current authority separating the formal scientific failure,
-  engineering scaling result, and candidate-overflow diagnostic.
+- [S1M2 V2 semantic-repair contract](reports/core_methods/reusable_pieces/s1m2_v2_semantic_repair_20260916.md)
+  — the current local implementation contract and its unvalidated boundary.
+- [S1M2 V1 Full M₀ scientific failure](reports/core_methods/reusable_pieces/s1m2_full_m0_scientific_failure_20260915.md)
+  — the replicated whole-form memorization collapse.
 
 ### Experimental substrate
 
@@ -78,7 +78,7 @@ production authorization exists yet. See the
 - [Construction and validation workflow](docs/workflows/m0_prime.md) explains
   the deterministic derivation from frozen M₀ Devanagari `continuous`.
 
-#### S1M2 — Reusable untyped pieces — ROUND 2 CLOSED; SCIENCE BLOCKED
+#### S1M2 — Reusable untyped pieces — V1 FAILED; V2 REPAIR AWAITS GATING
 
 - [P1c exact-inference closure](reports/core_methods/reusable_pieces/s1m2_p1c_closure_20260905.md)
   records the completed exact shared/composed inference gate.
@@ -90,6 +90,11 @@ production authorization exists yet. See the
   records deterministic worker-count equivalence and the 12-worker engineering
   preference, while withholding a formal PASS because stress overflows truncate
   candidate support.
+- [V1 Full M₀ scientific failure](reports/core_methods/reusable_pieces/s1m2_full_m0_scientific_failure_20260915.md)
+  records the later replicated whole-form memorization collapse.
+- [V2 semantic-repair contract](reports/core_methods/reusable_pieces/s1m2_v2_semantic_repair_20260916.md)
+  records the local semantic repair; no real-corpus or performance validation
+  has yet been run.
 - The compact [S1M2 report index](reports/core_methods/reusable_pieces/README.md)
   orders the detailed scientific and implementation checkpoints.
 

@@ -19,7 +19,7 @@ def _piece_state_digest(connection: sqlite3.Connection) -> tuple[int, str]:
     digest = hashlib.sha256()
     rows = 0
     for key, count, support in connection.execute(
-        "SELECT form_key, expected_count, occurrence_support "
+        "SELECT form_key, expected_count, host_type_support "
         "FROM piece_lexicon ORDER BY form_key"
     ):
         digest.update(str(key).encode("ascii"))
