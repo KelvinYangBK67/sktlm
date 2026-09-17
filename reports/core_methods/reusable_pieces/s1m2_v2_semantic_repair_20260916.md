@@ -7,9 +7,9 @@ Status: implemented and focused-local validated; Full M₀ validation not run
 
 This is the minimal V2 repair following the documented
 `reusable_pieces_v1` whole-form-memorization failure. It corrects four
-identified semantic defects without changing the piece-scoring objective,
-its hyperparameters, the fixed sandhi inventory, or joint outer/inner exact
-inference.
+identified semantic defects and adds one optional transformed-sandhi event
+cost without changing the piece-scoring objective, its hyperparameters, the
+fixed sandhi inventory, or joint outer/inner exact inference.
 
 The V1 defects were:
 
@@ -58,6 +58,33 @@ visible fence:        ...v e... -> ...ū | e...
 
 In particular, regression coverage now includes
 `svayaṃbhv ekam -> svayaṃbhū | ekam`. No sandhi rule was added or changed.
+
+## Transformed sandhi event cost
+
+The analysis score has one additional configurable term:
+
+```text
+log_score(analysis)
+  = previous_log_score(analysis)
+    - sandhi_transformation_penalty
+      * number_of_transformed_sandhi_events(analysis)
+```
+
+The parameter is `gamma = sandhi_transformation_penalty`, with default
+`0.0` for exact backward compatibility. A direct identity boundary costs
+zero. A genuinely `transformed=True` internal or visible inversion costs
+exactly `gamma` once per event, independent of how many frozen `rule_ids`
+encode that same event. Internal events are charged on the lexical transition
+that reaches their internal boundary node; visible events are charged on the
+preceding outer factor's selected outgoing boundary option. Thus incoming and
+outgoing factor views cannot double-charge one visible event.
+
+Gamma is part of the S1M2 `TrainingConfig` payload/configuration signature and
+is exposed as `--sandhi-transformation-penalty`. Different gamma values cannot
+reuse one checkpoint identity. The field remains absent from the frozen S1M1
+payload, and nonzero use with S1M1 is rejected. Compact, compiled shared, and
+legacy exact inference apply the same event indicator without enumerating
+rules or changing topology. No value was tuned and no corpus run was made.
 
 ## Positional piece identity
 
@@ -157,6 +184,8 @@ Tiny deterministic regressions cover:
 - hard whitespace fences and rejection of the obsolete merge setting;
 - paired internal `ve -> ū | e` and visible-fence inversion;
 - the full `svayaṃbhv ekam -> svayaṃbhū | ekam` example;
+- zero-cost backward compatibility, exact one- and two-event gamma costs, and
+  one-event charging when multiple rule IDs share a transformation;
 - repeated whole-form host diversity of one;
 - cross-host `deva@LEFT` qualification;
 - separation of `m@RIGHT` and `m@LEFT` counts/support;

@@ -42,6 +42,7 @@ class LazyLexicalSpan:
     boundary: LexicalBoundary | None
     rule_ids: tuple[str, ...]
     identity_edge: bool
+    transformed: bool
 
     @property
     def symbols(self) -> tuple[Phoneme, ...]:
@@ -55,6 +56,7 @@ class LazyLexicalSpan:
             boundary=self.boundary,
             rule_ids=self.rule_ids,
             identity_edge=self.identity_edge,
+            transformed=self.transformed,
         )
 
 
@@ -111,6 +113,7 @@ class LazyTokenLattice:
             boundary=boundary,
             rule_ids=right.rule_ids if not right.is_end else (),
             identity_edge=identity_edge,
+            transformed=right.transformed if not right.is_end else False,
         )
 
     def iter_spans_from(self, left_index: int) -> Iterator[LazyLexicalSpan]:

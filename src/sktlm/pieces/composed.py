@@ -14,7 +14,7 @@ import math
 import time
 from array import array
 from collections import OrderedDict, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from sktlm.latent.candidates import LexicalBoundary
 from sktlm.latent.inference import BoundaryPosterior, logaddexp
@@ -507,9 +507,12 @@ def _extend_token_path(
     span: LazyLexicalSpan,
     segmentation: PieceSegmentation,
     segmentation_key: tuple[str, ...],
+    transformation_penalty: float,
 ) -> _ComposedPath:
     return _ComposedPath(
-        score=prefix.score + segmentation.log_weight,
+        score=(
+            prefix.score + segmentation.log_weight - transformation_penalty
+        ),
         words=prefix.words + (span.word,),
         piece_segmentations=(
             prefix.piece_segmentations + (segmentation.pieces,)
@@ -534,6 +537,7 @@ def _top_token_path_extensions(
         tuple[PieceSegmentation, tuple[str, ...]], ...
     ],
     limit: int,
+    transformation_penalty: float,
 ) -> list[_ComposedPath]:
     """Return the exact top-K Cartesian extensions without building K^2 rows.
 
@@ -560,6 +564,7 @@ def _top_token_path_extensions(
             span,
             first_segmentation,
             first_key,
+            transformation_penalty,
         )
         heapq.heappush(
             heap,
@@ -579,6 +584,7 @@ def _top_token_path_extensions(
             span,
             segmentation,
             segmentation_key,
+            transformation_penalty,
         )
         heapq.heappush(
             heap,
@@ -603,6 +609,7 @@ def _top_compact_token_path_extensions(
         tuple[PieceSegmentation, tuple[str, ...]], ...
     ],
     limit: int,
+    transformation_penalty: float,
 ) -> tuple[int, list[_ComposedPath]]:
     """Bounded presentation extension without a retained lexical-span row."""
 
@@ -616,7 +623,11 @@ def _top_compact_token_path_extensions(
         segmentation_key: tuple[str, ...],
     ) -> _ComposedPath:
         return _ComposedPath(
-            score=prefix.score + segmentation.log_weight,
+            score=(
+                prefix.score
+                + segmentation.log_weight
+                - transformation_penalty
+            ),
             words=prefix.words + (form,),
             piece_segmentations=(
                 prefix.piece_segmentations + (segmentation.pieces,)
@@ -2163,6 +2174,8 @@ class ComposedPieceInference:
 def _evaluate_lazy_token_legacy(
     lattice: LazyTokenLattice,
     engine: ComposedPieceInference,
+    *,
+    sandhi_transformation_penalty: float = 0.0,
 ) -> _TokenSummary:
     node_count = len(lattice.nodes)
     alpha = [-math.inf] * node_count
@@ -2174,8 +2187,12 @@ def _evaluate_lazy_token_legacy(
         for span in lattice.iter_spans_from(start):
             engine.record_lazy_span(hypothesis=True)
             evaluation = engine.evaluate_form(span.word)
+            event_penalty = (
+                sandhi_transformation_penalty if span.transformed else 0.0
+            )
             alpha[span.end] = logaddexp(
-                alpha[span.end], alpha[start] + evaluation.log_score
+                alpha[span.end],
+                alpha[start] + evaluation.log_score - event_penalty,
             )
     engine.add_timing("lazy_token_forward_seconds", started)
     log_z = alpha[-1]
@@ -2189,8 +2206,12 @@ def _evaluate_lazy_token_legacy(
         for span in lattice.iter_spans_from(start):
             engine.record_lazy_span(hypothesis=False)
             evaluation = engine.evaluate_form(span.word)
+            event_penalty = (
+                sandhi_transformation_penalty if span.transformed else 0.0
+            )
             beta[start] = logaddexp(
-                beta[start], evaluation.log_score + beta[span.end]
+                beta[start],
+                evaluation.log_score - event_penalty + beta[span.end],
             )
     engine.add_timing("lazy_token_backward_seconds", started)
 
@@ -2216,14 +2237,20 @@ def _evaluate_lazy_token_legacy(
         for span in lattice.iter_spans_from(start):
             engine.record_lazy_span(hypothesis=False)
             evaluation = engine.evaluate_form(span.word)
+            event_penalty = (
+                sandhi_transformation_penalty if span.transformed else 0.0
+            )
             mass = math.exp(
                 alpha[span.start]
                 + evaluation.log_score
+                - event_penalty
                 + beta[span.end]
                 - log_z
             )
             lexical_counts[span.word] += mass
-            expected_log_weight += mass * evaluation.expected_log_weight
+            expected_log_weight += mass * (
+                evaluation.expected_log_weight - event_penalty
+            )
             expected_piece_tokens += mass * evaluation.expected_piece_tokens
             piece_segmentation_entropy += mass * evaluation.segmentation_entropy
             expected_whole_form_uses += mass * evaluation.whole_form_mass
@@ -2276,9 +2303,18 @@ def _evaluate_lazy_token_legacy(
                 )
                 for prefix in paths[start]:
                     for segmentation, segmentation_key in keyed_segmentations:
+                        event_penalty = (
+                            sandhi_transformation_penalty
+                            if span.transformed
+                            else 0.0
+                        )
                         candidates.append(
                             _ComposedPath(
-                                score=prefix.score + segmentation.log_weight,
+                                score=(
+                                    prefix.score
+                                    + segmentation.log_weight
+                                    - event_penalty
+                                ),
                                 words=prefix.words + (span.word,),
                                 piece_segmentations=(
                                     prefix.piece_segmentations
@@ -2541,6 +2577,8 @@ def _compact_boundary(
 def _evaluate_lazy_token_compact(
     lattice: LazyTokenLattice,
     engine: ComposedPieceInference,
+    *,
+    sandhi_transformation_penalty: float = 0.0,
 ) -> _TokenSummary:
     """Exact shared inference over packed structural lexical hypotheses."""
 
@@ -2559,8 +2597,13 @@ def _evaluate_lazy_token_compact(
         for hypothesis_index in range(offsets[start], offsets[start + 1]):
             end = ends[hypothesis_index]
             score = batch.endpoint_scores[endpoint_ids[hypothesis_index]]
+            event_penalty = (
+                sandhi_transformation_penalty
+                if lattice.nodes[end].transformed
+                else 0.0
+            )
             alpha[end] = logaddexp(
-                alpha[end], alpha[start] + score.log_score
+                alpha[end], alpha[start] + score.log_score - event_penalty
             )
     engine.add_timing("lazy_token_forward_seconds", started)
     log_z = alpha[-1]
@@ -2574,8 +2617,13 @@ def _evaluate_lazy_token_compact(
         for hypothesis_index in range(offsets[start], offsets[start + 1]):
             end = ends[hypothesis_index]
             score = batch.endpoint_scores[endpoint_ids[hypothesis_index]]
+            event_penalty = (
+                sandhi_transformation_penalty
+                if lattice.nodes[end].transformed
+                else 0.0
+            )
             beta[start] = logaddexp(
-                beta[start], score.log_score + beta[end]
+                beta[start], score.log_score - event_penalty + beta[end]
             )
     engine.add_timing("lazy_token_backward_seconds", started)
 
@@ -2591,6 +2639,7 @@ def _evaluate_lazy_token_compact(
     expected_whole_form_uses = 0.0
     expected_singleton_path_uses = 0.0
     expected_multi_piece_uses = 0.0
+    expected_transformation_penalty = 0.0
     identity_log_score = -math.inf
     started = time.perf_counter()
     for start in range(node_count - 1):
@@ -2598,13 +2647,23 @@ def _evaluate_lazy_token_compact(
             end = ends[hypothesis_index]
             endpoint_id = endpoint_ids[hypothesis_index]
             score = batch.endpoint_scores[endpoint_id]
+            event_penalty = (
+                sandhi_transformation_penalty
+                if lattice.nodes[end].transformed
+                else 0.0
+            )
             mass = math.exp(
-                alpha[start] + score.log_score + beta[end] - log_z
+                alpha[start]
+                + score.log_score
+                - event_penalty
+                + beta[end]
+                - log_z
             )
             lexical_masses[endpoint_id] += mass
             endpoint_masses[endpoint_id] += mass
             expected_prior_log_z += mass * score.prior_log_normalizer
             mass_weighted_raw_log_z += mass * score.raw_log_partition
+            expected_transformation_penalty += mass * event_penalty
             whole_mass = math.exp(
                 score.whole_raw_score - score.raw_log_partition
             )
@@ -2725,6 +2784,11 @@ def _evaluate_lazy_token_compact(
                     boundary=_compact_boundary(lattice, end),
                     segmentations=keyed_segmentations,
                     limit=engine.inspection_top_k,
+                    transformation_penalty=(
+                        sandhi_transformation_penalty
+                        if lattice.nodes[end].transformed
+                        else 0.0
+                    ),
                 )
                 paths[target_end].extend(candidates)
                 paths[target_end] = _trim_composed_paths(
@@ -2735,7 +2799,11 @@ def _evaluate_lazy_token_compact(
 
     return _TokenSummary(
         log_partition=log_z,
-        expected_log_weight=expected_raw_score - expected_prior_log_z,
+        expected_log_weight=(
+            expected_raw_score
+            - expected_prior_log_z
+            - expected_transformation_penalty
+        ),
         identity_log_score=identity_log_score,
         expected_piece_tokens=sum(piece_counts.values()),
         piece_segmentation_entropy=max(
@@ -2762,12 +2830,18 @@ def _evaluate_lazy_token_shared(
     engine: ComposedPieceInference,
     topology: CompiledSharedFormTopology | None = None,
     topology_reused: bool = False,
+    *,
+    sandhi_transformation_penalty: float = 0.0,
 ) -> _TokenSummary | None:
     """Exact training marginals through a bounded token-local prefix DAG."""
 
     node_count = len(lattice.nodes)
     if topology is None:
-        return _evaluate_lazy_token_compact(lattice, engine)
+        return _evaluate_lazy_token_compact(
+            lattice,
+            engine,
+            sandhi_transformation_penalty=sandhi_transformation_penalty,
+        )
     legacy_spans: list[tuple[LazyLexicalSpan, ...]] = []
     unique_forms: dict[str, PhonologicalForm] = {}
     for start in range(node_count - 1):
@@ -2797,9 +2871,12 @@ def _evaluate_lazy_token_shared(
             continue
         for span in spans:
             score = batch.forms[span.word.key].log_score
+            event_penalty = (
+                sandhi_transformation_penalty if span.transformed else 0.0
+            )
             alpha[span.end] = logaddexp(
                 alpha[span.end],
-                alpha[start] + score,
+                alpha[start] + score - event_penalty,
             )
     engine.add_timing("lazy_token_forward_seconds", started)
     log_z = alpha[-1]
@@ -2812,9 +2889,12 @@ def _evaluate_lazy_token_shared(
     for start in range(node_count - 2, -1, -1):
         for span in spans_by_start[start]:
             score = batch.forms[span.word.key].log_score
+            event_penalty = (
+                sandhi_transformation_penalty if span.transformed else 0.0
+            )
             beta[start] = logaddexp(
                 beta[start],
-                score + beta[span.end],
+                score - event_penalty + beta[span.end],
             )
     engine.add_timing("lazy_token_backward_seconds", started)
 
@@ -2830,13 +2910,18 @@ def _evaluate_lazy_token_shared(
     expected_whole_form_uses = 0.0
     expected_singleton_path_uses = 0.0
     expected_multi_piece_uses = 0.0
+    expected_transformation_penalty = 0.0
     started = time.perf_counter()
     for start, spans in enumerate(spans_by_start):
         for span in spans:
             score = batch.forms[span.word.key]
+            event_penalty = (
+                sandhi_transformation_penalty if span.transformed else 0.0
+            )
             mass = math.exp(
                 alpha[span.start]
                 + score.log_score
+                - event_penalty
                 + beta[span.end]
                 - log_z
             )
@@ -2844,6 +2929,7 @@ def _evaluate_lazy_token_shared(
             endpoint_masses[span.word.key] += mass
             expected_prior_log_z += mass * score.prior_log_normalizer
             mass_weighted_raw_log_z += mass * score.raw_log_partition
+            expected_transformation_penalty += mass * event_penalty
             whole_mass = math.exp(
                 score.whole_raw_score - score.raw_log_partition
             )
@@ -2963,6 +3049,11 @@ def _evaluate_lazy_token_shared(
                         span,
                         keyed_segmentations,
                         engine.inspection_top_k,
+                        (
+                            sandhi_transformation_penalty
+                            if span.transformed
+                            else 0.0
+                        ),
                     )
                 )
                 paths[span.end] = _trim_composed_paths(
@@ -2973,7 +3064,11 @@ def _evaluate_lazy_token_shared(
         engine.add_timing("lazy_token_top_k_seconds", started)
     return _TokenSummary(
         log_partition=log_z,
-        expected_log_weight=expected_raw_score - expected_prior_log_z,
+        expected_log_weight=(
+            expected_raw_score
+            - expected_prior_log_z
+            - expected_transformation_penalty
+        ),
         identity_log_score=identity_log_score,
         expected_piece_tokens=sum(piece_counts.values()),
         piece_segmentation_entropy=max(
@@ -3004,6 +3099,7 @@ def _evaluate_lazy_token(
     topology: CompiledSharedFormTopology | None = None,
     topology_available: bool = False,
     topology_reused: bool = False,
+    sandhi_transformation_penalty: float = 0.0,
 ) -> _TokenSummary:
     if (
         engine.cache_config.shared_token_marginals
@@ -3011,16 +3107,25 @@ def _evaluate_lazy_token(
     ):
         if topology_available and topology is None:
             engine._events["shared_batch_fallbacks"] += 1
-            return _evaluate_lazy_token_legacy(lattice, engine)
+            return _evaluate_lazy_token_legacy(
+                lattice,
+                engine,
+                sandhi_transformation_penalty=sandhi_transformation_penalty,
+            )
         shared = _evaluate_lazy_token_shared(
             lattice,
             engine,
             topology,
             topology_reused,
+            sandhi_transformation_penalty=sandhi_transformation_penalty,
         )
         if shared is not None:
             return shared
-    return _evaluate_lazy_token_legacy(lattice, engine)
+    return _evaluate_lazy_token_legacy(
+        lattice,
+        engine,
+        sandhi_transformation_penalty=sandhi_transformation_penalty,
+    )
 
 
 def _score_lazy_token(
@@ -3031,6 +3136,7 @@ def _score_lazy_token(
     topology: CompiledSharedFormTopology | None = None,
     topology_available: bool = False,
     topology_reused: bool = False,
+    sandhi_transformation_penalty: float = 0.0,
 ) -> tuple[float, float]:
     """Return outer and identity scores without retaining posterior payloads."""
 
@@ -3058,7 +3164,14 @@ def _score_lazy_token(
                 score = batch.endpoint_scores[
                     support.hypothesis_endpoints[hypothesis_index]
                 ].log_score
-                alpha[end] = logaddexp(alpha[end], alpha[start] + score)
+                event_penalty = (
+                    sandhi_transformation_penalty
+                    if lattice.nodes[end].transformed
+                    else 0.0
+                )
+                alpha[end] = logaddexp(
+                    alpha[end], alpha[start] + score - event_penalty
+                )
                 if start == 0 and end == node_count - 1:
                     identity_log_score = score
         if alpha[-1] == -math.inf:
@@ -3102,9 +3215,12 @@ def _score_lazy_token(
         if alpha[start] == -math.inf:
             continue
         for span in spans:
+            event_penalty = (
+                sandhi_transformation_penalty if span.transformed else 0.0
+            )
             alpha[span.end] = logaddexp(
                 alpha[span.end],
-                alpha[start] + score(span.word),
+                alpha[start] + score(span.word) - event_penalty,
             )
     log_z = alpha[-1]
     if log_z == -math.inf:
@@ -3132,13 +3248,18 @@ def _score_factor(
     topology: CompiledSharedFormTopology | None = None,
     topology_available: bool = False,
     topology_reused: bool = False,
+    sandhi_transformation_penalty: float = 0.0,
 ) -> _FactorScore:
+    visible_penalty = (
+        sandhi_transformation_penalty if factor.outgoing.transformed else 0.0
+    )
     if factor.merged_word is not None:
         return _FactorScore(
             factor=factor,
             log_score=(
                 engine._score_form(factor.merged_word)
                 - whitespace_merge_penalty * factor.ignored_whitespace
+                - visible_penalty
             ),
             identity_log_score=-math.inf,
         )
@@ -3150,12 +3271,13 @@ def _score_factor(
         topology=topology,
         topology_available=topology_available,
         topology_reused=topology_reused,
+        sandhi_transformation_penalty=sandhi_transformation_penalty,
     )
     if factor.incoming.transformed or factor.outgoing.transformed:
         identity_log_score = -math.inf
     return _FactorScore(
         factor=factor,
-        log_score=log_score,
+        log_score=log_score - visible_penalty,
         identity_log_score=identity_log_score,
     )
 
@@ -3169,11 +3291,18 @@ def _evaluate_factor(
     topology: CompiledSharedFormTopology | None = None,
     topology_available: bool = False,
     topology_reused: bool = False,
+    sandhi_transformation_penalty: float = 0.0,
 ) -> _FactorSummary:
+    visible_penalty = (
+        sandhi_transformation_penalty if factor.outgoing.transformed else 0.0
+    )
     if factor.merged_word is not None:
         engine.record_merged_form()
         evaluation = engine.evaluate_form(factor.merged_word)
-        penalty = whitespace_merge_penalty * factor.ignored_whitespace
+        penalty = (
+            whitespace_merge_penalty * factor.ignored_whitespace
+            + visible_penalty
+        )
         top_paths = tuple(
             _ComposedPath(
                 score=segmentation.log_weight - penalty,
@@ -3231,11 +3360,12 @@ def _evaluate_factor(
         topology=topology,
         topology_available=topology_available,
         topology_reused=topology_reused,
+        sandhi_transformation_penalty=sandhi_transformation_penalty,
     )
     return _FactorSummary(
         factor=factor,
-        log_score=token.log_partition,
-        expected_log_weight=token.expected_log_weight,
+        log_score=token.log_partition - visible_penalty,
+        expected_log_weight=token.expected_log_weight - visible_penalty,
         identity_log_score=(
             token.identity_log_score
             if not factor.incoming.transformed and not factor.outgoing.transformed
@@ -3255,7 +3385,10 @@ def _evaluate_factor(
         piece_occurrences=token.piece_occurrences,
         shared_occurrences=token.shared_occurrences,
         compact_occurrences=token.compact_occurrences,
-        top_paths=token.top_paths,
+        top_paths=tuple(
+            replace(path, score=path.score - visible_penalty)
+            for path in token.top_paths
+        ),
     )
 
 
@@ -3429,6 +3562,7 @@ def infer_composed_segment(
     engine: ComposedPieceInference,
     *,
     whitespace_merge_penalty: float,
+    sandhi_transformation_penalty: float = 0.0,
     support_epsilon: float = 0.0,
     topology: CompiledSegmentTopology | None = None,
 ) -> ComposedSegmentInference:
@@ -3436,6 +3570,8 @@ def infer_composed_segment(
 
     if whitespace_merge_penalty < 0.0:
         raise ValueError("whitespace_merge_penalty must be >= 0")
+    if sandhi_transformation_penalty < 0.0:
+        raise ValueError("sandhi_transformation_penalty must be >= 0")
     if support_epsilon < 0.0:
         raise ValueError("support_epsilon must be >= 0")
     if topology is not None and topology.factor_ids != tuple(
@@ -3460,6 +3596,7 @@ def infer_composed_segment(
                 factor,
                 engine,
                 whitespace_merge_penalty=whitespace_merge_penalty,
+                sandhi_transformation_penalty=sandhi_transformation_penalty,
                 support_epsilon=support_epsilon,
                 topology=factor_topology,
                 topology_available=topology is not None,
@@ -3510,6 +3647,9 @@ def infer_composed_segment(
                     factor,
                     engine,
                     whitespace_merge_penalty=whitespace_merge_penalty,
+                    sandhi_transformation_penalty=(
+                        sandhi_transformation_penalty
+                    ),
                     support_epsilon=support_epsilon,
                     topology=factor_topology,
                     topology_available=topology is not None,
@@ -3538,6 +3678,9 @@ def infer_composed_segment(
                         factor,
                         engine,
                         whitespace_merge_penalty=whitespace_merge_penalty,
+                        sandhi_transformation_penalty=(
+                            sandhi_transformation_penalty
+                        ),
                         support_epsilon=support_epsilon,
                         topology=factor_topology,
                         topology_available=topology is not None,
@@ -3593,6 +3736,7 @@ def infer_composed_segment(
                 factor_score.factor,
                 engine,
                 whitespace_merge_penalty=whitespace_merge_penalty,
+                sandhi_transformation_penalty=sandhi_transformation_penalty,
                 support_epsilon=support_epsilon,
                 topology=factor_topology,
                 topology_available=topology is not None,

@@ -120,6 +120,7 @@ class TrainingConfig:
     complexity_weight: float = 0.5
     complexity_tau: float = 1.0
     whitespace_merge_penalty: float = 8.0
+    sandhi_transformation_penalty: float = 0.0
     allow_whitespace_merge: bool | None = None
     max_internal_matches: int = 512
     max_segment_tokens: int = 128
@@ -190,6 +191,15 @@ class TrainingConfig:
             raise ValueError("complexity_weight must be >= 0")
         if self.complexity_tau <= 0.0:
             raise ValueError("complexity_tau must be > 0")
+        if self.sandhi_transformation_penalty < 0.0:
+            raise ValueError("sandhi_transformation_penalty must be >= 0")
+        if (
+            self.model != S1M2_MODEL
+            and self.sandhi_transformation_penalty != 0.0
+        ):
+            raise ValueError(
+                "sandhi_transformation_penalty is supported only for S1M2"
+            )
         if self.max_segment_tokens < 1:
             raise ValueError("max_segment_tokens must be >= 1")
         if self.model == S1M2_MODEL and self.allow_whitespace_merge:
@@ -255,6 +265,7 @@ class TrainingConfig:
             # because this trainer learned how to run another model.
             payload.pop("model")
             for name in (
+                "sandhi_transformation_penalty",
                 "piece_max_length",
                 "piece_boundary_probability",
                 "piece_alpha",
@@ -1499,6 +1510,9 @@ def _write_training_shard(
                     graph,
                     _WORKER_PIECE_ENGINE,
                     whitespace_merge_penalty=config.whitespace_merge_penalty,
+                    sandhi_transformation_penalty=(
+                        config.sandhi_transformation_penalty
+                    ),
                     support_epsilon=config.piece_support_epsilon,
                     topology=segment_topology,
                 )
@@ -1699,6 +1713,9 @@ def _write_training_bundle_shard(
                     graph,
                     _WORKER_PIECE_ENGINE,
                     whitespace_merge_penalty=config.whitespace_merge_penalty,
+                    sandhi_transformation_penalty=(
+                        config.sandhi_transformation_penalty
+                    ),
                     support_epsilon=config.piece_support_epsilon,
                     topology=topology,
                 )
@@ -3016,6 +3033,9 @@ def _training_pass(
                         graph,
                         piece_engine,
                         whitespace_merge_penalty=config.whitespace_merge_penalty,
+                        sandhi_transformation_penalty=(
+                            config.sandhi_transformation_penalty
+                        ),
                         support_epsilon=config.piece_support_epsilon,
                         topology=segment_topology,
                     )
@@ -3691,6 +3711,9 @@ def _write_inspection_shard(
                     graph,
                     _WORKER_PIECE_ENGINE,
                     whitespace_merge_penalty=config.whitespace_merge_penalty,
+                    sandhi_transformation_penalty=(
+                        config.sandhi_transformation_penalty
+                    ),
                     support_epsilon=config.piece_support_epsilon,
                     topology=segment_topology,
                 )
@@ -4061,6 +4084,9 @@ def _write_inspection_bundle_shard(
                     graph,
                     _WORKER_PIECE_ENGINE,
                     whitespace_merge_penalty=config.whitespace_merge_penalty,
+                    sandhi_transformation_penalty=(
+                        config.sandhi_transformation_penalty
+                    ),
                     support_epsilon=config.piece_support_epsilon,
                     topology=topology,
                 )
@@ -5685,6 +5711,9 @@ def _inspection_pass(
                         graph,
                         piece_engine,
                         whitespace_merge_penalty=config.whitespace_merge_penalty,
+                        sandhi_transformation_penalty=(
+                            config.sandhi_transformation_penalty
+                        ),
                         support_epsilon=config.piece_support_epsilon,
                         topology=segment_topology,
                     )

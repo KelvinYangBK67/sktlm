@@ -64,6 +64,7 @@ class InternalRuleMatch:
     right_underlying: PhonologicalForm
     rule_ids: tuple[str, ...]
     variants: tuple[int, ...]
+    transformed: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,6 +210,20 @@ class StructuredSandhiGrammar:
             grouped.items(),
             key=lambda item: (item[0][0], item[0][1], item[1][0].rule_id),
         ):
+            # Grouped rule IDs are alternative labels for this one boundary
+            # event; transformation status is a property of the realization.
+            surface_symbols = tuple(
+                atom.phoneme
+                for atom in rules[0].surface
+                if atom.phoneme is not None
+            )
+            transformed = (
+                surface_symbols != left.symbols + right.symbols
+                or any(
+                    atom.kind == RealizationKind.AVAGRAHA
+                    for atom in rules[0].surface
+                )
+            )
             match = InternalRuleMatch(
                 start,
                 end,
@@ -216,6 +231,7 @@ class StructuredSandhiGrammar:
                 right,
                 tuple(rule.rule_id for rule in rules),
                 tuple(rule.variant for rule in rules),
+                transformed,
             )
             if self.reconstruct_internal(match) != keys[start:end]:
                 raise RuntimeError("Structured inverse candidate failed exact reconstruction.")

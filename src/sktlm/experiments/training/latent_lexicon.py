@@ -70,6 +70,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--complexity-tau", type=float, default=1.0)
     parser.add_argument("--whitespace-merge-penalty", type=float, default=8.0)
     parser.add_argument(
+        "--sandhi-transformation-penalty",
+        type=float,
+        default=0.0,
+    )
+    parser.add_argument(
         "--no-whitespace-merge",
         action="store_true",
         help="Compatibility flag; observed whitespace is always a hard fence.",
@@ -177,6 +182,7 @@ def main(argv: list[str] | None = None) -> None:
         complexity_weight=args.complexity_weight,
         complexity_tau=args.complexity_tau,
         whitespace_merge_penalty=args.whitespace_merge_penalty,
+        sandhi_transformation_penalty=args.sandhi_transformation_penalty,
         allow_whitespace_merge=(
             False if args.model == S1M2_MODEL else not args.no_whitespace_merge
         ),

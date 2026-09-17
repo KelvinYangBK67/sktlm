@@ -3569,3 +3569,46 @@ FULL_M0_RUN=NO
 FULL_M0_AUTHORIZED=NO
 NEXT_ACTION=PUBLISH_DIRECT_VISIBLE_BOUNDARY_DEDUP
 ```
+
+## S1M2 configurable transformed-sandhi event cost - 2026-09-17
+
+Starting from published HEAD `e50e0b21374748367030816c1cfb8818147ba2d6`,
+the S1M2 composed inference score now admits the scientific configuration
+parameter `sandhi_transformation_penalty = gamma`, default `0.0`. Every
+genuinely transformed internal or visible inversion event contributes exactly
+`-gamma` once. The event carrier is the internal lexical transition's ending
+boundary node or the preceding outer factor's outgoing visible option; grouped
+frozen rule IDs therefore remain rule attribution metadata and never multiply
+the cost.
+
+The parameter is exposed as `--sandhi-transformation-penalty`, validated as
+nonnegative, included in the S1M2 `TrainingConfig` payload and checkpoint/run
+signature, and threaded through training and inspection. Frozen S1M1 payload
+identity is unchanged, and nonzero gamma is rejected for S1M1. Compact,
+compiled shared-prefix, and legacy exact paths all apply the same event bit.
+The external-sandhi inventory, direct boundary cost, piece scorer/objective,
+rho, host support, piece roles, whitespace fencing, caches, topology, bundles,
+and workers are unchanged.
+
+The new focused regression file passed 7 tests in 0.22 seconds. It verifies
+exact gamma-zero agreement with the prior materialized score, one event at
+`gamma`, two events at `2*gamma`, a two-rule-ID event charged once, parity
+across compact/shared/legacy routes, legality and outgoing-only visible
+charging for `svayaṃbhv ekam -> svayaṃbhū | ekam`, completion of
+`rāja n dha`, and CLI/config-signature behavior. Eight directly related
+existing hard-fence, visible/internal inversion, and optimized-path parity
+tests passed in 0.44 seconds. No parameter tuning, smoke/corpus run,
+representative/stress benchmark, VM/cloud action, Full M₀, or full pytest was
+run.
+
+```text
+SANDHI_TRANSFORMATION_PENALTY_DEFAULT=0.0
+TRANSFORMED_EVENT_COST=-gamma_ONCE
+RULE_ID_MULTIPLIER=NO
+INTERNAL_VISIBLE_GAMMA=SHARED
+S1M2_CONFIG_SIGNATURE=GAMMA_SENSITIVE
+FROZEN_S1M1_CONFIG_IDENTITY=UNCHANGED
+FULL_M0_RUN=NO
+FULL_M0_AUTHORIZED=NO
+NEXT_ACTION=PUBLISH_NARROW_TRANSFORMATION_COST
+```

@@ -2,10 +2,10 @@
 
 DATE=2026-09-17
 BRANCH=exp/s1m2-reusable-pieces
-STATUS=S1M2_DIRECT_VISIBLE_BOUNDARY_DEDUP_VALIDATED_PENDING_PUBLICATION
+STATUS=S1M2_TRANSFORMED_SANDHI_PENALTY_VALIDATED_PENDING_PUBLICATION
 
-TASK_BASE_HEAD=97739cb7a89b0eb6178eac58568285ee588ff060
-PREVIOUS_REPAIR_COMMIT=97739cb7a89b0eb6178eac58568285ee588ff060
+TASK_BASE_HEAD=e50e0b21374748367030816c1cfb8818147ba2d6
+PREVIOUS_REPAIR_COMMIT=e50e0b21374748367030816c1cfb8818147ba2d6
 PREVIOUS_REPAIR_PUSHED=YES
 S1M2_V1_SCIENTIFIC_FAILURE=UNCHANGED
 S1M2_V2_SEMANTIC_REPAIR=IMPLEMENTED_LOCAL
@@ -19,6 +19,10 @@ DISTINCT_HOST_TYPE_QUALIFICATION=PASS_LOCAL
 POSTERIOR_HOST_SUPPORT_CONSERVATION=PASS_LOCAL
 WHOLE_FORM_FALLBACK=LEGAL
 SCORER_OBJECTIVE_CHANGED=NO
+SANDHI_TRANSFORMATION_PENALTY=CONFIGURABLE_DEFAULT_0.0
+SANDHI_TRANSFORMATION_EVENT_UNIT=ONE_TRANSFORMED_BOUNDARY_EVENT
+SANDHI_TRANSFORMATION_RULE_ID_MULTIPLIER=NO
+SANDHI_TRANSFORMATION_CONFIG_SIGNATURE=INCLUDED_FOR_S1M2
 FROZEN_SANDHI_INVENTORY_CHANGED=NO
 FROZEN_M0_CHANGED=NO
 FULL_M0_RUN=NO
@@ -56,6 +60,15 @@ through the existing contribution points in those paths; no second DP,
 legal-identity Cartesian expansion, four-way duplicated DP, or corpus
 occurrence-history materialization was introduced.
 
+The optional S1M2 scientific parameter
+`sandhi_transformation_penalty = gamma` now subtracts `gamma` exactly once for
+each `transformed=True` internal or visible inversion event. Internal events
+are charged on the lexical transition ending at their boundary node; visible
+events are charged only on the preceding factor's outgoing option. Grouped
+rule IDs do not multiply the cost. The default is `0.0`, the S1M2 config
+signature distinguishes gamma values, and frozen S1M1 payload identity remains
+unchanged. No value was tuned.
+
 Documentation authority for this patch is
 `reports/core_methods/reusable_pieces/s1m2_v2_semantic_repair_20260916.md`.
 The V1 scientific authority remains
@@ -91,7 +104,16 @@ Focused validation for the posterior-host-support blocker:
   lazy/composed Pass-1 path with total posterior mass approximately 1 and zero
   merged factors.
 
-NEXT_ACTION=PUBLISH_DIRECT_VISIBLE_BOUNDARY_DEDUP
+Focused validation for the transformed-event penalty:
+
+- touched production modules and the focused regression file compile;
+- the new focused file passes 7 tests, covering gamma zero, exact one- and
+  two-event costs, grouped rule IDs, all compact/shared/legacy routes,
+  `svayaṃbhv ekam`, `rāja n dha`, CLI/config, and signature separation;
+- 8 directly related existing hard-fence, visible/internal inversion, and
+  optimized-path parity tests pass.
+
+NEXT_ACTION=PUBLISH_TRANSFORMED_SANDHI_PENALTY
 
 Do not run Full M₀, deploy to a VM, or run a representative, stress, RAM, or
 runtime benchmark without separate researcher review and authorization.

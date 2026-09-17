@@ -48,6 +48,7 @@ class InternalBoundaryNode:
     source_end: int
     is_start: bool = False
     is_end: bool = False
+    transformed: bool = False
 
 
 @dataclass(slots=True)
@@ -73,6 +74,7 @@ class LexicalEdge:
     boundary: LexicalBoundary | None
     rule_ids: tuple[str, ...]
     identity_edge: bool
+    transformed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,6 +210,7 @@ def candidate_graph_fingerprint(graph: CandidateGraph) -> str:
                 node.source_end,
                 int(node.is_start),
                 int(node.is_end),
+                int(node.transformed),
             )
         for edge in factor.lattice.edges:
             boundary = edge.boundary
@@ -218,6 +221,7 @@ def candidate_graph_fingerprint(graph: CandidateGraph) -> str:
                 edge.word.key,
                 ",".join(edge.rule_ids),
                 int(edge.identity_edge),
+                int(edge.transformed),
                 boundary.boundary_id if boundary is not None else "",
                 boundary.cue_kind if boundary is not None else "",
                 boundary.source_start if boundary is not None else "",
@@ -349,6 +353,7 @@ def _internal_nodes(
             rule_ids=match.rule_ids,
             source_start=token.units[match.start].source_start,
             source_end=token.units[match.end - 1].source_end,
+            transformed=match.transformed,
         )
         for match in matches
     ]
@@ -429,6 +434,7 @@ def build_token_lattice(
                     boundary=boundary,
                     rule_ids=right.rule_ids if not right.is_end else (),
                     identity_edge=identity_edge,
+                    transformed=right.transformed if not right.is_end else False,
                 )
             )
     if not any(edge.start == 0 for edge in edges):
