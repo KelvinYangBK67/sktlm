@@ -1,12 +1,9 @@
 /notes/
-/data/raw/
-/data/intermediate/
-/data/processed/
-/data/canonical
-/data/representations
-/data/derived/
-/data/tokenizer_corpora/
-/data/canonical_candidate/
+/data/*
+!/data/manifests/
+!/data/manifests/**
+!/data/rules/
+!/data/rules/**
 /reports/cleaning/generated/
 __pycache__/
 *.py[cod]
