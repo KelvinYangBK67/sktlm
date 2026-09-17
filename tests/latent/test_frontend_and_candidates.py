@@ -89,6 +89,38 @@ def test_observed_whitespace_is_a_hard_lexical_fence() -> None:
         TrainingConfig(model=S1M2_MODEL, allow_whitespace_merge=True)
 
 
+def test_short_token_between_visible_fences_keeps_direct_complete_path() -> None:
+    grammar = StructuredSandhiGrammar.from_default_inventory()
+    segment = next(iter_observed_segments("rāja n dha"))
+    graph = build_candidate_graph(
+        segment,
+        grammar,
+        CandidateConfig(allow_whitespace_merge=False),
+    )
+
+    assert all(
+        any(
+            option.direct
+            and option.left_consumed == 0
+            and option.right_consumed == 0
+            for option in graph.boundary_options[boundary_index]
+        )
+        for boundary_index in (1, 2)
+    )
+    assert all(
+        any(option.rule_ids for option in graph.boundary_options[boundary_index])
+        for boundary_index in (1, 2)
+    )
+    inference = infer_segment(
+        graph,
+        NeutralFormScorer(),
+        whitespace_merge_penalty=8.0,
+    )
+
+    assert inference.identity_mass + inference.latent_mass == pytest.approx(1.0)
+    assert not any(factor.is_merge for factor in graph.factors)
+
+
 def test_written_space_can_split_a_joined_grammar_realization() -> None:
     grammar = StructuredSandhiGrammar.from_default_inventory()
     segment = next(iter_observed_segments("namo 'tharvavedāya"))

@@ -3490,3 +3490,46 @@ FULL_M0_RUN=NO
 FULL_M0_AUTHORIZED=NO
 NEXT_ACTION=PUBLISH_NARROW_FIX_THEN_HUMAN_DESIGN_OF_BOUNDED_V2_PREFLIGHT
 ```
+
+## S1M2 direct visible-boundary completeness repair - 2026-09-17
+
+On `bc10308048bb7c1b179b3e0dedb10581714e8093`, an IAST `surface_word`
+Pass-1 probe over only `configs/benchmarks/latent_smoke_documents.txt` found
+the first incomplete segment at
+`6_sastra/3_phil/buddh/nrat_1_u.txt`, line 7, segment 0:
+`dharmam ekāntakalyāṇaṃ rāja n dha rmodayāya te`.
+
+The diagnosis confirmed the visible-boundary direct-option bug. At
+`rāja | n`, identity-like `EXT_0033` was the only boundary option and consumed
+one unit from each side. At `n | dha`, identity-like `EXT_0746` likewise
+consumed one unit from each side. Because `_visible_boundary_options()` omitted
+direct `0/0` whenever any non-transformed grammar match existed, both sides
+consumed the one-phoneme middle token and its lattice had no factor.
+
+Ordinary visible whitespace boundaries now always retain the direct `0/0`
+option alongside all exact external-sandhi inverses. This restores candidate
+completeness without permitting any lexical factor to cross whitespace. The
+fixed sandhi inventory, scorer, posterior host support, piece roles, and all
+other scientific/engineering settings are unchanged.
+
+The focused candidate/frontend file passed 8 tests in 0.42 seconds, including
+the new `rāja n dha` complete-path regression and the existing visible
+`svayaṃbhv ekam -> svayaṃbhū | ekam`, internal `ve -> ū | e`, and hard-fence
+regressions. The original first failing segment then completed in the S1M2
+lazy/composed Pass-1 path with direct `0/0` present at all six visible
+boundaries, total posterior mass `1.000000000000007`, and zero merged factors.
+No later smoke segment, full corpus, representative/stress benchmark, VM/cloud
+operation, or Full M₀ run was executed.
+
+```text
+VISIBLE_BOUNDARY_DIRECT_OPTION=ALWAYS_PRESENT
+FIRST_FAILING_SMOKE_DOCUMENT=6_sastra/3_phil/buddh/nrat_1_u.txt
+FIRST_FAILING_SMOKE_LINE=7
+FIRST_FAILING_SMOKE_SEGMENT=0
+SHORT_MIDDLE_TOKEN_COMPLETE_PATH=PASS_LOCAL
+WHITESPACE_LEXICAL_MERGE=FORBIDDEN_UNCHANGED
+FROZEN_SANDHI_INVENTORY_CHANGED=NO
+FULL_M0_RUN=NO
+FULL_M0_AUTHORIZED=NO
+NEXT_ACTION=PUBLISH_DIRECT_VISIBLE_BOUNDARY_FIX
+```

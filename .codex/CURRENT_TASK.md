@@ -1,16 +1,17 @@
 # CURRENT TASK
 
-DATE=2026-09-16
+DATE=2026-09-17
 BRANCH=exp/s1m2-reusable-pieces
-STATUS=S1M2_POSTERIOR_HOST_SUPPORT_FIX_VALIDATED_PENDING_PUBLICATION
+STATUS=S1M2_DIRECT_VISIBLE_BOUNDARY_FIX_VALIDATED_PENDING_PUBLICATION
 
-TASK_BASE_HEAD=f0de3c9ef75b724e9355d7bd17f8589645f03e71
-PREVIOUS_REPAIR_COMMIT=f0de3c9ef75b724e9355d7bd17f8589645f03e71
+TASK_BASE_HEAD=bc10308048bb7c1b179b3e0dedb10581714e8093
+PREVIOUS_REPAIR_COMMIT=bc10308048bb7c1b179b3e0dedb10581714e8093
 PREVIOUS_REPAIR_PUSHED=YES
 S1M2_V1_SCIENTIFIC_FAILURE=UNCHANGED
 S1M2_V2_SEMANTIC_REPAIR=IMPLEMENTED_LOCAL
 OBSERVED_WHITESPACE_HARD_FENCE=PASS_LOCAL
 VISIBLE_BOUNDARY_JOINED_RULE_INVERSION=PASS_LOCAL
+VISIBLE_BOUNDARY_DIRECT_OPTION=ALWAYS_PRESENT_PASS_LOCAL
 INTERNAL_JOINED_RULE_INVERSION=PASS_LOCAL
 POSITIONAL_PIECE_IDENTITY=PASS_LOCAL
 DISTINCT_HOST_TYPE_QUALIFICATION=PASS_LOCAL
@@ -21,7 +22,11 @@ FROZEN_SANDHI_INVENTORY_CHANGED=NO
 FROZEN_M0_CHANGED=NO
 FULL_M0_RUN=NO
 FULL_M0_AUTHORIZED=NO
-REMOTE_OPERATIONS_RUN=GIT_PUSH_ONLY_THIS_HANDOFF
+FIRST_FAILING_SMOKE_DOCUMENT=6_sastra/3_phil/buddh/nrat_1_u.txt
+FIRST_FAILING_SMOKE_LINE=7
+FIRST_FAILING_SMOKE_SEGMENT=0
+ROOT_CAUSE=DIRECT_VISIBLE_BOUNDARY_OPTION_OMITTED
+REMOTE_OPERATIONS_RUN=PREVIOUS_GIT_PUSH_ONLY
 
 The local V2 patch makes every observed space a hard lexical fence without
 equating lexical boundary with whitespace: missing spaces still permit latent
@@ -55,9 +60,17 @@ Documentation authority for this patch is
 The V1 scientific authority remains
 `reports/core_methods/reusable_pieces/s1m2_full_m0_scientific_failure_20260915.md`.
 
-No real-corpus or performance conclusion is available. The next session must
-not launch Full M₀ or a large benchmark merely because the unit regressions
-pass.
+The smoke-list first-failure probe found
+`6_sastra/3_phil/buddh/nrat_1_u.txt`, line 7, segment 0:
+`dharmam ekāntakalyāṇaṃ rāja n dha rmodayāya te`. The one-phoneme middle
+token `n` had no factor because the left and right visible boundaries exposed
+only non-transformed grammar options that each consumed it. Ordinary visible
+boundaries now always include the direct `0/0` option alongside every legal
+sandhi inverse; whitespace remains a hard lexical fence.
+
+No broad real-corpus or performance conclusion is available. The next session
+must not launch Full M₀ or a large benchmark merely because the focused
+regressions pass.
 
 Focused validation for the posterior-host-support blocker:
 
@@ -68,8 +81,14 @@ Focused validation for the posterior-host-support blocker:
 - the public model label remains `reusable_pieces_v1` deliberately for current
   config/checkpoint/contract/audit compatibility; a rename should be a
   separately versioned migration.
+- visible-boundary candidate regressions: 8 passed in 0.42s, including the
+  short-middle-token complete path, `svayaṃbhv ekam`, internal `ve`, and hard
+  whitespace fencing;
+- the original first failing smoke segment now completes under the exact S1M2
+  lazy/composed Pass-1 path with total posterior mass approximately 1 and zero
+  merged factors.
 
-NEXT_ACTION=PUBLISH_NARROW_FIX_THEN_HUMAN_DESIGN_OF_BOUNDED_V2_PREFLIGHT
+NEXT_ACTION=PUBLISH_DIRECT_VISIBLE_BOUNDARY_FIX
 
 Do not run Full M₀, deploy to a VM, or run a representative, stress, RAM, or
 runtime benchmark without separate researcher review and authorization.

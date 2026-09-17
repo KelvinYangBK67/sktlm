@@ -263,19 +263,18 @@ def _visible_boundary_options(
     if right.units and right.units[0].kind == "avagraha":
         matches = tuple(match for match in matches if match.right_consumed > 0)
     options = [_boundary_option_from_match(match) for match in matches]
-    if not any(not match.transformed for match in matches):
-        options.append(
-            BoundaryOption(
-                key=f"direct:{boundary_index}",
-                left_consumed=0,
-                right_consumed=0,
-                left_underlying=(),
-                right_underlying=(),
-                rule_ids=(),
-                transformed=False,
-                direct=True,
-            )
+    options.append(
+        BoundaryOption(
+            key=f"direct:{boundary_index}",
+            left_consumed=0,
+            right_consumed=0,
+            left_underlying=(),
+            right_underlying=(),
+            rule_ids=(),
+            transformed=False,
+            direct=True,
         )
+    )
     deduplicated = {option.key: option for option in options}
     return tuple(deduplicated[key] for key in sorted(deduplicated))
 
