@@ -98,19 +98,20 @@ def test_short_token_between_visible_fences_keeps_direct_complete_path() -> None
         CandidateConfig(allow_whitespace_merge=False),
     )
 
-    assert all(
-        any(
+    for boundary_index in (1, 2):
+        matches = grammar.match_visible_boundary(
+            segment.tokens[boundary_index - 1].units,
+            segment.tokens[boundary_index].units,
+        )
+        options = graph.boundary_options[boundary_index]
+        assert any(not match.transformed for match in matches)
+        assert any(
             option.direct
             and option.left_consumed == 0
             and option.right_consumed == 0
-            for option in graph.boundary_options[boundary_index]
+            for option in options
         )
-        for boundary_index in (1, 2)
-    )
-    assert all(
-        any(option.rule_ids for option in graph.boundary_options[boundary_index])
-        for boundary_index in (1, 2)
-    )
+        assert all(not option.rule_ids or option.transformed for option in options)
     inference = infer_segment(
         graph,
         NeutralFormScorer(),
@@ -164,6 +165,7 @@ def test_visible_fence_can_split_joined_ve_realization() -> None:
         and option.left_underlying == parse_iast_form("ū").symbols
         and option.right_underlying == parse_iast_form("e").symbols
     )
+    assert option.transformed
     assert option.left_consumed == 1
     assert option.right_consumed == 1
     assert any(

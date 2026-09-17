@@ -45,7 +45,10 @@ A hard lexical fence does not assert that surface material on each side is
 identical to its underlying lexical material. At each visible fence, every
 fixed external-sandhi rule with a joined surface realization is considered at
 every exact split of that realization. Forward reconstruction must reproduce
-the observed left and right surface portions exactly. Thus frozen
+the observed left and right surface portions exactly. An ordinary visible
+boundary always retains the direct `0/0` option. A non-transformed grammar
+match is canonicalized to that direct option rather than emitted as a duplicate
+derivation; every transformed inverse remains available. Thus frozen
 `ū + e -> ve` can invert both:
 
 ```text

@@ -2,16 +2,17 @@
 
 DATE=2026-09-17
 BRANCH=exp/s1m2-reusable-pieces
-STATUS=S1M2_DIRECT_VISIBLE_BOUNDARY_FIX_VALIDATED_PENDING_PUBLICATION
+STATUS=S1M2_DIRECT_VISIBLE_BOUNDARY_DEDUP_VALIDATED_PENDING_PUBLICATION
 
-TASK_BASE_HEAD=bc10308048bb7c1b179b3e0dedb10581714e8093
-PREVIOUS_REPAIR_COMMIT=bc10308048bb7c1b179b3e0dedb10581714e8093
+TASK_BASE_HEAD=97739cb7a89b0eb6178eac58568285ee588ff060
+PREVIOUS_REPAIR_COMMIT=97739cb7a89b0eb6178eac58568285ee588ff060
 PREVIOUS_REPAIR_PUSHED=YES
 S1M2_V1_SCIENTIFIC_FAILURE=UNCHANGED
 S1M2_V2_SEMANTIC_REPAIR=IMPLEMENTED_LOCAL
 OBSERVED_WHITESPACE_HARD_FENCE=PASS_LOCAL
 VISIBLE_BOUNDARY_JOINED_RULE_INVERSION=PASS_LOCAL
 VISIBLE_BOUNDARY_DIRECT_OPTION=ALWAYS_PRESENT_PASS_LOCAL
+VISIBLE_NONTRANSFORMED_GRAMMAR_OPTIONS=DEDUPLICATED_TO_DIRECT
 INTERNAL_JOINED_RULE_INVERSION=PASS_LOCAL
 POSITIONAL_PIECE_IDENTITY=PASS_LOCAL
 DISTINCT_HOST_TYPE_QUALIFICATION=PASS_LOCAL
@@ -65,8 +66,10 @@ The smoke-list first-failure probe found
 `dharmam ekāntakalyāṇaṃ rāja n dha rmodayāya te`. The one-phoneme middle
 token `n` had no factor because the left and right visible boundaries exposed
 only non-transformed grammar options that each consumed it. Ordinary visible
-boundaries now always include the direct `0/0` option alongside every legal
-sandhi inverse; whitespace remains a hard lexical fence.
+boundaries now always include the direct `0/0` option. Transformed sandhi
+inverses remain parallel options, while non-transformed grammar matches are
+canonicalized to direct rather than retained as duplicate derivations;
+whitespace remains a hard lexical fence.
 
 No broad real-corpus or performance conclusion is available. The next session
 must not launch Full M₀ or a large benchmark merely because the focused
@@ -81,14 +84,14 @@ Focused validation for the posterior-host-support blocker:
 - the public model label remains `reusable_pieces_v1` deliberately for current
   config/checkpoint/contract/audit compatibility; a rename should be a
   separately versioned migration.
-- visible-boundary candidate regressions: 8 passed in 0.42s, including the
+- visible-boundary candidate regressions: 8 passed in 0.45s, including the
   short-middle-token complete path, `svayaṃbhv ekam`, internal `ve`, and hard
   whitespace fencing;
 - the original first failing smoke segment now completes under the exact S1M2
   lazy/composed Pass-1 path with total posterior mass approximately 1 and zero
   merged factors.
 
-NEXT_ACTION=PUBLISH_DIRECT_VISIBLE_BOUNDARY_FIX
+NEXT_ACTION=PUBLISH_DIRECT_VISIBLE_BOUNDARY_DEDUP
 
 Do not run Full M₀, deploy to a VM, or run a representative, stress, RAM, or
 runtime benchmark without separate researcher review and authorization.

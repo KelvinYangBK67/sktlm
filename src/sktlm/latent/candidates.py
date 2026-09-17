@@ -262,7 +262,11 @@ def _visible_boundary_options(
         matches = tuple(match for match in matches if match.left_consumed > 0)
     if right.units and right.units[0].kind == "avagraha":
         matches = tuple(match for match in matches if match.right_consumed > 0)
-    options = [_boundary_option_from_match(match) for match in matches]
+    options = [
+        _boundary_option_from_match(match)
+        for match in matches
+        if match.transformed
+    ]
     options.append(
         BoundaryOption(
             key=f"direct:{boundary_index}",

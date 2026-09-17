@@ -3533,3 +3533,39 @@ FULL_M0_RUN=NO
 FULL_M0_AUTHORIZED=NO
 NEXT_ACTION=PUBLISH_DIRECT_VISIBLE_BOUNDARY_FIX
 ```
+
+## S1M2 direct visible-boundary derivation deduplication - 2026-09-17
+
+The completeness repair at
+`97739cb7a89b0eb6178eac58568285ee588ff060` retained direct `0/0` but also
+left identity-like, non-transformed visible grammar matches as parallel
+derivations. Those matches consume surface phonemes and reinsert exactly the
+same underlying phonemes on both sides, so they duplicate the lexical analysis
+represented by direct and incorrectly add posterior derivation mass.
+
+Visible-boundary construction now always emits direct `0/0`, emits every
+`transformed=True` grammar inverse, and suppresses `transformed=False` grammar
+options. This is a candidate-derivation canonicalization only. The fixed rule
+inventory, transformed visible inversion, internal sandhi, hard whitespace
+fence, scorer, piece objective, host support, and piece roles are unchanged.
+
+The focused candidate/frontend file passed 8 tests in 0.45 seconds. The
+identity-like boundaries around the short token in `rāja n dha` are present in
+raw grammar matching but absent from emitted options, direct remains present,
+the graph has a complete analysis, and merged-factor count remains zero. The
+transformed `svayaṃbhv ekam -> svayaṃbhū | ekam` option and internal
+`ve -> ū | e` path remain covered. Inspection of the `transformed` definition
+found no counterexample: false requires exact left/right surface-to-underlying
+phoneme equality and no avagraha realization.
+
+```text
+VISIBLE_DIRECT_OPTION=ALWAYS_PRESENT
+VISIBLE_TRANSFORMED_GRAMMAR_OPTIONS=RETAINED
+VISIBLE_NONTRANSFORMED_GRAMMAR_OPTIONS=DEDUPLICATED_TO_DIRECT
+COUNTEREXAMPLE_FOUND=NO
+WHITESPACE_LEXICAL_MERGE=FORBIDDEN_UNCHANGED
+FROZEN_SANDHI_INVENTORY_CHANGED=NO
+FULL_M0_RUN=NO
+FULL_M0_AUTHORIZED=NO
+NEXT_ACTION=PUBLISH_DIRECT_VISIBLE_BOUNDARY_DEDUP
+```
