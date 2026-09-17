@@ -200,6 +200,11 @@ class ComposedSegmentInference:
     expected_whole_form_uses: float
     expected_singleton_path_uses: float
     expected_multi_piece_uses: float
+    expected_internal_boundary_events: float
+    expected_internal_transformed_events: float
+    expected_internal_nontransformed_boundary_events: float
+    expected_visible_transformed_events: float
+    expected_transformed_sandhi_events: float
     lexical_expected_counts: dict[PhonologicalForm, float]
     piece_expected_counts: dict[PieceIdentity, float]
     piece_host_support: dict[tuple[PieceIdentity, PhonologicalForm], float]
@@ -277,6 +282,9 @@ class _TokenSummary:
     expected_whole_form_uses: float
     expected_singleton_path_uses: float
     expected_multi_piece_uses: float
+    expected_internal_boundary_events: float
+    expected_internal_transformed_events: float
+    expected_internal_nontransformed_boundary_events: float
     lexical_counts: dict[PhonologicalForm, float]
     piece_counts: dict[PieceIdentity, float]
     piece_host_support: dict[
@@ -302,6 +310,9 @@ class _FactorSummary:
     expected_whole_form_uses: float
     expected_singleton_path_uses: float
     expected_multi_piece_uses: float
+    expected_internal_boundary_events: float
+    expected_internal_transformed_events: float
+    expected_internal_nontransformed_boundary_events: float
     lexical_counts: dict[PhonologicalForm, float]
     piece_counts: dict[PieceIdentity, float]
     piece_host_support: dict[
@@ -2232,6 +2243,9 @@ def _evaluate_lazy_token_legacy(
     expected_whole_form_uses = 0.0
     expected_singleton_path_uses = 0.0
     expected_multi_piece_uses = 0.0
+    expected_internal_boundary_events = 0.0
+    expected_internal_transformed_events = 0.0
+    expected_internal_nontransformed_boundary_events = 0.0
     started = time.perf_counter()
     for start in range(node_count - 1):
         for span in lattice.iter_spans_from(start):
@@ -2272,6 +2286,11 @@ def _evaluate_lazy_token_legacy(
             if span.boundary is not None:
                 boundary_mass[span.boundary.boundary_id] += mass
                 boundary_meta[span.boundary.boundary_id] = span.boundary
+                expected_internal_boundary_events += mass
+                if span.transformed:
+                    expected_internal_transformed_events += mass
+                else:
+                    expected_internal_nontransformed_boundary_events += mass
             for rule_id in span.rule_ids:
                 rule_usage[rule_id] += mass / len(span.rule_ids)
 
@@ -2351,6 +2370,13 @@ def _evaluate_lazy_token_legacy(
         expected_whole_form_uses=expected_whole_form_uses,
         expected_singleton_path_uses=expected_singleton_path_uses,
         expected_multi_piece_uses=expected_multi_piece_uses,
+        expected_internal_boundary_events=expected_internal_boundary_events,
+        expected_internal_transformed_events=(
+            expected_internal_transformed_events
+        ),
+        expected_internal_nontransformed_boundary_events=(
+            expected_internal_nontransformed_boundary_events
+        ),
         lexical_counts=dict(lexical_counts),
         piece_counts=dict(piece_counts),
         piece_host_support=dict(piece_host_support),
@@ -2640,6 +2666,9 @@ def _evaluate_lazy_token_compact(
     expected_singleton_path_uses = 0.0
     expected_multi_piece_uses = 0.0
     expected_transformation_penalty = 0.0
+    expected_internal_boundary_events = 0.0
+    expected_internal_transformed_events = 0.0
+    expected_internal_nontransformed_boundary_events = 0.0
     identity_log_score = -math.inf
     started = time.perf_counter()
     for start in range(node_count - 1):
@@ -2682,6 +2711,11 @@ def _evaluate_lazy_token_compact(
             if boundary is not None:
                 boundary_mass[boundary.boundary_id] += mass
                 boundary_meta[boundary.boundary_id] = boundary
+                expected_internal_boundary_events += mass
+                if lattice.nodes[end].transformed:
+                    expected_internal_transformed_events += mass
+                else:
+                    expected_internal_nontransformed_boundary_events += mass
             rule_ids = lattice.nodes[end].rule_ids if end < node_count - 1 else ()
             for rule_id in rule_ids:
                 rule_usage[rule_id] += mass / len(rule_ids)
@@ -2812,6 +2846,13 @@ def _evaluate_lazy_token_compact(
         expected_whole_form_uses=expected_whole_form_uses,
         expected_singleton_path_uses=expected_singleton_path_uses,
         expected_multi_piece_uses=expected_multi_piece_uses,
+        expected_internal_boundary_events=expected_internal_boundary_events,
+        expected_internal_transformed_events=(
+            expected_internal_transformed_events
+        ),
+        expected_internal_nontransformed_boundary_events=(
+            expected_internal_nontransformed_boundary_events
+        ),
         lexical_counts=lexical_counts,
         piece_counts=piece_counts,
         piece_host_support=piece_host_support,
@@ -2911,6 +2952,9 @@ def _evaluate_lazy_token_shared(
     expected_singleton_path_uses = 0.0
     expected_multi_piece_uses = 0.0
     expected_transformation_penalty = 0.0
+    expected_internal_boundary_events = 0.0
+    expected_internal_transformed_events = 0.0
+    expected_internal_nontransformed_boundary_events = 0.0
     started = time.perf_counter()
     for start, spans in enumerate(spans_by_start):
         for span in spans:
@@ -2947,6 +2991,11 @@ def _evaluate_lazy_token_shared(
             if span.boundary is not None:
                 boundary_mass[span.boundary.boundary_id] += mass
                 boundary_meta[span.boundary.boundary_id] = span.boundary
+                expected_internal_boundary_events += mass
+                if span.transformed:
+                    expected_internal_transformed_events += mass
+                else:
+                    expected_internal_nontransformed_boundary_events += mass
             for rule_id in span.rule_ids:
                 rule_usage[rule_id] += mass / len(span.rule_ids)
 
@@ -3078,6 +3127,13 @@ def _evaluate_lazy_token_shared(
         expected_whole_form_uses=expected_whole_form_uses,
         expected_singleton_path_uses=expected_singleton_path_uses,
         expected_multi_piece_uses=expected_multi_piece_uses,
+        expected_internal_boundary_events=expected_internal_boundary_events,
+        expected_internal_transformed_events=(
+            expected_internal_transformed_events
+        ),
+        expected_internal_nontransformed_boundary_events=(
+            expected_internal_nontransformed_boundary_events
+        ),
         lexical_counts=dict(lexical_counts),
         piece_counts=piece_counts,
         piece_host_support=piece_host_support,
@@ -3328,6 +3384,9 @@ def _evaluate_factor(
             expected_whole_form_uses=evaluation.whole_form_mass,
             expected_singleton_path_uses=evaluation.singleton_path_mass,
             expected_multi_piece_uses=evaluation.multi_piece_mass,
+            expected_internal_boundary_events=0.0,
+            expected_internal_transformed_events=0.0,
+            expected_internal_nontransformed_boundary_events=0.0,
             lexical_counts={factor.merged_word: 1.0},
             piece_counts=evaluation.expected_piece_counts,
             piece_host_support={
@@ -3376,6 +3435,13 @@ def _evaluate_factor(
         expected_whole_form_uses=token.expected_whole_form_uses,
         expected_singleton_path_uses=token.expected_singleton_path_uses,
         expected_multi_piece_uses=token.expected_multi_piece_uses,
+        expected_internal_boundary_events=token.expected_internal_boundary_events,
+        expected_internal_transformed_events=(
+            token.expected_internal_transformed_events
+        ),
+        expected_internal_nontransformed_boundary_events=(
+            token.expected_internal_nontransformed_boundary_events
+        ),
         lexical_counts=token.lexical_counts,
         piece_counts=token.piece_counts,
         piece_host_support=token.piece_host_support,
@@ -3719,6 +3785,10 @@ def infer_composed_segment(
     expected_whole_form_uses = 0.0
     expected_singleton_path_uses = 0.0
     expected_multi_piece_uses = 0.0
+    expected_internal_boundary_events = 0.0
+    expected_internal_transformed_events = 0.0
+    expected_internal_nontransformed_boundary_events = 0.0
+    expected_visible_transformed_events = 0.0
     started = time.perf_counter()
     for factor_index, (factor_score, factor_topology) in enumerate(
         zip(evaluations, factor_topologies)
@@ -3777,6 +3847,16 @@ def infer_composed_segment(
         expected_multi_piece_uses += (
             factor_mass * evaluation.expected_multi_piece_uses
         )
+        expected_internal_boundary_events += (
+            factor_mass * evaluation.expected_internal_boundary_events
+        )
+        expected_internal_transformed_events += (
+            factor_mass * evaluation.expected_internal_transformed_events
+        )
+        expected_internal_nontransformed_boundary_events += (
+            factor_mass
+            * evaluation.expected_internal_nontransformed_boundary_events
+        )
         _add_scaled(lexical_counts, evaluation.lexical_counts, factor_mass)
         _add_scaled(piece_counts, evaluation.piece_counts, factor_mass)
         _add_scaled(
@@ -3800,6 +3880,8 @@ def infer_composed_segment(
                 left.source_end,
                 right.source_start,
             )
+            if factor.outgoing.transformed:
+                expected_visible_transformed_events += factor_mass
             for rule_id in factor.outgoing.rule_ids:
                 rule_usage[rule_id] += factor_mass / len(factor.outgoing.rule_ids)
         del evaluation
@@ -3871,6 +3953,18 @@ def infer_composed_segment(
         expected_whole_form_uses=expected_whole_form_uses,
         expected_singleton_path_uses=expected_singleton_path_uses,
         expected_multi_piece_uses=expected_multi_piece_uses,
+        expected_internal_boundary_events=expected_internal_boundary_events,
+        expected_internal_transformed_events=(
+            expected_internal_transformed_events
+        ),
+        expected_internal_nontransformed_boundary_events=(
+            expected_internal_nontransformed_boundary_events
+        ),
+        expected_visible_transformed_events=expected_visible_transformed_events,
+        expected_transformed_sandhi_events=(
+            expected_internal_transformed_events
+            + expected_visible_transformed_events
+        ),
         lexical_expected_counts=dict(lexical_counts),
         piece_expected_counts=dict(piece_counts),
         piece_host_support=dict(piece_host_support),

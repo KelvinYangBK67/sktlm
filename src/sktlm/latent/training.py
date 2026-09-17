@@ -350,6 +350,11 @@ class PassMetrics:
     expected_whole_form_uses: float = 0.0
     expected_singleton_path_uses: float = 0.0
     expected_multi_piece_uses: float = 0.0
+    expected_internal_boundary_events: float = 0.0
+    expected_internal_transformed_events: float = 0.0
+    expected_internal_nontransformed_boundary_events: float = 0.0
+    expected_visible_transformed_events: float = 0.0
+    expected_transformed_sandhi_events: float = 0.0
     overflowed_tokens: int = 0
     candidate_factors: int = 0
     candidate_nodes: int = 0
@@ -391,6 +396,21 @@ class PassMetrics:
                 inference.expected_singleton_path_uses
             )
             self.expected_multi_piece_uses += inference.expected_multi_piece_uses
+            self.expected_internal_boundary_events += (
+                inference.expected_internal_boundary_events
+            )
+            self.expected_internal_transformed_events += (
+                inference.expected_internal_transformed_events
+            )
+            self.expected_internal_nontransformed_boundary_events += (
+                inference.expected_internal_nontransformed_boundary_events
+            )
+            self.expected_visible_transformed_events += (
+                inference.expected_visible_transformed_events
+            )
+            self.expected_transformed_sandhi_events += (
+                inference.expected_transformed_sandhi_events
+            )
         if counters is not None:
             self.lazy_span_traversals += counters.lazy_span_traversals
             self.composed_states += counters.composed_state_count
@@ -423,6 +443,21 @@ class PassMetrics:
             "expected_whole_form_uses": self.expected_whole_form_uses,
             "expected_singleton_path_uses": self.expected_singleton_path_uses,
             "expected_multi_piece_uses": self.expected_multi_piece_uses,
+            "expected_internal_boundary_events": (
+                self.expected_internal_boundary_events
+            ),
+            "expected_internal_transformed_events": (
+                self.expected_internal_transformed_events
+            ),
+            "expected_internal_nontransformed_boundary_events": (
+                self.expected_internal_nontransformed_boundary_events
+            ),
+            "expected_visible_transformed_events": (
+                self.expected_visible_transformed_events
+            ),
+            "expected_transformed_sandhi_events": (
+                self.expected_transformed_sandhi_events
+            ),
             "overflowed_tokens": self.overflowed_tokens,
             "candidate_factors": self.candidate_factors,
             "candidate_nodes": self.candidate_nodes,
@@ -458,6 +493,26 @@ class PassMetrics:
             ),
             expected_multi_piece_uses=(
                 self.expected_multi_piece_uses + other.expected_multi_piece_uses
+            ),
+            expected_internal_boundary_events=(
+                self.expected_internal_boundary_events
+                + other.expected_internal_boundary_events
+            ),
+            expected_internal_transformed_events=(
+                self.expected_internal_transformed_events
+                + other.expected_internal_transformed_events
+            ),
+            expected_internal_nontransformed_boundary_events=(
+                self.expected_internal_nontransformed_boundary_events
+                + other.expected_internal_nontransformed_boundary_events
+            ),
+            expected_visible_transformed_events=(
+                self.expected_visible_transformed_events
+                + other.expected_visible_transformed_events
+            ),
+            expected_transformed_sandhi_events=(
+                self.expected_transformed_sandhi_events
+                + other.expected_transformed_sandhi_events
             ),
             overflowed_tokens=self.overflowed_tokens + other.overflowed_tokens,
             candidate_factors=self.candidate_factors + other.candidate_factors,
@@ -949,6 +1004,21 @@ def _metrics_from_mapping(payload: dict[str, Any] | None) -> PassMetrics:
         ),
         expected_multi_piece_uses=float(
             payload.get("expected_multi_piece_uses", 0.0)
+        ),
+        expected_internal_boundary_events=float(
+            payload.get("expected_internal_boundary_events", 0.0)
+        ),
+        expected_internal_transformed_events=float(
+            payload.get("expected_internal_transformed_events", 0.0)
+        ),
+        expected_internal_nontransformed_boundary_events=float(
+            payload.get("expected_internal_nontransformed_boundary_events", 0.0)
+        ),
+        expected_visible_transformed_events=float(
+            payload.get("expected_visible_transformed_events", 0.0)
+        ),
+        expected_transformed_sandhi_events=float(
+            payload.get("expected_transformed_sandhi_events", 0.0)
         ),
         overflowed_tokens=int(payload.get("overflowed_tokens", 0)),
         candidate_factors=int(payload.get("candidate_factors", 0)),
@@ -3856,6 +3926,23 @@ def _write_inspection_shard(
                 "expected_multi_piece_uses": getattr(
                     inference, "expected_multi_piece_uses", 0.0
                 ),
+                "expected_internal_boundary_events": getattr(
+                    inference, "expected_internal_boundary_events", 0.0
+                ),
+                "expected_internal_transformed_events": getattr(
+                    inference, "expected_internal_transformed_events", 0.0
+                ),
+                "expected_internal_nontransformed_boundary_events": getattr(
+                    inference,
+                    "expected_internal_nontransformed_boundary_events",
+                    0.0,
+                ),
+                "expected_visible_transformed_events": getattr(
+                    inference, "expected_visible_transformed_events", 0.0
+                ),
+                "expected_transformed_sandhi_events": getattr(
+                    inference, "expected_transformed_sandhi_events", 0.0
+                ),
                 "top_probability": top_probability,
                 "entropy": inference.entropy,
                 "rule_usage": dict(inference.rule_usage),
@@ -4196,6 +4283,21 @@ def _write_inspection_bundle_shard(
                     ),
                     "expected_multi_piece_uses": (
                         inference.expected_multi_piece_uses
+                    ),
+                    "expected_internal_boundary_events": (
+                        inference.expected_internal_boundary_events
+                    ),
+                    "expected_internal_transformed_events": (
+                        inference.expected_internal_transformed_events
+                    ),
+                    "expected_internal_nontransformed_boundary_events": (
+                        inference.expected_internal_nontransformed_boundary_events
+                    ),
+                    "expected_visible_transformed_events": (
+                        inference.expected_visible_transformed_events
+                    ),
+                    "expected_transformed_sandhi_events": (
+                        inference.expected_transformed_sandhi_events
                     ),
                     "top_probability": top_probability,
                     "entropy": inference.entropy,
@@ -4838,6 +4940,21 @@ def _apply_inspection_shard(
             )
             metrics.expected_multi_piece_uses += float(
                 row.get("expected_multi_piece_uses", 0.0)
+            )
+            metrics.expected_internal_boundary_events += float(
+                row.get("expected_internal_boundary_events", 0.0)
+            )
+            metrics.expected_internal_transformed_events += float(
+                row.get("expected_internal_transformed_events", 0.0)
+            )
+            metrics.expected_internal_nontransformed_boundary_events += float(
+                row.get("expected_internal_nontransformed_boundary_events", 0.0)
+            )
+            metrics.expected_visible_transformed_events += float(
+                row.get("expected_visible_transformed_events", 0.0)
+            )
+            metrics.expected_transformed_sandhi_events += float(
+                row.get("expected_transformed_sandhi_events", 0.0)
             )
             metrics.overflowed_tokens += int(row["overflowed_tokens"])
             metrics.candidate_factors += int(row["candidate_factors"])
