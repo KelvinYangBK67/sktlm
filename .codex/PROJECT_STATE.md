@@ -20,6 +20,19 @@ Only tiny synthetic tests were run; the local controlled DCS evidence ladder
 and its 18-cell pilot remain unexecuted. The tracked pilot specification is
 `configs/experiments/s1m2_lexeme_evidence_probe.yaml`.
 
+The diagnostic evaluator's v2 target-localization repair uses DCS sentence
+and occurrence IDs plus ordered CoNLL-U surface atoms (multiword ranges and
+literal placeholder positions), then validates top lexical-factor groups
+against the existing boundary source offsets. It does not choose a factor by
+matching a predicted lexical string to gold. Gold target fragments or merged
+multiword components are scored as top-1 nonrecovery; a non-unique component
+to factor correspondence remains unscorable with a reason. The E000 held-out
+preflight located 80/80 gold source atoms, scored 76/80 occurrences, and left
+four ambiguous multiword component/factor alignments. The original 10
+predicted forms/pieces are unchanged. Original training/evaluation artifacts
+are preserved; versioned v2 reevaluation artifacts are separate. No new
+training or E100/E300 run occurred.
+
 ## 1. Frozen M₀ corpus
 
 M₀ is frozen and must not be reopened during core-method implementation.

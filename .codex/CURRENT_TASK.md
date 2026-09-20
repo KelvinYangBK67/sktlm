@@ -2,9 +2,26 @@
 
 DATE=2026-09-20
 BRANCH=exp/s1m2-reusable-pieces
-STATUS=DIAGNOSTIC_S1M2_LEXEME_PROBE_VALIDATED_MANUAL_PILOT_NOT_RUN
+STATUS=DIAGNOSTIC_TARGET_LOCALIZATION_V2_VALIDATED_E100_E300_NOT_RUN
 
-Current work (supersedes the older handoff below): The diagnostic-only
+Current target-localization repair (2026-09-20): Diagnostic evaluation now
+locates each DCS occurrence by source_file + sent_id + id/occ_id, ordered
+CoNLL-U surface atoms (multiword ranges count as one), and source-text spans.
+It validates top-analysis factor groups against existing visible/internal
+boundary source offsets. A split standalone gold token or a merged DCS
+multiword range is a scorable nonrecovery; ambiguous range/factor count
+mismatches remain unscorable. No predicted lexical string selects the target
+factor. Held-out reevaluation is SQLite read-only and writes only versioned
+v2 analysis/summary/evaluation-provenance artifacts; original evidence and
+training provenance are retained. The bounded E000 held-out preflight (no
+training) found 76/80 evaluable and four explicit ambiguous component/factor
+alignments. The original 10 predictions/pieces are identical. E100/E300 and
+all new evidence-level training remain unrun. Next action is researcher review
+of the E000 v2 artifacts, not an automatic pilot launch.
+
+Previous diagnostic handoff follows:
+
+Historical initial probe (superseded by v2 above): The diagnostic-only
 S1M2 lexeme evidence probe trains from one UTF-8 surface-sentence file via a
 non-M0 CorpusDocument seam in the unchanged exact trainer, then evaluates the
 held-out challenge with a read-only SQLite piece scorer and exact composed
@@ -14,9 +31,9 @@ level, Git SHA, and scientific configuration, with no formal freeze claim.
 Target-local exact posterior fields that cannot be losslessly obtained from
 the current aggregate reductions are null with reasons; top-1 target metrics
 are reported only for uniquely localized single-match sentences. No 18-cell
-pilot or real-corpus training has run. Manual next action:
-one E000 cell using the CLI, then inspect its held-out artifacts before any
-additional cells. Do not launch Full M0, cloud, or large benchmarks.
+pilot or real-corpus training had run at that handoff. The later E000 cell
+is complete and only its v2 held-out reevaluation is in scope now. Do not
+launch Full M0, cloud, or large benchmarks.
 
 Historical S1M2 V2 handoff follows:
 

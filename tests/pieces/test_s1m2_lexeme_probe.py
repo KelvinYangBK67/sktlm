@@ -14,6 +14,7 @@ from sktlm.experiments.training.s1m2_lexeme_probe import (
     _validate_held_out,
     build_arg_parser,
     evaluate_challenge,
+    reevaluate_existing_run,
 )
 from sktlm.latent.training import (
     DiagnosticCorpusSource,
@@ -213,6 +214,30 @@ def test_diagnostic_exact_training_and_read_only_heldout_artifacts(
     assert record["target_top_analysis"] is not None
     assert record["target_top_analysis"]["pieces"]
     assert 0.0 <= record["top_analysis_posterior"] <= 1.0
+    original_summary = (result.run_dir / "challenge_summary.json").read_bytes()
+    monkeypatch.setattr(
+        "sktlm.experiments.training.s1m2_lexeme_probe.run_training",
+        lambda *args, **kwargs: pytest.fail("reevaluation started training"),
+    )
+    revised = reevaluate_existing_run(result.run_dir)
+    assert revised["evaluable_target_occurrences"] == 1
+    assert (result.run_dir / "challenge_analyses.jsonl").read_bytes() == output
+    assert (result.run_dir / "challenge_summary.json").read_bytes() == original_summary
+    assert (result.run_dir / "challenge_analyses.v2.jsonl").is_file()
+    assert (result.run_dir / "challenge_summary.v2.json").is_file()
+    evaluation_provenance = json.loads(
+        (result.run_dir / "challenge_evaluation.v2.provenance.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert evaluation_provenance["training_git_commit"] == provenance["git_commit"]
+    assert evaluation_provenance["challenge_sha256"] == source.challenge_sha256
+    with sqlite3.connect(result.run_dir / "learner.sqlite") as connection:
+        assert before == connection.execute(
+            "SELECT form_key, expected_count FROM piece_lexicon ORDER BY form_key"
+        ).fetchall()
+    with pytest.raises(FileExistsError):
+        reevaluate_existing_run(result.run_dir)
 
 
 def test_probe_cli_defaults_and_help() -> None:
@@ -230,3 +255,4 @@ def test_probe_cli_defaults_and_help() -> None:
     assert args.sandhi_transformation_penalty == 1.0
     assert args.piece_boundary_probability == 0.4
     assert "--extra-challenge" in parser.format_help()
+    assert "--reevaluate-run-dir" in parser.format_help()
