@@ -1,8 +1,24 @@
 # CURRENT TASK
 
-DATE=2026-09-17
+DATE=2026-09-20
 BRANCH=exp/s1m2-reusable-pieces
-STATUS=S1M2_TRANSFORMED_SANDHI_PENALTY_VALIDATED_PENDING_PUBLICATION
+STATUS=DIAGNOSTIC_S1M2_LEXEME_PROBE_VALIDATED_MANUAL_PILOT_NOT_RUN
+
+Current work (supersedes the older handoff below): The diagnostic-only
+S1M2 lexeme evidence probe trains from one UTF-8 surface-sentence file via a
+non-M0 CorpusDocument seam in the unchanged exact trainer, then evaluates the
+held-out challenge with a read-only SQLite piece scorer and exact composed
+inference. The formal M0 manifest/freeze loader and config signature remain
+unchanged. Diagnostic provenance records corpus/challenge SHA-256, target,
+level, Git SHA, and scientific configuration, with no formal freeze claim.
+Target-local exact posterior fields that cannot be losslessly obtained from
+the current aggregate reductions are null with reasons; top-1 target metrics
+are reported only for uniquely localized single-match sentences. No 18-cell
+pilot or real-corpus training has run. Manual next action:
+one E000 cell using the CLI, then inspect its held-out artifacts before any
+additional cells. Do not launch Full M0, cloud, or large benchmarks.
+
+Historical S1M2 V2 handoff follows:
 
 TASK_BASE_HEAD=e50e0b21374748367030816c1cfb8818147ba2d6
 PREVIOUS_REPAIR_COMMIT=e50e0b21374748367030816c1cfb8818147ba2d6
@@ -113,7 +129,7 @@ Focused validation for the transformed-event penalty:
 - 8 directly related existing hard-fence, visible/internal inversion, and
   optimized-path parity tests pass.
 
-NEXT_ACTION=PUBLISH_TRANSFORMED_SANDHI_PENALTY
+HISTORICAL_NEXT_ACTION=PUBLISH_TRANSFORMED_SANDHI_PENALTY
 
 Do not run Full M₀, deploy to a VM, or run a representative, stress, RAM, or
 runtime benchmark without separate researcher review and authorization.

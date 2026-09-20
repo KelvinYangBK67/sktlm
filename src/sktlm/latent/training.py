@@ -335,6 +335,42 @@ class CorpusDocument:
     freeze_id: str
 
 
+@dataclass(frozen=True, slots=True)
+class DiagnosticCorpusSource:
+    """Explicit non-M0 input identity for a single diagnostic text document."""
+
+    corpus: Path
+    corpus_sha256: str
+    challenge: Path
+    challenge_sha256: str
+    target_id: str
+    level: str
+    extra_challenge: Path | None = None
+    extra_challenge_sha256: str | None = None
+    extra_gold: Path | None = None
+    extra_gold_sha256: str | None = None
+
+    def identity_payload(self) -> dict[str, Any]:
+        return {
+            "source_kind": "diagnostic_s1m2_lexeme_probe",
+            "corpus": self.corpus.as_posix(),
+            "corpus_sha256": self.corpus_sha256,
+            "challenge": self.challenge.as_posix(),
+            "challenge_sha256": self.challenge_sha256,
+            "target_id": self.target_id,
+            "level": self.level,
+            "extra_challenge": (
+                None if self.extra_challenge is None else self.extra_challenge.as_posix()
+            ),
+            "extra_challenge_sha256": self.extra_challenge_sha256,
+            "extra_gold": None if self.extra_gold is None else self.extra_gold.as_posix(),
+            "extra_gold_sha256": self.extra_gold_sha256,
+        }
+
+    def identity_sha256(self) -> str:
+        return _sha256_bytes(_canonical_json(self.identity_payload()).encode("utf-8"))
+
+
 @dataclass(slots=True)
 class PassMetrics:
     documents: int = 0
@@ -6649,6 +6685,7 @@ def run_training(
     next_pass_only: bool = False,
     inspection_only: bool = False,
     inspection_workers: int | None = None,
+    _diagnostic_source: DiagnosticCorpusSource | None = None,
 ) -> TrainingResult:
     """Train and inspect, or execute either durable phase independently."""
 
@@ -6657,6 +6694,25 @@ def run_training(
             "stop_after_training, next_pass_only, and inspection_only are "
             "mutually exclusive"
         )
+    if _diagnostic_source is not None:
+        if config.model != S1M2_MODEL or config.script != "iast" or config.condition != "surface_word":
+            raise ValueError("Diagnostic corpus requires S1M2 IAST surface_word.")
+        if (
+            config.resume
+            or inspection_only
+            or config.document_list is not None
+            or config.execution_bundle_plan is not None
+        ):
+            raise ValueError(
+                "Diagnostic corpus does not use formal resume, document lists, "
+                "or execution-bundle plans."
+            )
+        for path, expected_sha in (
+            (_diagnostic_source.corpus, _diagnostic_source.corpus_sha256),
+            (_diagnostic_source.challenge, _diagnostic_source.challenge_sha256),
+        ):
+            if _file_sha256(path) != expected_sha:
+                raise ValueError(f"Diagnostic input changed after hashing: {path}")
     actual_inspection_workers = (
         config.workers if inspection_workers is None else inspection_workers
     )
@@ -6695,22 +6751,32 @@ def run_training(
             )
         if stored_signature is None:
             store.set_metadata("config_signature", signature)
-        documents = load_documents(
-            manifest,
-            repo_root=repo_root,
-            max_documents=config.max_documents,
-            script=config.script,
-            condition=config.condition,
-            document_list=(
-                None
-                if config.document_list is None
-                else (
-                    config.document_list
-                    if config.document_list.is_absolute()
-                    else repo_root / config.document_list
-                )
-            ),
-        )
+        if _diagnostic_source is None:
+            documents = load_documents(
+                manifest,
+                repo_root=repo_root,
+                max_documents=config.max_documents,
+                script=config.script,
+                condition=config.condition,
+                document_list=(
+                    None
+                    if config.document_list is None
+                    else (
+                        config.document_list
+                        if config.document_list.is_absolute()
+                        else repo_root / config.document_list
+                    )
+                ),
+            )
+        else:
+            documents = (
+                CorpusDocument(
+                    relative_path="diagnostic/corpus.txt",
+                    path=_diagnostic_source.corpus,
+                    document_id="diagnostic:corpus",
+                    freeze_id="",
+                ),
+            )
         execution_plan = None
         if config.execution_bundle_plan is not None:
             execution_plan = load_execution_bundle_plan(
@@ -6734,29 +6800,12 @@ def run_training(
             "git_commit": current_git_commit,
             "training_git_commit": current_git_commit,
             "training_workers": config.workers,
-            "freeze_id": EXPECTED_FREEZE_ID,
-            "manifest": manifest.as_posix(),
-            "manifest_sha256": _file_sha256(manifest),
             "rules_path": rules_path.as_posix(),
             "rules_sha256": _file_sha256(rules_path),
             "external_rule_count": len(grammar.rules),
             "script": config.script,
             "condition": config.condition,
             "document_count": len(documents),
-            "document_list": (
-                None
-                if config.document_list is None
-                else config.document_list.as_posix()
-            ),
-            "document_list_sha256": (
-                None
-                if config.document_list is None
-                else _file_sha256(
-                    config.document_list
-                    if config.document_list.is_absolute()
-                    else repo_root / config.document_list
-                )
-            ),
             "config_signature": signature,
             "seed": config.seed,
             "determinism": (
@@ -6764,6 +6813,37 @@ def run_training(
                 "tie-break keys; no stochastic update"
             ),
         }
+        if _diagnostic_source is None:
+            expected_provenance.update(
+                {
+                    "freeze_id": EXPECTED_FREEZE_ID,
+                    "manifest": manifest.as_posix(),
+                    "manifest_sha256": _file_sha256(manifest),
+                    "document_list": (
+                        None
+                        if config.document_list is None
+                        else config.document_list.as_posix()
+                    ),
+                    "document_list_sha256": (
+                        None
+                        if config.document_list is None
+                        else _file_sha256(
+                            config.document_list
+                            if config.document_list.is_absolute()
+                            else repo_root / config.document_list
+                        )
+                    ),
+                }
+            )
+        else:
+            # No formal M0 freeze or manifest claim is made for diagnostic input.
+            diagnostic_identity = _diagnostic_source.identity_payload()
+            expected_provenance.update(diagnostic_identity)
+            expected_provenance["diagnostic_input_signature"] = (
+                _diagnostic_source.identity_sha256()
+            )
+            expected_provenance["formal_manifest_used"] = False
+            expected_provenance["scientific_config"] = config.payload()
         if config.vocab_budget is not None:
             expected_provenance["vocabulary_budget"] = _pending_vocabulary_payload(
                 config.vocab_budget

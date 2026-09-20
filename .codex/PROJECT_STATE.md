@@ -5,6 +5,21 @@ Primary implementation branch: `exp/s1m2-reusable-pieces`
 
 This file records durable project state. It is not a task prompt.
 
+## Diagnostic S1M2 lexeme-evidence probe (2026-09-20)
+
+The `exp/s1m2-reusable-pieces` branch now has a diagnostic-only path that
+feeds one local UTF-8 IAST surface-sentence corpus into the unchanged exact
+S1M2 trainer without invoking or weakening formal M0 manifest/freeze loading.
+Diagnostic provenance has its own corpus/challenge SHA-256 identity and no
+formal freeze ID. After the configured passes, held-out challenge evaluation
+uses the final piece scorer through a read-only SQLite connection and exact
+composed inference. Gold lexical forms are valid DCS `Unsandhied`, never the
+abstract lemma. Target-local exact posterior metrics unavailable from the
+existing aggregate reductions remain explicit nulls, not top-K estimates.
+Only tiny synthetic tests were run; the local controlled DCS evidence ladder
+and its 18-cell pilot remain unexecuted. The tracked pilot specification is
+`configs/experiments/s1m2_lexeme_evidence_probe.yaml`.
+
 ## 1. Frozen M₀ corpus
 
 M₀ is frozen and must not be reopened during core-method implementation.

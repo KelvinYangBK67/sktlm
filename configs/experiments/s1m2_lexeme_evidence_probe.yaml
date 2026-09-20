@@ -1,0 +1,20 @@
+# Diagnostic-only manual pilot; data/diagnostics payload is local and ignored.
+model: reusable_pieces_v1
+script: iast
+condition: surface_word
+passes: 3
+sandhi_transformation_penalty: 1.0
+piece_boundary_probability: 0.4
+inference: exact
+representative_targets:
+  - noun_high_deva
+  - noun_mid_pranin
+  - verb_high_bhu
+  - verb_mid_iks
+  - indecl_high_eva
+  - indecl_mid_ittham
+pilot_levels: [E000, E100, E300]
+notes:
+  - "E000 has zero direct target-lemma evidence, not zero cross-host/family evidence."
+  - "The fixed background deliberately retains natural evidence from other lemmas."
+  - "challenge.jsonl is held out from all training passes; gold is DCS Unsandhied."
