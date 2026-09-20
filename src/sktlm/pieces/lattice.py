@@ -19,22 +19,20 @@ class PieceRole(str, Enum):
 
 @dataclass(frozen=True, slots=True)
 class PieceIdentity:
-    """A reusable parameter identity conditioned on lexical position."""
+    """A role-bearing piece occurrence; its learned key is the phonological form."""
 
     piece: PhonologicalForm
     role: PieceRole
 
     @property
     def key(self) -> str:
-        return f"{self.piece.key}@{self.role.value}"
+        return self.piece.key
 
     @classmethod
     def from_key(cls, key: str) -> "PieceIdentity":
-        try:
-            form_key, role = key.rsplit("@", 1)
-        except ValueError as error:
-            raise ValueError(f"invalid positional piece key: {key!r}") from error
-        return cls(PhonologicalForm.from_key(form_key), PieceRole(role))
+        # SQLite and worker reductions carry learned form keys. WHOLE is only
+        # a placeholder here; the original edge role remains in inference.
+        return cls(PhonologicalForm.from_key(key), PieceRole.WHOLE)
 
 
 def piece_role(start: int, end: int, lexical_length: int) -> PieceRole:

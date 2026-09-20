@@ -219,9 +219,9 @@ def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(
     store = LexiconStore(result.run_dir / "learner.sqlite")
     try:
         active = {
-            PieceIdentity.from_key(str(key)): float(count)
+            PhonologicalForm.from_key(str(key)): float(count)
             for key, count in store.connection.execute(
-                "SELECT form_key, expected_count FROM piece_lexicon"
+                "SELECT form_key, reusable_count FROM piece_lexicon"
             )
         }
         scorer = store.piece_scorer(
@@ -244,11 +244,11 @@ def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(
         )
         probes = (
             next(iter(active)),
-            PieceIdentity(parse_iast_form("ghū"), PieceRole.WHOLE),
+            parse_iast_form("ghū"),
         )
-        for identity in probes:
-            assert scorer.score_piece(identity.piece, identity.role) == pytest.approx(
-                reference.score_piece(identity.piece, identity.role)
+        for piece in probes:
+            assert scorer.score(piece) == pytest.approx(
+                reference.score(piece)
             )
     finally:
         store.close()
@@ -534,13 +534,13 @@ def test_s1m2_parallel_and_serial_scientific_outputs_match(tmp_path: Path) -> No
     assert runtime["timings_seconds"]["inspection_reducer_stall"] >= 0.0
 
 
-def _piece_state(run_dir: Path) -> tuple[tuple[str, float, int], ...]:
+def _piece_state(run_dir: Path) -> tuple[tuple[str, float, float, float], ...]:
     store = LexiconStore(run_dir / "learner.sqlite")
     try:
         return tuple(
-            (str(key), float(count), int(support))
-            for key, count, support in store.connection.execute(
-                "SELECT form_key, expected_count, host_type_support "
+            (str(key), float(count), float(max_host), float(reusable))
+            for key, count, max_host, reusable in store.connection.execute(
+                "SELECT form_key, raw_expected_count, max_host_expected_usage, reusable_count "
                 "FROM piece_lexicon ORDER BY form_key"
             )
         )

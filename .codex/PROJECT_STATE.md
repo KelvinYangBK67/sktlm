@@ -1,5 +1,24 @@
 # PROJECT_STATE.md
 
+## S1M2 V2 reusable objective (2026-09-21)
+
+`S1M2_REUSABLE_PIECES_V1` / `reusable_pieces_v1` is the historical
+raw-expected-count whole-form-collapse baseline. The active local trainer now
+identifies `S1M2_REUSABLE_PIECES_V2` / `reusable_pieces_v2`. Learned piece
+identity is phonological form alone; WHOLE/LEFT/RIGHT/INTERNAL remain
+structural roles and posterior diagnostics. Exact host-keyed posterior usage
+`S(q,h)` sums to raw expected count `C(q)`. Pass finalization stores `C`,
+`M(q)=max_h S(q,h)`, and `R(q)=C(q)-M(q)` in form-keyed SQLite state; both
+probability and complexity terms score with `R`. Binary host qualification
+no longer controls learned state. Whole and long-whole paths remain legal.
+V1 checkpoints and piece schema cannot silently resume/score as V2.
+Authoritative objective: `reports/core_methods/reusable_pieces/s1m2_v2_reusable_objective_20260921.md`.
+Only focused local correctness checks were made. Next scientific gate: a
+researcher-selected bounded local DCS experiment. A V2 production contract
+and qualification cycle remains separate; no Full M0 or cloud run is
+authorized by this implementation.
+The tracked DCS pilot YAML still names V1 and is historical, not a V2 run plan.
+
 Last major handoff: 2026-08-30
 Primary implementation branch: `exp/s1m2-reusable-pieces`
 

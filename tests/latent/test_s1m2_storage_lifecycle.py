@@ -8,11 +8,10 @@ from sktlm.latent.store import LexiconStore
 
 
 PIECE_ROWS = (
-    ("V_A@WHOLE", 2.0, 0),
-    ("C_K.C_T@WHOLE", 3.0, 1),
-    ("C_K.C_P@LEFT", 4.0, 2),
-    ("C_M.C_N@RIGHT", 0.0, 10),
-    ("C_S.C_H@INTERNAL", 5.0, 3),
+    ("V_A", 2.0, 1),
+    ("C_K.C_T", 3.0, 1),
+    ("C_K.C_P", 4.0, 2),
+    ("C_S.C_H", 5.0, 5),
 )
 
 
@@ -38,8 +37,8 @@ def _populate_pass(store: LexiconStore, checkpoint: dict[str, object]) -> None:
             "INSERT INTO piece_host_support_next("
             "piece_key, host_key, support) VALUES (?, ?, ?)",
             (
-                (key, f"HOST_{index}", 1.0)
-                for key, _count, support in PIECE_ROWS
+                (key, f"HOST_{index}", count / support)
+                for key, count, support in PIECE_ROWS
                 for index in range(support)
             ),
         )
@@ -61,19 +60,16 @@ def test_in_place_piece_finalize_matches_reference_and_avoids_active_copy(
         store.connection.set_trace_callback(statements.append)
 
         result = store.finalize_piece_count_pass(
-            min_reuse_host_types=2,
-            host_support_threshold=1.0,
             checkpoint=checkpoint,  # type: ignore[arg-type]
         )
 
         expected_rows = tuple(
-            row
-            for row in PIECE_ROWS
-            if row[1] > 0.0 and ("." not in row[0] or row[2] >= 2)
+            (key, count, count / support, count - count / support)
+            for key, count, support in PIECE_ROWS
         )
         actual_rows = tuple(
             store.connection.execute(
-                "SELECT form_key, expected_count, host_type_support "
+                "SELECT form_key, raw_expected_count, max_host_expected_usage, reusable_count "
                 "FROM piece_lexicon ORDER BY form_key"
             )
         )
@@ -81,14 +77,14 @@ def test_in_place_piece_finalize_matches_reference_and_avoids_active_copy(
         assert actual_rows == expected_rows
         assert result == (
             len(PIECE_ROWS),
-            len(expected_rows),
-            sum(row[1] for row in expected_rows),
+            sum(row[3] > 0 for row in expected_rows),
+            sum(row[3] for row in expected_rows),
         )
         assert checkpoint["history"] == [
             {
                 "piece_types": len(PIECE_ROWS),
-                "active_piece_types": len(expected_rows),
-                "active_piece_count_total": sum(row[1] for row in expected_rows),
+                "active_piece_types": sum(row[3] > 0 for row in expected_rows),
+                "active_piece_count_total": sum(row[3] for row in expected_rows),
             }
         ]
         assert store.load_training_checkpoint() == checkpoint
@@ -101,7 +97,7 @@ def test_in_place_piece_finalize_matches_reference_and_avoids_active_copy(
         assert schema is not None and "WITHOUT ROWID" in str(schema[0])
 
         normalized = tuple(statement.upper() for statement in statements)
-        assert any("DELETE FROM PIECE_INVENTORY" in item for item in normalized)
+        assert any("MAX_HOST_EXPECTED_USAGE" in item for item in normalized)
         assert any(
             "ALTER TABLE PIECE_INVENTORY RENAME TO PIECE_LEXICON" in item
             for item in normalized
@@ -124,11 +120,9 @@ def test_pass_boundary_wal_truncate_preserves_rows_checkpoint_and_connection(
             store.connection.executemany(
                 "INSERT INTO piece_counts_next("
                 "form_key, expected_count) VALUES (?, ?)",
-                ((f"V_A_{index:05d}@WHOLE", 1.0) for index in range(500)),
+                ((f"V_A_{index:05d}", 1.0) for index in range(500)),
             )
         store.finalize_piece_count_pass(
-            min_reuse_host_types=2,
-            host_support_threshold=1.0,
             checkpoint=checkpoint,  # type: ignore[arg-type]
         )
         rows_before = tuple(store.connection.execute("SELECT * FROM piece_lexicon"))

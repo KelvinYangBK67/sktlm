@@ -26,7 +26,6 @@ from sktlm.pieces import (
     ProductionPieceConfig,
     build_piece_lattice,
     fit_production_piece_model,
-    select_reusable_inventory,
 )
 
 
@@ -51,17 +50,7 @@ def test_geometric_base_measure_is_normalized_and_scores_unseen_pieces() -> None
     assert scorer.inactive_misses == 1
 
 
-def test_fixed_pass_inventory_persists_only_singletons_and_reused_pieces() -> None:
-    singleton = PieceIdentity(parse_iast_form("a"), PieceRole.WHOLE)
-    reused = PieceIdentity(parse_iast_form("ani"), PieceRole.RIGHT)
-    one_off = PieceIdentity(parse_iast_form("dakani"), PieceRole.WHOLE)
-    selected = select_reusable_inventory(
-        {singleton: 1.0, reused: 2.0, one_off: 0.5},
-        {singleton: 1, reused: 2, one_off: 1},
-        min_reuse_host_types=2,
-    )
-    assert selected == {singleton: 1.0, reused: 2.0}
-
+def test_fixed_pass_inventory_uses_cross_host_reusable_count() -> None:
     occurrences = [
         parse_iast_form(text)
         for text in ("dakani", "batani", "ramani", "dakatu", "batatu", "ramatu")
@@ -75,23 +64,23 @@ def test_fixed_pass_inventory_persists_only_singletons_and_reused_pieces() -> No
     assert result.history[0].neutral
     assert not result.history[1].neutral
     assert result.active_piece_counts
-    assert all(
-        len(identity.piece.symbols) == 1
-        or result.history[-1].host_type_support[identity] >= 2
-        for identity in result.active_piece_counts
-    )
+    assert all(count > 0 for count in result.active_piece_counts.values())
+    assert result.active_piece_counts == {
+        piece: count for piece, count in result.history[-1].reusable_counts.items()
+        if count > 0
+    }
 
 
 def test_repeated_whole_form_does_not_create_cross_type_reuse() -> None:
     form = parse_iast_form("mahābhārata")
-    whole = PieceIdentity(form, PieceRole.WHOLE)
     result = fit_production_piece_model((form,) * 4, passes=1)
 
-    assert result.history[0].host_type_support.get(whole, 0) <= 1
-    assert whole not in result.active_piece_counts
+    assert result.history[0].raw_expected_counts[form] > 0
+    assert result.history[0].reusable_counts[form] == pytest.approx(0)
+    assert form not in result.active_piece_counts
 
 
-def test_distinct_host_threshold_uses_posterior_piece_usage() -> None:
+def test_distinct_hosts_use_posterior_piece_usage() -> None:
     forms = tuple(parse_iast_form(text) for text in ("devam", "devasya"))
     prefix = PieceIdentity(parse_iast_form("deva"), PieceRole.LEFT)
     model = PieceModel.neutral()
@@ -101,8 +90,7 @@ def test_distinct_host_threshold_uses_posterior_piece_usage() -> None:
 
     low_support = fit_production_piece_model(forms, passes=1)
     assert all(0.0 < usage < 1.0 for usage in usages)
-    assert low_support.history[0].host_type_support.get(prefix, 0) == 0
-    assert prefix not in low_support.active_piece_counts
+    assert low_support.history[0].reusable_counts[prefix.piece] > 0
 
     repeated = tuple(
         form
@@ -111,11 +99,12 @@ def test_distinct_host_threshold_uses_posterior_piece_usage() -> None:
     )
     enough_support = fit_production_piece_model(repeated, passes=1)
 
-    assert enough_support.history[0].host_type_support[prefix] == 2
-    assert prefix in enough_support.active_piece_counts
+    assert enough_support.history[0].reusable_counts[prefix.piece] > (
+        low_support.history[0].reusable_counts[prefix.piece]
+    )
 
 
-def test_positional_roles_do_not_share_counts_or_host_support() -> None:
+def test_positional_roles_share_learned_key() -> None:
     forms = tuple(
         parse_iast_form(text) for text in ("devam", "phalam", "rūpam", "mat")
     )
@@ -137,11 +126,9 @@ def test_positional_roles_do_not_share_counts_or_host_support() -> None:
     )
     learned = result.history[0]
 
-    assert learned.host_type_support[right] == 3
-    assert learned.host_type_support.get(left, 0) <= 1
-    assert learned.expected_piece_counts[right] != pytest.approx(
-        learned.expected_piece_counts[left]
-    )
+    assert right.key == left.key
+    assert learned.raw_expected_counts[right.piece] > 0
+    assert learned.reusable_counts[right.piece] > 0
 
 
 def test_whole_form_fallback_remains_legal_past_piece_length_bound() -> None:

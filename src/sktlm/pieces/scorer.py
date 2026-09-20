@@ -163,9 +163,9 @@ class GeometricPhonemeBaseMeasure:
 class BaseMeasurePieceScorer:
     r"""Production fixed-pass score with coherent mass for inactive pieces.
 
-    For a finite active count map and normalized countable base measure H::
+    For a finite reusable-count map and normalized countable base measure H::
 
-        P(p) = (count(p) + alpha * H(p)) / (N + alpha)
+        P(p) = (R(p) + alpha * H(p)) / (sum R + alpha)
 
     The active inventory need not enumerate unseen strings, and changing the
     number of materialized candidates does not change any probability.
@@ -173,7 +173,7 @@ class BaseMeasurePieceScorer:
 
     def __init__(
         self,
-        counts: Mapping[PhonologicalForm | PieceIdentity, float],
+        counts: Mapping[PhonologicalForm, float],
         *,
         alpha: float,
         lambda_: float,
@@ -188,6 +188,8 @@ class BaseMeasurePieceScorer:
             raise ValueError("lambda_, kappa, and beta must be >= 0")
         if tau <= 0.0:
             raise ValueError("tau must be > 0")
+        if any(not isinstance(piece, PhonologicalForm) for piece in counts):
+            raise TypeError("V2 reusable counts must be keyed by phonological form")
         self.counts = {
             piece: float(count)
             for piece, count in counts.items()
@@ -214,9 +216,7 @@ class BaseMeasurePieceScorer:
         self.inactive_misses = 0
 
     def _count(self, piece: PhonologicalForm, role: PieceRole) -> float:
-        identity = PieceIdentity(piece, role)
-        if identity in self.counts:
-            return self.counts[identity]
+        del role
         return self.counts.get(piece, 0.0)
 
     def probability(
@@ -246,8 +246,7 @@ class BaseMeasurePieceScorer:
     def score_piece(self, piece: PhonologicalForm, role: PieceRole) -> float:
         self.score_calls += 1
         self.store_lookups += 1
-        identity = PieceIdentity(piece, role)
-        if identity in self.counts or piece in self.counts:
+        if piece in self.counts:
             self.active_hits += 1
         else:
             self.inactive_misses += 1
@@ -260,7 +259,7 @@ class BaseMeasurePieceScorer:
     def payload(self) -> dict[str, float | int | str]:
         return {
             "probability_semantics": (
-                "(count(p)+alpha*H(p))/(sum_active_counts+alpha)"
+                "(reusable_count(p)+alpha*H(p))/(sum_reusable_counts+alpha)"
             ),
             "base_measure": "geometric_length_uniform_phoneme",
             "base_stop_probability": self.base_measure.stop_probability,

@@ -1130,7 +1130,9 @@ def test_piece_store_bounded_lru_preserves_exact_scoring_equation() -> None:
     connection = sqlite3.connect(":memory:")
     connection.execute(
         "CREATE TABLE piece_lexicon (form_key TEXT PRIMARY KEY, "
-        "expected_count REAL NOT NULL)"
+        "raw_expected_count REAL NOT NULL, "
+        "max_host_expected_usage REAL NOT NULL, "
+        "reusable_count REAL NOT NULL)"
     )
     active = parse_iast_form("ani")
     second = parse_iast_form("api")
@@ -1138,12 +1140,12 @@ def test_piece_store_bounded_lru_preserves_exact_scoring_equation() -> None:
     active_identity = PieceIdentity(active, PieceRole.WHOLE)
     second_identity = PieceIdentity(second, PieceRole.WHOLE)
     connection.execute(
-        "INSERT INTO piece_lexicon VALUES (?, ?)",
-        (active_identity.key, 3.25),
+        "INSERT INTO piece_lexicon VALUES (?, ?, ?, ?)",
+        (active_identity.key, 4.25, 1.0, 3.25),
     )
     connection.execute(
-        "INSERT INTO piece_lexicon VALUES (?, ?)",
-        (second_identity.key, 1.5),
+        "INSERT INTO piece_lexicon VALUES (?, ?, ?, ?)",
+        (second_identity.key, 2.5, 1.0, 1.5),
     )
     scorer = PieceStoreScorer(
         connection,

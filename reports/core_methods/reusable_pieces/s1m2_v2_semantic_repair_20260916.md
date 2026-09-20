@@ -1,5 +1,11 @@
 # S1M2 V2 candidate and reuse-semantics repair
 
+Historical note (2026-09-21): This document records the earlier candidate
+repair and its then-current role-conditioned, raw-count scorer. The subsequent
+scientific objective and model identity are specified in
+`s1m2_v2_reusable_objective_20260921.md`; its form-keyed `R=C-max_h S` rule
+supersedes the learned-parameter and host-qualification sections below.
+
 Date: 2026-09-16
 Status: implemented and focused-local validated; Full M₀ validation not run
 

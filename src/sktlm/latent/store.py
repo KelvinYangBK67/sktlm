@@ -121,7 +121,7 @@ class LexiconScorer:
 
 
 class PieceStoreScorer:
-    """P1a scorer with exact SQLite lookup and a bounded worker-local LRU."""
+    """V2 reusable-count scorer with exact SQLite lookup and bounded LRU."""
 
     def __init__(
         self,
@@ -140,6 +140,13 @@ class PieceStoreScorer:
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='piece_lexicon'"
         ).fetchone():
             raise RuntimeError("Cannot score before the neutral piece-count pass.")
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(piece_lexicon)")
+        }
+        if not {
+            "raw_expected_count", "max_host_expected_usage", "reusable_count"
+        } <= columns:
+            raise RuntimeError("V1 piece state cannot be scored as reusable_pieces_v2.")
         self.connection = connection
         self.alpha = alpha
         self.complexity_weight = complexity_weight
@@ -157,7 +164,8 @@ class PieceStoreScorer:
         self.store_lookups = 0
         self.sqlite_seconds = 0.0
         row = connection.execute(
-            "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) "
+            "SELECT COALESCE(SUM(CASE WHEN reusable_count > 0.0 THEN 1 ELSE 0 END), 0), "
+            "COALESCE(SUM(reusable_count), 0.0) "
             "FROM piece_lexicon"
         ).fetchone()
         assert row is not None
@@ -175,7 +183,7 @@ class PieceStoreScorer:
         self.cache_misses += 1
         started = time.perf_counter()
         row = self.connection.execute(
-            "SELECT expected_count FROM piece_lexicon WHERE form_key = ?",
+            "SELECT reusable_count FROM piece_lexicon WHERE form_key = ?",
             (key,),
         ).fetchone()
         self.sqlite_seconds += time.perf_counter() - started
@@ -220,8 +228,9 @@ class PieceStoreScorer:
         return self.score_piece(piece, PieceRole.WHOLE)
 
     def score_piece(self, piece: PhonologicalForm, role: PieceRole) -> float:
+        del role
         self.score_calls += 1
-        count = self._lookup(PieceIdentity(piece, role).key)
+        count = self._lookup(piece.key)
         return self.score_from_count_and_length(count, len(piece.symbols))
 
 
@@ -413,7 +422,8 @@ class LexiconStore:
                 "CREATE TABLE IF NOT EXISTS piece_counts_next ("
                 "form_key TEXT PRIMARY KEY, "
                 "expected_count REAL NOT NULL, "
-                "host_type_support INTEGER NOT NULL DEFAULT 0"
+                "max_host_expected_usage REAL NOT NULL DEFAULT 0, "
+                "reusable_count REAL NOT NULL DEFAULT 0"
                 ") WITHOUT ROWID"
             )
             self.connection.execute(
@@ -459,7 +469,7 @@ class LexiconStore:
         self,
         support: Iterable[tuple[PieceIdentity, PhonologicalForm, float]],
     ) -> None:
-        """Aggregate posterior support by positional piece and host type."""
+        """Aggregate posterior support by phonological piece and host type."""
 
         if not self.connection.in_transaction:
             raise RuntimeError("Piece host support requires an open transaction.")
@@ -506,16 +516,9 @@ class LexiconStore:
     def finalize_piece_count_pass(
         self,
         *,
-        min_reuse_host_types: int,
-        host_support_threshold: float,
         checkpoint: dict[str, Any],
     ) -> tuple[int, int, float]:
-        """Freeze the next active map and retire reconstructible pass tables."""
-
-        if min_reuse_host_types < 2:
-            raise ValueError("min_reuse_host_types must be >= 2")
-        if host_support_threshold <= 0.0:
-            raise ValueError("host_support_threshold must be > 0")
+        """Freeze C, M, and R, then retire reconstructible pass tables."""
 
         row = self.connection.execute(
             "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) "
@@ -528,11 +531,13 @@ class LexiconStore:
         self.connection.execute("BEGIN IMMEDIATE")
         with self.connection:
             self.connection.execute(
-                "UPDATE piece_counts_next SET host_type_support = ("
-                "SELECT COUNT(*) FROM piece_host_support_next h "
-                "WHERE h.piece_key = piece_counts_next.form_key "
-                "AND h.support >= ?)",
-                (host_support_threshold,),
+                "UPDATE piece_counts_next SET max_host_expected_usage = "
+                "COALESCE((SELECT MAX(h.support) FROM piece_host_support_next h "
+                "WHERE h.piece_key = piece_counts_next.form_key), 0.0)"
+            )
+            self.connection.execute(
+                "UPDATE piece_counts_next SET reusable_count = "
+                "MAX(0.0, expected_count - max_host_expected_usage)"
             )
             self.connection.execute("DROP TABLE IF EXISTS piece_inventory")
             self.connection.execute(
@@ -540,20 +545,18 @@ class LexiconStore:
             )
             self.connection.execute("DROP TABLE IF EXISTS piece_lexicon")
             self.connection.execute(
-                "DELETE FROM piece_inventory WHERE expected_count <= 0.0 OR "
-                "(instr(form_key, '.') != 0 AND host_type_support < ?)",
-                (min_reuse_host_types,),
+                "ALTER TABLE piece_inventory RENAME COLUMN expected_count "
+                "TO raw_expected_count"
             )
             self.connection.execute(
                 "ALTER TABLE piece_inventory RENAME TO piece_lexicon"
             )
             active = self.connection.execute(
-                "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) "
+                "SELECT COALESCE(SUM(CASE WHEN reusable_count > 0.0 THEN 1 ELSE 0 END), 0), "
+                "COALESCE(SUM(reusable_count), 0.0) "
                 "FROM piece_lexicon"
             ).fetchone()
             assert active is not None
-            if int(active[0]) == 0 or float(active[1]) <= 0.0:
-                raise ValueError("Piece activation produced an empty active state.")
             checkpoint["history"][-1].update(
                 {
                     "piece_types": all_piece_types,
@@ -1234,14 +1237,15 @@ class LexiconStore:
         """Export final piece counts with the fixed active scoring state."""
 
         active_row = self.connection.execute(
-            "SELECT COALESCE(SUM(expected_count), 0.0) FROM piece_lexicon"
+            "SELECT COALESCE(SUM(reusable_count), 0.0) FROM piece_lexicon"
         ).fetchone()
         assert active_row is not None
         denominator = float(active_row[0]) + alpha
         base = GeometricPhonemeBaseMeasure(base_stop_probability)
         query = (
             "SELECT i.form_key, i.expected_count, i.host_type_support, "
-            "a.expected_count FROM inspection_piece_counts i "
+            "a.raw_expected_count, a.max_host_expected_usage, a.reusable_count "
+            "FROM inspection_piece_counts i "
             "LEFT JOIN piece_lexicon a ON a.form_key = i.form_key "
             "ORDER BY i.expected_count DESC, i.form_key"
         )
@@ -1254,19 +1258,19 @@ class LexiconStore:
                     "piece",
                     "phoneme_ids",
                     "length",
-                    "positional_role",
-                    "expected_count",
+                    "raw_expected_count_inspection",
                     "host_type_support",
                     "active",
-                    "active_parameter_count",
+                    "raw_expected_count_training",
+                    "max_host_expected_usage_training",
+                    "reusable_count_training",
                     "model_probability",
                     "model_log_score",
                 )
             )
-            for key, expected, support, active_raw in self.connection.execute(query):
-                identity = PieceIdentity.from_key(str(key))
-                piece = identity.piece
-                active_count = 0.0 if active_raw is None else float(active_raw)
+            for key, expected, support, active_raw, max_host, reusable in self.connection.execute(query):
+                piece = PhonologicalForm.from_key(str(key))
+                active_count = 0.0 if reusable is None else float(reusable)
                 probability = (
                     active_count + alpha * base.probability(piece)
                 ) / denominator
@@ -1282,10 +1286,11 @@ class LexiconStore:
                         piece.iast,
                         " ".join(piece.phoneme_ids),
                         len(piece.symbols),
-                        identity.role.value,
                         expected,
                         support,
-                        int(active_raw is not None),
+                        int(active_count > 0.0),
+                        active_raw,
+                        max_host,
                         active_count,
                         probability,
                         score,
@@ -1362,7 +1367,8 @@ class LexiconStore:
             (low_support_threshold,),
         ).fetchone()
         active = self.connection.execute(
-            "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) FROM piece_lexicon"
+            "SELECT COALESCE(SUM(CASE WHEN reusable_count > 0.0 THEN 1 ELSE 0 END), 0), "
+            "COALESCE(SUM(reusable_count), 0.0) FROM piece_lexicon"
         ).fetchone()
         assert row is not None and active is not None
         length_counts = {

@@ -91,7 +91,7 @@ LEGACY_FINALIZED_IDENTITY_REASON = "round4_finalized_pass1_v1_to_v2_identity"
 EXPECTED_FREEZE_ID = "9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40"
 IMPLEMENTATION = "latent-lexicon-v1"
 S1M1_MODEL = "latent_lexicon_v1"
-S1M2_MODEL = "reusable_pieces_v1"
+S1M2_MODEL = "reusable_pieces_v2"
 COMPACT_EXACT_S1M2 = True
 FORMAL_M0_SCRIPTS = frozenset({"iast", "devanagari"})
 SUPPORTED_OBSERVATION_SCRIPTS = FORMAL_M0_SCRIPTS | {"iast_m0_prime"}
@@ -3301,8 +3301,6 @@ def _training_pass(
         telemetry.elapsed('lexicon_finalize', started)
     else:
         all_types, active_types, active_total = store.finalize_piece_count_pass(
-            min_reuse_host_types=config.piece_min_reuse_host_types,
-            host_support_threshold=config.piece_host_support_threshold,
             checkpoint=checkpoint,
         )
         summary["piece_types"] = all_types
@@ -5658,7 +5656,7 @@ def _compact_completed_s1m2_storage(
         "reduction_fraction": saved / max(1, before),
         "authoritative_state": {
             "metadata": "configuration signature and transactional checkpoint",
-            "piece_lexicon": "fixed active piece parameters used by final inspection",
+            "piece_lexicon": "V2 form-keyed C, M, R; R scores final inspection",
         },
         "compiled_topology": {
             "path": None,
@@ -6243,22 +6241,21 @@ def _human_piece_report(
         "",
         "## Highest-frequency reusable pieces",
         "",
-        "| piece | role | length | expected count | host types | active |",
-        "|---|---|---:|---:|---:|---:|",
+        "| piece | length | inspection C | host types | active | R |",
+        "|---|---:|---:|---:|---:|---:|",
     ]
     for key, count, support, active in store.connection.execute(
         "SELECT i.form_key, i.expected_count, i.host_type_support, "
-        "CASE WHEN a.form_key IS NULL THEN 0 ELSE 1 END "
+        "COALESCE(a.reusable_count, 0.0) "
         "FROM inspection_piece_counts i LEFT JOIN piece_lexicon a "
         "ON a.form_key=i.form_key ORDER BY i.expected_count DESC, i.form_key "
         "LIMIT 20"
     ):
-        identity = PieceIdentity.from_key(str(key))
-        form = identity.piece
+        form = PhonologicalForm.from_key(str(key))
         lines.append(
-            f"| {form.iast} | {identity.role.value} | {len(form.symbols)} | "
+            f"| {form.iast} | {len(form.symbols)} | "
             f"{float(count):.6f} | "
-            f"{int(support)} | {int(active)} |"
+            f"{int(support)} | {int(float(active) > 0.0)} | {float(active):.6f} |"
         )
 
     def add_cases(title: str, cases: list[dict[str, Any]]) -> None:
@@ -6313,11 +6310,10 @@ def _human_piece_report(
             "## Active/inactive semantics",
             "",
             (
-                "All legal pieces remain exactly scoreable. Persistent active "
-                "parameters are observed singletons plus pieces supported in at "
-                f"least {config.piece_min_reuse_host_types} distinct host lexical "
-                "form types after aggregated posterior support reaches "
-                f"{config.piece_host_support_threshold:g} per host type."
+                "All legal pieces remain exactly scoreable. The learned count "
+                "is R(q) = C(q) - max_h S(q,h), where q is a phonological "
+                "form and S is posterior expected usage by lexical host type. "
+                "Piece role is structural and diagnostic metadata."
             ),
             "No rule-use or generic sandhi reward is present.",
             "",
@@ -6381,7 +6377,8 @@ def _validate_inspection_only_state(
                 "Inspection-only requires the final learned piece_lexicon."
             )
         row = store.connection.execute(
-            "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) "
+            "SELECT COALESCE(SUM(CASE WHEN reusable_count > 0.0 THEN 1 ELSE 0 END), 0), "
+            "COALESCE(SUM(reusable_count), 0.0) "
             "FROM piece_lexicon"
         ).fetchone()
         assert row is not None
@@ -6623,7 +6620,8 @@ def _prepare_legacy_v1_finalized_identity_migration(
     if not store.has_table("piece_lexicon"):
         raise RuntimeError("Legacy finalized migration requires piece_lexicon.")
     active = store.connection.execute(
-        "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) FROM piece_lexicon"
+        "SELECT COALESCE(SUM(CASE WHEN reusable_count > 0.0 THEN 1 ELSE 0 END), 0), "
+        "COALESCE(SUM(reusable_count), 0.0) FROM piece_lexicon"
     ).fetchone()
     assert active is not None
     if (
