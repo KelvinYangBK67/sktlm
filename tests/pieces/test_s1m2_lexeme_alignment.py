@@ -74,7 +74,10 @@ def _evaluate_synthetic(
     run_dir.mkdir()
     with sqlite3.connect(run_dir / "learner.sqlite") as connection:
         connection.execute(
-            "CREATE TABLE piece_lexicon (form_key TEXT PRIMARY KEY, expected_count REAL)"
+            "CREATE TABLE piece_lexicon (form_key TEXT PRIMARY KEY, "
+            "raw_expected_count REAL NOT NULL, "
+            "max_host_expected_usage REAL NOT NULL, "
+            "reusable_count REAL NOT NULL)"
         )
     corpus = tmp_path / "corpus.txt"
     challenge = tmp_path / "challenge.jsonl"

@@ -181,7 +181,8 @@ def test_diagnostic_exact_training_and_read_only_heldout_artifacts(
     assert provenance["diagnostic_input_signature"] == source.identity_sha256()
     with sqlite3.connect(result.run_dir / "learner.sqlite") as connection:
         before = connection.execute(
-            "SELECT form_key, expected_count FROM piece_lexicon ORDER BY form_key"
+            "SELECT form_key, raw_expected_count, max_host_expected_usage, "
+            "reusable_count FROM piece_lexicon ORDER BY form_key"
         ).fetchall()
     first = evaluate_challenge(
         config=config,
@@ -200,7 +201,8 @@ def test_diagnostic_exact_training_and_read_only_heldout_artifacts(
     assert output == (result.run_dir / "challenge_analyses.jsonl").read_bytes()
     with sqlite3.connect(result.run_dir / "learner.sqlite") as connection:
         after = connection.execute(
-            "SELECT form_key, expected_count FROM piece_lexicon ORDER BY form_key"
+            "SELECT form_key, raw_expected_count, max_host_expected_usage, "
+            "reusable_count FROM piece_lexicon ORDER BY form_key"
         ).fetchall()
     assert before == after
     assert first["challenge_sentences"] == 1
@@ -234,7 +236,8 @@ def test_diagnostic_exact_training_and_read_only_heldout_artifacts(
     assert evaluation_provenance["challenge_sha256"] == source.challenge_sha256
     with sqlite3.connect(result.run_dir / "learner.sqlite") as connection:
         assert before == connection.execute(
-            "SELECT form_key, expected_count FROM piece_lexicon ORDER BY form_key"
+            "SELECT form_key, raw_expected_count, max_host_expected_usage, "
+            "reusable_count FROM piece_lexicon ORDER BY form_key"
         ).fetchall()
     with pytest.raises(FileExistsError):
         reevaluate_existing_run(result.run_dir)
