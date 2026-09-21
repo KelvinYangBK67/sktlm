@@ -1,5 +1,28 @@
 # PROJECT_STATE.md
 
+## S1M2 V2 held-out semantic diagnostics (2026-09-21)
+
+Diagnostic #3 (wrong-host coalition participation) and #5 (unseen exact DCS
+gold wordform generalization) are implemented as a separate read-only module.
+They consume existing DCS-structural top-1 localization and final V2 C/M/R;
+they invoke neither trainer nor inference and change no scientific state.
+On the existing `noun_high_deva_E000_v2_gate`, all 80 target gold wordforms
+are absent from the exact selected-training DCS `Unsandhied` inventory. Of 76
+evaluable occurrences, 31 recover exactly (0.407895); four remain ambiguous.
+Piece metrics cover 56 single-host target analyses: mean 1.75 pieces and
+whole-form use 0.267857. There is no seen stratum in E000. The wrong-host audit
+has 31 correct and 45 wrong occurrences. Nine pieces occur in wrong localized
+predictions; only `dev` spans at least two distinct wrong predicted hosts with
+R>0: 16 wrong occurrences over four wrong hosts, C=1.128234, M=0.222276,
+R=0.905958. This is descriptive held-out top-1 association, not causal or
+exact-posterior evidence. Training metadata was reconstructible for exact
+wordform membership: 996 unique DCS sentence mappings plus four ambiguous
+sentence identities with identical ordered gold sequences; 58 token gold
+values remain explicitly unavailable rather than inferred. Local v3 artifacts
+and the training-gold sidecar are ignored generated data. Authority:
+`reports/core_methods/reusable_pieces/s1m2_v2_semantic_diagnostics_20260921.md`.
+No further experiment is authorized automatically.
+
 ## S1M2 V2 reusable objective (2026-09-21)
 
 `S1M2_REUSABLE_PIECES_V1` / `reusable_pieces_v1` is the historical
