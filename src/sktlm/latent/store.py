@@ -329,7 +329,7 @@ class LexiconStore:
         self.telemetry.add_seconds("sqlite_completed_state_compaction", elapsed)
         self.telemetry.increment("sqlite_completed_state_tables_dropped", len(dropped))
         return {
-            "layout": "s1m2_active_piece_state_v1",
+            "layout": "s1m2_reusable_piece_state_v2",
             "before_bytes": before,
             "after_bytes": after,
             "dropped_tables": list(dropped),
@@ -1408,7 +1408,8 @@ class LexiconStore:
             reuse_distribution[bucket] += int(types)
         complexity_raw = 0.0
         for key, count in self.connection.execute(
-            "SELECT form_key, expected_count FROM inspection_piece_counts"
+            "SELECT form_key, reusable_count FROM piece_lexicon "
+            "WHERE reusable_count > 0.0"
         ):
             length = str(key).count(".") + 1
             complexity_raw += (

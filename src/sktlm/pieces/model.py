@@ -8,7 +8,7 @@ from typing import Mapping
 
 from sktlm.latent.phonology import PhonologicalForm
 from sktlm.pieces.inference import PieceEvaluation, evaluate_piece_lattice
-from sktlm.pieces.lattice import PieceIdentity, build_piece_lattice
+from sktlm.pieces.lattice import build_piece_lattice
 from sktlm.pieces.scorer import (
     ExpectedCountPieceScorer,
     NeutralPieceScorer,
@@ -81,7 +81,7 @@ class PieceModel:
     @classmethod
     def from_expected_counts(
         cls,
-        counts: Mapping[PieceIdentity, float],
+        counts: Mapping[PhonologicalForm, float],
         config: PieceModelConfig = PieceModelConfig(),
     ) -> "PieceModel":
         scorer = ExpectedCountPieceScorer(
@@ -121,10 +121,10 @@ class PieceModel:
     def expected_counts_from_outer(
         self,
         outer_expected_counts: Mapping[PhonologicalForm, float],
-    ) -> dict[PieceIdentity, float]:
+    ) -> dict[PhonologicalForm, float]:
         r"""Apply ``sum_u E[count(u)|x] * E[count(p)|u]`` exactly."""
 
-        piece_counts: dict[PieceIdentity, float] = defaultdict(float)
+        piece_counts: dict[PhonologicalForm, float] = defaultdict(float)
         for form, outer_mass in sorted(
             outer_expected_counts.items(),
             key=lambda item: item[0].key,
@@ -132,8 +132,8 @@ class PieceModel:
             if outer_mass <= 0.0:
                 continue
             evaluation = self.evaluate(form)
-            for piece, conditional_count in evaluation.expected_piece_counts.items():
-                piece_counts[piece] += outer_mass * conditional_count
+            for identity, conditional_count in evaluation.expected_piece_counts.items():
+                piece_counts[identity.piece] += outer_mass * conditional_count
         return dict(piece_counts)
 
 
@@ -142,7 +142,7 @@ class PieceTrainingPass:
     pass_index: int
     neutral: bool
     weighted_log_score: float
-    expected_piece_counts: dict[PieceIdentity, float]
+    expected_piece_counts: dict[PhonologicalForm, float]
 
 
 @dataclass(frozen=True, slots=True)

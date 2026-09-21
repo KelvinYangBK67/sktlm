@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Mapping, Protocol
 
 from sktlm.latent.phonology import Phoneme, PhonologicalForm
-from sktlm.pieces.lattice import PieceIdentity, PieceRole
+from sktlm.pieces.lattice import PieceRole
 
 
 class PieceScorer(Protocol):
@@ -54,7 +54,7 @@ class ExpectedCountPieceScorer:
 
     def __init__(
         self,
-        counts: Mapping[PhonologicalForm | PieceIdentity, float],
+        counts: Mapping[PhonologicalForm, float],
         *,
         alpha: float,
         lambda_: float,
@@ -85,9 +85,7 @@ class ExpectedCountPieceScorer:
         self.denominator = self.total_count + alpha * self.vocabulary_size
 
     def _count(self, piece: PhonologicalForm, role: PieceRole) -> float:
-        identity = PieceIdentity(piece, role)
-        if identity in self.counts:
-            return self.counts[identity]
+        del role
         return self.counts.get(piece, 0.0)
 
     def probability(
