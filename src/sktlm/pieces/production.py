@@ -1,7 +1,7 @@
-"""Finite active-state updates for the S1M2 production piece semantics.
+"""Finite reference updates for versioned S1M2 reusable-piece semantics.
 
-Inference is exact for each fixed pass. Between passes, the largest lexical
-host contribution is removed from each form's raw expected count.
+V2 removes the largest wordform-host contribution. V3 measures symmetric
+corroboration across distinct latent phonological wordform host types.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from typing import Iterable, Mapping
 
 from sktlm.latent.phonology import PhonologicalForm
 from sktlm.pieces.model import PieceModel, PieceModelConfig
+from sktlm.pieces.objective import cross_host_reusable_count
 from sktlm.pieces.scorer import (
     BaseMeasurePieceScorer,
     GeometricPhonemeBaseMeasure,
@@ -76,6 +77,40 @@ def select_reusable_inventory(
         for piece, count in raw.items()
     }
     return dict(raw), dict(maximum), reusable
+
+
+def select_cross_host_reusable_inventory(
+    host_support: Mapping[tuple[PhonologicalForm, PhonologicalForm], float],
+) -> tuple[
+    dict[PhonologicalForm, float],
+    dict[PhonologicalForm, float],
+    dict[PhonologicalForm, float],
+    dict[PhonologicalForm, float],
+]:
+    """Return V3 role-collapsed ``C, Q, M, R_cross`` by wordform host type."""
+
+    by_piece_host: dict[
+        tuple[PhonologicalForm, PhonologicalForm], float
+    ] = defaultdict(float)
+    for (piece, host), support in host_support.items():
+        amount = float(support)
+        if amount < 0.0:
+            raise ValueError("host support must be nonnegative")
+        by_piece_host[(piece, host)] += amount
+    raw: dict[PhonologicalForm, float] = defaultdict(float)
+    squared: dict[PhonologicalForm, float] = defaultdict(float)
+    maximum: dict[PhonologicalForm, float] = defaultdict(float)
+    for (piece, _host), support in sorted(
+        by_piece_host.items(), key=lambda item: (item[0][0].key, item[0][1].key)
+    ):
+        raw[piece] += support
+        squared[piece] += support * support
+        maximum[piece] = max(maximum[piece], support)
+    reusable = {
+        piece: cross_host_reusable_count(count, squared[piece])
+        for piece, count in raw.items()
+    }
+    return dict(raw), dict(squared), dict(maximum), reusable
 
 
 def production_model_from_counts(

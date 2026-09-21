@@ -48,6 +48,14 @@ from sktlm.pieces.production import (
     fit_production_piece_model,
     production_model_from_counts,
     select_reusable_inventory,
+    select_cross_host_reusable_inventory,
+)
+from sktlm.pieces.objective import (
+    S1M2_REUSABLE_PIECES_V1,
+    S1M2_REUSABLE_PIECES_V2,
+    S1M2_REUSABLE_PIECES_V3,
+    cross_host_reusable_count,
+    cross_host_support_moments,
 )
 
 __all__ = [
@@ -78,8 +86,13 @@ __all__ = [
     "ProductionPiecePass",
     "ProductionPieceTrainingResult",
     "ReferencePieceTrainingResult",
+    "S1M2_REUSABLE_PIECES_V1",
+    "S1M2_REUSABLE_PIECES_V2",
+    "S1M2_REUSABLE_PIECES_V3",
     "build_piece_lattice",
     "compile_composed_segment_topology",
+    "cross_host_reusable_count",
+    "cross_host_support_moments",
     "evaluate_piece_lattice",
     "fit_reference_piece_model",
     "fit_production_piece_model",
@@ -88,4 +101,5 @@ __all__ = [
     "piece_role",
     "raw_prior_edge_score",
     "select_reusable_inventory",
+    "select_cross_host_reusable_inventory",
 ]

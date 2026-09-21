@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sqlite3
 from collections import Counter, defaultdict
 from contextlib import closing
@@ -11,9 +12,11 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from sktlm.experiments.training.s1m2_lexeme_alignment import DCS_SOURCE_ROOT
-from sktlm.latent.phonology import normalize_iast, parse_iast_form
+from sktlm.latent.phonology import PhonologicalForm, normalize_iast, parse_iast_form
 from sktlm.latent.training import (
-    S1M2_MODEL,
+    S1M2_MODELS,
+    S1M2_REUSABLE_PIECES_V2,
+    S1M2_REUSABLE_PIECES_V3,
     TrainingConfig,
     _config_signature,
     _file_sha256,
@@ -21,10 +24,15 @@ from sktlm.latent.training import (
 )
 
 
+# Published V2 artifacts remain immutable at schema v3. V3 gets new v4 names.
 SEMANTIC_SCHEMA_VERSION = 3
 ANALYSES_NAME = "challenge_semantic_diagnostics.v3.jsonl"
 SUMMARY_NAME = "challenge_semantic_summary.v3.json"
 PROVENANCE_NAME = "challenge_semantic_diagnostics.v3.provenance.json"
+V3_SEMANTIC_SCHEMA_VERSION = 4
+V3_ANALYSES_NAME = "challenge_semantic_diagnostics.v4.jsonl"
+V3_SUMMARY_NAME = "challenge_semantic_summary.v4.json"
+V3_PROVENANCE_NAME = "challenge_semantic_diagnostics.v4.provenance.json"
 TRAINING_GOLD_SIDECAR_NAME = "training_gold_wordforms.v1.json"
 _PROTECTED_RUN_FILES = (
     "challenge_analyses.jsonl",
@@ -289,9 +297,12 @@ def _validate_training_gold_inventory(
 
 
 def read_piece_lexicon_values(
-    database: Path, piece_forms: Iterable[str]
+    database: Path,
+    piece_forms: Iterable[str],
+    *,
+    objective_model: str = S1M2_REUSABLE_PIECES_V2,
 ) -> tuple[dict[str, dict[str, float] | None], bool]:
-    """Read only the held-out top-1 pieces from authoritative V2 state."""
+    """Read held-out pieces from explicitly versioned authoritative state."""
 
     requested = sorted(set(piece_forms))
     values: dict[str, dict[str, float] | None] = {piece: None for piece in requested}
@@ -306,21 +317,138 @@ def read_piece_lexicon_values(
             "form_key", "raw_expected_count", "max_host_expected_usage", "reusable_count"
         }
         if not required <= columns:
-            raise ValueError("Completed learner is not S1M2 V2 C/M/R state.")
+            raise ValueError("Completed learner has no reusable-piece C/M/R state.")
+        has_metadata = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='metadata'"
+        ).fetchone()
+        model_row = (
+            connection.execute(
+                "SELECT value FROM metadata WHERE key='piece_objective_model'"
+            ).fetchone()
+            if has_metadata
+            else None
+        )
+        stored_model = None if model_row is None else str(model_row[0])
+        has_q = "sum_host_support_squared" in columns
+        if objective_model == S1M2_REUSABLE_PIECES_V3:
+            if stored_model != objective_model or not has_q:
+                raise ValueError("Completed learner is not explicit V3 C/Q/M/R state.")
+            select = (
+                "SELECT raw_expected_count, sum_host_support_squared, "
+                "max_host_expected_usage, reusable_count "
+                "FROM piece_lexicon WHERE form_key = ?"
+            )
+        elif objective_model == S1M2_REUSABLE_PIECES_V2:
+            if stored_model == S1M2_REUSABLE_PIECES_V3 or has_q:
+                raise ValueError("Completed learner is not V2 C/M/R state.")
+            select = (
+                "SELECT raw_expected_count, max_host_expected_usage, reusable_count "
+                "FROM piece_lexicon WHERE form_key = ?"
+            )
+        else:
+            raise ValueError(f"Unsupported reusable-piece model: {objective_model}")
         for piece in requested:
             key = parse_iast_form(piece).key
-            row = connection.execute(
-                "SELECT raw_expected_count, max_host_expected_usage, reusable_count "
-                "FROM piece_lexicon WHERE form_key = ?",
-                (key,),
-            ).fetchone()
+            row = connection.execute(select, (key,)).fetchone()
             if row is not None:
-                values[piece] = {
-                    "raw_expected_count": float(row[0]),
-                    "max_host_expected_usage": float(row[1]),
-                    "reusable_count": float(row[2]),
-                }
+                if objective_model == S1M2_REUSABLE_PIECES_V3:
+                    values[piece] = {
+                        "raw_expected_count": float(row[0]),
+                        "sum_host_support_squared": float(row[1]),
+                        "max_host_expected_usage": float(row[2]),
+                        "reusable_count": float(row[3]),
+                    }
+                else:
+                    values[piece] = {
+                        "raw_expected_count": float(row[0]),
+                        "max_host_expected_usage": float(row[1]),
+                        "reusable_count": float(row[2]),
+                    }
     return values, query_only
+
+
+def read_role_pooling_diagnostics(
+    database: Path,
+    *,
+    objective_model: str,
+    limit: int = 100,
+) -> tuple[list[dict[str, Any]], bool]:
+    """Read a bounded V3 shadow comparison; this state never enters scoring."""
+
+    if objective_model != S1M2_REUSABLE_PIECES_V3:
+        return [], False
+    if limit < 1:
+        raise ValueError("role diagnostic limit must be positive")
+    uri = database.resolve(strict=True).as_uri() + "?mode=ro"
+    with closing(sqlite3.connect(uri, uri=True)) as connection:
+        connection.execute("PRAGMA query_only=ON")
+        query_only = int(connection.execute("PRAGMA query_only").fetchone()[0]) == 1
+        model_row = connection.execute(
+            "SELECT value FROM metadata WHERE key='piece_objective_model'"
+        ).fetchone()
+        if model_row is None or str(model_row[0]) != objective_model:
+            raise ValueError("Role diagnostics require explicit V3 state identity.")
+        tables = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        if "piece_role_diagnostics" not in tables:
+            raise ValueError(
+                "V3 checkpoint did not enable bounded piece role diagnostics."
+            )
+        pieces = connection.execute(
+            "SELECT l.form_key, l.raw_expected_count, "
+            "l.sum_host_support_squared, l.max_host_expected_usage, "
+            "l.reusable_count FROM piece_lexicon l "
+            "WHERE EXISTS (SELECT 1 FROM piece_role_diagnostics r "
+            "WHERE r.form_key=l.form_key) "
+            "ORDER BY l.reusable_count DESC, l.form_key ASC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        result: list[dict[str, Any]] = []
+        for form_key, raw, squared, maximum, pooled in pieces:
+            role_rows = connection.execute(
+                "SELECT role, raw_expected_count, sum_host_support_squared, "
+                "reusable_count FROM piece_role_diagnostics "
+                "WHERE form_key=? ORDER BY role",
+                (str(form_key),),
+            ).fetchall()
+            role_raw_total = sum(float(row[1]) for row in role_rows)
+            role_reusable_total = sum(float(row[3]) for row in role_rows)
+            roles = []
+            entropy = 0.0
+            for role, role_raw, role_squared, role_reusable in role_rows:
+                share = float(role_raw) / role_raw_total if role_raw_total > 0.0 else 0.0
+                if share > 0.0:
+                    entropy -= share * math.log(share)
+                roles.append(
+                    {
+                        "role": str(role),
+                        "raw_expected_count": float(role_raw),
+                        "share": share,
+                        "sum_host_support_squared": float(role_squared),
+                        "role_separated_reusable_count": float(role_reusable),
+                    }
+                )
+            result.append(
+                {
+                    "piece": PhonologicalForm.from_key(str(form_key)).iast,
+                    "raw_expected_count": float(raw),
+                    "sum_host_support_squared": float(squared),
+                    "max_host_expected_usage": float(maximum),
+                    "pooled_reusable_count": float(pooled),
+                    "role_separated_reusable_count": role_reusable_total,
+                    "role_pooling_gain": float(pooled) - role_reusable_total,
+                    "role_raw_count_total": role_raw_total,
+                    "role_raw_count_delta_from_pooled": role_raw_total - float(raw),
+                    "role_entropy_nats": entropy,
+                    "effective_role_count": math.exp(entropy),
+                    "roles": roles,
+                }
+            )
+    return result, query_only
 
 
 def _metric_bucket() -> dict[str, Any]:
@@ -378,8 +506,18 @@ def analyze_semantic_records(
     *,
     training_gold_wordforms: frozenset[str],
     piece_values: Mapping[str, dict[str, float] | None],
+    objective_model: str = S1M2_REUSABLE_PIECES_V2,
+    role_pooling_rows: Sequence[Mapping[str, Any]] = (),
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Compute held-out top-1 descriptive #3 and exact-membership #5 metrics."""
+    """Compute versioned #3/#4/#5 diagnostics without training or inference."""
+
+    if objective_model not in S1M2_MODELS:
+        raise ValueError(f"Unsupported reusable-piece model: {objective_model}")
+    schema_version = (
+        V3_SEMANTIC_SCHEMA_VERSION
+        if objective_model == S1M2_REUSABLE_PIECES_V3
+        else SEMANTIC_SCHEMA_VERSION
+    )
 
     buckets = {
         "overall": _metric_bucket(),
@@ -480,7 +618,7 @@ def analyze_semantic_records(
                 piece_usage[piece][field] += 1
         diagnostics.append(
             {
-                "schema_version": SEMANTIC_SCHEMA_VERSION,
+                "schema_version": schema_version,
                 "metric_semantics": {
                     "wrong_host_audit": "held_out_top1_descriptive_not_exact_posterior",
                     "seen_unseen": "exact_dcs_unsandhied_gold_wordform_membership",
@@ -517,8 +655,14 @@ def analyze_semantic_records(
                         "piece_lexicon_present": piece_values.get(piece) is not None,
                         **(
                             piece_values[piece]
-                            if piece_values.get(piece) is not None else {
+                            if piece_values.get(piece) is not None
+                            else {
                                 "raw_expected_count": None,
+                                **(
+                                    {"sum_host_support_squared": None}
+                                    if objective_model == S1M2_REUSABLE_PIECES_V3
+                                    else {}
+                                ),
                                 "max_host_expected_usage": None,
                                 "reusable_count": None,
                             }
@@ -548,6 +692,17 @@ def analyze_semantic_records(
                 "correct_predicted_host_forms": correct_hosts,
                 "piece_lexicon_present": counts is not None,
                 "raw_expected_count": None if counts is None else counts["raw_expected_count"],
+                **(
+                    {
+                        "sum_host_support_squared": (
+                            None
+                            if counts is None
+                            else counts["sum_host_support_squared"]
+                        )
+                    }
+                    if objective_model == S1M2_REUSABLE_PIECES_V3
+                    else {}
+                ),
                 "max_host_expected_usage": (
                     None if counts is None else counts["max_host_expected_usage"]
                 ),
@@ -565,11 +720,20 @@ def analyze_semantic_records(
     )
     candidates = [row for row in wrong_piece_rows if row["coalition_candidate"]]
     summary = {
-        "schema_version": SEMANTIC_SCHEMA_VERSION,
+        "schema_version": schema_version,
+        **(
+            {"objective_model": objective_model}
+            if objective_model == S1M2_REUSABLE_PIECES_V3
+            else {}
+        ),
         "metric_semantics": {
             "wrong_host_audit": (
                 "held-out top-1 descriptive participation; final C/M/R are training "
                 "state and do not establish that wrong hosts caused reusable count"
+                if objective_model == S1M2_REUSABLE_PIECES_V2
+                else "held-out top-1 descriptive participation; final C/Q/M/R_cross "
+                "are training state and do not establish that wrong hosts caused "
+                "reusable count"
             ),
             "seen_unseen": (
                 "membership of held-out exact DCS Unsandhied wordform in the exact "
@@ -594,6 +758,16 @@ def analyze_semantic_records(
             name: _finish_bucket(bucket) for name, bucket in buckets.items()
         },
     }
+    if objective_model == S1M2_REUSABLE_PIECES_V3:
+        summary["role_source_pooling_diagnostic"] = {
+            "semantics": (
+                "bounded final-training shadow diagnostic over S(q,h,r); learned "
+                "identity and production score remain pooled by phonological form"
+            ),
+            "reported_piece_limit": 100,
+            "reported_pieces": len(role_pooling_rows),
+            "pieces_by_pooled_reusable_count": [dict(row) for row in role_pooling_rows],
+        }
     return diagnostics, summary
 
 
@@ -618,8 +792,8 @@ def _validate_run(run_dir: Path) -> tuple[TrainingConfig, dict[str, Any], Path, 
     config = TrainingConfig(**fields)
     provenance = _read_json(provenance_path)
     checkpoint = _read_json(checkpoint_path)
-    if config.model != S1M2_MODEL or config.payload() != stored:
-        raise ValueError("Stored diagnostic configuration is not exact S1M2 V2.")
+    if config.model not in S1M2_MODELS or config.payload() != stored:
+        raise ValueError("Stored diagnostic configuration is not an exact S1M2 model.")
     if (
         provenance.get("source_kind") != "diagnostic_s1m2_lexeme_probe"
         or provenance.get("config_signature") != _config_signature(config)
@@ -646,16 +820,23 @@ def run_semantic_diagnostics(
     dcs_root: Path = DCS_SOURCE_ROOT,
     repo_root: Path = Path("."),
 ) -> dict[str, Any]:
-    """Create v3 diagnostics without inference, training, or existing-file writes."""
+    """Create versioned diagnostics without training, inference, or overwrites."""
 
     run_dir = run_dir.resolve(strict=True)
     training_selection = training_selection.resolve(strict=True)
     sidecar_path = training_gold_sidecar.resolve()
-    outputs = [run_dir / name for name in (ANALYSES_NAME, SUMMARY_NAME, PROVENANCE_NAME)]
-    if any(path.exists() for path in outputs):
-        raise FileExistsError("A v3 semantic diagnostic artifact already exists.")
     protected_before = _protected_hashes(run_dir)
-    _config, provenance, corpus, challenge = _validate_run(run_dir)
+    config, provenance, corpus, challenge = _validate_run(run_dir)
+    output_names = (
+        (V3_ANALYSES_NAME, V3_SUMMARY_NAME, V3_PROVENANCE_NAME)
+        if config.model == S1M2_REUSABLE_PIECES_V3
+        else (ANALYSES_NAME, SUMMARY_NAME, PROVENANCE_NAME)
+    )
+    outputs = [run_dir / name for name in output_names]
+    if any(path.exists() for path in outputs):
+        raise FileExistsError(
+            f"A semantic diagnostic artifact already exists for {config.model}."
+        )
     if sidecar_path.exists():
         sidecar = _read_json(sidecar_path)
     else:
@@ -679,12 +860,20 @@ def run_semantic_diagnostics(
         if isinstance(piece, str)
     }
     piece_values, query_only = read_piece_lexicon_values(
-        run_dir / "learner.sqlite", used_pieces
+        run_dir / "learner.sqlite",
+        used_pieces,
+        objective_model=config.model,
+    )
+    role_pooling_rows, role_query_only = read_role_pooling_diagnostics(
+        run_dir / "learner.sqlite",
+        objective_model=config.model,
     )
     diagnostics, summary = analyze_semantic_records(
         records,
         training_gold_wordforms=inventory,
         piece_values=piece_values,
+        objective_model=config.model,
+        role_pooling_rows=role_pooling_rows,
     )
     with outputs[0].open("x", encoding="utf-8", newline="\n") as handle:
         for row in diagnostics:
@@ -704,8 +893,17 @@ def run_semantic_diagnostics(
         if path.is_relative_to(root) and path.is_file():
             challenge_dcs_hashes[path.as_posix()] = _file_sha256(path)
     provenance_payload = {
-        "schema_version": SEMANTIC_SCHEMA_VERSION,
-        "evaluation_kind": "s1m2_v2_heldout_semantic_diagnostics",
+        "schema_version": summary["schema_version"],
+        "evaluation_kind": (
+            "s1m2_v3_heldout_semantic_diagnostics"
+            if config.model == S1M2_REUSABLE_PIECES_V3
+            else "s1m2_v2_heldout_semantic_diagnostics"
+        ),
+        **(
+            {"objective_model": config.model}
+            if config.model == S1M2_REUSABLE_PIECES_V3
+            else {}
+        ),
         "evaluation_git_commit": _git_commit(repo_root.resolve()),
         "training_git_commit": provenance["training_git_commit"],
         "training_config_sha256": _file_sha256(run_dir / "config.json"),
@@ -721,7 +919,9 @@ def run_semantic_diagnostics(
         "training_dcs_source_files_sha256": sidecar["dcs_source_files_sha256"],
         "challenge_dcs_source_files_sha256": dict(sorted(challenge_dcs_hashes.items())),
         "sqlite_open_mode": "mode=ro",
-        "sqlite_query_only_enforced": query_only,
+        "sqlite_query_only_enforced": query_only and (
+            role_query_only or config.model == S1M2_REUSABLE_PIECES_V2
+        ),
         "trainer_invoked": False,
         "inference_invoked": False,
         "protected_run_artifacts_unchanged": True,
@@ -736,7 +936,7 @@ def run_semantic_diagnostics(
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Read-only #3/#5 semantic diagnostics for completed S1M2 V2."
+        description="Read-only #3/#4/#5 diagnostics for completed S1M2 V2/V3."
     )
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--training-selection", type=Path, required=True)
@@ -757,6 +957,9 @@ def main(argv: list[str] | None = None) -> None:
     strata = summary["unseen_exact_wordform_generalization"]
     print(f"wrong-host occurrences: {audit['wrong_host_occurrences']}")
     print(f"coalition candidates: {audit['coalition_candidates']}")
+    if "role_source_pooling_diagnostic" in summary:
+        role = summary["role_source_pooling_diagnostic"]
+        print(f"role-diagnostic pieces: {role['reported_pieces']}")
     print(json.dumps(strata, ensure_ascii=False, sort_keys=True))
 
 

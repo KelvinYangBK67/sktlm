@@ -8,6 +8,7 @@ from pathlib import Path
 from sktlm.latent.training import (
     S1M1_MODEL,
     S1M2_MODEL,
+    S1M2_REUSABLE_PIECES_V3,
     TrainingConfig,
     run_training,
 )
@@ -34,7 +35,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-id")
     parser.add_argument(
         "--model",
-        choices=(S1M1_MODEL, S1M2_MODEL),
+        choices=(S1M1_MODEL, S1M2_MODEL, S1M2_REUSABLE_PIECES_V3),
         default=S1M1_MODEL,
     )
     parser.add_argument(
@@ -127,6 +128,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=4_194_304,
         help="Finite per-token shared inspection top-K piece-reference bound.",
     )
+    parser.add_argument(
+        "--piece-role-diagnostics",
+        action="store_true",
+        help="Collect bounded V3 host-by-role shadow diagnostics during training.",
+    )
     parser.add_argument("--resume", action="store_true")
     phases = parser.add_mutually_exclusive_group()
     phases.add_argument(
@@ -184,7 +190,9 @@ def main(argv: list[str] | None = None) -> None:
         whitespace_merge_penalty=args.whitespace_merge_penalty,
         sandhi_transformation_penalty=args.sandhi_transformation_penalty,
         allow_whitespace_merge=(
-            False if args.model == S1M2_MODEL else not args.no_whitespace_merge
+            False
+            if args.model in (S1M2_MODEL, S1M2_REUSABLE_PIECES_V3)
+            else not args.no_whitespace_merge
         ),
         max_internal_matches=args.max_internal_matches,
         max_segment_tokens=args.max_segment_tokens,
@@ -220,6 +228,7 @@ def main(argv: list[str] | None = None) -> None:
         piece_shared_top_k_piece_references=(
             args.piece_shared_top_k_piece_references
         ),
+        piece_role_diagnostics=args.piece_role_diagnostics,
         inspection_retained_factor_bytes=args.inspection_retained_factor_bytes,
         resume=args.resume or args.inspection_only,
     )

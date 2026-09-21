@@ -21,6 +21,10 @@ from sktlm.latent.vocabulary import (
     allowed_key_sha256,
 )
 from sktlm.pieces.lattice import PieceIdentity, PieceRole
+from sktlm.pieces.objective import (
+    S1M2_REUSABLE_PIECES_V2,
+    S1M2_REUSABLE_PIECES_V3,
+)
 from sktlm.pieces.scorer import GeometricPhonemeBaseMeasure
 
 
@@ -121,7 +125,7 @@ class LexiconScorer:
 
 
 class PieceStoreScorer:
-    """V2 reusable-count scorer with exact SQLite lookup and bounded LRU."""
+    """Versioned reusable-count scorer with exact SQLite lookup and bounded LRU."""
 
     def __init__(
         self,
@@ -135,6 +139,7 @@ class PieceStoreScorer:
         base_stop_probability: float,
         cache_size: int,
         telemetry: RuntimeTelemetry,
+        objective_model: str = S1M2_REUSABLE_PIECES_V2,
     ) -> None:
         if not connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='piece_lexicon'"
@@ -143,10 +148,39 @@ class PieceStoreScorer:
         columns = {
             row[1] for row in connection.execute("PRAGMA table_info(piece_lexicon)")
         }
-        if not {
+        v2_columns = {
             "raw_expected_count", "max_host_expected_usage", "reusable_count"
-        } <= columns:
+        }
+        if not v2_columns <= columns:
             raise RuntimeError("V1 piece state cannot be scored as reusable_pieces_v2.")
+        has_metadata = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='metadata'"
+        ).fetchone()
+        stored_model_row = (
+            connection.execute(
+                "SELECT value FROM metadata WHERE key='piece_objective_model'"
+            ).fetchone()
+            if has_metadata
+            else None
+        )
+        stored_model = None if stored_model_row is None else str(stored_model_row[0])
+        if objective_model == S1M2_REUSABLE_PIECES_V3:
+            if stored_model != S1M2_REUSABLE_PIECES_V3 or (
+                "sum_host_support_squared" not in columns
+            ):
+                raise RuntimeError(
+                    "V2 piece state cannot be scored as reusable_pieces_v3."
+                )
+        elif objective_model == S1M2_REUSABLE_PIECES_V2:
+            if stored_model == S1M2_REUSABLE_PIECES_V3 or (
+                "sum_host_support_squared" in columns
+            ):
+                raise RuntimeError(
+                    "V3 piece state cannot be scored as reusable_pieces_v2."
+                )
+        else:
+            raise ValueError(f"unsupported reusable-piece objective: {objective_model}")
+        self.objective_model = objective_model
         self.connection = connection
         self.alpha = alpha
         self.complexity_weight = complexity_weight
@@ -300,7 +334,7 @@ class LexiconStore:
         }
 
     def compact_completed_piece_state(self) -> dict[str, Any]:
-        """Retain authoritative S1M2 parameters, not exported inspection indexes."""
+        """Retain learned parameters and any explicitly collected V3 diagnostics."""
 
         if not self.has_table("piece_lexicon"):
             raise RuntimeError("Completed S1M2 state requires piece_lexicon.")
@@ -328,8 +362,16 @@ class LexiconStore:
             raise RuntimeError("Completed S1M2 compaction lost authoritative state.")
         self.telemetry.add_seconds("sqlite_completed_state_compaction", elapsed)
         self.telemetry.increment("sqlite_completed_state_tables_dropped", len(dropped))
+        objective_model = (
+            self.get_metadata("piece_objective_model")
+            or S1M2_REUSABLE_PIECES_V2
+        )
         return {
-            "layout": "s1m2_reusable_piece_state_v2",
+            "layout": (
+                "s1m2_reusable_piece_state_v3"
+                if objective_model == S1M2_REUSABLE_PIECES_V3
+                else "s1m2_reusable_piece_state_v2"
+            ),
             "before_bytes": before,
             "after_bytes": after,
             "dropped_tables": list(dropped),
@@ -406,26 +448,79 @@ class LexiconStore:
         *,
         resume: bool,
         checkpoint: dict[str, Any],
+        objective_model: str = S1M2_REUSABLE_PIECES_V2,
+        collect_role_diagnostics: bool = False,
     ) -> None:
-        """Start or resume one crash-safe S1M2 lexical/piece count pass."""
+        """Start or resume one crash-safe versioned S1M2 count pass."""
+
+        if objective_model not in {
+            S1M2_REUSABLE_PIECES_V2,
+            S1M2_REUSABLE_PIECES_V3,
+        }:
+            raise ValueError(f"unsupported reusable-piece objective: {objective_model}")
+        if collect_role_diagnostics and objective_model != S1M2_REUSABLE_PIECES_V3:
+            raise ValueError("role diagnostics are defined only for reusable_pieces_v3")
 
         with self.connection:
+            stored_model = self.get_metadata("piece_objective_model")
+            if stored_model is not None and stored_model != objective_model:
+                raise RuntimeError(
+                    "Reusable-piece objective state cannot be resumed under another model."
+                )
+            if (
+                resume
+                and stored_model is None
+                and objective_model == S1M2_REUSABLE_PIECES_V3
+                and self.has_table("piece_counts_next")
+                and "sum_host_support_squared"
+                not in {
+                    str(row[1])
+                    for row in self.connection.execute(
+                        "PRAGMA table_info(piece_counts_next)"
+                    )
+                }
+            ):
+                raise RuntimeError(
+                    "Reusable-piece objective state cannot be resumed under another model."
+                )
+            if objective_model == S1M2_REUSABLE_PIECES_V3:
+                # V3 state always has explicit identity. Historical/new V2 state
+                # retains its published metadata layout and is schema-identified.
+                self._set_metadata("piece_objective_model", objective_model)
             if not resume:
                 self.connection.execute("DROP TABLE IF EXISTS piece_counts_next")
                 self.connection.execute(
                     "DROP TABLE IF EXISTS piece_host_support_next"
                 )
                 self.connection.execute(
+                    "DROP TABLE IF EXISTS piece_host_role_support_next"
+                )
+                self.connection.execute(
                     "DROP TABLE IF EXISTS lexical_diagnostics_next"
                 )
+            moment_column = (
+                ", sum_host_support_squared REAL NOT NULL DEFAULT 0"
+                if objective_model == S1M2_REUSABLE_PIECES_V3
+                else ""
+            )
             self.connection.execute(
                 "CREATE TABLE IF NOT EXISTS piece_counts_next ("
                 "form_key TEXT PRIMARY KEY, "
                 "expected_count REAL NOT NULL, "
                 "max_host_expected_usage REAL NOT NULL DEFAULT 0, "
                 "reusable_count REAL NOT NULL DEFAULT 0"
+                f"{moment_column}"
                 ") WITHOUT ROWID"
             )
+            count_columns = {
+                str(row[1])
+                for row in self.connection.execute(
+                    "PRAGMA table_info(piece_counts_next)"
+                )
+            }
+            has_squared = "sum_host_support_squared" in count_columns
+            if has_squared != (objective_model == S1M2_REUSABLE_PIECES_V3):
+                raise RuntimeError("Active piece-count schema does not match objective model.")
             self.connection.execute(
                 "CREATE TABLE IF NOT EXISTS piece_host_support_next ("
                 "piece_key TEXT NOT NULL, "
@@ -434,6 +529,24 @@ class LexiconStore:
                 "PRIMARY KEY(piece_key, host_key)"
                 ") WITHOUT ROWID"
             )
+            if collect_role_diagnostics:
+                if resume and not self.has_table("piece_host_role_support_next"):
+                    raise RuntimeError(
+                        "Resumed V3 role-diagnostic pass is missing aggregate state."
+                    )
+                self.connection.execute(
+                    "CREATE TABLE IF NOT EXISTS piece_host_role_support_next ("
+                    "piece_key TEXT NOT NULL, "
+                    "host_key TEXT NOT NULL, "
+                    "role TEXT NOT NULL, "
+                    "support REAL NOT NULL, "
+                    "PRIMARY KEY(piece_key, host_key, role)"
+                    ") WITHOUT ROWID"
+                )
+            elif self.has_table("piece_host_role_support_next"):
+                raise RuntimeError(
+                    "Role-diagnostic state exists but collection is disabled."
+                )
             self.connection.execute(
                 "CREATE TABLE IF NOT EXISTS lexical_diagnostics_next ("
                 "form_key TEXT PRIMARY KEY, expected_count REAL NOT NULL"
@@ -468,15 +581,21 @@ class LexiconStore:
     def add_document_piece_host_support(
         self,
         support: Iterable[tuple[PieceIdentity, PhonologicalForm, float]],
+        *,
+        collect_roles: bool = False,
     ) -> None:
-        """Aggregate posterior support by phonological piece and host type."""
+        """Aggregate support by piece form and latent phonological host type."""
 
         if not self.connection.in_transaction:
             raise RuntimeError("Piece host support requires an open transaction.")
-        rows = [
-            (identity.key, host.key, float(value))
+        source_rows = [
+            (identity, host, float(value))
             for identity, host, value in support
             if value > 0.0
+        ]
+        rows = [
+            (identity.key, host.key, value)
+            for identity, host, value in source_rows
         ]
         started = time.perf_counter()
         self.connection.executemany(
@@ -488,6 +607,49 @@ class LexiconStore:
         self.telemetry.elapsed("sqlite_piece_host_support_upsert", started)
         self.telemetry.increment("sqlite_piece_host_support_upsert_calls")
         self.telemetry.increment("sqlite_piece_host_support_upsert_rows", len(rows))
+        if collect_roles:
+            if not self.has_table("piece_host_role_support_next"):
+                raise RuntimeError("Role-diagnostic collection table is unavailable.")
+            role_rows = [
+                (identity.key, host.key, identity.role.value, value)
+                for identity, host, value in source_rows
+            ]
+            role_started = time.perf_counter()
+            self.connection.executemany(
+                "INSERT INTO piece_host_role_support_next("
+                "piece_key, host_key, role, support) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(piece_key, host_key, role) DO UPDATE SET "
+                "support = support + excluded.support",
+                role_rows,
+            )
+            self.telemetry.elapsed("sqlite_piece_host_role_support_upsert", role_started)
+            self.telemetry.increment("sqlite_piece_host_role_support_upsert_rows", len(role_rows))
+
+    def add_document_piece_host_role_support(
+        self,
+        support: Iterable[tuple[PieceIdentity, PhonologicalForm, float]],
+    ) -> None:
+        """Add optional role-bearing support already separated from pooled rows."""
+
+        if not self.connection.in_transaction:
+            raise RuntimeError("Piece host-role support requires an open transaction.")
+        if not self.has_table("piece_host_role_support_next"):
+            raise RuntimeError("Role-diagnostic collection table is unavailable.")
+        rows = [
+            (identity.key, host.key, identity.role.value, float(value))
+            for identity, host, value in support
+            if value > 0.0
+        ]
+        started = time.perf_counter()
+        self.connection.executemany(
+            "INSERT INTO piece_host_role_support_next("
+            "piece_key, host_key, role, support) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(piece_key, host_key, role) DO UPDATE SET "
+            "support = support + excluded.support",
+            rows,
+        )
+        self.telemetry.elapsed("sqlite_piece_host_role_support_upsert", started)
+        self.telemetry.increment("sqlite_piece_host_role_support_upsert_rows", len(rows))
 
     def add_document_lexical_diagnostics(
         self,
@@ -517,8 +679,19 @@ class LexiconStore:
         self,
         *,
         checkpoint: dict[str, Any],
+        objective_model: str = S1M2_REUSABLE_PIECES_V2,
     ) -> tuple[int, int, float]:
-        """Freeze C, M, and R, then retire reconstructible pass tables."""
+        """Freeze versioned host moments, then retire reconstructible state."""
+
+        stored_model = self.get_metadata("piece_objective_model")
+        if (
+            objective_model == S1M2_REUSABLE_PIECES_V3
+            and stored_model != objective_model
+        ) or (
+            objective_model == S1M2_REUSABLE_PIECES_V2
+            and stored_model not in (None, objective_model)
+        ):
+            raise RuntimeError("Piece objective metadata does not match finalization.")
 
         row = self.connection.execute(
             "SELECT COUNT(*), COALESCE(SUM(expected_count), 0.0) "
@@ -535,10 +708,50 @@ class LexiconStore:
                 "COALESCE((SELECT MAX(h.support) FROM piece_host_support_next h "
                 "WHERE h.piece_key = piece_counts_next.form_key), 0.0)"
             )
-            self.connection.execute(
-                "UPDATE piece_counts_next SET reusable_count = "
-                "MAX(0.0, expected_count - max_host_expected_usage)"
-            )
+            if objective_model == S1M2_REUSABLE_PIECES_V3:
+                self.connection.execute(
+                    "UPDATE piece_counts_next SET sum_host_support_squared = "
+                    "COALESCE((SELECT SUM(h.support * h.support) "
+                    "FROM piece_host_support_next h "
+                    "WHERE h.piece_key = piece_counts_next.form_key), 0.0)"
+                )
+                self.connection.execute(
+                    "UPDATE piece_counts_next SET reusable_count = CASE "
+                    "WHEN expected_count <= 0.0 THEN 0.0 "
+                    "ELSE MIN(expected_count, MAX(0.0, expected_count - "
+                    "sum_host_support_squared / expected_count)) END"
+                )
+            elif objective_model == S1M2_REUSABLE_PIECES_V2:
+                self.connection.execute(
+                    "UPDATE piece_counts_next SET reusable_count = "
+                    "MAX(0.0, expected_count - max_host_expected_usage)"
+                )
+            else:
+                raise ValueError(
+                    f"unsupported reusable-piece objective: {objective_model}"
+                )
+            if self.has_table("piece_host_role_support_next"):
+                self.connection.execute("DROP TABLE IF EXISTS piece_role_diagnostics")
+                self.connection.execute(
+                    "CREATE TABLE piece_role_diagnostics ("
+                    "form_key TEXT NOT NULL, "
+                    "role TEXT NOT NULL, "
+                    "raw_expected_count REAL NOT NULL, "
+                    "sum_host_support_squared REAL NOT NULL, "
+                    "reusable_count REAL NOT NULL, "
+                    "PRIMARY KEY(form_key, role)"
+                    ") WITHOUT ROWID"
+                )
+                self.connection.execute(
+                    "INSERT INTO piece_role_diagnostics("
+                    "form_key, role, raw_expected_count, "
+                    "sum_host_support_squared, reusable_count) "
+                    "SELECT piece_key, role, c, q, CASE WHEN c <= 0.0 THEN 0.0 "
+                    "ELSE MIN(c, MAX(0.0, c - q / c)) END FROM ("
+                    "SELECT piece_key, role, SUM(support) AS c, "
+                    "SUM(support * support) AS q "
+                    "FROM piece_host_role_support_next GROUP BY piece_key, role)"
+                )
             self.connection.execute("DROP TABLE IF EXISTS piece_inventory")
             self.connection.execute(
                 "ALTER TABLE piece_counts_next RENAME TO piece_inventory"
@@ -570,6 +783,8 @@ class LexiconStore:
                     self.connection.execute(f"DROP TABLE {table}")
                     retired += 1
             self.connection.execute("DROP TABLE piece_host_support_next")
+            if self.has_table("piece_host_role_support_next"):
+                self.connection.execute("DROP TABLE piece_host_role_support_next")
             self._set_training_checkpoint(checkpoint)
         self.telemetry.increment(
             "sqlite_pass_diagnostic_tables_retired",
@@ -587,6 +802,7 @@ class LexiconStore:
         complexity_tau: float,
         base_stop_probability: float,
         cache_size: int,
+        objective_model: str = S1M2_REUSABLE_PIECES_V2,
     ) -> PieceStoreScorer:
         scorer = PieceStoreScorer(
             self.connection,
@@ -598,6 +814,7 @@ class LexiconStore:
             base_stop_probability=base_stop_probability,
             cache_size=cache_size,
             telemetry=self.telemetry,
+            objective_model=objective_model,
         )
         self._piece_scorers.append(scorer)
         return scorer

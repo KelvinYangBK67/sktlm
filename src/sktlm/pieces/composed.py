@@ -207,6 +207,8 @@ class ComposedSegmentInference:
     expected_transformed_sandhi_events: float
     lexical_expected_counts: dict[PhonologicalForm, float]
     piece_expected_counts: dict[PieceIdentity, float]
+    # The PhonologicalForm key is the latent phonological wordform type. It is
+    # never a lemma, DCS identity, surface spelling, or occurrence identity.
     piece_host_support: dict[tuple[PieceIdentity, PhonologicalForm], float]
     rule_usage: dict[str, float]
     boundary_posteriors: tuple[BoundaryPosterior, ...]

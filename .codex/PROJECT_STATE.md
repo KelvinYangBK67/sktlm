@@ -1,3 +1,14 @@
+## S1M2 V3 cross-host objective implementation ready for bounded gate (2026-09-21)
+
+`reusable_pieces_v3` is locally implemented but not yet empirically qualified. V3 replaces the V2 strongest-host deletion learned count `R=C-M` with symmetric cross-host corroboration `R_cross=C-Q/C`, where `Q=sum_h S(q,h)^2` is computed only after posterior support has been aggregated by latent phonological wordform host. V2 remains unchanged and reproducible as the historical comparison baseline.
+
+V3 authoritative piece state records C/Q/M/R_cross. The scorer uses only R_cross; M remains diagnostic. Optional role diagnostics are V3-only and default off. When explicitly enabled they preserve bounded disk-backed `(piece, host, role)` aggregate support and compact it to per-piece/per-role C_r/Q_r/R_r shadow state. PieceRole remains structural/diagnostic and never enters learned identity or scoring.
+
+Held-out semantic diagnostics #3 and #5 are versioned for V3, and #4 reports role-pooling shadow quantities without imposing a preferred role or segmentation. Existing V2 v3 diagnostic artifacts remain untouched.
+
+Local validation before the empirical gate: touched modules compile; 27 V3/training/semantic-diagnostic focused tests and 14 probe/alignment tests pass. A broader scheduler/planner set reports 17 failures and 14 passes both on this worktree and on clean baseline `c67fe3c70daad106ee40934ec25496188e4a254a`, so no new failure was introduced there. `git diff --check` passes. No formal E000/E100 V3 cell, VM/cloud job, Full M0, stress corpus, or long benchmark has been run.
+
+Next scientific action: researcher-run `noun_high_deva/E000` under V3 with role diagnostics enabled, followed by read-only #3/#4/#5 evaluation. E100 is contingent on the E000 gate.
 # PROJECT_STATE.md
 
 ## S1M2 V2 held-out semantic diagnostics (2026-09-21)

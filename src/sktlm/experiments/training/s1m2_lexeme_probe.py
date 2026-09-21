@@ -19,6 +19,8 @@ from sktlm.latent.telemetry import RuntimeTelemetry
 from sktlm.latent.training import (
     DiagnosticCorpusSource,
     S1M2_MODEL,
+    S1M2_MODELS,
+    S1M2_REUSABLE_PIECES_V3,
     TrainingConfig,
     _file_sha256,
     _config_signature,
@@ -129,6 +131,7 @@ def evaluate_challenge(
             base_stop_probability=config.piece_base_stop_probability,
             cache_size=config.lexicon_cache_size,
             telemetry=RuntimeTelemetry(),
+            objective_model=config.model,
         )
         engine = ComposedPieceInference(
             scorer,
@@ -433,7 +436,7 @@ def reevaluate_existing_run(
         if config_fields.get(name) is not None:
             config_fields[name] = Path(config_fields[name])
     config = TrainingConfig(**config_fields)
-    if config.model != S1M2_MODEL or config.payload() != stored_config:
+    if config.model not in S1M2_MODELS or config.payload() != stored_config:
         raise ValueError("Stored diagnostic scientific configuration is invalid.")
     provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
     if (
@@ -541,6 +544,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-id")
     parser.add_argument("--passes", type=int, default=3)
     parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument(
+        "--model",
+        choices=(S1M2_MODEL, S1M2_REUSABLE_PIECES_V3),
+        help="Reusable-piece objective version; defaults to the historical V2 probe.",
+    )
     parser.add_argument("--sandhi-transformation-penalty", type=float, default=1.0)
     parser.add_argument("--piece-boundary-probability", type=float, default=0.4)
     parser.add_argument("--extra-challenge", type=Path)
@@ -565,6 +573,7 @@ def main(argv: list[str] | None = None) -> None:
                 args.level,
                 args.output_root,
                 args.run_id,
+                args.model,
                 args.extra_challenge,
                 args.extra_gold,
             )
@@ -573,8 +582,8 @@ def main(argv: list[str] | None = None) -> None:
         summary = reevaluate_existing_run(
             args.reevaluate_run_dir, dcs_root=args.dcs_root
         )
-        print(f"v2 evaluable: {summary['evaluable_target_occurrences']}")
-        print(f"v2 unscorable reasons: {summary['unscorable_reasons']}")
+        print(f"evaluable: {summary['evaluable_target_occurrences']}")
+        print(f"unscorable reasons: {summary['unscorable_reasons']}")
         return
     for name in ("corpus", "challenge", "target_id", "level", "output_root"):
         if getattr(args, name) is None:
@@ -619,13 +628,14 @@ def main(argv: list[str] | None = None) -> None:
         manifest=Path("diagnostic/no_formal_manifest"),
         output_root=args.output_root,
         run_id=run_id,
-        model=S1M2_MODEL,
+        model=args.model or S1M2_MODEL,
         script="iast",
         condition="surface_word",
         passes=args.passes,
         workers=args.workers,
         sandhi_transformation_penalty=args.sandhi_transformation_penalty,
         piece_boundary_probability=args.piece_boundary_probability,
+        piece_role_diagnostics=(args.model == S1M2_REUSABLE_PIECES_V3),
     )
     result = run_training(
         config,

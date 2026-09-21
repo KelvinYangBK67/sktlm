@@ -12,6 +12,7 @@ from sktlm.latent.phonology import PhonologicalForm, parse_iast_form
 from sktlm.latent.training import (
     EXPECTED_FREEZE_ID,
     S1M2_MODEL,
+    S1M2_REUSABLE_PIECES_V3,
     TrainingConfig,
     run_training,
 )
@@ -91,6 +92,89 @@ def test_s1m2_configuration_identity_includes_piece_model_and_cache_bounds(
     assert payload["piece_shared_prefix_nodes"] == 262_144
     assert payload["piece_shared_top_k_piece_references"] == 4_194_304
     assert "inspection_retained_factor_bytes" not in payload
+
+
+def test_v3_tiny_training_role_diagnostics_do_not_change_learned_state(
+    tmp_path: Path,
+) -> None:
+    manifest = _write_fixture(tmp_path)
+    common = {
+        "model": S1M2_REUSABLE_PIECES_V3,
+        "passes": 1,
+        "max_documents": 1,
+        "max_lines_per_document": 1,
+    }
+    plain = run_training(
+        _config(tmp_path, manifest, "v3-plain", **common),
+        stop_after_training=True,
+        repo_root=Path("."),
+    )
+    diagnostic = run_training(
+        _config(
+            tmp_path,
+            manifest,
+            "v3-role",
+            **common,
+            piece_role_diagnostics=True,
+        ),
+        stop_after_training=True,
+        repo_root=Path("."),
+    )
+    parallel = run_training(
+        _config(
+            tmp_path,
+            manifest,
+            "v3-role-parallel",
+            **common,
+            workers=2,
+            piece_role_diagnostics=True,
+        ),
+        stop_after_training=True,
+        repo_root=Path("."),
+    )
+
+    def learned_rows(run_dir: Path) -> list[tuple]:
+        store = LexiconStore(run_dir / "learner.sqlite")
+        try:
+            return list(
+                store.connection.execute(
+                    "SELECT form_key, raw_expected_count, "
+                    "sum_host_support_squared, max_host_expected_usage, reusable_count "
+                    "FROM piece_lexicon ORDER BY form_key"
+                )
+            )
+        finally:
+            store.close()
+
+    assert learned_rows(plain.run_dir) == learned_rows(diagnostic.run_dir)
+    assert learned_rows(diagnostic.run_dir) == learned_rows(parallel.run_dir)
+    plain_store = LexiconStore(plain.run_dir / "learner.sqlite")
+    diagnostic_store = LexiconStore(diagnostic.run_dir / "learner.sqlite")
+    try:
+        assert not plain_store.has_table("piece_role_diagnostics")
+        assert diagnostic_store.has_table("piece_role_diagnostics")
+        assert diagnostic_store.connection.execute(
+            "SELECT COUNT(*) FROM piece_role_diagnostics"
+        ).fetchone()[0] > 0
+        parallel_store = LexiconStore(parallel.run_dir / "learner.sqlite")
+        try:
+            assert list(
+                diagnostic_store.connection.execute(
+                    "SELECT * FROM piece_role_diagnostics ORDER BY form_key, role"
+                )
+            ) == list(
+                parallel_store.connection.execute(
+                    "SELECT * FROM piece_role_diagnostics ORDER BY form_key, role"
+                )
+            )
+        finally:
+            parallel_store.close()
+        compacted = diagnostic_store.compact_completed_piece_state()
+        assert "piece_role_diagnostics" in compacted["retained_tables"]
+        assert diagnostic_store.has_table("piece_role_diagnostics")
+    finally:
+        plain_store.close()
+        diagnostic_store.close()
 
 
 def test_s1m2_streaming_training_writes_piece_and_lexical_artifacts(

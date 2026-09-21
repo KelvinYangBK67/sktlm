@@ -71,7 +71,12 @@ from sktlm.pieces.composed import (
     compile_composed_segment_topology,
     infer_composed_segment,
 )
-from sktlm.pieces.lattice import PieceIdentity
+from sktlm.pieces.lattice import PieceIdentity, PieceRole
+from sktlm.pieces.objective import (
+    S1M2_REUSABLE_PIECE_MODELS,
+    S1M2_REUSABLE_PIECES_V2,
+    S1M2_REUSABLE_PIECES_V3,
+)
 from sktlm.pieces.model import PieceModelConfig
 from sktlm.pieces.scorer import NeutralPieceScorer
 from sktlm.pieces.topology_archive import (
@@ -91,7 +96,10 @@ LEGACY_FINALIZED_IDENTITY_REASON = "round4_finalized_pass1_v1_to_v2_identity"
 EXPECTED_FREEZE_ID = "9c515ca46ad8f9fca7e879c0a1617207bf5ccf3df21930aaa0995227c3942c40"
 IMPLEMENTATION = "latent-lexicon-v1"
 S1M1_MODEL = "latent_lexicon_v1"
-S1M2_MODEL = "reusable_pieces_v2"
+# Backward-compatible name used by the frozen V2 production line. New callers
+# select V3 explicitly through ``S1M2_REUSABLE_PIECES_V3``.
+S1M2_MODEL = S1M2_REUSABLE_PIECES_V2
+S1M2_MODELS = S1M2_REUSABLE_PIECE_MODELS
 COMPACT_EXACT_S1M2 = True
 FORMAL_M0_SCRIPTS = frozenset({"iast", "devanagari"})
 SUPPORTED_OBSERVATION_SCRIPTS = FORMAL_M0_SCRIPTS | {"iast_m0_prime"}
@@ -152,18 +160,19 @@ class TrainingConfig:
     piece_shared_token_marginals: bool = True
     piece_shared_prefix_nodes: int = 262_144
     piece_shared_top_k_piece_references: int = 4_194_304
+    piece_role_diagnostics: bool = False
     inspection_retained_factor_bytes: int = 320 * 1024 * 1024
     execution_bundle_plan: Path | None = None
     resume: bool = False
 
     def __post_init__(self) -> None:
-        if self.model not in {S1M1_MODEL, S1M2_MODEL}:
+        if self.model not in {S1M1_MODEL, *S1M2_MODELS}:
             raise ValueError(f"unsupported model: {self.model}")
         if self.allow_whitespace_merge is None:
             object.__setattr__(
                 self,
                 "allow_whitespace_merge",
-                self.model != S1M2_MODEL,
+                self.model not in S1M2_MODELS,
             )
         if self.script not in SUPPORTED_OBSERVATION_SCRIPTS:
             raise ValueError(f"unsupported formal script: {self.script}")
@@ -177,11 +186,11 @@ class TrainingConfig:
             raise ValueError(
                 f"vocab_budget must be >= {BASE_UNIT_COUNT}; got {self.vocab_budget}"
             )
-        if self.model == S1M2_MODEL and self.vocab_budget is not None:
+        if self.model in S1M2_MODELS and self.vocab_budget is not None:
             raise ValueError("vocab_budget is an S1M1-only comparison condition")
         if self.workers < 1:
             raise ValueError('workers must be >= 1')
-        if self.execution_bundle_plan is not None and self.model != S1M2_MODEL:
+        if self.execution_bundle_plan is not None and self.model not in S1M2_MODELS:
             raise ValueError("execution_bundle_plan is supported only for S1M2")
         if self.execution_bundle_plan is not None and self.workers < 2:
             raise ValueError("execution_bundle_plan requires at least two workers")
@@ -194,7 +203,7 @@ class TrainingConfig:
         if self.sandhi_transformation_penalty < 0.0:
             raise ValueError("sandhi_transformation_penalty must be >= 0")
         if (
-            self.model != S1M2_MODEL
+            self.model not in S1M2_MODELS
             and self.sandhi_transformation_penalty != 0.0
         ):
             raise ValueError(
@@ -202,8 +211,12 @@ class TrainingConfig:
             )
         if self.max_segment_tokens < 1:
             raise ValueError("max_segment_tokens must be >= 1")
-        if self.model == S1M2_MODEL and self.allow_whitespace_merge:
+        if self.model in S1M2_MODELS and self.allow_whitespace_merge:
             raise ValueError("S1M2 forbids lexical factors across observed whitespace")
+        if self.piece_role_diagnostics and self.model != S1M2_REUSABLE_PIECES_V3:
+            raise ValueError(
+                "piece_role_diagnostics is available only for reusable_pieces_v3"
+            )
         if self.lexicon_cache_size < 1 or self.flush_types < 1:
             raise ValueError("cache and flush bounds must be >= 1")
         if self.analysis_top_k < 1:
@@ -284,8 +297,12 @@ class TrainingConfig:
                 "piece_shared_token_marginals",
                 "piece_shared_prefix_nodes",
                 "piece_shared_top_k_piece_references",
+                "piece_role_diagnostics",
             ):
                 payload.pop(name)
+        elif self.model == S1M2_REUSABLE_PIECES_V2:
+            # Keep every published V2 config/checkpoint signature reproducible.
+            payload.pop("piece_role_diagnostics")
         return payload
 
     @property
@@ -1337,7 +1354,7 @@ def _profiled_document_segments_with_topology(
     piece_engine: ComposedPieceInference | None,
 ) -> Iterator[tuple[int, int, ObservedSegment, CompiledSegmentTopology | None]]:
     reader = None
-    if config.model == S1M2_MODEL and not COMPACT_EXACT_S1M2:
+    if config.model in S1M2_MODELS and not COMPACT_EXACT_S1M2:
         assert piece_engine is not None
         reader = _open_reconstructible_topology_archive(
             document=document,
@@ -1382,7 +1399,7 @@ def _initialize_training_worker(
     _WORKER_GRAMMAR = StructuredSandhiGrammar.from_default_inventory()
     _WORKER_VOCABULARY = vocabulary
     _WORKER_PIECE_ENGINE = None
-    if config.model == S1M2_MODEL:
+    if config.model in S1M2_MODELS:
         if pass_index == 1:
             piece_scorer = NeutralPieceScorer()
             _WORKER_CONNECTION = None
@@ -1401,6 +1418,7 @@ def _initialize_training_worker(
                 base_stop_probability=config.piece_base_stop_probability,
                 cache_size=config.lexicon_cache_size,
                 telemetry=RuntimeTelemetry(),
+                objective_model=config.model,
             )
         _WORKER_PIECE_ENGINE = ComposedPieceInference(
             piece_scorer,
@@ -1439,7 +1457,7 @@ def _write_training_shard(
     if _WORKER_GRAMMAR is None or (
         config.model == S1M1_MODEL and _WORKER_SCORER is None
     ) or (
-        config.model == S1M2_MODEL and _WORKER_PIECE_ENGINE is None
+        config.model in S1M2_MODELS and _WORKER_PIECE_ENGINE is None
     ):
         raise RuntimeError('Training worker was not initialized.')
     shard_path, marker_path = _training_shard_paths(
@@ -1473,7 +1491,7 @@ def _write_training_shard(
     sqlite_seconds_before = float(getattr(active_scorer, 'sqlite_seconds', 0.0))
     piece_counters_before = (
         _WORKER_PIECE_ENGINE.counter_snapshot()
-        if config.model == S1M2_MODEL
+        if config.model in S1M2_MODELS
         else None
     )
     engineering = RuntimeTelemetry()
@@ -1497,12 +1515,26 @@ def _write_training_shard(
                 row_count += 1
             for (piece, host), value in sorted(
                 piece_host_support.items(),
-                key=lambda item: (item[0][0].key, item[0][1].key),
+                key=lambda item: (
+                    (
+                        item[0][0].key,
+                        item[0][1].key,
+                        item[0][0].role.value,
+                    )
+                    if config.model == S1M2_REUSABLE_PIECES_V3
+                    else (item[0][0].key, item[0][1].key)
+                ),
             ):
                 handle.write(
                     f'H\t{piece.key}\t{host.key}\t{float(value).hex()}\n'
                 )
                 row_count += 1
+                if config.piece_role_diagnostics:
+                    handle.write(
+                        f'D\t{piece.key}\t{piece.role.value}\t{host.key}\t'
+                        f'{float(value).hex()}\n'
+                    )
+                    row_count += 1
         counts.clear()
         piece_counts.clear()
         piece_host_support.clear()
@@ -1515,7 +1547,7 @@ def _write_training_shard(
         handle = resources.enter_context(
             temporary.open('w', encoding='utf-8', newline='')
         )
-        if config.model == S1M2_MODEL and not COMPACT_EXACT_S1M2:
+        if config.model in S1M2_MODELS and not COMPACT_EXACT_S1M2:
             header = _topology_archive_header(
                 config_signature, document_index, document
             )
@@ -1558,7 +1590,7 @@ def _write_training_shard(
             )
             started = time.perf_counter()
             candidate_profile = (
-                CandidateBuildProfile() if config.model == S1M2_MODEL else None
+                CandidateBuildProfile() if config.model in S1M2_MODELS else None
             )
             if config.model == S1M1_MODEL:
                 graph = build_candidate_graph(
@@ -1589,7 +1621,7 @@ def _write_training_shard(
                     phase="training",
                 )
             segment_topology = None
-            if config.model == S1M2_MODEL and not COMPACT_EXACT_S1M2:
+            if config.model in S1M2_MODELS and not COMPACT_EXACT_S1M2:
                 assert _WORKER_PIECE_ENGINE is not None
                 if topology_writer is not None:
                     segment_topology = compile_composed_segment_topology(
@@ -1637,7 +1669,7 @@ def _write_training_shard(
                 if config.model == S1M1_MODEL
                 else inference.lexical_expected_counts
             )
-            if config.model == S1M2_MODEL:
+            if config.model in S1M2_MODELS:
                 piece_counts.update(inference.piece_expected_counts)
                 piece_host_support.update(inference.piece_host_support)
             aggregation_seconds += time.perf_counter() - started
@@ -1868,11 +1900,41 @@ def _write_training_bundle_shard(
                         for (piece, host), value in sorted(
                             inference.piece_host_support.items(),
                             key=lambda item: (
-                                item[0][0].key,
-                                item[0][1].key,
+                                (
+                                    item[0][0].key,
+                                    item[0][1].key,
+                                    item[0][0].role.value,
+                                )
+                                if config.model == S1M2_REUSABLE_PIECES_V3
+                                else (
+                                    item[0][0].key,
+                                    item[0][1].key,
+                                )
                             ),
                         )
                     ],
+                    **(
+                        {
+                            "piece_host_role_support": [
+                            (
+                                piece.key,
+                                piece.role.value,
+                                host.key,
+                                float(value).hex(),
+                            )
+                            for (piece, host), value in sorted(
+                                inference.piece_host_support.items(),
+                                key=lambda item: (
+                                    item[0][0].key,
+                                    item[0][1].key,
+                                    item[0][0].role.value,
+                                ),
+                            )
+                            ]
+                        }
+                        if config.piece_role_diagnostics
+                        else {}
+                    ),
                     "metrics": _exact_metrics_payload(segment_metrics),
                 }
                 aggregation_seconds += time.perf_counter() - started
@@ -2016,6 +2078,7 @@ def _coalesce_training_bundle_shards(
     counts: Counter[str] = Counter()
     piece_counts: Counter[str] = Counter()
     piece_host_support: Counter[tuple[str, str]] = Counter()
+    piece_host_role_support: Counter[tuple[str, str, str]] = Counter()
     metrics = PassMetrics()
     seen_lines: set[int] = set()
     row_count = 0
@@ -2025,7 +2088,12 @@ def _coalesce_training_bundle_shards(
 
     def flush(handle: Any) -> None:
         nonlocal row_count
-        if not counts and not piece_counts and not piece_host_support:
+        if (
+            not counts
+            and not piece_counts
+            and not piece_host_support
+            and not piece_host_role_support
+        ):
             return
         for form_key, value in sorted(counts.items()):
             handle.write(f"L\t{form_key}\t{float(value).hex()}\n")
@@ -2038,9 +2106,17 @@ def _coalesce_training_bundle_shards(
                 f"H\t{piece_key}\t{host_key}\t{float(value).hex()}\n"
             )
             row_count += 1
+        for (piece_key, role, host_key), value in sorted(
+            piece_host_role_support.items()
+        ):
+            handle.write(
+                f"D\t{piece_key}\t{role}\t{host_key}\t{float(value).hex()}\n"
+            )
+            row_count += 1
         counts.clear()
         piece_counts.clear()
         piece_host_support.clear()
+        piece_host_role_support.clear()
 
     topology_writer: TopologyArchiveWriter | None = None
     try:
@@ -2095,6 +2171,12 @@ def _coalesce_training_bundle_shards(
                                 piece_host_support[(piece_key, host_key)] += (
                                     float.fromhex(value)
                                 )
+                            for piece_key, role, host_key, value in record.get(
+                                "piece_host_role_support", []
+                            ):
+                                piece_host_role_support[
+                                    (piece_key, role, host_key)
+                                ] += float.fromhex(value)
                             metrics = metrics.merged(
                                 _metrics_from_exact_payload(record["metrics"])
                             )
@@ -2110,6 +2192,7 @@ def _coalesce_training_bundle_shards(
                                 len(counts)
                                 + len(piece_counts)
                                 + len(piece_host_support)
+                                + len(piece_host_role_support)
                                 >= config.flush_types
                             ):
                                 flush(handle)
@@ -2230,6 +2313,7 @@ def _apply_compact_training_bundle_shards(
     lexical_counts: Counter[str] = Counter()
     piece_counts: Counter[str] = Counter()
     piece_host_support: Counter[tuple[str, str]] = Counter()
+    piece_host_role_support: Counter[tuple[str, str, str]] = Counter()
     document_metrics = PassMetrics()
     seen_lines: set[int] = set()
     runtime_totals: Counter[str] = Counter()
@@ -2267,6 +2351,23 @@ def _apply_compact_training_bundle_shards(
                 )
             )
             piece_host_support.clear()
+        if piece_host_role_support:
+            store.add_document_piece_host_role_support(
+                (
+                    (
+                        PieceIdentity(
+                            PhonologicalForm.from_key(piece_key),
+                            PieceRole(role),
+                        ),
+                        PhonologicalForm.from_key(host_key),
+                        value,
+                    )
+                    for (piece_key, role, host_key), value in sorted(
+                        piece_host_role_support.items()
+                    )
+                )
+            )
+            piece_host_role_support.clear()
 
     store.begin_document_counts()
     try:
@@ -2304,6 +2405,12 @@ def _apply_compact_training_bundle_shards(
                         piece_host_support[(piece_key, host_key)] += (
                             float.fromhex(value)
                         )
+                    for piece_key, role, host_key, value in record.get(
+                        "piece_host_role_support", []
+                    ):
+                        piece_host_role_support[(piece_key, role, host_key)] += (
+                            float.fromhex(value)
+                        )
                     document_metrics = document_metrics.merged(
                         _metrics_from_exact_payload(record["metrics"])
                     )
@@ -2312,6 +2419,7 @@ def _apply_compact_training_bundle_shards(
                         len(lexical_counts)
                         + len(piece_counts)
                         + len(piece_host_support)
+                        + len(piece_host_role_support)
                         >= config.flush_types
                     ):
                         flush()
@@ -2393,6 +2501,8 @@ def _flush_piece_training_counts(
     lexical_counts: Counter[PhonologicalForm],
     piece_counts: Counter[PieceIdentity],
     piece_host_support: Counter[tuple[PieceIdentity, PhonologicalForm]],
+    *,
+    collect_role_diagnostics: bool = False,
 ) -> None:
     if lexical_counts:
         store.add_document_lexical_diagnostics(lexical_counts.items())
@@ -2405,7 +2515,8 @@ def _flush_piece_training_counts(
             (
                 (identity, host, value)
                 for (identity, host), value in piece_host_support.items()
-            )
+            ),
+            collect_roles=collect_role_diagnostics,
         )
         piece_host_support.clear()
 
@@ -2469,6 +2580,9 @@ def _apply_training_shard(
         buffered_host_support: list[
             tuple[PieceIdentity, PhonologicalForm, float]
         ] = []
+        buffered_host_role_support: list[
+            tuple[PieceIdentity, PhonologicalForm, float]
+        ] = []
         with shard_path.open(encoding='utf-8') as handle:
             for line in handle:
                 fields = line.rstrip('\n').split('\t')
@@ -2513,6 +2627,23 @@ def _apply_training_shard(
                             buffered_host_support
                         )
                         buffered_host_support.clear()
+                elif fields[0] == 'D':
+                    _kind, piece_key, role, host_key, value = fields
+                    buffered_host_role_support.append(
+                        (
+                            PieceIdentity(
+                                PhonologicalForm.from_key(piece_key),
+                                PieceRole(role),
+                            ),
+                            PhonologicalForm.from_key(host_key),
+                            float.fromhex(value),
+                        )
+                    )
+                    if len(buffered_host_role_support) >= config.flush_types:
+                        store.add_document_piece_host_role_support(
+                            buffered_host_role_support
+                        )
+                        buffered_host_role_support.clear()
                 else:
                     raise RuntimeError(f'Unknown S1M2 shard row: {fields[0]!r}')
         if buffered:
@@ -2524,6 +2655,8 @@ def _apply_training_shard(
             store.add_document_piece_counts(buffered_pieces)
         if buffered_host_support:
             store.add_document_piece_host_support(buffered_host_support)
+        if buffered_host_role_support:
+            store.add_document_piece_host_role_support(buffered_host_role_support)
         store.commit_document(next_checkpoint)
         _record_store_storage(telemetry, store.path)
     except BaseException:
@@ -2939,7 +3072,7 @@ def _training_pass(
         pass_index != 1
         or not resuming
         or start_document != len(documents)
-        or config.model != S1M2_MODEL
+        or config.model != S1M2_REUSABLE_PIECES_V2
     ):
         raise RuntimeError("Invalid legacy finalize-only pass state.")
     vocabulary = store.load_frozen_vocabulary()
@@ -2971,6 +3104,7 @@ def _training_pass(
                     complexity_tau=config.piece_complexity_tau,
                     base_stop_probability=config.piece_base_stop_probability,
                     cache_size=config.lexicon_cache_size,
+                    objective_model=config.model,
                 )
             )
             piece_engine = ComposedPieceInference(
@@ -2989,7 +3123,12 @@ def _training_pass(
         if config.model == S1M1_MODEL:
             store.begin_count_pass(resume=resuming, checkpoint=checkpoint)
         else:
-            store.begin_piece_count_pass(resume=resuming, checkpoint=checkpoint)
+            store.begin_piece_count_pass(
+                resume=resuming,
+                checkpoint=checkpoint,
+                objective_model=config.model,
+                collect_role_diagnostics=config.piece_role_diagnostics,
+            )
         _timed_checkpoint(run_dir, checkpoint, telemetry)
     else:
         telemetry.increment("legacy_finalize_only_recoveries")
@@ -3046,7 +3185,7 @@ def _training_pass(
         topology_reader: ReconstructibleTopologyArchiveReader | None = None
         store.begin_document_counts()
         try:
-            if config.model == S1M2_MODEL and not COMPACT_EXACT_S1M2:
+            if config.model in S1M2_MODELS and not COMPACT_EXACT_S1M2:
                 header = _topology_archive_header(
                     _config_signature(config), document_index, document
                 )
@@ -3078,7 +3217,7 @@ def _training_pass(
                 started = telemetry.now()
                 candidate_profile = (
                     CandidateBuildProfile()
-                    if config.model == S1M2_MODEL
+                    if config.model in S1M2_MODELS
                     else None
                 )
                 if config.model == S1M1_MODEL:
@@ -3110,7 +3249,7 @@ def _training_pass(
                         phase="training",
                     )
                 segment_topology = None
-                if config.model == S1M2_MODEL and not COMPACT_EXACT_S1M2:
+                if config.model in S1M2_MODELS and not COMPACT_EXACT_S1M2:
                     assert piece_engine is not None
                     if topology_writer is not None:
                         segment_topology = compile_composed_segment_topology(
@@ -3161,7 +3300,7 @@ def _training_pass(
                     if config.model == S1M1_MODEL
                     else inference.lexical_expected_counts
                 )
-                if config.model == S1M2_MODEL:
+                if config.model in S1M2_MODELS:
                     piece_counts.update(inference.piece_expected_counts)
                     piece_host_support.update(inference.piece_host_support)
                 telemetry.elapsed('training_count_aggregation', started)
@@ -3189,7 +3328,11 @@ def _training_pass(
                         )
                     else:
                         _flush_piece_training_counts(
-                            store, counts, piece_counts, piece_host_support
+                            store,
+                            counts,
+                            piece_counts,
+                            piece_host_support,
+                            collect_role_diagnostics=config.piece_role_diagnostics,
                         )
             if config.model == S1M1_MODEL:
                 _flush_counts(
@@ -3199,7 +3342,11 @@ def _training_pass(
                 )
             else:
                 _flush_piece_training_counts(
-                    store, counts, piece_counts, piece_host_support
+                    store,
+                    counts,
+                    piece_counts,
+                    piece_host_support,
+                    collect_role_diagnostics=config.piece_role_diagnostics,
                 )
             if topology_writer is not None:
                 topology_writer.close()
@@ -3291,7 +3438,7 @@ def _training_pass(
     )
     started = telemetry.now()
     storage_before_finalize = (
-        store.storage_bytes() if config.model == S1M2_MODEL else None
+        store.storage_bytes() if config.model in S1M2_MODELS else None
     )
     if config.model == S1M1_MODEL:
         store.finalize_count_pass(
@@ -3302,6 +3449,7 @@ def _training_pass(
     else:
         all_types, active_types, active_total = store.finalize_piece_count_pass(
             checkpoint=checkpoint,
+            objective_model=config.model,
         )
         summary["piece_types"] = all_types
         summary["active_piece_types"] = active_types
@@ -3492,7 +3640,7 @@ def _initialize_inspection_worker(
 ) -> None:
     global _WORKER_PIECE_ENGINE
     _initialize_training_worker(2, database_path, config, vocabulary)
-    if config.model == S1M2_MODEL:
+    if config.model in S1M2_MODELS:
         assert _WORKER_PIECE_ENGINE is not None
         _WORKER_PIECE_ENGINE = ComposedPieceInference(
             _WORKER_PIECE_ENGINE.scorer,
@@ -3512,14 +3660,14 @@ def _write_inspection_shard(
     if _WORKER_GRAMMAR is None or (
         config.model == S1M1_MODEL and _WORKER_SCORER is None
     ) or (
-        config.model == S1M2_MODEL and _WORKER_PIECE_ENGINE is None
+        config.model in S1M2_MODELS and _WORKER_PIECE_ENGINE is None
     ):
         raise RuntimeError("Inspection worker was not initialized.")
     paths = _inspection_shard_paths(run_dir, document_index)
     paths["marker"].parent.mkdir(parents=True, exist_ok=True)
     shard_kinds = (
         _INSPECTION_SHARD_KINDS
-        if config.model == S1M2_MODEL
+        if config.model in S1M2_MODELS
         else _LEGACY_INSPECTION_SHARD_KINDS
     )
     temporary = {
@@ -3555,7 +3703,7 @@ def _write_inspection_shard(
     sqlite_seconds_before = float(getattr(active_scorer, "sqlite_seconds", 0.0))
     piece_counters_before = (
         _WORKER_PIECE_ENGINE.counter_snapshot()
-        if config.model == S1M2_MODEL
+        if config.model in S1M2_MODELS
         else None
     )
     engineering = RuntimeTelemetry()
@@ -3734,7 +3882,7 @@ def _write_inspection_shard(
                 encoding="utf-8",
                 newline="",
             )
-        if config.model == S1M2_MODEL and not COMPACT_EXACT_S1M2:
+        if config.model in S1M2_MODELS and not COMPACT_EXACT_S1M2:
             assert _WORKER_GRAMMAR is not None
             assert _WORKER_PIECE_ENGINE is not None
             topology_reader = _open_reconstructible_topology_archive(
@@ -3765,7 +3913,7 @@ def _write_inspection_shard(
             )
             started = time.perf_counter()
             candidate_profile = (
-                CandidateBuildProfile() if config.model == S1M2_MODEL else None
+                CandidateBuildProfile() if config.model in S1M2_MODELS else None
             )
             if config.model == S1M1_MODEL:
                 graph = build_candidate_graph(
@@ -3796,7 +3944,7 @@ def _write_inspection_shard(
                     phase="inspection",
                 )
             segment_topology = None
-            if config.model == S1M2_MODEL and not COMPACT_EXACT_S1M2:
+            if config.model in S1M2_MODELS and not COMPACT_EXACT_S1M2:
                 assert topology_reader is not None
                 segment_topology = topology_reader.read(
                     line_number, segment_index
@@ -3836,7 +3984,7 @@ def _write_inspection_shard(
                 if config.model == S1M1_MODEL
                 else inference.lexical_expected_counts
             )
-            if config.model == S1M2_MODEL:
+            if config.model in S1M2_MODELS:
                 piece_counts.update(inference.piece_expected_counts)
                 piece_host_support.update(inference.piece_host_support)
             aggregation_seconds += time.perf_counter() - started
@@ -4908,7 +5056,7 @@ def _apply_inspection_shard(
         if buffered_counts:
             store.add_counts(buffered_counts, table="inspection_counts")
 
-        if config.model == S1M2_MODEL:
+        if config.model in S1M2_MODELS:
             buffered_piece_counts: list[
                 tuple[PhonologicalForm, float, int]
             ] = []
@@ -5201,7 +5349,7 @@ def _finalize_inspection(
             "the bounded reported top-k analyses."
         ),
     }
-    if config.model == S1M2_MODEL:
+    if config.model in S1M2_MODELS:
         expected_lexical = max(
             1e-300,
             aggregate.metrics.expected_lexical_tokens,
@@ -5645,6 +5793,10 @@ def _compact_completed_s1m2_storage(
     run_dir: Path,
 ) -> dict[str, Any]:
     compaction = store.compact_completed_piece_state()
+    objective_model = (
+        store.get_metadata("piece_objective_model")
+        or S1M2_REUSABLE_PIECES_V2
+    )
     before = int(compaction["before_bytes"]["total"])
     after = int(compaction["after_bytes"]["total"])
     saved = before - after
@@ -5656,8 +5808,24 @@ def _compact_completed_s1m2_storage(
         "reduction_fraction": saved / max(1, before),
         "authoritative_state": {
             "metadata": "configuration signature and transactional checkpoint",
-            "piece_lexicon": "V2 form-keyed C, M, R; R scores final inspection",
+            "piece_lexicon": (
+                "V3 form-keyed C, Q, M, R_cross; R_cross scores final inspection"
+                if objective_model == S1M2_REUSABLE_PIECES_V3
+                else "V2 form-keyed C, M, R; R scores final inspection"
+            ),
         },
+        **(
+            {
+                "diagnostic_state": {
+                "piece_role_diagnostics": (
+                    "optional per-form/per-role C_r, Q_r, R_r shadow state; "
+                    "never used by the scorer"
+                )
+                }
+            }
+            if store.has_table("piece_role_diagnostics")
+            else {}
+        ),
         "compiled_topology": {
             "path": None,
             "role": (
@@ -5718,7 +5886,7 @@ def _inspection_pass(
     else:
         store.begin_piece_inspection()
     if (
-        config.model == S1M2_MODEL
+        config.model in S1M2_MODELS
         and inspection_workers > 1
         and execution_plan is not None
     ):
@@ -5760,6 +5928,7 @@ def _inspection_pass(
             complexity_tau=config.piece_complexity_tau,
             base_stop_probability=config.piece_base_stop_probability,
             cache_size=config.lexicon_cache_size,
+            objective_model=config.model,
         )
         piece_engine = ComposedPieceInference(
             piece_scorer,
@@ -5815,7 +5984,7 @@ def _inspection_pass(
                 started = telemetry.now()
                 candidate_profile = (
                     CandidateBuildProfile()
-                    if config.model == S1M2_MODEL
+                    if config.model in S1M2_MODELS
                     else None
                 )
                 if config.model == S1M1_MODEL:
@@ -5884,7 +6053,7 @@ def _inspection_pass(
                     if config.model == S1M1_MODEL
                     else inference.lexical_expected_counts
                 )
-                if config.model == S1M2_MODEL:
+                if config.model in S1M2_MODELS:
                     piece_counts.update(inference.piece_expected_counts)
                     piece_host_support.update(inference.piece_host_support)
                 rule_usage.update(inference.rule_usage)
@@ -6219,7 +6388,7 @@ def _human_piece_report(
     lines = [
         "# S1M2 reusable-piece inspection",
         "",
-        f"- implementation: `{S1M2_MODEL}`",
+        f"- implementation: `{config.model}`",
         f"- representation: `{config.script} + {config.condition}`",
         f"- segments: {summary['segments']}",
         f"- mean identity mass: {summary['mean_identity_mass']:.6f}",
@@ -6371,7 +6540,7 @@ def _validate_inspection_only_state(
                 f"Inspection-only refuses unfinished training table: {table}."
             )
     final = history[-1]
-    if config.model == S1M2_MODEL:
+    if config.model in S1M2_MODELS:
         if not store.has_table("piece_lexicon"):
             raise RuntimeError(
                 "Inspection-only requires the final learned piece_lexicon."
@@ -6491,7 +6660,7 @@ def _prepare_legacy_v1_finalize_only_migration(
         == LEGACY_EXECUTION_BUNDLE_PLANNER
     ):
         return None
-    if config.model != S1M2_MODEL or not continuing:
+    if config.model != S1M2_REUSABLE_PIECES_V2 or not continuing:
         raise RuntimeError("Legacy execution-plan recovery requires an S1M2 resume.")
     if database_checkpoint is None:
         raise RuntimeError(
@@ -6590,7 +6759,7 @@ def _prepare_legacy_v1_finalized_identity_migration(
     completed = int(checkpoint.get("completed_passes", -1))
     if completed == 0:
         return None
-    if config.model != S1M2_MODEL or not continuing:
+    if config.model != S1M2_REUSABLE_PIECES_V2 or not continuing:
         raise RuntimeError("Legacy finalized migration requires an S1M2 resume.")
     if completed != 1:
         raise RuntimeError("Legacy finalized migration supports only completed Pass 1.")
@@ -6693,7 +6862,7 @@ def run_training(
             "mutually exclusive"
         )
     if _diagnostic_source is not None:
-        if config.model != S1M2_MODEL or config.script != "iast" or config.condition != "surface_word":
+        if config.model not in S1M2_MODELS or config.script != "iast" or config.condition != "surface_word":
             raise ValueError("Diagnostic corpus requires S1M2 IAST surface_word.")
         if (
             config.resume
@@ -6793,7 +6962,7 @@ def run_training(
         current_git_commit = _git_commit(repo_root)
         expected_provenance = {
             "implementation": (
-                IMPLEMENTATION if config.model == S1M1_MODEL else S1M2_MODEL
+                IMPLEMENTATION if config.model == S1M1_MODEL else config.model
             ),
             "git_commit": current_git_commit,
             "training_git_commit": current_git_commit,
@@ -7173,7 +7342,7 @@ def run_training(
             "artifact_bytes_before_timing_metrics",
             _existing_path_bytes(run_dir.rglob("*")),
         )
-        if config.model == S1M2_MODEL:
+        if config.model in S1M2_MODELS:
             storage_manifest = _compact_completed_s1m2_storage(
                 store=store,
                 run_dir=run_dir,
@@ -7188,7 +7357,7 @@ def run_training(
                 storage_manifest["bytes_saved"]
             )
         checkpoint["inspection_complete"] = True
-        if config.model == S1M2_MODEL:
+        if config.model in S1M2_MODELS:
             store.save_training_checkpoint(checkpoint)
             store.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
             _timed_checkpoint(run_dir, checkpoint, telemetry)
