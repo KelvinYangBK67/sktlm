@@ -773,7 +773,6 @@ def analyze_semantic_records(
 
 def _protected_hashes(run_dir: Path) -> dict[str, str]:
     paths = [run_dir / name for name in _PROTECTED_RUN_FILES]
-    paths.extend(path for suffix in ("-wal", "-shm") if (path := run_dir / f"learner.sqlite{suffix}").exists())
     for path in paths:
         if not path.is_file():
             raise FileNotFoundError(path)

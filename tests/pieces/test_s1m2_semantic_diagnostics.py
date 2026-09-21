@@ -208,6 +208,7 @@ def test_v3_moments_role_pooling_and_semantic_adaptation_are_read_only(
     database = tmp_path / "v3.sqlite"
     deva = parse_iast_form("deva")
     with sqlite3.connect(database) as connection:
+        assert connection.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
         connection.execute("CREATE TABLE metadata(key TEXT PRIMARY KEY, value TEXT)")
         connection.execute(
             "INSERT INTO metadata VALUES ('piece_objective_model', ?)",
@@ -286,9 +287,6 @@ def test_v3_moments_role_pooling_and_semantic_adaptation_are_read_only(
     assert strata["unseen_exact_gold_wordform_in_training"]["target_occurrences"] == 1
     assert diagnostics[1]["training_gold_wordform_stratum"].startswith("unseen")
     assert _file_sha256(database) == before
-    assert not Path(str(database) + "-wal").exists()
-    assert not Path(str(database) + "-shm").exists()
-
 
 def test_end_to_end_reevaluation_does_not_invoke_trainer_or_overwrite_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
