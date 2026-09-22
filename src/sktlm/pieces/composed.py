@@ -26,7 +26,7 @@ from sktlm.latent.lazy_candidates import (
 )
 from sktlm.latent.phonology import Phoneme, PhonologicalForm, VOWELS
 from sktlm.pieces.inference import PieceSegmentation
-from sktlm.pieces.lattice import PieceIdentity, PieceRole, piece_role
+from sktlm.pieces.lattice import PieceIdentity, PieceRole, _piece_ends, piece_role
 from sktlm.pieces.model import PieceModelConfig
 from sktlm.pieces.scorer import PieceScorer, score_positional_piece
 
@@ -481,7 +481,8 @@ def _shared_inner_piece_keys(path: _SharedInnerPath) -> tuple[str, ...]:
 
 def _estimated_form_bytes(form: PhonologicalForm) -> int:
     # This is a deliberately conservative logical-size bound, not an RSS claim.
-    return 128 + 8 * len(form.symbols) + len(form.key.encode("utf-8"))
+    # PhonologicalForm.key joins ASCII Phoneme.value identifiers with dots.
+    return 128 + 8 * len(form.symbols) + len(form.key)
 
 
 def _estimated_evaluation_bytes(evaluation: FormPieceEvaluation) -> int:
@@ -492,19 +493,6 @@ def _estimated_evaluation_bytes(evaluation: FormPieceEvaluation) -> int:
         96 + sum(_estimated_form_bytes(piece) for piece in item.pieces)
         for item in evaluation.top_segmentations
     )
-
-
-def _raw_prior_score(start: int, end: int, *, rho: float) -> float:
-    return int(start > 0) * math.log(rho) + (end - start - 1) * math.log1p(
-        -rho
-    )
-
-
-def _piece_ends(length: int, start: int, max_piece_length: int) -> tuple[int, ...]:
-    ends = set(range(start + 1, min(length, start + max_piece_length) + 1))
-    if start == 0:
-        ends.add(length)
-    return tuple(sorted(ends))
 
 
 def _trim_composed_paths(
@@ -706,19 +694,22 @@ class ComposedPieceInference:
         self.model_config = model_config
         self.cache_config = cache_config
         self.inspection_top_k = inspection_top_k
+        self._log_piece_boundary = math.log(model_config.rho)
+        self._log_no_piece_boundary = math.log1p(-model_config.rho)
         self._piece_priors = tuple(
             (0.0,) + tuple(
-                _raw_prior_score(
-                    int(noninitial),
-                    int(noninitial) + length,
-                    rho=model_config.rho,
-                )
+                int(noninitial) * self._log_piece_boundary
+                + (length - 1) * self._log_no_piece_boundary
                 for length in range(1, model_config.max_piece_length + 1)
             )
             for noninitial in (False, True)
         )
+        self._piece_scores_are_role_neutral = bool(
+            getattr(scorer, "piece_scores_are_role_neutral", False)
+        )
         self._piece_scores: OrderedDict[
-            tuple[tuple[Phoneme, ...], PieceRole],
+            tuple[Phoneme, ...]
+            | tuple[tuple[Phoneme, ...], PieceRole],
             tuple[PhonologicalForm, float, int],
         ] = OrderedDict()
         self._piece_score_bytes = 0
@@ -738,7 +729,10 @@ class ComposedPieceInference:
             return self._piece_priors[start > 0][piece_length]
         if start != 0:
             raise RuntimeError("Only an initial whole-form edge may exceed the bound.")
-        return _raw_prior_score(start, end, rho=self.model_config.rho)
+        return (
+            int(start > 0) * self._log_piece_boundary
+            + (piece_length - 1) * self._log_no_piece_boundary
+        )
 
     def _store_lookups(self) -> int:
         return max(
@@ -815,7 +809,11 @@ class ComposedPieceInference:
         role: PieceRole,
     ) -> tuple[PhonologicalForm, float]:
         self._events["piece_score_calls"] += 1
-        cache_key = (symbols, role)
+        cache_key = (
+            symbols
+            if self._piece_scores_are_role_neutral
+            else (symbols, role)
+        )
         cached = self._piece_scores.get(cache_key)
         if cached is not None:
             self._events["piece_score_cache_hits"] += 1
@@ -907,13 +905,15 @@ class ComposedPieceInference:
         self.add_timing("inner_piece_backward_seconds", started)
 
         started = time.perf_counter()
-        expected_counts: dict[PieceIdentity, float] = defaultdict(float)
+        expected_counts: dict[PieceIdentity, float] = {}
         expected_raw_score = 0.0
         whole_form_mass = 0.0
         for start in range(length):
             for end, identity, _prior, score in transitions_by_start[start]:
                 posterior = math.exp(alpha[start] + score + beta[end] - raw_log_z)
-                expected_counts[identity] += posterior
+                expected_counts[identity] = (
+                    expected_counts.get(identity, 0.0) + posterior
+                )
                 expected_raw_score += posterior * score
                 if start == 0 and end == length:
                     whole_form_mass = math.exp(score - raw_log_z)
@@ -973,7 +973,7 @@ class ComposedPieceInference:
             form=form,
             prior_log_normalizer=prior_log_z,
             log_score=raw_log_z - prior_log_z,
-            expected_piece_counts=dict(expected_counts),
+            expected_piece_counts=expected_counts,
             expected_log_weight=expected_raw_score - prior_log_z,
             segmentation_entropy=max(0.0, raw_log_z - expected_raw_score),
             expected_piece_tokens=sum(expected_counts.values()),
@@ -1141,16 +1141,19 @@ class ComposedPieceInference:
         def extend(parent: int, added_symbols: tuple[Phoneme, ...]) -> int:
             current = parent
             for symbol in added_symbols:
-                child = child_maps[current].get(symbol)
-                if child is None:
-                    child = len(parents)
-                    child_maps[current][symbol] = child
-                    parents.append(current)
-                    depths.append(depths[current] + 1)
-                    node_symbols.append(symbol)
-                    child_maps.append({})
-                current = child
+                current = extend_one(current, symbol)
             return current
+
+        def extend_one(parent: int, symbol: Phoneme) -> int:
+            child = child_maps[parent].get(symbol)
+            if child is None:
+                child = len(parents)
+                child_maps[parent][symbol] = child
+                parents.append(parent)
+                depths.append(depths[parent] + 1)
+                node_symbols.append(symbol)
+                child_maps.append({})
+            return child
 
         endpoint_ids: dict[int, int] = {}
         endpoints: list[int] = []
@@ -1158,7 +1161,8 @@ class ComposedPieceInference:
         hypothesis_ends = array("I")
         hypothesis_endpoints = array("I")
         token_units = lattice.token.units
-        for left_index, left in enumerate(lattice.nodes[:-1]):
+        for left_index in range(len(lattice.nodes) - 1):
+            left = lattice.nodes[left_index]
             surface_node = extend(0, left.right_underlying)
             surface_has_vowel = any(
                 symbol in VOWELS for symbol in left.right_underlying
@@ -1169,12 +1173,13 @@ class ComposedPieceInference:
                 right = lattice.nodes[right_index]
                 if left.surface_end > right.surface_start:
                     continue
-                for unit in token_units[surface_cursor : right.surface_start]:
+                for unit_index in range(surface_cursor, right.surface_start):
+                    unit = token_units[unit_index]
                     if unit.kind == "avagraha":
                         gap_has_avagraha = True
                     else:
                         assert unit.phoneme is not None
-                        surface_node = extend(surface_node, (unit.phoneme,))
+                        surface_node = extend_one(surface_node, unit.phoneme)
                         surface_has_vowel = (
                             surface_has_vowel or unit.phoneme in VOWELS
                         )
@@ -1407,11 +1412,7 @@ class ComposedPieceInference:
                 form_symbols,
                 PieceRole.WHOLE,
             )
-            whole_prior = _raw_prior_score(
-                0,
-                node_depth,
-                rho=self.model_config.rho,
-            )
+            whole_prior = self._piece_prior(0, node_depth)
             whole_raw = whole_prior + piece_score
             terminal_raw_z = -math.inf
             terminal_singleton_score = -math.inf
@@ -1525,10 +1526,10 @@ class ComposedPieceInference:
         started = time.perf_counter()
         topology = batch.topology
         log_adjoint = [-math.inf] * len(topology.parent)
-        piece_counts: dict[PieceIdentity, float] = defaultdict(float)
+        piece_counts: dict[PieceIdentity, float] = {}
         piece_host_support: dict[
             tuple[PieceIdentity, PhonologicalForm], float
-        ] = defaultdict(float)
+        ] = {}
         host_log_adjoints: dict[int, dict[int, float]] = {}
         endpoint_hosts: dict[int, PhonologicalForm] = {}
         expected_raw_score = 0.0
@@ -1559,8 +1560,13 @@ class ComposedPieceInference:
                     seed + batch.alpha[source] + raw_score
                 )
                 identity = PieceIdentity(piece, role)
-                piece_counts[identity] += contribution
-                piece_host_support[(identity, host)] += contribution
+                piece_counts[identity] = (
+                    piece_counts.get(identity, 0.0) + contribution
+                )
+                host_key = (identity, host)
+                piece_host_support[host_key] = (
+                    piece_host_support.get(host_key, 0.0) + contribution
+                )
                 expected_raw_score += contribution * raw_score
                 log_adjoint[source] = logaddexp(
                     log_adjoint[source],
@@ -1574,8 +1580,13 @@ class ComposedPieceInference:
             if topology.depth[score.node] > topology.max_piece_length:
                 contribution = math.exp(seed + score.whole_raw_score)
                 identity = PieceIdentity(host, PieceRole.WHOLE)
-                piece_counts[identity] += contribution
-                piece_host_support[(identity, host)] += contribution
+                piece_counts[identity] = (
+                    piece_counts.get(identity, 0.0) + contribution
+                )
+                host_key = (identity, host)
+                piece_host_support[host_key] = (
+                    piece_host_support.get(host_key, 0.0) + contribution
+                )
                 expected_raw_score += contribution * score.whole_raw_score
 
         for node_index in range(len(topology.parent) - 1, 0, -1):
@@ -1601,7 +1612,9 @@ class ComposedPieceInference:
                     adjoint + batch.alpha[source] + raw_score
                 )
                 identity = PieceIdentity(piece, role)
-                piece_counts[identity] += contribution
+                piece_counts[identity] = (
+                    piece_counts.get(identity, 0.0) + contribution
+                )
                 expected_raw_score += contribution * raw_score
                 log_adjoint[source] = logaddexp(
                     log_adjoint[source], adjoint + raw_score
@@ -1611,20 +1624,18 @@ class ComposedPieceInference:
                     host_contribution = math.exp(
                         host_adjoint + batch.alpha[source] + raw_score
                     )
-                    piece_host_support[
-                        (identity, endpoint_hosts[endpoint_id])
-                    ] += host_contribution
+                    host_key = (identity, endpoint_hosts[endpoint_id])
+                    piece_host_support[host_key] = (
+                        piece_host_support.get(host_key, 0.0)
+                        + host_contribution
+                    )
                     source_hosts[endpoint_id] = logaddexp(
                         source_hosts.get(endpoint_id, -math.inf),
                         host_adjoint + raw_score,
                     )
         self.add_timing("inner_piece_backward_seconds", started)
         self.add_timing("inner_piece_posterior_seconds", started)
-        return (
-            dict(piece_counts),
-            expected_raw_score,
-            dict(piece_host_support),
-        )
+        return piece_counts, expected_raw_score, piece_host_support
 
     def _aggregate_compact_occurrence_support(
         self,
@@ -1645,19 +1656,20 @@ class ComposedPieceInference:
                 subtree_occurrences[node_index]
             )
 
-        counts: dict[PhonologicalForm, int] = defaultdict(int)
+        counts: dict[PhonologicalForm, int] = {}
         for node_index, piece_id in zip(
             support.root_nodes, support.root_piece_ids
         ):
             count = subtree_occurrences[node_index]
             if count:
-                counts[support.pieces[piece_id]] += count
+                piece = support.pieces[piece_id]
+                counts[piece] = counts.get(piece, 0) + count
         for endpoint, count in zip(
             support.endpoints, endpoint_occurrence_counts
         ):
             if count and len(endpoint.form.symbols) > support.max_piece_length:
-                counts[endpoint.form] += count
-        return dict(counts)
+                counts[endpoint.form] = counts.get(endpoint.form, 0) + count
+        return counts
 
     def _compact_top_segmentations(
         self,
@@ -1828,11 +1840,7 @@ class ComposedPieceInference:
                 form.symbols,
                 PieceRole.WHOLE,
             )
-            whole_prior = _raw_prior_score(
-                0,
-                len(form.symbols),
-                rho=self.model_config.rho,
-            )
+            whole_prior = self._piece_prior(0, len(form.symbols))
             whole_raw = whole_prior + piece_score
             terminal_raw_z = -math.inf
             terminal_singleton_score = -math.inf
@@ -1944,10 +1952,10 @@ class ComposedPieceInference:
         started = time.perf_counter()
         topology = batch.topology
         log_adjoint = [-math.inf] * len(topology.parent)
-        piece_counts: dict[PieceIdentity, float] = defaultdict(float)
+        piece_counts: dict[PieceIdentity, float] = {}
         piece_host_support: dict[
             tuple[PieceIdentity, PhonologicalForm], float
-        ] = defaultdict(float)
+        ] = {}
         host_log_adjoints: dict[int, dict[str, float]] = {}
         expected_raw_score = 0.0
         max_piece_length = self.model_config.max_piece_length
@@ -1977,8 +1985,13 @@ class ComposedPieceInference:
                     seed + batch.alpha[source] + raw_score
                 )
                 identity = PieceIdentity(piece, role)
-                piece_counts[identity] += contribution
-                piece_host_support[(identity, host)] += contribution
+                piece_counts[identity] = (
+                    piece_counts.get(identity, 0.0) + contribution
+                )
+                host_key = (identity, host)
+                piece_host_support[host_key] = (
+                    piece_host_support.get(host_key, 0.0) + contribution
+                )
                 expected_raw_score += contribution * raw_score
                 log_adjoint[source] = logaddexp(
                     log_adjoint[source],
@@ -1992,8 +2005,13 @@ class ComposedPieceInference:
             if len(score.form.symbols) > max_piece_length:
                 contribution = math.exp(seed + score.whole_raw_score)
                 identity = PieceIdentity(score.whole_piece, PieceRole.WHOLE)
-                piece_counts[identity] += contribution
-                piece_host_support[(identity, host)] += contribution
+                piece_counts[identity] = (
+                    piece_counts.get(identity, 0.0) + contribution
+                )
+                host_key = (identity, host)
+                piece_host_support[host_key] = (
+                    piece_host_support.get(host_key, 0.0) + contribution
+                )
                 expected_raw_score += contribution * score.whole_raw_score
 
         for node_index in range(len(topology.parent) - 1, 0, -1):
@@ -2019,7 +2037,9 @@ class ComposedPieceInference:
                     adjoint + batch.alpha[source] + raw_score
                 )
                 identity = PieceIdentity(piece, role)
-                piece_counts[identity] += contribution
+                piece_counts[identity] = (
+                    piece_counts.get(identity, 0.0) + contribution
+                )
                 expected_raw_score += contribution * raw_score
                 log_adjoint[source] = logaddexp(
                     log_adjoint[source],
@@ -2030,20 +2050,18 @@ class ComposedPieceInference:
                     host_contribution = math.exp(
                         host_adjoint + batch.alpha[source] + raw_score
                     )
-                    piece_host_support[
-                        (identity, batch.forms[form_key].form)
-                    ] += host_contribution
+                    host_key = (identity, batch.forms[form_key].form)
+                    piece_host_support[host_key] = (
+                        piece_host_support.get(host_key, 0.0)
+                        + host_contribution
+                    )
                     source_hosts[form_key] = logaddexp(
                         source_hosts.get(form_key, -math.inf),
                         host_adjoint + raw_score,
                     )
         self.add_timing("inner_piece_backward_seconds", started)
         self.add_timing("inner_piece_posterior_seconds", started)
-        return (
-            dict(piece_counts),
-            expected_raw_score,
-            dict(piece_host_support),
-        )
+        return piece_counts, expected_raw_score, piece_host_support
 
     def _shared_legal_pieces(
         self,
@@ -2228,17 +2246,17 @@ def _evaluate_lazy_token_legacy(
             )
     engine.add_timing("lazy_token_backward_seconds", started)
 
-    lexical_counts: dict[PhonologicalForm, float] = defaultdict(float)
-    piece_counts: dict[PieceIdentity, float] = defaultdict(float)
+    lexical_counts: dict[PhonologicalForm, float] = {}
+    piece_counts: dict[PieceIdentity, float] = {}
     piece_host_support: dict[
         tuple[PieceIdentity, PhonologicalForm], float
-    ] = defaultdict(float)
-    boundary_mass: dict[str, float] = defaultdict(float)
+    ] = {}
+    boundary_mass: dict[str, float] = {}
     boundary_meta: dict[str, LexicalBoundary] = {}
-    rule_usage: dict[str, float] = defaultdict(float)
+    rule_usage: dict[str, float] = {}
     piece_occurrences: dict[
         PieceIdentity, dict[str, float]
-    ] = defaultdict(dict)
+    ] = {}
     expected_log_weight = 0.0
     expected_piece_tokens = 0.0
     piece_segmentation_entropy = 0.0
@@ -2263,7 +2281,7 @@ def _evaluate_lazy_token_legacy(
                 + beta[span.end]
                 - log_z
             )
-            lexical_counts[span.word] += mass
+            lexical_counts[span.word] = lexical_counts.get(span.word, 0.0) + mass
             expected_log_weight += mass * (
                 evaluation.expected_log_weight - event_penalty
             )
@@ -2275,18 +2293,27 @@ def _evaluate_lazy_token_legacy(
             if mass > 0.0:
                 for piece, conditional_mass in evaluation.expected_piece_counts.items():
                     contribution = mass * conditional_mass
-                    piece_counts[piece] += contribution
-                    piece_host_support[(piece, span.word)] += contribution
+                    piece_counts[piece] = (
+                        piece_counts.get(piece, 0.0) + contribution
+                    )
+                    host_key = (piece, span.word)
+                    piece_host_support[host_key] = (
+                        piece_host_support.get(host_key, 0.0) + contribution
+                    )
                     occurrence_id = (
                         f"{lattice.nodes[span.start].surface_end}:"
                         f"{lattice.nodes[span.end].surface_start}:{span.word.key}"
                     )
-                    piece_occurrences[piece][occurrence_id] = max(
-                        piece_occurrences[piece].get(occurrence_id, 0.0),
+                    occurrences = piece_occurrences.setdefault(piece, {})
+                    occurrences[occurrence_id] = max(
+                        occurrences.get(occurrence_id, 0.0),
                         contribution,
                     )
             if span.boundary is not None:
-                boundary_mass[span.boundary.boundary_id] += mass
+                boundary_id = span.boundary.boundary_id
+                boundary_mass[boundary_id] = (
+                    boundary_mass.get(boundary_id, 0.0) + mass
+                )
                 boundary_meta[span.boundary.boundary_id] = span.boundary
                 expected_internal_boundary_events += mass
                 if span.transformed:
@@ -2294,7 +2321,9 @@ def _evaluate_lazy_token_legacy(
                 else:
                     expected_internal_nontransformed_boundary_events += mass
             for rule_id in span.rule_ids:
-                rule_usage[rule_id] += mass / len(span.rule_ids)
+                rule_usage[rule_id] = (
+                    rule_usage.get(rule_id, 0.0) + mass / len(span.rule_ids)
+                )
 
     identity = lattice.span(0, node_count - 1)
     identity_log_score = -math.inf
@@ -2379,16 +2408,13 @@ def _evaluate_lazy_token_legacy(
         expected_internal_nontransformed_boundary_events=(
             expected_internal_nontransformed_boundary_events
         ),
-        lexical_counts=dict(lexical_counts),
-        piece_counts=dict(piece_counts),
-        piece_host_support=dict(piece_host_support),
-        boundary_mass=dict(boundary_mass),
+        lexical_counts=lexical_counts,
+        piece_counts=piece_counts,
+        piece_host_support=piece_host_support,
+        boundary_mass=boundary_mass,
         boundary_meta=boundary_meta,
-        rule_usage=dict(rule_usage),
-        piece_occurrences={
-            piece: dict(occurrences)
-            for piece, occurrences in piece_occurrences.items()
-        },
+        rule_usage=rule_usage,
+        piece_occurrences=piece_occurrences,
         shared_occurrences=(),
         compact_occurrences=None,
         top_paths=top_paths,
@@ -2433,14 +2459,10 @@ def _factor_retention_estimate(
         length = len(factor.merged_word.symbols)
         if length < 1:
             return None
+        max_piece_length = engine.model_config.max_piece_length
         transitions = sum(
-            len(
-                _piece_ends(
-                    length,
-                    start,
-                    engine.model_config.max_piece_length,
-                )
-            )
+            min(length - start, max_piece_length)
+            + int(start == 0 and length > max_piece_length)
             for start in range(length)
         )
         prefix_nodes = length + 1
@@ -2590,10 +2612,8 @@ def _compact_boundary(
         cue_kind=(
             "avagraha"
             if any(
-                unit.kind == "avagraha"
-                for unit in lattice.token.units[
-                    right.surface_start : right.surface_end
-                ]
+                lattice.token.units[index].kind == "avagraha"
+                for index in range(right.surface_start, right.surface_end)
             )
             else "unmarked"
         ),
@@ -2655,12 +2675,12 @@ def _evaluate_lazy_token_compact(
             )
     engine.add_timing("lazy_token_backward_seconds", started)
 
-    lexical_masses: dict[int, float] = defaultdict(float)
-    endpoint_masses: dict[int, float] = defaultdict(float)
-    form_occurrences: dict[int, set[int]] = defaultdict(set)
-    boundary_mass: dict[str, float] = defaultdict(float)
+    lexical_masses: dict[int, float] = {}
+    endpoint_masses: dict[int, float] = {}
+    form_occurrences: dict[int, set[int]] = {}
+    boundary_mass: dict[str, float] = {}
     boundary_meta: dict[str, LexicalBoundary] = {}
-    rule_usage: dict[str, float] = defaultdict(float)
+    rule_usage: dict[str, float] = {}
     surface_base = len(lattice.token.units) + 1
     expected_prior_log_z = 0.0
     mass_weighted_raw_log_z = 0.0
@@ -2690,8 +2710,12 @@ def _evaluate_lazy_token_compact(
                 + beta[end]
                 - log_z
             )
-            lexical_masses[endpoint_id] += mass
-            endpoint_masses[endpoint_id] += mass
+            lexical_masses[endpoint_id] = (
+                lexical_masses.get(endpoint_id, 0.0) + mass
+            )
+            endpoint_masses[endpoint_id] = (
+                endpoint_masses.get(endpoint_id, 0.0) + mass
+            )
             expected_prior_log_z += mass * score.prior_log_normalizer
             mass_weighted_raw_log_z += mass * score.raw_log_partition
             expected_transformation_penalty += mass * event_penalty
@@ -2705,13 +2729,16 @@ def _evaluate_lazy_token_compact(
             expected_singleton_path_uses += mass * singleton_mass
             expected_multi_piece_uses += mass * (1.0 - whole_mass)
             if mass > 0.0:
-                form_occurrences[endpoint_id].add(
+                form_occurrences.setdefault(endpoint_id, set()).add(
                     lattice.nodes[start].surface_end * surface_base
                     + lattice.nodes[end].surface_start
                 )
             boundary = _compact_boundary(lattice, end)
             if boundary is not None:
-                boundary_mass[boundary.boundary_id] += mass
+                boundary_id = boundary.boundary_id
+                boundary_mass[boundary_id] = (
+                    boundary_mass.get(boundary_id, 0.0) + mass
+                )
                 boundary_meta[boundary.boundary_id] = boundary
                 expected_internal_boundary_events += mass
                 if lattice.nodes[end].transformed:
@@ -2720,7 +2747,9 @@ def _evaluate_lazy_token_compact(
                     expected_internal_nontransformed_boundary_events += mass
             rule_ids = lattice.nodes[end].rule_ids if end < node_count - 1 else ()
             for rule_id in rule_ids:
-                rule_usage[rule_id] += mass / len(rule_ids)
+                rule_usage[rule_id] = (
+                    rule_usage.get(rule_id, 0.0) + mass / len(rule_ids)
+                )
             if start == 0 and end == node_count - 1:
                 identity_log_score = score.log_score
 
@@ -2787,7 +2816,7 @@ def _evaluate_lazy_token_compact(
                     cache_size = 96 + sum(
                         64
                         + 16 * len(segmentation.pieces)
-                        + sum(len(key.encode("utf-8")) for key in keys)
+                        + sum(len(key) for key in keys)
                         for segmentation, keys in keyed_segmentations
                     )
                     if cache_size <= engine.cache_config.form_bytes:
@@ -2858,9 +2887,9 @@ def _evaluate_lazy_token_compact(
         lexical_counts=lexical_counts,
         piece_counts=piece_counts,
         piece_host_support=piece_host_support,
-        boundary_mass=dict(boundary_mass),
+        boundary_mass=boundary_mass,
         boundary_meta=boundary_meta,
-        rule_usage=dict(rule_usage),
+        rule_usage=rule_usage,
         piece_occurrences={},
         shared_occurrences=(),
         compact_occurrences=compact_occurrences,
@@ -2941,12 +2970,12 @@ def _evaluate_lazy_token_shared(
             )
     engine.add_timing("lazy_token_backward_seconds", started)
 
-    lexical_counts: dict[PhonologicalForm, float] = defaultdict(float)
-    boundary_mass: dict[str, float] = defaultdict(float)
+    lexical_counts: dict[PhonologicalForm, float] = {}
+    boundary_mass: dict[str, float] = {}
     boundary_meta: dict[str, LexicalBoundary] = {}
-    rule_usage: dict[str, float] = defaultdict(float)
-    endpoint_masses: dict[str, float] = defaultdict(float)
-    form_occurrences: dict[str, set[int]] = defaultdict(set)
+    rule_usage: dict[str, float] = {}
+    endpoint_masses: dict[str, float] = {}
+    form_occurrences: dict[str, set[int]] = {}
     surface_base = len(lattice.token.units) + 1
     expected_prior_log_z = 0.0
     mass_weighted_raw_log_z = 0.0
@@ -2971,8 +3000,10 @@ def _evaluate_lazy_token_shared(
                 + beta[span.end]
                 - log_z
             )
-            lexical_counts[span.word] += mass
-            endpoint_masses[span.word.key] += mass
+            lexical_counts[span.word] = lexical_counts.get(span.word, 0.0) + mass
+            endpoint_masses[span.word.key] = (
+                endpoint_masses.get(span.word.key, 0.0) + mass
+            )
             expected_prior_log_z += mass * score.prior_log_normalizer
             mass_weighted_raw_log_z += mass * score.raw_log_partition
             expected_transformation_penalty += mass * event_penalty
@@ -2986,12 +3017,15 @@ def _evaluate_lazy_token_shared(
             expected_singleton_path_uses += mass * singleton_mass
             expected_multi_piece_uses += mass * (1.0 - whole_mass)
             if mass > 0.0:
-                form_occurrences[span.word.key].add(
+                form_occurrences.setdefault(span.word.key, set()).add(
                     lattice.nodes[span.start].surface_end * surface_base
                     + lattice.nodes[span.end].surface_start
                 )
             if span.boundary is not None:
-                boundary_mass[span.boundary.boundary_id] += mass
+                boundary_id = span.boundary.boundary_id
+                boundary_mass[boundary_id] = (
+                    boundary_mass.get(boundary_id, 0.0) + mass
+                )
                 boundary_meta[span.boundary.boundary_id] = span.boundary
                 expected_internal_boundary_events += mass
                 if span.transformed:
@@ -2999,7 +3033,9 @@ def _evaluate_lazy_token_shared(
                 else:
                     expected_internal_nontransformed_boundary_events += mass
             for rule_id in span.rule_ids:
-                rule_usage[rule_id] += mass / len(span.rule_ids)
+                rule_usage[rule_id] = (
+                    rule_usage.get(rule_id, 0.0) + mass / len(span.rule_ids)
+                )
 
     piece_counts, expected_raw_score, piece_host_support = (
         engine._aggregate_shared_piece_marginals(batch, endpoint_masses)
@@ -3071,7 +3107,7 @@ def _evaluate_lazy_token_shared(
                     cache_size = 96 + sum(
                         64
                         + 16 * len(segmentation.pieces)
-                        + sum(len(key.encode("utf-8")) for key in keys)
+                        + sum(len(key) for key in keys)
                         for segmentation, keys in keyed_segmentations
                     )
                     if cache_size <= engine.cache_config.form_bytes:
@@ -3136,12 +3172,12 @@ def _evaluate_lazy_token_shared(
         expected_internal_nontransformed_boundary_events=(
             expected_internal_nontransformed_boundary_events
         ),
-        lexical_counts=dict(lexical_counts),
+        lexical_counts=lexical_counts,
         piece_counts=piece_counts,
         piece_host_support=piece_host_support,
-        boundary_mass=dict(boundary_mass),
+        boundary_mass=boundary_mass,
         boundary_meta=boundary_meta,
-        rule_usage=dict(rule_usage),
+        rule_usage=rule_usage,
         piece_occurrences={},
         shared_occurrences=shared_occurrences,
         compact_occurrences=None,
@@ -3599,7 +3635,7 @@ def _add_scaled(
     scale: float,
 ) -> None:
     for key, value in source.items():
-        target[key] += scale * value
+        target[key] = target.get(key, 0.0) + scale * value
 
 
 def compile_composed_segment_topology(
@@ -3772,15 +3808,17 @@ def infer_composed_segment(
     backward = _outer_backward(graph, evaluations)
     engine.add_timing("outer_backward_seconds", started)
 
-    lexical_counts: dict[PhonologicalForm, float] = defaultdict(float)
-    piece_counts: dict[PieceIdentity, float] = defaultdict(float)
-    rule_usage: dict[str, float] = defaultdict(float)
-    boundary_mass: dict[str, float] = defaultdict(float)
+    lexical_counts: dict[PhonologicalForm, float] = {}
+    piece_counts: dict[PieceIdentity, float] = {}
+    rule_usage: dict[str, float] = {}
+    boundary_mass: dict[str, float] = {}
     boundary_meta: dict[str, LexicalBoundary] = {}
     piece_host_support: dict[
         tuple[PieceIdentity, PhonologicalForm], float
-    ] = defaultdict(float)
-    factor_top_paths: list[tuple[_ComposedPath, ...]] = []
+    ] = {}
+    factor_top_paths: list[tuple[_ComposedPath, ...]] | None = (
+        [] if engine.inspection_top_k is not None else None
+    )
     expected_log_weight = 0.0
     expected_piece_tokens = 0.0
     piece_segmentation_entropy = 0.0
@@ -3827,7 +3865,8 @@ def infer_composed_segment(
             raise AssertionError(
                 "Factor score prepass disagrees with posterior evaluation."
             )
-        factor_top_paths.append(evaluation.top_paths)
+        if factor_top_paths is not None:
+            factor_top_paths.append(evaluation.top_paths)
         factor = factor_score.factor
         prefix = forward[factor.start_token].get(factor.incoming.key, -math.inf)
         suffix = backward[factor.end_token].get(factor.outgoing.key, -math.inf)
@@ -3875,7 +3914,9 @@ def infer_composed_segment(
             boundary_id = f"visible:{boundary_index}"
             left = graph.segment.tokens[boundary_index - 1]
             right = graph.segment.tokens[boundary_index]
-            boundary_mass[boundary_id] += factor_mass
+            boundary_mass[boundary_id] = (
+                boundary_mass.get(boundary_id, 0.0) + factor_mass
+            )
             boundary_meta[boundary_id] = LexicalBoundary(
                 boundary_id,
                 "space",
@@ -3885,7 +3926,10 @@ def infer_composed_segment(
             if factor.outgoing.transformed:
                 expected_visible_transformed_events += factor_mass
             for rule_id in factor.outgoing.rule_ids:
-                rule_usage[rule_id] += factor_mass / len(factor.outgoing.rule_ids)
+                rule_usage[rule_id] = (
+                    rule_usage.get(rule_id, 0.0)
+                    + factor_mass / len(factor.outgoing.rule_ids)
+                )
         del evaluation
     engine.add_timing("outer_posterior_seconds", started)
 
@@ -3914,16 +3958,16 @@ def infer_composed_segment(
     top_k_started = (
         time.perf_counter() if engine.inspection_top_k is not None else 0.0
     )
-    decoded = (
-        ()
-        if engine.inspection_top_k is None
-        else _outer_top_paths(
+    if engine.inspection_top_k is None:
+        decoded = ()
+    else:
+        assert factor_top_paths is not None
+        decoded = _outer_top_paths(
             graph,
             evaluations,
             tuple(factor_top_paths),
             top_k=engine.inspection_top_k,
         )
-    )
     if engine.inspection_top_k is not None:
         engine.add_timing("outer_top_k_seconds", top_k_started)
     analyses = tuple(
@@ -3937,13 +3981,9 @@ def infer_composed_segment(
         )
         for path in decoded
     )
-    host_types_by_piece: dict[PieceIdentity, int] = defaultdict(int)
+    host_types_by_piece: dict[PieceIdentity, int] = {}
     for identity, _host in piece_host_support:
-        host_types_by_piece[identity] += 1
-    piece_host_type_support = {
-        identity: host_types
-        for identity, host_types in host_types_by_piece.items()
-    }
+        host_types_by_piece[identity] = host_types_by_piece.get(identity, 0) + 1
     return ComposedSegmentInference(
         log_partition=log_z,
         entropy=max(0.0, log_z - expected_log_weight),
@@ -3967,14 +4007,14 @@ def infer_composed_segment(
             expected_internal_transformed_events
             + expected_visible_transformed_events
         ),
-        lexical_expected_counts=dict(lexical_counts),
-        piece_expected_counts=dict(piece_counts),
-        piece_host_support=dict(piece_host_support),
-        rule_usage=dict(rule_usage),
+        lexical_expected_counts=lexical_counts,
+        piece_expected_counts=piece_counts,
+        piece_host_support=piece_host_support,
+        rule_usage=rule_usage,
         boundary_posteriors=boundaries,
         top_analyses=analyses,
         top_analysis_mass=sum(item.probability for item in analyses),
-        piece_host_type_support=piece_host_type_support,
+        piece_host_type_support=host_types_by_piece,
         total_posterior_mass=posterior_mass,
         candidate_span_hypotheses=candidate_span_hypotheses,
         counters=engine.counter_delta(before),

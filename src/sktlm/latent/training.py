@@ -959,6 +959,7 @@ def _iter_document_segments(
                 )
             ):
                 yield line_number, segment_index, segment
+                del segment
 
 
 def _profiled_document_segments(
@@ -984,6 +985,7 @@ def _profiled_document_segments(
             phase=phase,
         )
         yield item
+        del item
 
 
 def _flush_counts(
@@ -1167,6 +1169,7 @@ def _iter_execution_bundle_segments(
                 phonemes += segment_phonemes
                 pressure += segment_phonemes * segment_phonemes
                 yield line_number, segment_index, segment
+                del segment
     if (
         first_seen != first_identity
         or last_seen != last_identity
@@ -1251,11 +1254,13 @@ def _rebuild_topology_archive(
                 config.candidate_config,
                 exact_internal_matches=False,
             )
+            topology = compile_composed_segment_topology(graph, piece_engine)
             writer.write(
                 line_number,
                 segment_index,
-                compile_composed_segment_topology(graph, piece_engine),
+                topology,
             )
+            del topology, graph, segment
         writer.close()
         _replace_file(temporary, path)
     except BaseException:
@@ -1335,6 +1340,7 @@ def _validate_bundle_topology_archive(
             document, config
         ):
             reader.read(line_number, segment_index)
+            del _segment
         reader.close()
     finally:
         reader.close(require_eof=False)
@@ -1379,6 +1385,7 @@ def _profiled_document_segments_with_topology(
                 else reader.read(line_number, segment_index)
             )
             yield line_number, segment_index, segment, topology
+            del topology, segment
         if reader is not None:
             reader.close()
             telemetry.increment("topology_archives_reused", 1)
@@ -1473,7 +1480,8 @@ def _write_training_shard(
         tuple[PieceIdentity, PhonologicalForm]
     ] = Counter()
     metrics = PassMetrics()
-    seen_lines: set[int] = set()
+    line_count = 0
+    last_line_number: int | None = None
     row_count = 0
     candidate_seconds = 0.0
     inference_seconds = 0.0
@@ -1581,7 +1589,9 @@ def _write_training_shard(
                 frontend_seconds += time.perf_counter() - started
                 break
             frontend_seconds += time.perf_counter() - started
-            seen_lines.add(line_number)
+            if line_number != last_line_number:
+                line_count += 1
+                last_line_number = line_number
             _observe_segment_telemetry(
                 engineering,
                 segment,
@@ -1690,6 +1700,14 @@ def _write_training_shard(
                 >= config.flush_types
             ):
                 flush(handle)
+            del (
+                inference,
+                segment_topology,
+                candidate_counts,
+                candidate_profile,
+                graph,
+                segment,
+            )
         flush(handle)
         handle.flush()
         os.fsync(handle.fileno())
@@ -1708,7 +1726,7 @@ def _write_training_shard(
         engineering.increment("topology_archives_reused", 1)
         engineering.increment("topology_records_reused", topology_reader.records)
     metrics.documents = 1
-    metrics.lines = len(seen_lines)
+    metrics.lines = line_count
     payload = {
         'schema_version': 1 if config.model == S1M1_MODEL else 2,
         'config_signature': config_signature,
@@ -1950,6 +1968,17 @@ def _write_training_bundle_shard(
                 segment_digest.update(encoded_record)
                 handle.write(encoded_record)
                 records += 1
+                del (
+                    encoded_record,
+                    record,
+                    segment_metrics,
+                    inference,
+                    topology,
+                    candidate_counts,
+                    candidate_profile,
+                    graph,
+                    segment,
+                )
             handle.flush()
             os.fsync(handle.fileno())
         _replace_file(segment_temporary, paths["segments"])
@@ -2080,7 +2109,8 @@ def _coalesce_training_bundle_shards(
     piece_host_support: Counter[tuple[str, str]] = Counter()
     piece_host_role_support: Counter[tuple[str, str, str]] = Counter()
     metrics = PassMetrics()
-    seen_lines: set[int] = set()
+    line_count = 0
+    last_line_number: int | None = None
     row_count = 0
     runtime_totals: Counter[str] = Counter()
     composed_totals: Counter[str] = Counter()
@@ -2160,7 +2190,9 @@ def _coalesce_training_bundle_shards(
                             if first_identity is None:
                                 first_identity = identity
                             last_identity = identity
-                            seen_lines.add(identity[0])
+                            if identity[0] != last_line_number:
+                                line_count += 1
+                                last_line_number = identity[0]
                             for key, value in record["lexical_counts"]:
                                 counts[key] += float.fromhex(value)
                             for key, value in record["piece_counts"]:
@@ -2196,6 +2228,7 @@ def _coalesce_training_bundle_shards(
                                 >= config.flush_types
                             ):
                                 flush(handle)
+                            del record
                 finally:
                     if topology_reader is not None:
                         topology_reader.close()
@@ -2241,7 +2274,7 @@ def _coalesce_training_bundle_shards(
             )
             engineering.maximum("topology_archive_bytes", topology_path.stat().st_size)
         metrics.documents = 1
-        metrics.lines = len(seen_lines)
+        metrics.lines = line_count
         payload = {
             "schema_version": 2,
             "config_signature": config_signature,
@@ -2315,7 +2348,8 @@ def _apply_compact_training_bundle_shards(
     piece_host_support: Counter[tuple[str, str]] = Counter()
     piece_host_role_support: Counter[tuple[str, str, str]] = Counter()
     document_metrics = PassMetrics()
-    seen_lines: set[int] = set()
+    line_count = 0
+    last_line_number: int | None = None
     runtime_totals: Counter[str] = Counter()
     composed_totals: Counter[str] = Counter()
     engineering = RuntimeTelemetry()
@@ -2394,7 +2428,9 @@ def _apply_compact_training_bundle_shards(
                     if first_identity is None:
                         first_identity = identity
                     last_identity = identity
-                    seen_lines.add(identity[0])
+                    if identity[0] != last_line_number:
+                        line_count += 1
+                        last_line_number = identity[0]
                     for key, value in record["lexical_counts"]:
                         lexical_counts[key] += float.fromhex(value)
                     for key, value in record["piece_counts"]:
@@ -2423,6 +2459,7 @@ def _apply_compact_training_bundle_shards(
                         >= config.flush_types
                     ):
                         flush()
+                    del record
             if (
                 record_count != bundle.segment_count
                 or first_identity
@@ -2451,7 +2488,7 @@ def _apply_compact_training_bundle_shards(
                 engineering.merge_payload(runtime["engineering_telemetry"])
         flush()
         document_metrics.documents = 1
-        document_metrics.lines = len(seen_lines)
+        document_metrics.lines = line_count
         next_metrics = metrics.merged(document_metrics)
         next_checkpoint = {
             **checkpoint,
@@ -3174,7 +3211,8 @@ def _training_pass(
         piece_host_support: Counter[
             tuple[PieceIdentity, PhonologicalForm]
         ] = Counter()
-        seen_lines: set[int] = set()
+        line_count = 0
+        last_line_number: int | None = None
         document_metrics = PassMetrics()
         document_started = telemetry.now()
         topology_path = _topology_archive_path(run_dir, document_index)
@@ -3213,7 +3251,9 @@ def _training_pass(
                 telemetry,
                 phase='training',
             ):
-                seen_lines.add(line_number)
+                if line_number != last_line_number:
+                    line_count += 1
+                    last_line_number = line_number
                 started = telemetry.now()
                 candidate_profile = (
                     CandidateBuildProfile()
@@ -3334,6 +3374,14 @@ def _training_pass(
                             piece_host_support,
                             collect_role_diagnostics=config.piece_role_diagnostics,
                         )
+                del (
+                    inference,
+                    segment_topology,
+                    candidate_counts,
+                    candidate_profile,
+                    graph,
+                    segment,
+                )
             if config.model == S1M1_MODEL:
                 _flush_counts(
                     store,
@@ -3369,7 +3417,7 @@ def _training_pass(
                     "topology_records_reused", topology_reader.records
                 )
             document_metrics.documents = 1
-            document_metrics.lines = len(seen_lines)
+            document_metrics.lines = line_count
             next_metrics = metrics.merged(document_metrics)
             next_checkpoint = {
                 **checkpoint,
@@ -3679,7 +3727,8 @@ def _write_inspection_shard(
     piece_host_support: Counter[
         tuple[PieceIdentity, PhonologicalForm]
     ] = Counter()
-    seen_lines: set[int] = set()
+    line_count = 0
+    last_line_number: int | None = None
     count_rows = 0
     piece_rows = 0
     piece_host_rows = 0
@@ -3793,6 +3842,8 @@ def _write_inspection_shard(
             "INSERT INTO piece_rows VALUES (?, ?, ?)",
             rows,
         )
+        piece_rows += len(rows)
+        del rows
         host_rows = []
         for (piece, host), value in sorted(
             piece_host_support.items(),
@@ -3811,7 +3862,6 @@ def _write_inspection_shard(
             "INSERT INTO piece_host_rows VALUES (?, ?, ?, ?)",
             host_rows,
         )
-        piece_rows += len(rows)
         piece_host_rows += len(host_rows)
         piece_counts.clear()
         piece_host_support.clear()
@@ -3845,6 +3895,11 @@ def _write_inspection_shard(
                         float(mass),
                     )
                 )
+            aggregate_connection.executemany(
+                "INSERT INTO surface_rows VALUES (?, ?, ?, ?)",
+                surface_rows,
+            )
+            del surface_rows
             context_rows = []
             for key, context, mass in context_rows_buffer:
                 aggregate_row_numbers["contexts"] += 1
@@ -3857,13 +3912,10 @@ def _write_inspection_shard(
                     )
                 )
             aggregate_connection.executemany(
-                "INSERT INTO surface_rows VALUES (?, ?, ?, ?)",
-                surface_rows,
-            )
-            aggregate_connection.executemany(
                 "INSERT INTO context_rows VALUES (?, ?, ?, ?)",
                 context_rows,
             )
+            del context_rows
         surface_rows_buffer.clear()
         context_rows_buffer.clear()
         shard_database_seconds += time.perf_counter() - started
@@ -3904,7 +3956,9 @@ def _write_inspection_shard(
                 frontend_seconds += time.perf_counter() - started
                 break
             frontend_seconds += time.perf_counter() - started
-            seen_lines.add(line_number)
+            if line_number != last_line_number:
+                line_count += 1
+                last_line_number = line_number
             _observe_segment_telemetry(
                 engineering,
                 segment,
@@ -4127,7 +4181,7 @@ def _write_inspection_shard(
                 ),
                 "top_probability": top_probability,
                 "entropy": inference.entropy,
-                "rule_usage": dict(inference.rule_usage),
+                "rule_usage": inference.rule_usage,
                 "composed_counters": (
                     asdict(inference.counters)
                     if isinstance(inference, ComposedSegmentInference)
@@ -4197,6 +4251,19 @@ def _write_inspection_shard(
                 flush_pieces()
             if len(surface_rows_buffer) + len(context_rows_buffer) >= config.flush_types:
                 flush_usage_rows()
+            del (
+                inference_lexical_counts,
+                reduction_row,
+                report_payload,
+                boundary_row,
+                analysis_row,
+                inference,
+                segment_topology,
+                candidate_values,
+                candidate_profile,
+                graph,
+                segment,
+            )
         flush_counts()
         flush_pieces()
         flush_usage_rows()
@@ -4226,7 +4293,7 @@ def _write_inspection_shard(
         "config_signature": config_signature,
         "document_index": document_index,
         "relative_path": document.relative_path,
-        "lines": len(seen_lines),
+        "lines": line_count,
         "rows": {
             "counts": count_rows,
             "pieces": piece_rows,
@@ -4483,7 +4550,7 @@ def _write_inspection_bundle_shard(
                     ),
                     "top_probability": top_probability,
                     "entropy": inference.entropy,
-                    "rule_usage": dict(inference.rule_usage),
+                    "rule_usage": inference.rule_usage,
                     "composed_counters": asdict(inference.counters),
                     "report": report_payload,
                 }
@@ -4561,6 +4628,21 @@ def _write_inspection_bundle_shard(
                     time.perf_counter() - serialization_started
                 )
                 records += 1
+                del (
+                    record,
+                    surface_usage,
+                    context_usage,
+                    reduction_row,
+                    report_payload,
+                    boundary_row,
+                    analysis_row,
+                    inference,
+                    topology,
+                    candidate_values,
+                    candidate_profile,
+                    graph,
+                    segment,
+                )
             handle.flush()
             os.fsync(handle.fileno())
         _replace_file(temporary, paths["segments"])
@@ -4727,7 +4809,8 @@ def _coalesce_inspection_bundle_shards(
         "surfaces": 0,
         "contexts": 0,
     }
-    seen_lines: set[int] = set()
+    line_count = 0
+    last_line_number: int | None = None
     reduction_rows = 0
     shard_database_seconds = 0.0
     coalesce_started = time.perf_counter()
@@ -4748,6 +4831,7 @@ def _coalesce_inspection_bundle_shards(
             )
             row_counts["counts"] += len(count_rows)
             counts.clear()
+        del count_rows
         piece_rows = []
         for piece_key, value in sorted(piece_counts.items()):
             row_numbers["pieces"] += 1
@@ -4764,6 +4848,7 @@ def _coalesce_inspection_bundle_shards(
             )
             row_counts["pieces"] += len(piece_rows)
             piece_counts.clear()
+        del piece_rows
         piece_host_rows = []
         for (piece_key, host_key), value in sorted(
             piece_host_support.items()
@@ -4784,6 +4869,7 @@ def _coalesce_inspection_bundle_shards(
             )
             row_counts["piece_hosts"] += len(piece_host_rows)
             piece_host_support.clear()
+        del piece_host_rows
         shard_database_seconds += time.perf_counter() - started
 
     def flush_usage() -> None:
@@ -4797,22 +4883,26 @@ def _coalesce_inspection_bundle_shards(
             surface_rows.append(
                 (row_numbers["surfaces"], key, surface, float(mass))
             )
+        surface_row_count = len(surface_rows)
+        if surface_rows:
+            aggregate_connection.executemany(
+                "INSERT INTO surface_rows VALUES (?, ?, ?, ?)", surface_rows
+            )
+        del surface_rows
         context_rows = []
         for key, context, mass in context_buffer:
             row_numbers["contexts"] += 1
             context_rows.append(
                 (row_numbers["contexts"], key, context, float(mass))
             )
-        if surface_rows:
-            aggregate_connection.executemany(
-                "INSERT INTO surface_rows VALUES (?, ?, ?, ?)", surface_rows
-            )
+        context_row_count = len(context_rows)
         if context_rows:
             aggregate_connection.executemany(
                 "INSERT INTO context_rows VALUES (?, ?, ?, ?)", context_rows
             )
-        row_counts["surfaces"] += len(surface_rows)
-        row_counts["contexts"] += len(context_rows)
+        del context_rows
+        row_counts["surfaces"] += surface_row_count
+        row_counts["contexts"] += context_row_count
         surface_buffer.clear()
         context_buffer.clear()
         shard_database_seconds += time.perf_counter() - started
@@ -4862,7 +4952,9 @@ def _coalesce_inspection_bundle_shards(
                     if first_identity is None:
                         first_identity = identity
                     last_identity = identity
-                    seen_lines.add(identity[0])
+                    if identity[0] != last_line_number:
+                        line_count += 1
+                        last_line_number = identity[0]
                     for key, value in record["lexical_counts"]:
                         counts[key] += float.fromhex(value)
                     for key, value in record["piece_counts"]:
@@ -4916,6 +5008,7 @@ def _coalesce_inspection_bundle_shards(
                         flush_usage()
                     bundle_records += 1
                     reduction_rows += 1
+                    del record
             if (
                 bundle.first_segment_ordinal != expected_ordinal
                 or bundle_records != bundle.segment_count
@@ -4968,7 +5061,7 @@ def _coalesce_inspection_bundle_shards(
         "config_signature": config_signature,
         "document_index": document_index,
         "relative_path": document.relative_path,
-        "lines": len(seen_lines),
+        "lines": line_count,
         "rows": {**row_counts, "reductions": reduction_rows},
         "sha256": {
             kind: _file_sha256(paths[kind])
@@ -5199,6 +5292,7 @@ def _apply_inspection_shard(
                 report_payload,
             )
             aggregate.serial += 1
+            del report_payload, composed_counters, row
     aggregate.metrics.documents += 1
     aggregate.metrics.lines += int(payload["lines"])
 
@@ -5961,7 +6055,8 @@ def _inspection_pass(
         signature = _config_signature(config)
         for document_index, document in enumerate(documents):
             document_started = telemetry.now()
-            seen_lines: set[int] = set()
+            line_count = 0
+            last_line_number: int | None = None
             surface_usage: list[tuple[str, str, float]] = []
             context_usage: list[tuple[str, str, float]] = []
             for (
@@ -5980,7 +6075,9 @@ def _inspection_pass(
                 grammar=grammar,
                 piece_engine=piece_engine,
             ):
-                seen_lines.add(line_number)
+                if line_number != last_line_number:
+                    line_count += 1
+                    last_line_number = line_number
                 started = telemetry.now()
                 candidate_profile = (
                     CandidateBuildProfile()
@@ -6239,6 +6336,18 @@ def _inspection_pass(
                     )
                     surface_usage.clear()
                     context_usage.clear()
+                del (
+                    inference_lexical_counts,
+                    report_payload,
+                    boundary_row,
+                    row,
+                    inference,
+                    candidate_counts,
+                    candidate_profile,
+                    graph,
+                    segment_topology,
+                    segment,
+                )
             _flush_counts(store, counts, table="inspection_counts")
             if piece_counts or piece_host_support:
                 store.add_inspection_piece_counts(piece_counts.items())
@@ -6252,8 +6361,9 @@ def _inspection_pass(
                 piece_host_support.clear()
             store.add_usage(surfaces=surface_usage, contexts=context_usage)
             metrics.documents += 1
-            metrics.lines += len(seen_lines)
+            metrics.lines += line_count
             telemetry.elapsed('inspection_document_total', document_started)
+            del surface_usage, context_usage
 
     aggregate = _InspectionAggregate(
         metrics=metrics,

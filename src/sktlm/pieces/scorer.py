@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping, Protocol
 
 from sktlm.latent.phonology import Phoneme, PhonologicalForm
@@ -31,6 +31,8 @@ def score_positional_piece(
 class NeutralPieceScorer:
     """Pass-1 scorer: the normalized segmentation prior is the whole score."""
 
+    piece_scores_are_role_neutral = True
+
     def score(self, piece: PhonologicalForm) -> float:
         del piece
         return 0.0
@@ -51,6 +53,8 @@ class ExpectedCountPieceScorer:
     This is an energy/reweighted-MDL scoring rule. It is not presented as a
     new normalized generative prior over variable-length segmentations.
     """
+
+    piece_scores_are_role_neutral = True
 
     def __init__(
         self,
@@ -125,6 +129,9 @@ class GeometricPhonemeBaseMeasure:
 
     stop_probability: float = 0.5
     alphabet_size: int = len(Phoneme)
+    _log_stop_probability: float = field(init=False, repr=False, compare=False)
+    _log_continue_probability: float = field(init=False, repr=False, compare=False)
+    _log_alphabet_size: float = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not 0.0 < self.stop_probability < 1.0:
@@ -133,19 +140,32 @@ class GeometricPhonemeBaseMeasure:
             raise ValueError(
                 "alphabet_size must equal the complete script-neutral Phoneme inventory"
             )
+        object.__setattr__(
+            self, "_log_stop_probability", math.log(self.stop_probability)
+        )
+        object.__setattr__(
+            self,
+            "_log_continue_probability",
+            math.log1p(-self.stop_probability),
+        )
+        object.__setattr__(self, "_log_alphabet_size", math.log(self.alphabet_size))
 
-    def log_probability(self, piece: PhonologicalForm) -> float:
-        length = len(piece.symbols)
+    def log_probability_for_length(self, length: int) -> float:
+        if length < 1:
+            raise ValueError("length must be >= 1")
         continuation = (
             0.0
             if length == 1
-            else (length - 1) * math.log1p(-self.stop_probability)
+            else (length - 1) * self._log_continue_probability
         )
         return (
-            math.log(self.stop_probability)
+            self._log_stop_probability
             + continuation
-            - length * math.log(self.alphabet_size)
+            - length * self._log_alphabet_size
         )
+
+    def log_probability(self, piece: PhonologicalForm) -> float:
+        return self.log_probability_for_length(len(piece.symbols))
 
     def probability(self, piece: PhonologicalForm) -> float:
         return math.exp(self.log_probability(piece))
@@ -168,6 +188,8 @@ class BaseMeasurePieceScorer:
     The active inventory need not enumerate unseen strings, and changing the
     number of materialized candidates does not change any probability.
     """
+
+    piece_scores_are_role_neutral = True
 
     def __init__(
         self,

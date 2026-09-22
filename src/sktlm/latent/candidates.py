@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from sktlm.latent.frontend import ObservedSegment, ObservedToken, SurfaceUnit
 from sktlm.latent.grammar import (
     BoundaryRuleMatch,
-    InternalRuleMatch,
     StructuredSandhiGrammar,
 )
 from sktlm.latent.phonology import Phoneme, PhonologicalForm
@@ -141,24 +140,30 @@ class CandidateConfig:
 
 
 def candidate_graph_statistics(graph: CandidateGraph) -> dict[str, int]:
-    lattices = [
-        factor.lattice for factor in graph.factors if factor.lattice is not None
-    ]
-    return {
+    statistics = {
         "boundary_options": sum(len(options) for options in graph.boundary_options),
         "factors": len(graph.factors),
-        "merged_factors": sum(factor.is_merge for factor in graph.factors),
-        "token_lattices": len(lattices),
-        "raw_internal_matches": sum(
-            lattice.raw_internal_matches for lattice in lattices
-        ),
-        "retained_internal_matches": sum(
-            lattice.retained_internal_matches for lattice in lattices
-        ),
-        "lattice_nodes": sum(len(lattice.nodes) for lattice in lattices),
-        "lexical_edges": sum(len(lattice.edges) for lattice in lattices),
+        "merged_factors": 0,
+        "token_lattices": 0,
+        "raw_internal_matches": 0,
+        "retained_internal_matches": 0,
+        "lattice_nodes": 0,
+        "lexical_edges": 0,
         "overflowed_tokens": graph.overflowed_tokens,
     }
+    for factor in graph.factors:
+        statistics["merged_factors"] += int(factor.is_merge)
+        lattice = factor.lattice
+        if lattice is None:
+            continue
+        statistics["token_lattices"] += 1
+        statistics["raw_internal_matches"] += lattice.raw_internal_matches
+        statistics["retained_internal_matches"] += (
+            lattice.retained_internal_matches
+        )
+        statistics["lattice_nodes"] += len(lattice.nodes)
+        statistics["lexical_edges"] += len(lattice.edges)
+    return statistics
 
 
 def candidate_graph_fingerprint(graph: CandidateGraph) -> str:
@@ -234,8 +239,28 @@ def _phonemes(units: tuple[SurfaceUnit, ...]) -> tuple[Phoneme, ...]:
     return tuple(unit.phoneme for unit in units if unit.phoneme is not None)
 
 
+def _phonemes_between(
+    units: tuple[SurfaceUnit, ...],
+    start: int,
+    end: int,
+) -> tuple[Phoneme, ...]:
+    return tuple(
+        units[index].phoneme
+        for index in range(start, end)
+        if units[index].phoneme is not None
+    )
+
+
 def _contains_avagraha(units: tuple[SurfaceUnit, ...]) -> bool:
     return any(unit.kind == "avagraha" for unit in units)
+
+
+def _contains_avagraha_between(
+    units: tuple[SurfaceUnit, ...],
+    start: int,
+    end: int,
+) -> bool:
+    return any(units[index].kind == "avagraha" for index in range(start, end))
 
 
 def _boundary_option_from_match(match: BoundaryRuleMatch) -> BoundaryOption:
@@ -287,6 +312,46 @@ def _visible_boundary_options(
     return tuple(deduplicated[key] for key in sorted(deduplicated))
 
 
+def _token_internal_nodes(
+    token: ObservedToken,
+    grammar: StructuredSandhiGrammar,
+    profile: CandidateBuildProfile | None = None,
+) -> tuple[InternalBoundaryNode, ...]:
+    if profile is not None:
+        profile.internal_match_calls += 1
+        started = time.perf_counter()
+    matches = tuple(grammar.iter_internal_matches(token.units))
+    if profile is not None:
+        profile.grammar_match_seconds += time.perf_counter() - started
+        profile.unfiltered_internal_matches += len(matches)
+        started = time.perf_counter()
+    nodes = tuple(
+        sorted(
+            (
+                InternalBoundaryNode(
+                    surface_start=match.start,
+                    surface_end=match.end,
+                    left_underlying=match.left_underlying.symbols,
+                    right_underlying=match.right_underlying.symbols,
+                    rule_ids=match.rule_ids,
+                    source_start=token.units[match.start].source_start,
+                    source_end=token.units[match.end - 1].source_end,
+                    transformed=match.transformed,
+                )
+                for match in matches
+            ),
+            key=lambda node: (
+                node.surface_start,
+                node.surface_end,
+                node.rule_ids,
+            ),
+        )
+    )
+    if profile is not None:
+        profile.node_construction_seconds += time.perf_counter() - started
+    return nodes
+
+
 def _internal_nodes(
     token: ObservedToken,
     grammar: StructuredSandhiGrammar,
@@ -294,35 +359,28 @@ def _internal_nodes(
     outgoing: BoundaryOption,
     max_internal_matches: int,
     profile: CandidateBuildProfile | None = None,
+    token_internal_nodes: tuple[InternalBoundaryNode, ...] | None = None,
 ) -> tuple[tuple[InternalBoundaryNode, ...], bool, int, int]:
     prefix_end = incoming.right_consumed
     suffix_start = len(token.units) - outgoing.left_consumed
     if prefix_end > suffix_start:
         return (), False, 0, 0
-    if profile is None:
-        matches = [
-            match
-            for match in grammar.iter_internal_matches(token.units)
-            if match.start >= prefix_end and match.end <= suffix_start
-        ]
-    else:
-        profile.internal_match_calls += 1
+    if token_internal_nodes is None:
+        token_internal_nodes = _token_internal_nodes(token, grammar, profile)
+    if profile is not None:
         started = time.perf_counter()
-        unfiltered = tuple(grammar.iter_internal_matches(token.units))
-        profile.grammar_match_seconds += time.perf_counter() - started
-        profile.unfiltered_internal_matches += len(unfiltered)
-        started = time.perf_counter()
-        matches = [
-            match
-            for match in unfiltered
-            if match.start >= prefix_end and match.end <= suffix_start
-        ]
+    internal = tuple(
+        node
+        for node in token_internal_nodes
+        if node.surface_start >= prefix_end and node.surface_end <= suffix_start
+    )
+    if profile is not None:
         profile.window_filter_seconds += time.perf_counter() - started
-    raw_match_count = len(matches)
+    raw_match_count = len(internal)
     overflowed = raw_match_count > max_internal_matches
     if overflowed:
-        matches = []
-    retained_match_count = len(matches)
+        internal = ()
+    retained_match_count = len(internal)
     started = time.perf_counter() if profile is not None else 0.0
     start = InternalBoundaryNode(
         surface_start=prefix_end,
@@ -344,26 +402,6 @@ def _internal_nodes(
         source_end=token.source_end,
         is_end=True,
     )
-    internal = [
-        InternalBoundaryNode(
-            surface_start=match.start,
-            surface_end=match.end,
-            left_underlying=match.left_underlying.symbols,
-            right_underlying=match.right_underlying.symbols,
-            rule_ids=match.rule_ids,
-            source_start=token.units[match.start].source_start,
-            source_end=token.units[match.end - 1].source_end,
-            transformed=match.transformed,
-        )
-        for match in matches
-    ]
-    internal.sort(
-        key=lambda node: (
-            node.surface_start,
-            node.surface_end,
-            node.rule_ids,
-        )
-    )
     if profile is not None:
         profile.node_construction_seconds += time.perf_counter() - started
     return (
@@ -381,6 +419,7 @@ def build_token_lattice(
     outgoing: BoundaryOption,
     *,
     max_internal_matches: int,
+    token_internal_nodes: tuple[InternalBoundaryNode, ...] | None = None,
 ) -> TokenLattice | None:
     """Build a DAG whose edges emit complete lexical forms."""
 
@@ -390,20 +429,29 @@ def build_token_lattice(
         incoming,
         outgoing,
         max_internal_matches,
+        token_internal_nodes=token_internal_nodes,
     )
     if not nodes:
         return None
     edges: list[LexicalEdge] = []
-    for left_index, left in enumerate(nodes[:-1]):
+    for left_index in range(len(nodes) - 1):
+        left = nodes[left_index]
         for right_index in range(left_index + 1, len(nodes)):
             right = nodes[right_index]
             if left.surface_end > right.surface_start:
                 continue
-            gap = token.units[left.surface_end : right.surface_start]
             identity_edge = left.is_start and right.is_end
-            if _contains_avagraha(gap) and not identity_edge:
+            if _contains_avagraha_between(
+                token.units, left.surface_end, right.surface_start
+            ) and not identity_edge:
                 continue
-            symbols = left.right_underlying + _phonemes(gap) + right.left_underlying
+            symbols = (
+                left.right_underlying
+                + _phonemes_between(
+                    token.units, left.surface_end, right.surface_start
+                )
+                + right.left_underlying
+            )
             if not symbols:
                 continue
             word = PhonologicalForm(symbols)
@@ -418,8 +466,8 @@ def build_token_lattice(
                     ),
                     cue_kind=(
                         "avagraha"
-                        if _contains_avagraha(
-                            token.units[right.surface_start : right.surface_end]
+                        if _contains_avagraha_between(
+                            token.units, right.surface_start, right.surface_end
                         )
                         else "unmarked"
                     ),
@@ -465,8 +513,8 @@ def _merged_word(
         return None
     symbols = (
         incoming.right_underlying
-        + _phonemes(first.units[first_start:])
-        + _phonemes(second.units[:second_end])
+        + _phonemes_between(first.units, first_start, len(first.units))
+        + _phonemes_between(second.units, 0, second_end)
         + outgoing.left_underlying
     )
     if not symbols:
@@ -500,8 +548,10 @@ def build_candidate_graph(
     boundaries.append((end,))
 
     factors: list[SegmentFactor] = []
-    overflowed_tokens: set[int] = set()
+    overflowed_tokens = 0
     for index, token in enumerate(segment.tokens):
+        token_internal_nodes = _token_internal_nodes(token, grammar)
+        token_overflowed = False
         for incoming in boundaries[index]:
             for outgoing in boundaries[index + 1]:
                 lattice = build_token_lattice(
@@ -510,11 +560,12 @@ def build_candidate_graph(
                     incoming,
                     outgoing,
                     max_internal_matches=config.max_internal_matches,
+                    token_internal_nodes=token_internal_nodes,
                 )
                 if lattice is None:
                     continue
                 if lattice.overflowed:
-                    overflowed_tokens.add(index)
+                    token_overflowed = True
                 factors.append(
                     SegmentFactor(
                         factor_id=f"token:{index}:{incoming.key}:{outgoing.key}",
@@ -527,7 +578,9 @@ def build_candidate_graph(
                         ignored_whitespace=0,
                     )
                 )
+        overflowed_tokens += int(token_overflowed)
         if not config.allow_whitespace_merge or index + 1 >= token_count:
+            del token_internal_nodes
             continue
         for incoming in boundaries[index]:
             for outgoing in boundaries[index + 2]:
@@ -551,6 +604,7 @@ def build_candidate_graph(
                         ignored_whitespace=1,
                     )
                 )
+        del token_internal_nodes
     factors.sort(
         key=lambda factor: (
             factor.start_token,
@@ -564,5 +618,5 @@ def build_candidate_graph(
         segment=segment,
         boundary_options=tuple(boundaries),
         factors=tuple(factors),
-        overflowed_tokens=len(overflowed_tokens),
+        overflowed_tokens=overflowed_tokens,
     )

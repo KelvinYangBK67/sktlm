@@ -21,10 +21,11 @@ from sktlm.latent.candidates import (
     LexicalEdge,
     SegmentFactor,
     TokenLattice,
-    _contains_avagraha,
+    _contains_avagraha_between,
     _internal_nodes,
     _merged_word,
-    _phonemes,
+    _phonemes_between,
+    _token_internal_nodes,
     _visible_boundary_options,
 )
 from sktlm.latent.frontend import ObservedSegment, ObservedToken
@@ -77,11 +78,18 @@ class LazyTokenLattice:
         left, right = self.nodes[left_index], self.nodes[right_index]
         if left.surface_end > right.surface_start:
             return None
-        gap = self.token.units[left.surface_end : right.surface_start]
         identity_edge = left.is_start and right.is_end
-        if _contains_avagraha(gap) and not identity_edge:
+        if _contains_avagraha_between(
+            self.token.units, left.surface_end, right.surface_start
+        ) and not identity_edge:
             return None
-        symbols = left.right_underlying + _phonemes(gap) + right.left_underlying
+        symbols = (
+            left.right_underlying
+            + _phonemes_between(
+                self.token.units, left.surface_end, right.surface_start
+            )
+            + right.left_underlying
+        )
         if not symbols:
             return None
         word = PhonologicalForm(symbols)
@@ -96,10 +104,10 @@ class LazyTokenLattice:
                 ),
                 cue_kind=(
                     "avagraha"
-                    if _contains_avagraha(
-                        self.token.units[
-                            right.surface_start : right.surface_end
-                        ]
+                    if _contains_avagraha_between(
+                        self.token.units,
+                        right.surface_start,
+                        right.surface_end,
                     )
                     else "unmarked"
                 ),
@@ -163,6 +171,7 @@ def build_lazy_token_lattice(
     max_internal_matches: int,
     profile: CandidateBuildProfile | None = None,
     exact_internal_matches: bool = True,
+    token_internal_nodes: tuple[InternalBoundaryNode, ...] | None = None,
 ) -> LazyTokenLattice | None:
     # S1M2's compact route treats the configured legacy ceiling as pressure
     # telemetry only.  Passing a practically unbounded ceiling preserves every
@@ -177,6 +186,7 @@ def build_lazy_token_lattice(
         outgoing,
         effective_limit,
         profile,
+        token_internal_nodes,
     )
     if not nodes:
         return None
@@ -232,10 +242,13 @@ def build_lazy_candidate_graph(
     boundaries.append((end,))
 
     factors: list[LazySegmentFactor] = []
-    overflowed_tokens: set[int] = set()
-    pressure_tokens: set[int] = set()
+    overflowed_tokens = 0
+    pressure_tokens = 0
     factor_started = time.perf_counter() if profile is not None else 0.0
     for index, token in enumerate(segment.tokens):
+        token_nodes = _token_internal_nodes(token, grammar, profile)
+        token_overflowed = False
+        token_under_pressure = False
         for incoming in boundaries[index]:
             for outgoing in boundaries[index + 1]:
                 if profile is not None:
@@ -248,13 +261,14 @@ def build_lazy_candidate_graph(
                     max_internal_matches=config.max_internal_matches,
                     profile=profile,
                     exact_internal_matches=exact_internal_matches,
+                    token_internal_nodes=token_nodes,
                 )
                 if lattice is None:
                     continue
                 if lattice.overflowed:
-                    overflowed_tokens.add(index)
+                    token_overflowed = True
                 if lattice.historical_match_pressure_exceeded:
-                    pressure_tokens.add(index)
+                    token_under_pressure = True
                 factors.append(
                     LazySegmentFactor(
                         factor_id=f"token:{index}:{incoming.key}:{outgoing.key}",
@@ -267,7 +281,10 @@ def build_lazy_candidate_graph(
                         ignored_whitespace=0,
                     )
                 )
+        overflowed_tokens += int(token_overflowed)
+        pressure_tokens += int(token_under_pressure)
         if not config.allow_whitespace_merge or index + 1 >= token_count:
+            del token_nodes
             continue
         for incoming in boundaries[index]:
             for outgoing in boundaries[index + 2]:
@@ -293,6 +310,7 @@ def build_lazy_candidate_graph(
                         ignored_whitespace=1,
                     )
                 )
+        del token_nodes
     factors.sort(
         key=lambda factor: (
             factor.start_token,
@@ -308,8 +326,8 @@ def build_lazy_candidate_graph(
         segment=segment,
         boundary_options=tuple(boundaries),
         factors=tuple(factors),
-        overflowed_tokens=len(overflowed_tokens),
-        historical_match_pressure_tokens=len(pressure_tokens),
+        overflowed_tokens=overflowed_tokens,
+        historical_match_pressure_tokens=pressure_tokens,
     )
 
 
@@ -334,11 +352,13 @@ def _count_legal_spans(lattice: LazyTokenLattice) -> int:
 
     count = 0
     nodes = lattice.nodes
-    for left_index, left in enumerate(nodes[:-1]):
+    for left_index in range(len(nodes) - 1):
+        left = nodes[left_index]
         left_has_vowel = any(
             symbol in VOWELS for symbol in left.right_underlying
         )
-        for right in nodes[left_index + 1 :]:
+        for right_index in range(left_index + 1, len(nodes)):
+            right = nodes[right_index]
             if left.surface_end > right.surface_start:
                 continue
 
@@ -385,31 +405,35 @@ def lazy_candidate_graph_statistics(
     *,
     defer_legal_span_count: bool = False,
 ) -> dict[str, int]:
-    lattices = [
-        factor.lattice for factor in graph.factors if factor.lattice is not None
-    ]
     statistics = {
         "boundary_options": sum(len(options) for options in graph.boundary_options),
         "factors": len(graph.factors),
-        "merged_factors": sum(factor.is_merge for factor in graph.factors),
-        "token_lattices": len(lattices),
-        "raw_internal_matches": sum(
-            lattice.raw_internal_matches for lattice in lattices
-        ),
-        "retained_internal_matches": sum(
-            lattice.retained_internal_matches for lattice in lattices
-        ),
-        "lattice_nodes": sum(len(lattice.nodes) for lattice in lattices),
+        "merged_factors": 0,
+        "token_lattices": 0,
+        "raw_internal_matches": 0,
+        "retained_internal_matches": 0,
+        "lattice_nodes": 0,
         "overflowed_tokens": graph.overflowed_tokens,
         "historical_match_pressure_tokens": (
             graph.historical_match_pressure_tokens
         ),
     }
     if not defer_legal_span_count:
-        # Reference/non-inference callers retain the exact structural counter.
-        statistics["lexical_span_hypotheses"] = sum(
-            _count_legal_spans(lattice) for lattice in lattices
+        statistics["lexical_span_hypotheses"] = 0
+    for factor in graph.factors:
+        statistics["merged_factors"] += int(factor.is_merge)
+        lattice = factor.lattice
+        if lattice is None:
+            continue
+        statistics["token_lattices"] += 1
+        statistics["raw_internal_matches"] += lattice.raw_internal_matches
+        statistics["retained_internal_matches"] += (
+            lattice.retained_internal_matches
         )
+        statistics["lattice_nodes"] += len(lattice.nodes)
+        if not defer_legal_span_count:
+            # Reference/non-inference callers retain the exact structural counter.
+            statistics["lexical_span_hypotheses"] += _count_legal_spans(lattice)
     return statistics
 
 

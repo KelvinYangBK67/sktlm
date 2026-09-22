@@ -138,6 +138,8 @@ class LexiconScorer:
 class PieceStoreScorer:
     """Versioned reusable-count scorer with exact SQLite lookup and bounded LRU."""
 
+    piece_scores_are_role_neutral = True
+
     def __init__(
         self,
         connection: sqlite3.Connection,
@@ -247,16 +249,8 @@ class PieceStoreScorer:
     def score_from_count_and_length(self, count: float, length: int) -> float:
         """Apply the unchanged production equation to an exact trie count."""
 
-        continuation = (
-            0.0
-            if length == 1
-            else (length - 1)
-            * math.log1p(-self.base_measure.stop_probability)
-        )
         base_probability = math.exp(
-            math.log(self.base_measure.stop_probability)
-            + continuation
-            - length * math.log(self.base_measure.alphabet_size)
+            self.base_measure.log_probability_for_length(length)
         )
         probability = (
             count + self.alpha * base_probability
@@ -577,11 +571,15 @@ class LexiconStore:
     ) -> None:
         if not self.connection.in_transaction:
             raise RuntimeError("Document piece counts require an open transaction.")
-        rows = [
-            (identity.key, float(value))
-            for identity, value in counts
-            if value > 0.0
-        ]
+        row_count = 0
+
+        def rows() -> Iterable[tuple[str, float]]:
+            nonlocal row_count
+            for identity, value in counts:
+                if value > 0.0:
+                    row_count += 1
+                    yield identity.key, float(value)
+
         started = time.perf_counter()
         self.connection.executemany(
             "INSERT INTO piece_counts_next("
@@ -589,11 +587,11 @@ class LexiconStore:
             ") VALUES (?, ?) "
             "ON CONFLICT(form_key) DO UPDATE SET "
             "expected_count = expected_count + excluded.expected_count",
-            rows,
+            rows(),
         )
         self.telemetry.elapsed("sqlite_piece_count_upsert", started)
         self.telemetry.increment("sqlite_piece_count_upsert_calls")
-        self.telemetry.increment("sqlite_piece_count_upsert_rows", len(rows))
+        self.telemetry.increment("sqlite_piece_count_upsert_rows", row_count)
 
     def add_document_piece_host_support(
         self,
@@ -610,37 +608,39 @@ class LexiconStore:
             for identity, host, value in support
             if value > 0.0
         ]
-        rows = [
-            (identity.key, host.key, value)
-            for identity, host, value in source_rows
-        ]
         started = time.perf_counter()
         self.connection.executemany(
             "INSERT INTO piece_host_support_next(piece_key, host_key, support) "
             "VALUES (?, ?, ?) ON CONFLICT(piece_key, host_key) DO UPDATE SET "
             "support = support + excluded.support",
-            rows,
+            (
+                (identity.key, host.key, value)
+                for identity, host, value in source_rows
+            ),
         )
         self.telemetry.elapsed("sqlite_piece_host_support_upsert", started)
         self.telemetry.increment("sqlite_piece_host_support_upsert_calls")
-        self.telemetry.increment("sqlite_piece_host_support_upsert_rows", len(rows))
+        self.telemetry.increment(
+            "sqlite_piece_host_support_upsert_rows", len(source_rows)
+        )
         if collect_roles:
             if not self.has_table("piece_host_role_support_next"):
                 raise RuntimeError("Role-diagnostic collection table is unavailable.")
-            role_rows = [
-                (identity.key, host.key, identity.role.value, value)
-                for identity, host, value in source_rows
-            ]
             role_started = time.perf_counter()
             self.connection.executemany(
                 "INSERT INTO piece_host_role_support_next("
                 "piece_key, host_key, role, support) VALUES (?, ?, ?, ?) "
                 "ON CONFLICT(piece_key, host_key, role) DO UPDATE SET "
                 "support = support + excluded.support",
-                role_rows,
+                (
+                    (identity.key, host.key, identity.role.value, value)
+                    for identity, host, value in source_rows
+                ),
             )
             self.telemetry.elapsed("sqlite_piece_host_role_support_upsert", role_started)
-            self.telemetry.increment("sqlite_piece_host_role_support_upsert_rows", len(role_rows))
+            self.telemetry.increment(
+                "sqlite_piece_host_role_support_upsert_rows", len(source_rows)
+            )
 
     def add_document_piece_host_role_support(
         self,
@@ -652,21 +652,32 @@ class LexiconStore:
             raise RuntimeError("Piece host-role support requires an open transaction.")
         if not self.has_table("piece_host_role_support_next"):
             raise RuntimeError("Role-diagnostic collection table is unavailable.")
-        rows = [
-            (identity.key, host.key, identity.role.value, float(value))
-            for identity, host, value in support
-            if value > 0.0
-        ]
+        row_count = 0
+
+        def rows() -> Iterable[tuple[str, str, str, float]]:
+            nonlocal row_count
+            for identity, host, value in support:
+                if value > 0.0:
+                    row_count += 1
+                    yield (
+                        identity.key,
+                        host.key,
+                        identity.role.value,
+                        float(value),
+                    )
+
         started = time.perf_counter()
         self.connection.executemany(
             "INSERT INTO piece_host_role_support_next("
             "piece_key, host_key, role, support) VALUES (?, ?, ?, ?) "
             "ON CONFLICT(piece_key, host_key, role) DO UPDATE SET "
             "support = support + excluded.support",
-            rows,
+            rows(),
         )
         self.telemetry.elapsed("sqlite_piece_host_role_support_upsert", started)
-        self.telemetry.increment("sqlite_piece_host_role_support_upsert_rows", len(rows))
+        self.telemetry.increment(
+            "sqlite_piece_host_role_support_upsert_rows", row_count
+        )
 
     def add_document_lexical_diagnostics(
         self,
@@ -676,21 +687,25 @@ class LexiconStore:
             raise RuntimeError(
                 "Document lexical diagnostics require an open transaction."
             )
-        rows = [
-            (form.key, float(value))
-            for form, value in counts
-            if value > 0.0
-        ]
+        row_count = 0
+
+        def rows() -> Iterable[tuple[str, float]]:
+            nonlocal row_count
+            for form, value in counts:
+                if value > 0.0:
+                    row_count += 1
+                    yield form.key, float(value)
+
         started = time.perf_counter()
         self.connection.executemany(
             "INSERT INTO lexical_diagnostics_next(form_key, expected_count) "
             "VALUES (?, ?) ON CONFLICT(form_key) DO UPDATE SET "
             "expected_count = expected_count + excluded.expected_count",
-            rows,
+            rows(),
         )
         self.telemetry.elapsed("sqlite_lexical_diagnostic_upsert", started)
         self.telemetry.increment("sqlite_lexical_diagnostic_upsert_calls")
-        self.telemetry.increment("sqlite_lexical_diagnostic_upsert_rows", len(rows))
+        self.telemetry.increment("sqlite_lexical_diagnostic_upsert_rows", row_count)
 
     def finalize_piece_count_pass(
         self,

@@ -1,5 +1,28 @@
 # PROJECT_STATE.md
 
+## S1M2 V3 frozen engineering optimization sweep complete (2026-09-22)
+
+All fourteen authorized runtime/RSS changes are implemented with
+`SCIENTIFIC_SEMANTICS=FROZEN`. The sweep adds role-neutral production score
+cache keys, explicit segment-local lifetime boundaries, token-local internal
+grammar-match reuse, direct posterior-map ownership, allocation-free ordered
+piece endpoints, streamed SQLite rows and bundle-plan input, index-based hot
+loops, scorer-lifetime logarithmic constants, training-only removal of Top-K
+bookkeeping, scalar count-only state, prompt JSONL-record release, single-pass
+candidate statistics, and direct length accounting for known-ASCII stable
+phonological keys.
+
+The production contract
+`configs/production/s1m2_six_cell_v3.json` remains byte-identical at file
+SHA-256 `6a29480ba27d82ed334cdc6027f2aedab30e6fc7b3f5ebe2465ff6469b3022fa`.
+No test, benchmark, profiling workload, scientific experiment, VM/cloud job,
+or Full M0 job was run. The static engineering record is
+`reports/core_methods/reusable_pieces/s1m2_v3_engineering_optimization_20260922.md`.
+
+`NEXT_SCIENTIFIC_GATE = researcher-authorized frozen-V3 Full M0 confirmatory production evaluation`.
+This gate is recorded only. Researcher review is required before VM work; do
+not launch VM, cloud, or Full M0 automatically.
+
 ## S1M2 V3 scientific semantics frozen (2026-09-22)
 
 The researcher accepted the exact bounded-qualified `reusable_pieces_v3`
@@ -76,9 +99,10 @@ Authority:
 `reports/core_methods/reusable_pieces/s1m2_v3_prefreeze_forensic_audit_20260922.md`
 and
 `reports/core_methods/reusable_pieces/evidence/s1m2_v3_prefreeze_audit_20260922.json`.
-State is **pre-freeze contract closure complete, pending researcher scientific
-freeze decision**. V3 is not declared frozen; Full M0 and S2/S3 remain
-unauthorized.
+At that checkpoint, state was **pre-freeze contract closure complete, pending
+researcher scientific freeze decision**. That lifecycle state is historical
+and superseded by the scientific freeze recorded above. The historical
+qualification evidence itself remains unchanged.
 
 ## S1M2 V3 code-contract closure (2026-09-22)
 

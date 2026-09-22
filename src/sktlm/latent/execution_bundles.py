@@ -24,10 +24,20 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _update_digest_from_file(digest: Any, path: Path) -> None:
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+
+
 def _text_sha256(path: Path) -> str:
-    text = path.read_text(encoding="utf-8")
-    canonical = text.replace("\r\n", "\n").replace("\r", "\n")
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    digest = hashlib.sha256()
+    # Text mode's universal-newline handling preserves the former canonical
+    # CRLF/CR-to-LF hash semantics without retaining the complete file.
+    with path.open(encoding="utf-8", newline=None) as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), ""):
+            digest.update(chunk.encode("utf-8"))
+    return digest.hexdigest()
 
 
 def _repo_metadata_path(
@@ -162,7 +172,7 @@ def load_execution_bundle_plan(
     for materialized in (scan_path, summary_path, bundles_path, documents_path):
         materialization.update(materialized.name.encode("utf-8"))
         materialization.update(b"\0")
-        materialization.update(materialized.read_bytes())
+        _update_digest_from_file(materialization, materialized)
         materialization.update(b"\0")
 
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
@@ -228,46 +238,50 @@ def load_execution_bundle_plan(
         raise ValueError("Cross-document execution bundles are forbidden.")
 
     bundles: list[ExecutionBundle] = []
-    for line_number, line in enumerate(
-        bundles_path.read_text(encoding="utf-8").splitlines(), 1
-    ):
-        payload = json.loads(line)
-        if payload.get("schema_version") != BUNDLE_SCHEMA:
-            raise ValueError(f"Invalid bundle schema at line {line_number}.")
-        bundle = ExecutionBundle(
-            document_index=int(payload["document_index"]),
-            relative_path=str(payload["relative_path"]),
-            bundle_index=int(payload["bundle_index"]),
-            first_segment_ordinal=int(payload["first_segment_ordinal"]),
-            last_segment_ordinal_exclusive=int(
-                payload["last_segment_ordinal_exclusive"]
-            ),
-            first_line_number=int(payload["first_line_number"]),
-            first_line_byte_offset=int(payload["first_line_byte_offset"]),
-            first_segment_index=int(payload["first_segment_index"]),
-            last_line_number=int(payload["last_line_number"]),
-            last_segment_index=int(payload["last_segment_index"]),
-            segment_count=int(payload["segment_count"]),
-            phonemes=int(payload["phonemes"]),
-            pressure=int(payload["pressure"]),
-        )
-        if (
-            bundle.document_index < 0
-            or bundle.bundle_index < 0
-            or bundle.first_segment_ordinal < 0
-            or bundle.last_segment_ordinal_exclusive <= bundle.first_segment_ordinal
-            or bundle.segment_count
-            != bundle.last_segment_ordinal_exclusive - bundle.first_segment_ordinal
-            or bundle.first_line_number < 1
-            or bundle.first_line_byte_offset < 0
-            or bundle.first_segment_index < 0
-            or bundle.last_line_number < bundle.first_line_number
-            or bundle.last_segment_index < 0
-            or bundle.phonemes < 1
-            or bundle.pressure < 1
-        ):
-            raise ValueError(f"Invalid execution bundle values at line {line_number}.")
-        bundles.append(bundle)
+    with bundles_path.open(encoding="utf-8") as handle:
+        for line_number, line in enumerate(handle, 1):
+            payload = json.loads(line)
+            if payload.get("schema_version") != BUNDLE_SCHEMA:
+                raise ValueError(f"Invalid bundle schema at line {line_number}.")
+            bundle = ExecutionBundle(
+                document_index=int(payload["document_index"]),
+                relative_path=str(payload["relative_path"]),
+                bundle_index=int(payload["bundle_index"]),
+                first_segment_ordinal=int(payload["first_segment_ordinal"]),
+                last_segment_ordinal_exclusive=int(
+                    payload["last_segment_ordinal_exclusive"]
+                ),
+                first_line_number=int(payload["first_line_number"]),
+                first_line_byte_offset=int(payload["first_line_byte_offset"]),
+                first_segment_index=int(payload["first_segment_index"]),
+                last_line_number=int(payload["last_line_number"]),
+                last_segment_index=int(payload["last_segment_index"]),
+                segment_count=int(payload["segment_count"]),
+                phonemes=int(payload["phonemes"]),
+                pressure=int(payload["pressure"]),
+            )
+            if (
+                bundle.document_index < 0
+                or bundle.bundle_index < 0
+                or bundle.first_segment_ordinal < 0
+                or bundle.last_segment_ordinal_exclusive
+                <= bundle.first_segment_ordinal
+                or bundle.segment_count
+                != bundle.last_segment_ordinal_exclusive
+                - bundle.first_segment_ordinal
+                or bundle.first_line_number < 1
+                or bundle.first_line_byte_offset < 0
+                or bundle.first_segment_index < 0
+                or bundle.last_line_number < bundle.first_line_number
+                or bundle.last_segment_index < 0
+                or bundle.phonemes < 1
+                or bundle.pressure < 1
+            ):
+                raise ValueError(
+                    f"Invalid execution bundle values at line {line_number}."
+                )
+            bundles.append(bundle)
+            del payload
 
     if len(bundles) != int(summary.get("actual_bundle_count", -1)):
         raise ValueError("Execution bundle count mismatch.")

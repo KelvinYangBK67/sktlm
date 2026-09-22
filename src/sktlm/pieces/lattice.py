@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Iterator
 
 from sktlm.latent.phonology import PhonologicalForm
 
@@ -47,6 +48,19 @@ def piece_role(start: int, end: int, lexical_length: int) -> PieceRole:
     if end == lexical_length:
         return PieceRole.RIGHT
     return PieceRole.INTERNAL
+
+
+def _piece_ends(
+    length: int,
+    start: int,
+    max_piece_length: int,
+) -> Iterator[int]:
+    """Yield bounded endpoints, followed by a distinct legal long whole form."""
+
+    bounded_end = min(length, start + max_piece_length)
+    yield from range(start + 1, bounded_end + 1)
+    if start == 0 and length > bounded_end:
+        yield length
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,10 +109,7 @@ def build_piece_lattice(
     length = len(form.symbols)
     edges: list[PieceEdge] = []
     for start in range(length):
-        ends = set(range(start + 1, min(length, start + max_piece_length) + 1))
-        if start == 0:
-            ends.add(length)
-        for end in sorted(ends):
+        for end in _piece_ends(length, start, max_piece_length):
             edges.append(
                 PieceEdge(
                     start=start,
