@@ -1,24 +1,23 @@
 DATE=2026-09-22
 BRANCH=exp/s1m2-reusable-pieces
-STATUS=PRE-FREEZE_CONTRACT_CLOSURE_COMPLETE_PENDING_RESEARCHER_SCIENTIFIC_FREEZE_DECISION
+STATUS=S1M2_V3_SCIENTIFIC_SEMANTICS_FROZEN
 
-The existing E000/E100 V3 artifacts have passed read-only fail-closed C/Q/R
-retrovalidation, posterior-tail and host-diversity audit, exact occurrence
-pairing, and exact source-row selection reconstruction. The active production
-contract, cloud operator default, and registry now select the versioned V3
-contract with three passes, gamma 1.0, and rho 0.4. Historical V1/V2 contracts
-and artifacts remain unchanged and version-isolated.
+The researcher accepted the exact qualified `reusable_pieces_v3` objective.
+The frozen semantics, evidence chain, contract identity, limitations,
+requalification triggers, and allowed engineering-only scope are recorded in:
 
-The learned host identity for downstream S2/S3 is exactly one latent
-script-neutral phonological wordform. Derivation paths sharing that wordform
-pool before Q; distinct wordforms remain distinct; roles are diagnostic-only.
+`reports/core_methods/reusable_pieces/s1m2_v3_scientific_freeze_20260922.md`
 
-Authoritative report:
-`reports/core_methods/reusable_pieces/s1m2_v3_prefreeze_forensic_audit_20260922.md`
+Machine attestation:
 
-Machine evidence:
-`reports/core_methods/reusable_pieces/evidence/s1m2_v3_prefreeze_audit_20260922.json`
+`reports/core_methods/reusable_pieces/evidence/s1m2_v3_scientific_freeze_20260922.json`
 
-NEXT_ACTION=RESEARCHER_SCIENTIFIC_FREEZE_DECISION
-Do not launch another experiment, Full M0, cloud/VM work, or S2/S3
-implementation automatically.
+The qualified production contract remains byte-identical at file SHA-256
+`6a29480ba27d82ed334cdc6027f2aedab30e6fc7b3f5ebe2465ff6469b3022fa`
+and canonical SHA-256
+`03c524b8978919bbfb98f65caaf75625e4cd053314c704f433ad002009b27bd2`.
+
+NEXT_ACTION=ENGINEERING_OPTIMIZATION_SWEEP
+Do not launch VM / Full M0 automatically.
+Do not change scientific semantics during engineering optimization.
+Do not start the optimization sweep without a new task request.

@@ -1,3 +1,49 @@
+# PROJECT_STATE.md
+
+## S1M2 V3 scientific semantics frozen (2026-09-22)
+
+The researcher accepted the exact bounded-qualified `reusable_pieces_v3`
+objective and declared `S1M2_V3_SCIENTIFIC_SEMANTICS=FROZEN`. The frozen
+identity is three passes, exact composed marginal inference, gamma 1.0, rho
+0.4, script-neutral phonological-form piece identity, exactly one latent
+script-neutral phonological wordform host, support pooled by `(piece, host)`
+before Q, `R_cross=C-Q/C` for `C>0` and zero at `C=0`, diagnostic-only M, and
+structural/diagnostic-only PieceRole.
+
+The freeze binds the unchanged qualified contract
+`configs/production/s1m2_six_cell_v3.json`: file SHA-256
+`6a29480ba27d82ed334cdc6027f2aedab30e6fc7b3f5ebe2465ff6469b3022fa`,
+canonical SHA-256
+`03c524b8978919bbfb98f65caaf75625e4cd053314c704f433ad002009b27bd2`,
+contract ID `s1m2-six-cell-v3-prefreeze-v1`. Historical V1/V2 evidence and
+state remain unchanged and version-isolated.
+
+The qualification is bounded controlled evidence for `noun_high_deva`, IAST
+`surface_word`, E000/E100. It freezes the objective/interface before later
+confirmatory production evaluation. It does not claim Full M0 success,
+general Sanskrit morphology, cross-script or cross-spacing invariance, S2/S3
+completion, or surface-only grammar induction. E000/E100 is a controlled
+evidence-condition contrast, not a strict causal contrast. Micro recovery is
+34/76 versus 34/77; jointly evaluable flips are CC=28, CW=6, WC=6, WW=36.
+The principal empirical shift is 41 multi-to-whole transitions among 57 paired
+piece-metric occurrences, with heterogeneous wordform-level recovery.
+
+Authoritative freeze report:
+`reports/core_methods/reusable_pieces/s1m2_v3_scientific_freeze_20260922.md`
+
+Machine freeze attestation:
+`reports/core_methods/reusable_pieces/evidence/s1m2_v3_scientific_freeze_20260922.json`
+(file SHA-256
+`b4fa01022603a5f1b0accac20529bbcb5bdd8163a36344d643b6f2de704c40cd`).
+
+The next phase is `ENGINEERING_OPTIMIZATION_SWEEP`. It may change allocation,
+cache/layout, storage/I/O, multiprocessing/scheduling, execution bundles,
+topology/archive layout, code-path duplication, object lifecycle, and control
+plane only while scientific semantics remain exact. Any attested
+requalification trigger reopens scientific qualification. No optimization,
+experiment, VM/cloud job, representative/stress workload, or Full M0 run was
+started by the freeze task.
+
 ## S1M2 V3 pre-freeze forensic qualification (2026-09-22)
 
 The existing `noun_high_deva_E000_v3_p3` and `E100_v3_p3` artifacts pass the
@@ -63,8 +109,6 @@ Held-out semantic diagnostics #3 and #5 are versioned for V3, and #4 reports rol
 Local validation before the empirical gate: touched modules compile; 27 V3/training/semantic-diagnostic focused tests and 14 probe/alignment tests pass. A broader scheduler/planner set reports 17 failures and 14 passes both on this worktree and on clean baseline `c67fe3c70daad106ee40934ec25496188e4a254a`, so no new failure was introduced there. `git diff --check` passes. No formal E000/E100 V3 cell, VM/cloud job, Full M0, stress corpus, or long benchmark has been run.
 
 That checkpoint's E000/E100 action was later completed and is superseded by the pre-freeze qualification state above.
-# PROJECT_STATE.md
-
 ## S1M2 V2 held-out semantic diagnostics (2026-09-21)
 
 Diagnostic #3 (wrong-host coalition participation) and #5 (unseen exact DCS

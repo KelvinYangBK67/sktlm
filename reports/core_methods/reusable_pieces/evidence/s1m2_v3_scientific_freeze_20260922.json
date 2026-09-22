@@ -1,0 +1,180 @@
+{
+  "schema_version": "sktlm-s1m2-v3-scientific-freeze/v1",
+  "decision_date": "2026-09-22",
+  "status": "SCIENTIFICALLY_FROZEN",
+  "researcher_decision": "S1M2_V3_SCIENTIFIC_SEMANTICS=FROZEN",
+  "model": "reusable_pieces_v3",
+  "passes": 3,
+  "gamma": 1.0,
+  "rho": 0.4,
+  "inference": {
+    "training": "exact_composed_marginals",
+    "inspection": "exact_composed_marginals_with_bounded_top_k_presentation",
+    "approximate_inference_allowed": false
+  },
+  "piece_identity": "script-neutral PhonologicalForm only",
+  "host_identity": "exactly one latent script-neutral PhonologicalForm wordform",
+  "host_aggregation": "repeated occurrences and derivation paths yielding the same phonological wordform pool under one (piece, host) key before Q",
+  "different_wordforms": "remain distinct learned hosts",
+  "role_semantics": "WHOLE/LEFT/RIGHT/INTERNAL are structural and diagnostic only; PieceRole enters neither learned identity nor learned score",
+  "objective": {
+    "support": "S(q,h)=posterior expected piece usage aggregated by latent phonological wordform host",
+    "raw_count": "C(q)=sum_h S(q,h)",
+    "squared_host_moment": "Q(q)=sum_h S(q,h)^2 after (piece,host) aggregation",
+    "diagnostic_maximum": "M(q)=max_h S(q,h); diagnostic only",
+    "reusable_count": "R_cross(q)=0 if C(q)=0 else C(q)-Q(q)/C(q)"
+  },
+  "qualified_production_contract": {
+    "path": "configs/production/s1m2_six_cell_v3.json",
+    "file_sha256": "6a29480ba27d82ed334cdc6027f2aedab30e6fc7b3f5ebe2465ff6469b3022fa",
+    "canonical_sha256": "03c524b8978919bbfb98f65caaf75625e4cd053314c704f433ad002009b27bd2",
+    "contract_id": "s1m2-six-cell-v3-prefreeze-v1",
+    "qualification_status": "V3_QUALIFIED_PENDING_RESEARCHER_FREEZE",
+    "bytes_modified_by_freeze": false
+  },
+  "objective_report": {
+    "path": "reports/core_methods/reusable_pieces/s1m2_v3_cross_host_objective_20260921.md",
+    "sha256": "5620ea7ee9577771c847ea2a17d7c7f1d474a5ed688fe11beef12d872e1291b8"
+  },
+  "qualification_report": {
+    "path": "reports/core_methods/reusable_pieces/s1m2_v3_prefreeze_forensic_audit_20260922.md",
+    "sha256": "f74dce4924bde00d1b36d623274aadb0980f91731de05ee55d5d1034cff0a06f"
+  },
+  "qualification_evidence": {
+    "path": "reports/core_methods/reusable_pieces/evidence/s1m2_v3_prefreeze_audit_20260922.json",
+    "sha256": "26f92e7172622f16554f0c9460460dacbc508b10f2be33ef821177d19b98cfee",
+    "embedded_audit_payload_sha256": "12b02a17fb18c04849aeb42dde880fc2cad6258dd6a9adc78d05411907be997f"
+  },
+  "qualification_spec": {
+    "path": "configs/experiments/s1m2_lexeme_evidence_probe_v3.yaml",
+    "sha256": "8283d006b6bfa2d4bc3b0e4ae34684f7c85ab8a24c6686b56422b054e9727832"
+  },
+  "freeze_report": {
+    "path": "reports/core_methods/reusable_pieces/s1m2_v3_scientific_freeze_20260922.md",
+    "sha256": "fed5cc6efb46d2b12e6bc8e1893b8d0661933846594c663f4794c03ff136e783"
+  },
+  "historical_context": [
+    {
+      "path": "reports/core_methods/reusable_pieces/s1m2_full_m0_scientific_failure_20260915.md",
+      "sha256": "8082457b37afba10a6a0c7685a4f42124c35d93eb3cc8f53d797d1cee7faf84a",
+      "interpretation": "historical reusable_pieces_v1 Full M0 failure; not reinterpreted as V3"
+    },
+    {
+      "path": "reports/core_methods/reusable_pieces/s1m2_v2_reusable_objective_20260921.md",
+      "sha256": "426b8f02bf1fc4c1df5b0bd359a237ff3b0610f7c57fb93bf55f776046caacfc",
+      "interpretation": "historical reusable_pieces_v2 objective; remains version-isolated"
+    },
+    {
+      "path": "reports/core_methods/reusable_pieces/s1m2_v2_semantic_diagnostics_20260921.md",
+      "sha256": "7e8ab21cf53f617197a9d1eec63cc9fb15d98f05813e8830ab99a4be7c275ba4",
+      "interpretation": "historical V2 diagnostics; not overwritten by V3 freeze"
+    }
+  ],
+  "freeze_git_parent": "f62e5e61066a0f8e815caa6764ed3fb812c37281",
+  "source_head": "f62e5e61066a0f8e815caa6764ed3fb812c37281",
+  "source_branch": "exp/s1m2-reusable-pieces",
+  "qualification_scope": {
+    "target": "noun_high_deva",
+    "script": "iast",
+    "condition": "surface_word",
+    "cells": [
+      "E000",
+      "E100"
+    ],
+    "rows_per_cell": 1000,
+    "workers": 1,
+    "contrast": "controlled evidence-condition contrast; E100 replaces 100 E000 background rows with 100 target-evidence rows and shares 900 source rows",
+    "strict_single_variable_causal_contrast": false
+  },
+  "recovery_findings": {
+    "micro": {
+      "E000": {
+        "correct": 34,
+        "evaluable": 76,
+        "rate": 0.4473684210526316
+      },
+      "E100": {
+        "correct": 34,
+        "evaluable": 77,
+        "rate": 0.44155844155844154
+      }
+    },
+    "jointly_evaluable_occurrences": 76,
+    "paired_transitions": {
+      "correct_to_correct": 28,
+      "correct_to_wrong": 6,
+      "wrong_to_correct": 6,
+      "wrong_to_wrong": 36
+    },
+    "paired_piece_metric_occurrences": 57,
+    "representation_transitions": {
+      "whole_to_whole": 5,
+      "multi_to_whole": 41,
+      "multi_to_multi": 11,
+      "whole_to_multi": 0
+    },
+    "macro_average_across_ten_wordforms": {
+      "E000": {
+        "recovery": 0.5471230158730159,
+        "mean_pieces": 1.838888888888889,
+        "whole_form_use": 0.16111111111111112
+      },
+      "E100": {
+        "recovery": 0.45490079365079367,
+        "mean_pieces": 1.32625,
+        "whole_form_use": 0.67375
+      }
+    },
+    "representative_heterogeneity": {
+      "devebhyaḥ": "4/4 correct to 0/4 correct",
+      "devāḥ": "1/16 correct to 5/16 correct"
+    },
+    "accepted_interpretation": "exact target evidence strongly shifts representation toward whole-form analyses; aggregate micro recovery remains approximately unchanged; wordform-level recovery effects include gains and losses"
+  },
+  "numerical_validation": {
+    "stored_C_Q_R_fail_closed_validation": "PASS",
+    "nonfinite_negative_gross_bound_or_recompute_failures": 0,
+    "extreme_tail_R_cross_fraction": {
+      "bin": "0<C<0.01",
+      "E000": 0.0021459626337582503,
+      "E100": 0.0021337578831761104
+    },
+    "claim_limit": "validates stored-state consistency and legality; does not claim independent occurrence-level historical posterior reconstruction"
+  },
+  "requalification_triggers": [
+    "learned host key expands or changes",
+    "lemma identity enters host key",
+    "occurrence identity enters host key",
+    "derivation-path identity enters host key",
+    "surface spelling enters host key",
+    "PieceRole becomes part of learned identity",
+    "role-specific state enters scorer",
+    "posterior pruning changes learned posterior mass",
+    "approximate inference replaces exact inference",
+    "candidate admissibility changes scientifically",
+    "canonical accumulation or reduction semantics change scientifically",
+    "gamma changes",
+    "rho changes",
+    "number of scientific passes changes",
+    "R_cross formula changes",
+    "learned piece identity or scoring semantics change"
+  ],
+  "ordinary_engineering_optimization": {
+    "allowed_only_if_scientific_semantics_unchanged": true,
+    "scope": [
+      "allocation and object-lifecycle reduction",
+      "cache and layout optimization",
+      "SQLite, storage, and I/O optimization",
+      "multiprocessing and scheduling optimization",
+      "execution-bundle optimization",
+      "topology and archive optimization",
+      "continuous/non-continuous code-path unification",
+      "duplicate-work removal",
+      "control-plane cleanup"
+    ]
+  },
+  "next_phase": "ENGINEERING_OPTIMIZATION_SWEEP",
+  "new_experiment_run": false,
+  "vm_cloud_or_full_m0_run": false,
+  "optimization_started_by_freeze_task": false
+}
