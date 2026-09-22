@@ -97,8 +97,9 @@ def test_production_reference_selects_explicit_v2_or_v3_semantics() -> None:
     assert v2_config.payload()["objective_model"] == S1M2_REUSABLE_PIECES_V2
     assert v2_config.payload()["learned_count_semantics"].startswith("R(q)=C(q)-max_h")
     assert v3_config.payload()["objective_model"] == S1M2_REUSABLE_PIECES_V3
-    assert v3_config.payload()["learned_count_semantics"].startswith(
-        "R_cross(q)=C(q)-sum_h"
+    assert v3_config.payload()["learned_count_semantics"] == (
+        "R_cross(q)=0 if C(q)=0 else "
+        "C(q)-sum_h S(q,h)^2/C(q); q=phonological_form"
     )
 
     occurrences = tuple(
