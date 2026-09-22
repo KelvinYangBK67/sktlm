@@ -1,14 +1,12 @@
-DATE=2026-09-21
+DATE=2026-09-22
 BRANCH=exp/s1m2-reusable-pieces
-STATUS=S1M2_V3_IMPLEMENTATION_READY_FOR_RESEARCHER_GATE
+STATUS=S1M2_V3_CODE_CLOSURE_COMPLETE_PENDING_RESEARCHER_FREEZE
 
-`reusable_pieces_v3` is implemented locally. It retains role-collapsed phonological-form piece identity and latent phonological wordform hosts, but replaces V2 `R=C-M` with `R_cross=C-Q/C`, where `Q=sum_h S(q,h)^2` is computed after host aggregation. V3 authoritative state stores C/Q/M/R_cross; M is diagnostic only and the scorer uses R_cross. V1 and V2 remain historical/version-separated states.
+The final pre-freeze code blockers are closed. The production/reference helper now carries explicit V2/V3 identity: V2 remains the default `R=C-M` historical path, while V3 uses `R_cross=C-Q/C` and retains Q in its pass state. SQLite V3 finalization validates C/Q through the authoritative Python roundoff contract before applying its clamp, and gross invalid piece or role-diagnostic moments fail closed.
 
-Optional V3 role diagnostics default off. When enabled they collect bounded disk-backed `S(q,h,r)` aggregate state and compact it to per-form/per-role C_r/Q_r/R_r shadow diagnostics; role never enters the learned parameter or scorer. Held-out semantic diagnostics support V3 #3 wrong-host participation, #4 role pooling, and #5 exact DCS gold-wordform seen/unseen generalization using separate versioned artifacts.
+Focused validation completed locally: 39 V2/V3/training tests pass; 20 semantic/probe/alignment tests pass; the separate reference run reports 36 passes including P1AB coverage. `git diff --check` passes. The known scheduler/planner historical failures were not rerun in this closure batch.
 
-Validation completed locally: py_compile passes; 27 V3/training/semantic-diagnostic focused tests pass; 14 lexeme probe/alignment tests pass. The scheduler/planner regression set gives the same 17 failures / 14 passes on clean baseline c67fe3c and the V3 worktree, so these are pre-existing baseline failures rather than V3 regressions.
+No E000/E100/E025/E050/E200/E300 cell, VM/cloud job, Full M0 run, representative/stress corpus, or long benchmark was run in this batch. Existing run artifacts were not modified.
 
-No formal V3 E000/E100 training, VM/cloud work, Full M0, representative/stress corpus, or long benchmark has been run.
-
-NEXT_ACTION=RESEARCHER_RUN_V3_E000_THEN_DIAGNOSTICS
-Do not start E100 automatically. E000 must purchase the next scientific cell.
+NEXT_ACTION=RESEARCHER_FREEZE_DOCUMENTATION
+Do not start another scientific task or experiment automatically.

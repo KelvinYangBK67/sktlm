@@ -12,7 +12,11 @@ from typing import Iterable, Mapping
 
 from sktlm.latent.phonology import PhonologicalForm
 from sktlm.pieces.model import PieceModel, PieceModelConfig
-from sktlm.pieces.objective import cross_host_reusable_count
+from sktlm.pieces.objective import (
+    S1M2_REUSABLE_PIECES_V2,
+    S1M2_REUSABLE_PIECES_V3,
+    cross_host_reusable_count,
+)
 from sktlm.pieces.scorer import (
     BaseMeasurePieceScorer,
     GeometricPhonemeBaseMeasure,
@@ -23,16 +27,33 @@ from sktlm.pieces.scorer import (
 class ProductionPieceConfig:
     reference: PieceModelConfig = field(default_factory=PieceModelConfig)
     base_stop_probability: float = 0.5
+    objective_model: str = S1M2_REUSABLE_PIECES_V2
 
     def __post_init__(self) -> None:
         if not 0.0 < self.base_stop_probability < 1.0:
             raise ValueError("base_stop_probability must be strictly between 0 and 1")
+        if self.objective_model not in {
+            S1M2_REUSABLE_PIECES_V2,
+            S1M2_REUSABLE_PIECES_V3,
+        }:
+            raise ValueError(
+                f"unsupported reusable-piece objective: {self.objective_model}"
+            )
 
     def payload(self) -> dict[str, object]:
+        semantics = (
+            "R(q)=C(q)-max_h S(q,h); q=phonological_form"
+            if self.objective_model == S1M2_REUSABLE_PIECES_V2
+            else (
+                "R_cross(q)=0 if C(q)=0 else "
+                "C(q)-sum_h S(q,h)^2/C(q); q=phonological_form"
+            )
+        )
         return {
             "reference": self.reference.payload(),
             "base_stop_probability": self.base_stop_probability,
-            "learned_count_semantics": "R(q)=C(q)-max_h S(q,h); q=phonological_form",
+            "objective_model": self.objective_model,
+            "learned_count_semantics": semantics,
         }
 
 
@@ -45,6 +66,7 @@ class ProductionPiecePass:
     max_host_expected_usage: dict[PhonologicalForm, float]
     reusable_counts: dict[PhonologicalForm, float]
     active_piece_counts: dict[PhonologicalForm, float]
+    sum_host_support_squared: dict[PhonologicalForm, float] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +74,7 @@ class ProductionPieceTrainingResult:
     model: PieceModel
     active_piece_counts: dict[PhonologicalForm, float]
     history: tuple[ProductionPiecePass, ...]
+    objective_model: str = S1M2_REUSABLE_PIECES_V2
 
 
 def select_reusable_inventory(
@@ -164,7 +187,13 @@ def fit_production_piece_model(
                 # The observed tiny-gate occurrence has unit outer lexical
                 # posterior; retain its exact conditional expected usage.
                 host_support[(identity.piece, form)] += mass
-        raw, maximum, reusable = select_reusable_inventory(host_support)
+        squared: dict[PhonologicalForm, float] | None = None
+        if config.objective_model == S1M2_REUSABLE_PIECES_V3:
+            raw, squared, maximum, reusable = (
+                select_cross_host_reusable_inventory(host_support)
+            )
+        else:
+            raw, maximum, reusable = select_reusable_inventory(host_support)
         active_counts = {
             piece: count for piece, count in reusable.items() if count > 0.0
         }
@@ -177,6 +206,7 @@ def fit_production_piece_model(
                 max_host_expected_usage=maximum,
                 reusable_counts=reusable,
                 active_piece_counts=active_counts,
+                sum_host_support_squared=squared,
             )
         )
         model = production_model_from_counts(active_counts, config)
@@ -184,4 +214,5 @@ def fit_production_piece_model(
         model=model,
         active_piece_counts=active_counts,
         history=tuple(history),
+        objective_model=config.objective_model,
     )

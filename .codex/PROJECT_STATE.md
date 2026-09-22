@@ -1,3 +1,21 @@
+## S1M2 V3 code-contract closure (2026-09-22)
+
+The final pre-freeze code blockers are closed. The finite production/reference
+helper now selects `reusable_pieces_v2` or `reusable_pieces_v3` explicitly,
+keeps V2 `R=C-M` semantics as the default, routes V3 fitting through the
+cross-host selector, and preserves V3 `C/Q/M/R_cross` pass state. Its payload
+and result state carry the selected objective identity.
+
+SQLite V3 finalization now validates finite, nonnegative, mutually consistent
+`C/Q` moments before calculating reusable counts. Exact in-range rows stay in
+SQLite; only out-of-range floating-point boundary cases consult the same
+eight-ULP Python reference rule. Gross invalid piece or role-diagnostic state
+raises and rolls back instead of being silently clamped. Focused validation
+passes: 39 V2/V3/training tests, 20 semantic/probe/alignment tests, and the
+additional P1AB reference tests included in the 36-test reference run.
+`git diff --check` passes. No scientific experiment was run in this closure
+batch. Scientific freeze documentation remains a researcher follow-up.
+
 ## S1M2 V3 cross-host objective implementation ready for bounded gate (2026-09-21)
 
 `reusable_pieces_v3` is locally implemented but not yet empirically qualified. V3 replaces the V2 strongest-host deletion learned count `R=C-M` with symmetric cross-host corroboration `R_cross=C-Q/C`, where `Q=sum_h S(q,h)^2` is computed only after posterior support has been aggregated by latent phonological wordform host. V2 remains unchanged and reproducible as the historical comparison baseline.

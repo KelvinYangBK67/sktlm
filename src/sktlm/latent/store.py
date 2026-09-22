@@ -24,6 +24,7 @@ from sktlm.pieces.lattice import PieceIdentity, PieceRole
 from sktlm.pieces.objective import (
     S1M2_REUSABLE_PIECES_V2,
     S1M2_REUSABLE_PIECES_V3,
+    cross_host_reusable_count,
 )
 from sktlm.pieces.scorer import GeometricPhonemeBaseMeasure
 
@@ -42,6 +43,16 @@ S1M2_PASS_DIAGNOSTIC_TABLES = (
     "lexical_diagnostics",
     "lexical_diagnostics_next",
 )
+
+
+def _sqlite_cross_host_moments_valid(raw_count: object, squared_sum: object) -> int:
+    """Expose the authoritative roundoff rule to rare SQL boundary cases."""
+
+    try:
+        cross_host_reusable_count(float(raw_count), float(squared_sum))
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    return 1
 
 
 class LexiconScorer:
@@ -281,6 +292,12 @@ class LexiconStore:
         self._scorers: list[LexiconScorer] = []
         self._piece_scorers: list[PieceStoreScorer] = []
         self.connection = sqlite3.connect(path)
+        self.connection.create_function(
+            "sktlm_cross_host_moments_valid",
+            2,
+            _sqlite_cross_host_moments_valid,
+            deterministic=True,
+        )
         self.connection.execute("PRAGMA journal_mode=WAL")
         self.connection.execute("PRAGMA synchronous=NORMAL")
         self.connection.execute(
@@ -715,6 +732,11 @@ class LexiconStore:
                     "FROM piece_host_support_next h "
                     "WHERE h.piece_key = piece_counts_next.form_key), 0.0)"
                 )
+                self._validate_cross_host_moment_source(
+                    "SELECT form_key AS state_key, expected_count AS c, "
+                    "sum_host_support_squared AS q FROM piece_counts_next",
+                    state_name="V3 piece",
+                )
                 self.connection.execute(
                     "UPDATE piece_counts_next SET reusable_count = CASE "
                     "WHEN expected_count <= 0.0 THEN 0.0 "
@@ -731,6 +753,15 @@ class LexiconStore:
                     f"unsupported reusable-piece objective: {objective_model}"
                 )
             if self.has_table("piece_host_role_support_next"):
+                role_moments = (
+                    "SELECT piece_key || ':' || role AS state_key, "
+                    "SUM(support) AS c, SUM(support * support) AS q "
+                    "FROM piece_host_role_support_next GROUP BY piece_key, role"
+                )
+                self._validate_cross_host_moment_source(
+                    role_moments,
+                    state_name="V3 role-diagnostic",
+                )
                 self.connection.execute("DROP TABLE IF EXISTS piece_role_diagnostics")
                 self.connection.execute(
                     "CREATE TABLE piece_role_diagnostics ("
@@ -791,6 +822,38 @@ class LexiconStore:
             retired,
         )
         return all_piece_types, int(active[0]), float(active[1])
+
+    def _validate_cross_host_moment_source(
+        self,
+        source_sql: str,
+        *,
+        state_name: str,
+    ) -> None:
+        """Fail closed on invalid C/Q rows without materializing the inventory.
+
+        SQLite handles the ordinary finite in-range rows. Only an out-of-range
+        result near zero reaches the authoritative Python helper, which admits
+        the same eight-ULP roundoff band used by diagnostics and tests.
+        """
+
+        invalid = self.connection.execute(
+            "SELECT state_key, c, q FROM (" + source_sql + ") WHERE CASE "
+            "WHEN c IS NULL OR q IS NULL THEN 1 "
+            "WHEN typeof(c) NOT IN ('integer', 'real') "
+            "OR typeof(q) NOT IN ('integer', 'real') THEN 1 "
+            "WHEN ABS(c) > ? OR ABS(q) > ? THEN 1 "
+            "WHEN c < 0.0 OR q < 0.0 THEN 1 "
+            "WHEN c = 0.0 THEN q != 0.0 "
+            "WHEN c - q / c BETWEEN 0.0 AND c THEN 0 "
+            "ELSE sktlm_cross_host_moments_valid(c, q) = 0 END "
+            "LIMIT 1",
+            (float.fromhex("0x1.fffffffffffffp+1023"),) * 2,
+        ).fetchone()
+        if invalid is not None:
+            raise ValueError(
+                f"Invalid {state_name} moments for {invalid[0]!r}: "
+                f"C={invalid[1]!r}, Q={invalid[2]!r}."
+            )
 
     def piece_scorer(
         self,

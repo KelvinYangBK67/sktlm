@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+import math
 
 import pytest
 
@@ -10,10 +11,12 @@ from sktlm.latent.training import TrainingConfig, _config_signature
 from sktlm.pieces import (
     PieceIdentity,
     PieceRole,
+    ProductionPieceConfig,
     S1M2_REUSABLE_PIECES_V2,
     S1M2_REUSABLE_PIECES_V3,
     cross_host_reusable_count,
     cross_host_support_moments,
+    fit_production_piece_model,
     select_cross_host_reusable_inventory,
 )
 
@@ -86,6 +89,45 @@ def test_reference_v3_inventory_is_form_keyed_and_wordform_hosted() -> None:
         (9, 29, 4, 52 / 9)
     )
     assert {PieceIdentity(piece, role).key for role in PieceRole} == {piece.key}
+
+
+def test_production_reference_selects_explicit_v2_or_v3_semantics() -> None:
+    v2_config = ProductionPieceConfig()
+    v3_config = ProductionPieceConfig(objective_model=S1M2_REUSABLE_PIECES_V3)
+    assert v2_config.payload()["objective_model"] == S1M2_REUSABLE_PIECES_V2
+    assert v2_config.payload()["learned_count_semantics"].startswith("R(q)=C(q)-max_h")
+    assert v3_config.payload()["objective_model"] == S1M2_REUSABLE_PIECES_V3
+    assert v3_config.payload()["learned_count_semantics"].startswith(
+        "R_cross(q)=C(q)-sum_h"
+    )
+
+    occurrences = tuple(
+        parse_iast_form(text)
+        for text in ("gacchati", "gacchati", "bhavati", "vadati")
+    )
+    piece = parse_iast_form("ti")
+    v2 = fit_production_piece_model(occurrences, passes=1, config=v2_config)
+    v3 = fit_production_piece_model(occurrences, passes=1, config=v3_config)
+    v2_pass, v3_pass = v2.history[0], v3.history[0]
+    assert v2.objective_model == S1M2_REUSABLE_PIECES_V2
+    assert v3.objective_model == S1M2_REUSABLE_PIECES_V3
+    assert v2_pass.sum_host_support_squared is None
+    assert v3_pass.sum_host_support_squared is not None
+    assert v2_pass.reusable_counts[piece] == pytest.approx(
+        v2_pass.raw_expected_counts[piece] - v2_pass.max_host_expected_usage[piece]
+    )
+    assert v3_pass.reusable_counts[piece] == pytest.approx(
+        cross_host_reusable_count(
+            v3_pass.raw_expected_counts[piece],
+            v3_pass.sum_host_support_squared[piece],
+        )
+    )
+    assert v3_pass.reusable_counts[piece] != pytest.approx(
+        v3_pass.raw_expected_counts[piece] - v3_pass.max_host_expected_usage[piece]
+    )
+
+    with pytest.raises(ValueError, match="unsupported reusable-piece objective"):
+        ProductionPieceConfig(objective_model="reusable_pieces_v4")
 
 
 def test_v3_sqlite_moments_role_shadow_and_scorer_are_separate(tmp_path) -> None:
@@ -173,6 +215,107 @@ def test_v3_sqlite_moments_role_shadow_and_scorer_are_separate(tmp_path) -> None
                 base_stop_probability=0.5,
                 cache_size=8,
                 objective_model=S1M2_REUSABLE_PIECES_V2,
+            )
+    finally:
+        store.close()
+
+
+def test_v3_sqlite_finalization_accepts_only_roundoff_clamping(tmp_path) -> None:
+    store = LexiconStore(tmp_path / "roundoff.sqlite")
+    checkpoint = {"history": [{}]}
+    piece = parse_iast_form("ti")
+    host = parse_iast_form("gacchati")
+    try:
+        store.begin_piece_count_pass(
+            resume=False,
+            checkpoint=checkpoint,
+            objective_model=S1M2_REUSABLE_PIECES_V3,
+        )
+        with store.connection:
+            store.connection.execute(
+                "INSERT INTO piece_counts_next(form_key, expected_count) VALUES (?, ?)",
+                (piece.key, 1.0),
+            )
+            store.connection.execute(
+                "INSERT INTO piece_host_support_next(piece_key, host_key, support) "
+                "VALUES (?, ?, ?)",
+                (piece.key, host.key, math.nextafter(1.0, math.inf)),
+            )
+        store.finalize_piece_count_pass(
+            checkpoint=checkpoint,
+            objective_model=S1M2_REUSABLE_PIECES_V3,
+        )
+        assert store.connection.execute(
+            "SELECT raw_expected_count, sum_host_support_squared, reusable_count "
+            "FROM piece_lexicon"
+        ).fetchone() == pytest.approx((1.0, 1.0000000000000004, 0.0))
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize(
+    ("raw_count", "host_support"),
+    [
+        (0.0, 1.0),
+        (-1.0, 0.0),
+        (1.0, math.sqrt(2.0)),
+        (math.inf, 0.0),
+    ],
+)
+def test_v3_sqlite_finalization_rejects_invalid_moments(
+    tmp_path, raw_count: float, host_support: float
+) -> None:
+    store = LexiconStore(tmp_path / "invalid.sqlite")
+    checkpoint = {"history": [{}]}
+    piece = parse_iast_form("ti")
+    host = parse_iast_form("gacchati")
+    filler = parse_iast_form("a")
+    try:
+        store.begin_piece_count_pass(
+            resume=False,
+            checkpoint=checkpoint,
+            objective_model=S1M2_REUSABLE_PIECES_V3,
+        )
+        with store.connection:
+            store.connection.executemany(
+                "INSERT INTO piece_counts_next(form_key, expected_count) VALUES (?, ?)",
+                [(piece.key, raw_count), (filler.key, 2.0)],
+            )
+            if host_support:
+                store.connection.execute(
+                    "INSERT INTO piece_host_support_next(piece_key, host_key, support) "
+                    "VALUES (?, ?, ?)",
+                    (piece.key, host.key, host_support),
+                )
+        with pytest.raises(ValueError, match="Invalid V3 piece moments"):
+            store.finalize_piece_count_pass(
+                checkpoint=checkpoint,
+                objective_model=S1M2_REUSABLE_PIECES_V3,
+            )
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize(
+    ("raw_count", "squared_sum"),
+    [(-1.0, 0.0), (1.0, -1.0), (0.0, 1.0), (1.0, 2.0), (1.0, math.inf)],
+)
+def test_sqlite_moment_validator_rejects_corrupt_direct_state(
+    tmp_path, raw_count: float, squared_sum: float
+) -> None:
+    store = LexiconStore(tmp_path / "validator.sqlite")
+    try:
+        store.connection.execute(
+            "CREATE TEMP TABLE moment_fixture(state_key TEXT, c REAL, q REAL)"
+        )
+        store.connection.execute(
+            "INSERT INTO moment_fixture VALUES ('piece', ?, ?)",
+            (raw_count, squared_sum),
+        )
+        with pytest.raises(ValueError, match="Invalid fixture moments"):
+            store._validate_cross_host_moment_source(
+                "SELECT state_key, c, q FROM moment_fixture",
+                state_name="fixture",
             )
     finally:
         store.close()
