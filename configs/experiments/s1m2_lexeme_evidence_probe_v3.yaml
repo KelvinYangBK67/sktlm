@@ -1,0 +1,55 @@
+schema_version: sktlm-s1m2-v3-qualification/v1
+status: PREFREEZE_QUALIFIED_PENDING_RESEARCHER_FREEZE
+target_id: noun_high_deva
+model: reusable_pieces_v3
+passes: 3
+workers: 1
+script: iast
+condition: surface_word
+inference: exact
+scientific_config:
+  sandhi_transformation_penalty: 1.0
+  piece_boundary_probability: 0.4
+  piece_role_diagnostics: true
+qualification_cells:
+  - E000
+  - E100
+controlled_inputs:
+  challenge:
+    path: data/diagnostics/s1m2_lexeme_probe/controlled/noun_high_deva/challenge.jsonl
+    sha256: 6f13a88fa49c0c05034f630cf63fb5ca7fa0ebd125c077e1f90dffc56d26ee59
+  background:
+    path: data/diagnostics/s1m2_lexeme_probe/controlled/background_1000.jsonl
+    sha256: 291c2366fef3b362d6791af82f6552dd207d1ea7b8ebf77c806bab2da52b9897
+  E000:
+    corpus_sha256: 46c64985a210317fca98c2c386504c82d479478ddd2fae845ad62c08b739f6e3
+    target_evidence_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  E100:
+    corpus_sha256: 46309a9263a5c80998a7f3c124191c574c7ef514c65a6712f8a3314dd8a4657c
+    target_evidence_sha256: ff514065999edfe674bd883c75b0218c0420f282ca350cfbeb446da529663054
+selection_provenance:
+  manifest: reports/core_methods/reusable_pieces/evidence/s1m2_v3_prefreeze_audit_20260922.json
+  identity: repository-relative source JSONL path plus one-based physical line number
+  reconstruction: queue target rows before background rows by exact text, then consume in corpus order
+  design: controlled evidence-condition contrast at fixed n=1000
+prospective_ladder_coverage:
+  E025:
+    seen_occurrences: 71
+    unseen_occurrences: 9
+    seen_wordform_types: 7
+    unseen_wordform_types: 3
+    status: NOT_PURCHASED
+  E050:
+    seen_occurrences: 78
+    unseen_occurrences: 2
+    seen_wordform_types: 9
+    unseen_wordform_types: 1
+    status: NOT_PURCHASED
+  E100:
+    seen_occurrences: 80
+    unseen_occurrences: 0
+    seen_wordform_types: 10
+    unseen_wordform_types: 0
+    status: QUALIFICATION_CELL
+prospective_ladder_decision: E025 and E050 were not purchased because they do not provide a balanced or sufficiently new held-out stratum; they did not fail.
+interpretation: Existing E000 and E100 artifacts qualify the bounded V3 contract for researcher freeze review; this specification does not authorize new training, Full M0, or S2/S3 implementation.

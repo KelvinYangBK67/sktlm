@@ -21,6 +21,12 @@ sys.modules[SPEC.name] = ops
 SPEC.loader.exec_module(ops)
 
 
+def test_operator_default_selects_versioned_v3_production_contract() -> None:
+    assert ops.DEFAULT_PRODUCTION_CONTRACT == Path(
+        "configs/production/s1m2_six_cell_v3.json"
+    )
+
+
 def remote_config(role: str = "core-01") -> object:
     return ops.bridge.BridgeConfig(
         host=f"{role}.example.org",

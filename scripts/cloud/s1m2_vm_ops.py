@@ -34,7 +34,7 @@ BRIDGE_SPEC.loader.exec_module(bridge)
 SCHEMA = "sktlm-s1m2-vm-operation/v1"
 CORE_HOST_ROLES = tuple(f"core-{index:02d}" for index in range(1, 7))
 DEFAULT_CONTRACT = Path("configs/cloud/s1m2_prevm.yaml")
-DEFAULT_PRODUCTION_CONTRACT = Path("configs/production/s1m2_six_cell.json")
+DEFAULT_PRODUCTION_CONTRACT = Path("configs/production/s1m2_six_cell_v3.json")
 SHA1_RE = re.compile(r"[0-9a-f]{40}\Z")
 SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 

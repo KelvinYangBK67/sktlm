@@ -1,7 +1,17 @@
 # S1M2 V3 symmetric cross-host reusable objective
 
-Date: 2026-09-21
-Status: implementation ready for researcher-run scientific gates
+Date: 2026-09-21; qualification addendum 2026-09-22
+Status: pre-freeze qualification complete; pending researcher scientific freeze decision
+
+## Qualification addendum
+
+The bounded E000/E100 gates below were subsequently run under the exact V3
+identity and passed the read-only pre-freeze forensic audit. The authoritative
+qualification evidence, occurrence-paired analysis, selection provenance,
+production-contract closure, and S2/S3 host invariant are in
+`s1m2_v3_prefreeze_forensic_audit_20260922.md` and its machine-readable
+evidence manifest. V3 remains pending the researcher's scientific freeze
+decision; it is not declared frozen here.
 
 ## Versioned scientific contract
 
@@ -87,9 +97,10 @@ V3 uses new v4 artifacts and never overwrites the published V2 v3 artifacts.
   seen/unseen membership. Overall, seen, and unseen denominators retain their
   V2 definitions.
 
-No V3 E000/E100 result is claimed here.
+This implementation section does not restate the later V3 E000/E100 result;
+the qualification addendum points to its authoritative report.
 
-## Researcher-run gates
+## Historical qualified run commands
 
 Run E000 V3 training:
 
@@ -122,4 +133,5 @@ Run E100 diagnostics #3/#4/#5:
 python -m sktlm.experiments.training.s1m2_semantic_diagnostics --run-dir artifacts/diagnostics/s1m2_lexeme_probe/noun_high_deva_E100_v3 --training-selection artifacts/diagnostics/s1m2_lexeme_probe/noun_high_deva_E100_v3/training_selection.v1.jsonl --training-gold-sidecar artifacts/diagnostics/s1m2_lexeme_probe/noun_high_deva_E100_v3/training_gold_wordforms.v1.json
 ```
 
-These commands are intentionally not executed by this implementation batch.
+These commands produced the later qualified artifacts. They are recorded for
+provenance and must not be rerun automatically.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import itertools
 import math
+from dataclasses import replace
 
 import pytest
 
@@ -73,6 +74,28 @@ def test_cross_host_invariants_and_host_aggregation_before_square() -> None:
         cross_host_reusable_count(1.0, 2.0)
 
 
+def test_v3_host_identity_discards_derivation_path_before_square() -> None:
+    host = parse_iast_form("devasya")
+    path_support = (
+        ("direct-boundary-path", host, 2.0),
+        ("sandhi-inversion-path", host, 3.0),
+    )
+    raw, squared, maximum, reusable = cross_host_support_moments(
+        (wordform, support) for _path_id, wordform, support in path_support
+    )
+    assert (raw, squared, maximum, reusable) == pytest.approx((5, 25, 5, 0))
+
+
+def test_v3_distinct_phonological_wordform_hosts_remain_distinct() -> None:
+    raw, squared, maximum, reusable = cross_host_support_moments(
+        [
+            (parse_iast_form("deva"), 2.0),
+            (parse_iast_form("devam"), 3.0),
+        ]
+    )
+    assert (raw, squared, maximum, reusable) == pytest.approx((5, 13, 3, 2.4))
+
+
 def test_reference_v3_inventory_is_form_keyed_and_wordform_hosted() -> None:
     piece = parse_iast_form("dev")
     deva, devam, devina = (
@@ -131,7 +154,7 @@ def test_production_reference_selects_explicit_v2_or_v3_semantics() -> None:
         ProductionPieceConfig(objective_model="reusable_pieces_v4")
 
 
-def test_v3_sqlite_moments_role_shadow_and_scorer_are_separate(tmp_path) -> None:
+def test_v3_roles_pool_for_learned_identity_and_remain_diagnostic(tmp_path) -> None:
     store = LexiconStore(tmp_path / "v3.sqlite")
     checkpoint = {"history": [{}]}
     piece = parse_iast_form("ti")
@@ -330,6 +353,18 @@ def test_v2_v3_identity_and_default_role_collection_are_isolated(tmp_path) -> No
     assert v3.payload()["model"] == S1M2_REUSABLE_PIECES_V3
     assert v3.payload()["piece_role_diagnostics"] is False
     assert _config_signature(v2) != _config_signature(v3)
+
+    qualified = TrainingConfig(
+        model=S1M2_REUSABLE_PIECES_V3,
+        sandhi_transformation_penalty=1.0,
+        piece_boundary_probability=0.4,
+    )
+    assert _config_signature(qualified) != _config_signature(
+        replace(qualified, sandhi_transformation_penalty=0.0)
+    )
+    assert _config_signature(qualified) != _config_signature(
+        replace(qualified, piece_boundary_probability=0.5)
+    )
 
     store = LexiconStore(tmp_path / "identity.sqlite")
     try:

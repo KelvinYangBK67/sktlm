@@ -1,0 +1,2256 @@
+{
+  "audit_date": "2026-09-22",
+  "audit_payload_sha256": "12b02a17fb18c04849aeb42dde880fc2cad6258dd6a9adc78d05411907be997f",
+  "expected_qualification_identity": {
+    "challenge_sha256": "6f13a88fa49c0c05034f630cf63fb5ca7fa0ebd125c077e1f90dffc56d26ee59",
+    "model": "reusable_pieces_v3",
+    "passes": 3,
+    "piece_boundary_probability": 0.4,
+    "piece_role_diagnostics": true,
+    "sandhi_transformation_penalty": 1.0,
+    "training_git_commit": "9bd73b65b462284c3cd87f7daa38735664f41c1f",
+    "workers": 1
+  },
+  "method": {
+    "authoritative_reusable_count_helper": "sktlm.pieces.cross_host_reusable_count",
+    "inference_invoked": false,
+    "sqlite_open_mode": "mode=ro&immutable=1",
+    "sqlite_query_only_enforced": true,
+    "trainer_invoked": false
+  },
+  "paired_occurrence_audit": {
+    "key_sets_identical": true,
+    "macro_average_across_wordforms": {
+      "E000": {
+        "mean_top1_piece_count": 1.838888888888889,
+        "mean_top1_whole_form_use": 0.16111111111111112,
+        "recovery_rate": 0.5471230158730159
+      },
+      "E100": {
+        "mean_top1_piece_count": 1.32625,
+        "mean_top1_whole_form_use": 0.67375,
+        "recovery_rate": 0.45490079365079367
+      }
+    },
+    "occurrence_key_fields": [
+      "target_id",
+      "sentence_index",
+      "dcs_id",
+      "dcs_occ_id",
+      "match_index"
+    ],
+    "paired_classification_transitions": {
+      "CC": 28,
+      "CW": 6,
+      "UU": 3,
+      "UW": 1,
+      "WC": 6,
+      "WW": 36
+    },
+    "paired_piece_count_delta_E100_minus_E000": {
+      "-1": 41,
+      "0": 16
+    },
+    "paired_representation_transitions": {
+      "multi_to_multi": 11,
+      "multi_to_whole": 41,
+      "whole_to_whole": 5
+    },
+    "unique_occurrences_per_run": 80,
+    "wordforms": {
+      "deva": {
+        "E000": {
+          "evaluable_occurrences": 9,
+          "mean_top1_piece_count": 1.0,
+          "mean_top1_whole_form_use": 1.0,
+          "occurrences": 12,
+          "piece_metric_occurrences": 3,
+          "recovered_occurrences": 2,
+          "recovery_rate": 0.2222222222222222
+        },
+        "E100": {
+          "evaluable_occurrences": 10,
+          "mean_top1_piece_count": 1.2,
+          "mean_top1_whole_form_use": 0.8,
+          "occurrences": 12,
+          "piece_metric_occurrences": 5,
+          "recovered_occurrences": 3,
+          "recovery_rate": 0.3
+        },
+        "paired_transitions": {
+          "CC": 2,
+          "UU": 2,
+          "UW": 1,
+          "WC": 1,
+          "WW": 6
+        }
+      },
+      "devaiḥ": {
+        "E000": {
+          "evaluable_occurrences": 3,
+          "mean_top1_piece_count": 1.5,
+          "mean_top1_whole_form_use": 0.5,
+          "occurrences": 3,
+          "piece_metric_occurrences": 2,
+          "recovered_occurrences": 1,
+          "recovery_rate": 0.3333333333333333
+        },
+        "E100": {
+          "evaluable_occurrences": 3,
+          "mean_top1_piece_count": 1.0,
+          "mean_top1_whole_form_use": 1.0,
+          "occurrences": 3,
+          "piece_metric_occurrences": 2,
+          "recovered_occurrences": 1,
+          "recovery_rate": 0.3333333333333333
+        },
+        "paired_transitions": {
+          "CC": 1,
+          "WW": 2
+        }
+      },
+      "devam": {
+        "E000": {
+          "evaluable_occurrences": 6,
+          "mean_top1_piece_count": 2.0,
+          "mean_top1_whole_form_use": 0.0,
+          "occurrences": 6,
+          "piece_metric_occurrences": 6,
+          "recovered_occurrences": 1,
+          "recovery_rate": 0.16666666666666666
+        },
+        "E100": {
+          "evaluable_occurrences": 6,
+          "mean_top1_piece_count": 2.0,
+          "mean_top1_whole_form_use": 0.0,
+          "occurrences": 6,
+          "piece_metric_occurrences": 6,
+          "recovered_occurrences": 1,
+          "recovery_rate": 0.16666666666666666
+        },
+        "paired_transitions": {
+          "CC": 1,
+          "WW": 5
+        }
+      },
+      "devasya": {
+        "E000": {
+          "evaluable_occurrences": 4,
+          "mean_top1_piece_count": 2.0,
+          "mean_top1_whole_form_use": 0.0,
+          "occurrences": 4,
+          "piece_metric_occurrences": 4,
+          "recovered_occurrences": 4,
+          "recovery_rate": 1.0
+        },
+        "E100": {
+          "evaluable_occurrences": 4,
+          "mean_top1_piece_count": 2.0,
+          "mean_top1_whole_form_use": 0.0,
+          "occurrences": 4,
+          "piece_metric_occurrences": 3,
+          "recovered_occurrences": 3,
+          "recovery_rate": 0.75
+        },
+        "paired_transitions": {
+          "CC": 3,
+          "CW": 1
+        }
+      },
+      "devaḥ": {
+        "E000": {
+          "evaluable_occurrences": 9,
+          "mean_top1_piece_count": 1.8888888888888888,
+          "mean_top1_whole_form_use": 0.1111111111111111,
+          "occurrences": 9,
+          "piece_metric_occurrences": 9,
+          "recovered_occurrences": 2,
+          "recovery_rate": 0.2222222222222222
+        },
+        "E100": {
+          "evaluable_occurrences": 9,
+          "mean_top1_piece_count": 1.0,
+          "mean_top1_whole_form_use": 1.0,
+          "occurrences": 9,
+          "piece_metric_occurrences": 9,
+          "recovered_occurrences": 2,
+          "recovery_rate": 0.2222222222222222
+        },
+        "paired_transitions": {
+          "CC": 2,
+          "WW": 7
+        }
+      },
+      "devebhyaḥ": {
+        "E000": {
+          "evaluable_occurrences": 4,
+          "mean_top1_piece_count": 2.0,
+          "mean_top1_whole_form_use": 0.0,
+          "occurrences": 4,
+          "piece_metric_occurrences": 4,
+          "recovered_occurrences": 4,
+          "recovery_rate": 1.0
+        },
+        "E100": {
+          "evaluable_occurrences": 4,
+          "mean_top1_piece_count": 1.0,
+          "mean_top1_whole_form_use": 1.0,
+          "occurrences": 4,
+          "piece_metric_occurrences": 4,
+          "recovered_occurrences": 0,
+          "recovery_rate": 0.0
+        },
+        "paired_transitions": {
+          "CW": 4
+        }
+      },
+      "devena": {
+        "E000": {
+          "evaluable_occurrences": 2,
+          "mean_top1_piece_count": 2.0,
+          "mean_top1_whole_form_use": 0.0,
+          "occurrences": 2,
+          "piece_metric_occurrences": 2,
+          "recovered_occurrences": 2,
+          "recovery_rate": 1.0
+        },
+        "E100": {
+          "evaluable_occurrences": 2,
+          "mean_top1_piece_count": 2.0,
+          "mean_top1_whole_form_use": 0.0,
+          "occurrences": 2,
+          "piece_metric_occurrences": 2,
+          "recovered_occurrences": 2,
+          "recovery_rate": 1.0
+        },
+        "paired_transitions": {
+          "CC": 2
+        }
+      },
+      "devān": {
+        "E000": {
+          "evaluable_occurrences": 16,
+          "mean_top1_piece_count": 2.0,
+          "mean_top1_whole_form_use": 0.0,
+          "occurrences": 16,
+          "piece_metric_occurrences": 12,
+          "recovered_occurrences": 12,
+          "recovery_rate": 0.75
+        },
+        "E100": {
+          "evaluable_occurrences": 16,
+          "mean_top1_piece_count": 1.0,
+          "mean_top1_whole_form_use": 1.0,
+          "occurrences": 16,
+          "piece_metric_occurrences": 12,
+          "recovered_occurrences": 12,
+          "recovery_rate": 0.75
+        },
+        "paired_transitions": {
+          "CC": 12,
+          "WW": 4
+        }
+      },
+      "devānām": {
+        "E000": {
+          "evaluable_occurrences": 7,
+          "mean_top1_piece_count": 2.0,
+          "mean_top1_whole_form_use": 0.0,
+          "occurrences": 7,
+          "piece_metric_occurrences": 6,
+          "recovered_occurrences": 5,
+          "recovery_rate": 0.7142857142857143
+        },
+        "E100": {
+          "evaluable_occurrences": 7,
+          "mean_top1_piece_count": 1.0,
+          "mean_top1_whole_form_use": 1.0,
+          "occurrences": 7,
+          "piece_metric_occurrences": 6,
+          "recovered_occurrences": 5,
+          "recovery_rate": 0.7142857142857143
+        },
+        "paired_transitions": {
+          "CC": 5,
+          "WW": 2
+        }
+      },
+      "devāḥ": {
+        "E000": {
+          "evaluable_occurrences": 16,
+          "mean_top1_piece_count": 2.0,
+          "mean_top1_whole_form_use": 0.0,
+          "occurrences": 17,
+          "piece_metric_occurrences": 10,
+          "recovered_occurrences": 1,
+          "recovery_rate": 0.0625
+        },
+        "E100": {
+          "evaluable_occurrences": 16,
+          "mean_top1_piece_count": 1.0625,
+          "mean_top1_whole_form_use": 0.9375,
+          "occurrences": 17,
+          "piece_metric_occurrences": 16,
+          "recovered_occurrences": 5,
+          "recovery_rate": 0.3125
+        },
+        "paired_transitions": {
+          "CW": 1,
+          "UU": 1,
+          "WC": 5,
+          "WW": 10
+        }
+      }
+    }
+  },
+  "production_contract_closure": {
+    "active_default": {
+      "canonical_sha256": "03c524b8978919bbfb98f65caaf75625e4cd053314c704f433ad002009b27bd2",
+      "contract_id": "s1m2-six-cell-v3-prefreeze-v1",
+      "file_sha256": "6a29480ba27d82ed334cdc6027f2aedab30e6fc7b3f5ebe2465ff6469b3022fa",
+      "model": "reusable_pieces_v3",
+      "passes": 3,
+      "path": "configs/production/s1m2_six_cell_v3.json",
+      "piece_boundary_probability": 0.4,
+      "sandhi_transformation_penalty": 1.0,
+      "status": "V3_QUALIFIED_PENDING_RESEARCHER_FREEZE"
+    },
+    "historical_preserved": {
+      "canonical_sha256": "12c0df4cc897f38632eb23b1d66685f3bfeb3de5854d560870b83e201f44e68e",
+      "contract_id": "s1m2-six-cell-v2-repair-v1",
+      "file_sha256": "75ab682281538d81387fad5dac28f874b957ff999c65ccc9b743060c7c7d2d2d",
+      "model": "reusable_pieces_v1",
+      "path": "configs/production/s1m2_six_cell.json"
+    }
+  },
+  "researcher_review_flag": false,
+  "researcher_review_reason": null,
+  "runs": {
+    "E000": {
+      "inputs": {
+        "config": {
+          "path": "artifacts/diagnostics/s1m2_lexeme_probe/noun_high_deva_E000_v3_p3/config.json",
+          "sha256": "f21098444d305b0c747af55a67be3a777091b723367ef69c0fb460f95c371d73"
+        },
+        "learner_sqlite": {
+          "path": "artifacts/diagnostics/s1m2_lexeme_probe/noun_high_deva_E000_v3_p3/learner.sqlite",
+          "sha256": "ac4bd58a7a6bf467dc45dd447b6fe74419613df511a3f5d012362cbf29d9691c"
+        },
+        "provenance": {
+          "path": "artifacts/diagnostics/s1m2_lexeme_probe/noun_high_deva_E000_v3_p3/provenance.json",
+          "sha256": "d7f315fa085214f319836a2062f32bc855e866930f5b5c792ec5cace7aba6de4"
+        },
+        "semantic_diagnostics": {
+          "path": "artifacts/diagnostics/s1m2_lexeme_probe/noun_high_deva_E000_v3_p3/challenge_semantic_diagnostics.v4.jsonl",
+          "sha256": "9fc010724768d7920791d747501f357de4a5b5c7a7abd74db9213b1b15c73306"
+        }
+      },
+      "moment_contract_audit": {
+        "piece_lexicon": {
+          "C_zero_Q_positive_rows": 0,
+          "gross_bound_violation_rows": 0,
+          "max_ULP_scale_discrepancy": 0.0,
+          "max_absolute_discrepancy": 0.0,
+          "negative_C_rows": 0,
+          "negative_Q_rows": 0,
+          "nonfinite_rows": 0,
+          "rows": 140077,
+          "status": "PASS",
+          "stored_recomputed_mismatch_rows": 0
+        },
+        "piece_role_diagnostics": {
+          "C_zero_Q_positive_rows": 0,
+          "gross_bound_violation_rows": 0,
+          "max_ULP_scale_discrepancy": 0.0,
+          "max_absolute_discrepancy": 0.0,
+          "negative_C_rows": 0,
+          "negative_Q_rows": 0,
+          "nonfinite_rows": 0,
+          "rows": 187204,
+          "status": "PASS",
+          "stored_recomputed_mismatch_rows": 0
+        }
+      },
+      "posterior_tail_and_host_diversity": {
+        "C_total": 10103.589970428158,
+        "R_cross_total": 6285.426747929442,
+        "bins": {
+          "0.01<=C<0.1": {
+            "C_fraction": 0.021841928372375825,
+            "C_total": 220.6818884379466,
+            "R_cross_fraction": 0.012491083146340785,
+            "R_cross_total": 78.51178811862103,
+            "median_R_over_C": 0.3378185217859871,
+            "median_effective_host_count": 1.5101600402587092,
+            "piece_types": 6132
+          },
+          "0.1<=C<1": {
+            "C_fraction": 0.33186070191116157,
+            "C_total": 3352.984459408861,
+            "R_cross_fraction": 0.17495333870421148,
+            "R_cross_total": 1099.65639473101,
+            "median_R_over_C": 0.3209858126858471,
+            "median_effective_host_count": 1.4727232783684676,
+            "piece_types": 6229
+          },
+          "0<C<0.01": {
+            "C_fraction": 0.003605480656807972,
+            "C_total": 36.42829820269775,
+            "R_cross_fraction": 0.0021459626337582503,
+            "R_cross_total": 13.48829093828122,
+            "median_R_over_C": 0.10696170224196679,
+            "median_effective_host_count": 1.1197728053914395,
+            "piece_types": 126820
+          },
+          "1<=C<10": {
+            "C_fraction": 0.17806900635177958,
+            "C_total": 1799.1362266199483,
+            "R_cross_fraction": 0.15340114779428118,
+            "R_cross_total": 964.1916775092525,
+            "median_R_over_C": 0.5372453604066428,
+            "median_effective_host_count": 2.160972391068286,
+            "piece_types": 813
+          },
+          "C=0": {
+            "C_fraction": 0.0,
+            "C_total": 0.0,
+            "R_cross_fraction": 0.0,
+            "R_cross_total": 0.0,
+            "median_R_over_C": null,
+            "median_effective_host_count": null,
+            "piece_types": 0
+          },
+          "C>=10": {
+            "C_fraction": 0.46462288270787494,
+            "C_total": 4694.359097758704,
+            "R_cross_fraction": 0.6570084677214083,
+            "R_cross_total": 4129.578596632277,
+            "median_R_over_C": 0.9291782579874603,
+            "median_effective_host_count": 14.119957679421947,
+            "piece_types": 83
+          }
+        },
+        "maximum_effective_host_count_for_C_at_least_1": 300.462950556201,
+        "piece_types": 140077,
+        "top_20_by_R_cross": [
+          {
+            "C": 614.8282614746605,
+            "M": 101.40078519386502,
+            "Q": 10739.121910691623,
+            "R_cross": 597.361397012487,
+            "R_over_C": 0.9715906610729322,
+            "effective_host_count": 35.199692698488846,
+            "form_key": "V_A",
+            "piece": "a"
+          },
+          {
+            "C": 321.12912780658644,
+            "M": 49.13085493670167,
+            "Q": 2570.802681904103,
+            "R_cross": 313.1236170655848,
+            "R_over_C": 0.975070742427877,
+            "effective_host_count": 40.11350908092202,
+            "form_key": "V_AA",
+            "piece": "ā"
+          },
+          {
+            "C": 316.025280647463,
+            "M": 91.10525360168317,
+            "Q": 8926.253147247107,
+            "R_cross": 287.77990379356294,
+            "R_over_C": 0.9106230463713796,
+            "effective_host_count": 11.188566620375164,
+            "form_key": "V_I",
+            "piece": "i"
+          },
+          {
+            "C": 222.76432839248346,
+            "M": 5.351881486190235,
+            "Q": 165.15828627886734,
+            "R_cross": 222.0229247419498,
+            "R_over_C": 0.9966718026360692,
+            "effective_host_count": 300.462950556201,
+            "form_key": "C_M",
+            "piece": "m"
+          },
+          {
+            "C": 172.2123328382473,
+            "M": 46.21955783744885,
+            "Q": 2191.911828848358,
+            "R_cross": 159.48437199640017,
+            "R_over_C": 0.9260914672481556,
+            "effective_host_count": 13.530237480936114,
+            "form_key": "V_A.C_M",
+            "piece": "am"
+          },
+          {
+            "C": 193.9381993477092,
+            "M": 87.54632277555551,
+            "Q": 7792.445456384023,
+            "R_cross": 153.75815496969034,
+            "R_over_C": 0.7928203700294205,
+            "effective_host_count": 4.826729346615811,
+            "form_key": "V_U",
+            "piece": "u"
+          },
+          {
+            "C": 142.66377719336498,
+            "M": 7.948290539756733,
+            "Q": 168.38815243337393,
+            "R_cross": 141.4834624999923,
+            "R_over_C": 0.9917265986041229,
+            "effective_host_count": 120.86927155478548,
+            "form_key": "C_T",
+            "piece": "t"
+          },
+          {
+            "C": 127.25264002231498,
+            "M": 7.5925024190170305,
+            "Q": 117.1677041893893,
+            "R_cross": 126.33189131196333,
+            "R_over_C": 0.9927644038647042,
+            "effective_host_count": 138.2056130968839,
+            "form_key": "C_S",
+            "piece": "s"
+          },
+          {
+            "C": 124.48260556278039,
+            "M": 10.233108433325523,
+            "Q": 185.88689517668251,
+            "R_cross": 122.9893294995401,
+            "R_over_C": 0.988004138759072,
+            "effective_host_count": 83.36208463200238,
+            "form_key": "V_E",
+            "piece": "e"
+          },
+          {
+            "C": 120.8851538847198,
+            "M": 3.874303632217607,
+            "Q": 77.62122785374994,
+            "R_cross": 120.24304668330305,
+            "R_over_C": 0.9946882873472694,
+            "effective_host_count": 188.26319595544004,
+            "form_key": "M_VISARGA",
+            "piece": "ḥ"
+          },
+          {
+            "C": 111.33144512903596,
+            "M": 26.849080647012947,
+            "Q": 755.2891769425107,
+            "R_cross": 104.54729554697393,
+            "R_over_C": 0.9390634912337747,
+            "effective_host_count": 16.4105233504001,
+            "form_key": "V_A.M_ANUSVARA",
+            "piece": "aṃ"
+          },
+          {
+            "C": 110.04497403229344,
+            "M": 36.643937938050506,
+            "Q": 1377.8331713246898,
+            "R_cross": 97.52433705235872,
+            "R_over_C": 0.886222545917813,
+            "effective_host_count": 8.78908750478501,
+            "form_key": "V_A.M_VISARGA",
+            "piece": "aḥ"
+          },
+          {
+            "C": 109.31048886675472,
+            "M": 36.7125204496602,
+            "Q": 1369.6362773942112,
+            "R_cross": 96.78070977973825,
+            "R_over_C": 0.8853744117612556,
+            "effective_host_count": 8.724055556575907,
+            "form_key": "V_II",
+            "piece": "ī"
+          },
+          {
+            "C": 95.47489012506955,
+            "M": 45.024097892036515,
+            "Q": 2049.8076891792316,
+            "R_cross": 74.00529024918555,
+            "R_over_C": 0.7751283102001019,
+            "effective_host_count": 4.446980413096237,
+            "form_key": "C_S.V_A",
+            "piece": "sa"
+          },
+          {
+            "C": 72.2715533392251,
+            "M": 8.43526930489707,
+            "Q": 96.86630665223625,
+            "R_cross": 70.93124304870776,
+            "R_over_C": 0.9814545249328426,
+            "effective_host_count": 53.92150895993592,
+            "form_key": "C_N",
+            "piece": "n"
+          },
+          {
+            "C": 70.84995804545393,
+            "M": 6.023616792295764,
+            "Q": 62.880310510822156,
+            "R_cross": 69.96244431579892,
+            "R_over_C": 0.9874733344360539,
+            "effective_host_count": 79.82970367454934,
+            "form_key": "C_Y.V_A",
+            "piece": "ya"
+          },
+          {
+            "C": 66.73118572163015,
+            "M": 1.8410398557584295,
+            "Q": 22.5273041222761,
+            "R_cross": 66.39360286769663,
+            "R_over_C": 0.9949411530713428,
+            "effective_host_count": 197.67350427924936,
+            "form_key": "M_ANUSVARA",
+            "piece": "ṃ"
+          },
+          {
+            "C": 57.02704564316313,
+            "M": 10.762114518835489,
+            "Q": 140.02464974531927,
+            "R_cross": 54.57163789468008,
+            "R_over_C": 0.9569431009306122,
+            "effective_host_count": 23.225081731697895,
+            "form_key": "C_T.V_A",
+            "piece": "ta"
+          },
+          {
+            "C": 49.10073852084907,
+            "M": 7.396829707320782,
+            "Q": 68.94982962393841,
+            "R_cross": 47.69648612666846,
+            "R_over_C": 0.9714005850729854,
+            "effective_host_count": 34.9657502627935,
+            "form_key": "V_O",
+            "piece": "o"
+          },
+          {
+            "C": 66.52783898067936,
+            "M": 35.27061063672672,
+            "Q": 1253.3389588151817,
+            "R_cross": 47.68852331946918,
+            "R_over_C": 0.7168205679026883,
+            "effective_host_count": 3.5313299154310056,
+            "form_key": "V_UU",
+            "piece": "ū"
+          }
+        ],
+        "top_20_by_R_over_C_for_C_at_least_1": [
+          {
+            "C": 222.76432839248346,
+            "M": 5.351881486190235,
+            "Q": 165.15828627886734,
+            "R_cross": 222.0229247419498,
+            "R_over_C": 0.9966718026360692,
+            "effective_host_count": 300.462950556201,
+            "form_key": "C_M",
+            "piece": "m"
+          },
+          {
+            "C": 39.86035247531774,
+            "M": 1.3007894501932604,
+            "Q": 7.381877833493305,
+            "R_cross": 39.67515898416474,
+            "R_over_C": 0.9953539424603012,
+            "effective_host_count": 215.23624954176236,
+            "form_key": "C_V",
+            "piece": "v"
+          },
+          {
+            "C": 13.073248182653355,
+            "M": 0.3384250699773637,
+            "Q": 0.8600556855423739,
+            "R_cross": 13.00746073078783,
+            "R_over_C": 0.9949677806963982,
+            "effective_host_count": 198.71947935262935,
+            "form_key": "C_Y",
+            "piece": "y"
+          },
+          {
+            "C": 66.73118572163015,
+            "M": 1.8410398557584295,
+            "Q": 22.5273041222761,
+            "R_cross": 66.39360286769663,
+            "R_over_C": 0.9949411530713428,
+            "effective_host_count": 197.67350427924936,
+            "form_key": "M_ANUSVARA",
+            "piece": "ṃ"
+          },
+          {
+            "C": 120.8851538847198,
+            "M": 3.874303632217607,
+            "Q": 77.62122785374994,
+            "R_cross": 120.24304668330305,
+            "R_over_C": 0.9946882873472694,
+            "effective_host_count": 188.26319595544004,
+            "form_key": "M_VISARGA",
+            "piece": "ḥ"
+          },
+          {
+            "C": 38.682815485130426,
+            "M": 0.5895695115027646,
+            "Q": 8.107978664498187,
+            "R_cross": 38.47321392012503,
+            "R_over_C": 0.9945815328492321,
+            "effective_host_count": 184.55403939438682,
+            "form_key": "C_R",
+            "piece": "r"
+          },
+          {
+            "C": 127.25264002231498,
+            "M": 7.5925024190170305,
+            "Q": 117.1677041893893,
+            "R_cross": 126.33189131196333,
+            "R_over_C": 0.9927644038647042,
+            "effective_host_count": 138.2056130968839,
+            "form_key": "C_S",
+            "piece": "s"
+          },
+          {
+            "C": 142.66377719336498,
+            "M": 7.948290539756733,
+            "Q": 168.38815243337393,
+            "R_cross": 141.4834624999923,
+            "R_over_C": 0.9917265986041229,
+            "effective_host_count": 120.86927155478548,
+            "form_key": "C_T",
+            "piece": "t"
+          },
+          {
+            "C": 124.48260556278039,
+            "M": 10.233108433325523,
+            "Q": 185.88689517668251,
+            "R_cross": 122.9893294995401,
+            "R_over_C": 0.988004138759072,
+            "effective_host_count": 83.36208463200238,
+            "form_key": "V_E",
+            "piece": "e"
+          },
+          {
+            "C": 27.2999836224509,
+            "M": 0.8384036553020298,
+            "Q": 9.013661080034371,
+            "R_cross": 26.969812688845586,
+            "R_over_C": 0.9879058193524414,
+            "effective_host_count": 82.68439418439343,
+            "form_key": "C_D",
+            "piece": "d"
+          },
+          {
+            "C": 70.84995804545393,
+            "M": 6.023616792295764,
+            "Q": 62.880310510822156,
+            "R_cross": 69.96244431579892,
+            "R_over_C": 0.9874733344360539,
+            "effective_host_count": 79.82970367454934,
+            "form_key": "C_Y.V_A",
+            "piece": "ya"
+          },
+          {
+            "C": 22.426323453662214,
+            "M": 1.468043567991763,
+            "Q": 7.935405644450072,
+            "R_cross": 22.072480093610515,
+            "R_over_C": 0.984221963052356,
+            "effective_host_count": 63.37924060631104,
+            "form_key": "C_P",
+            "piece": "p"
+          },
+          {
+            "C": 24.63978148600016,
+            "M": 1.159008361941579,
+            "Q": 10.042064478397561,
+            "R_cross": 24.232226553579057,
+            "R_over_C": 0.9834594745634141,
+            "effective_host_count": 60.45757154655472,
+            "form_key": "C_K",
+            "piece": "k"
+          },
+          {
+            "C": 17.580175180691707,
+            "M": 1.2727855810240905,
+            "Q": 5.346687778997682,
+            "R_cross": 17.276043525344498,
+            "R_over_C": 0.9827003057579746,
+            "effective_host_count": 57.80448983721043,
+            "form_key": "C_R.V_A",
+            "piece": "ra"
+          },
+          {
+            "C": 72.2715533392251,
+            "M": 8.43526930489707,
+            "Q": 96.86630665223625,
+            "R_cross": 70.93124304870776,
+            "R_over_C": 0.9814545249328426,
+            "effective_host_count": 53.92150895993592,
+            "form_key": "C_N",
+            "piece": "n"
+          },
+          {
+            "C": 6.181343049987402,
+            "M": 0.5905639788863055,
+            "Q": 0.7685937619716028,
+            "R_cross": 6.0570021493520345,
+            "R_over_C": 0.9798844847099012,
+            "effective_host_count": 49.712870169039,
+            "form_key": "V_A.C_R",
+            "piece": "ar"
+          },
+          {
+            "C": 21.782359865500506,
+            "M": 1.6261766358140217,
+            "Q": 9.934247704823878,
+            "R_cross": 21.32629138778896,
+            "R_over_C": 0.9790624853997624,
+            "effective_host_count": 47.76116072480991,
+            "form_key": "V_A.C_S",
+            "piece": "as"
+          },
+          {
+            "C": 2.8443562311851314,
+            "M": 0.18352827567685892,
+            "Q": 0.18551103142435812,
+            "R_cross": 2.7791354865433595,
+            "R_over_C": 0.9770701208495967,
+            "effective_host_count": 43.61121981676071,
+            "form_key": "V_A.C_V",
+            "piece": "av"
+          },
+          {
+            "C": 321.12912780658644,
+            "M": 49.13085493670167,
+            "Q": 2570.802681904103,
+            "R_cross": 313.1236170655848,
+            "R_over_C": 0.975070742427877,
+            "effective_host_count": 40.11350908092202,
+            "form_key": "V_AA",
+            "piece": "ā"
+          },
+          {
+            "C": 18.05534326073024,
+            "M": 2.114969497388241,
+            "Q": 8.295892720137632,
+            "R_cross": 17.595873030763418,
+            "R_over_C": 0.9745521188197981,
+            "effective_host_count": 39.2960024026671,
+            "form_key": "C_Y.V_AA",
+            "piece": "yā"
+          }
+        ],
+        "top_20_by_effective_host_count_for_C_at_least_1": [
+          {
+            "C": 222.76432839248346,
+            "M": 5.351881486190235,
+            "Q": 165.15828627886734,
+            "R_cross": 222.0229247419498,
+            "R_over_C": 0.9966718026360692,
+            "effective_host_count": 300.462950556201,
+            "form_key": "C_M",
+            "piece": "m"
+          },
+          {
+            "C": 39.86035247531774,
+            "M": 1.3007894501932604,
+            "Q": 7.381877833493305,
+            "R_cross": 39.67515898416474,
+            "R_over_C": 0.9953539424603012,
+            "effective_host_count": 215.23624954176236,
+            "form_key": "C_V",
+            "piece": "v"
+          },
+          {
+            "C": 13.073248182653355,
+            "M": 0.3384250699773637,
+            "Q": 0.8600556855423739,
+            "R_cross": 13.00746073078783,
+            "R_over_C": 0.9949677806963982,
+            "effective_host_count": 198.71947935262935,
+            "form_key": "C_Y",
+            "piece": "y"
+          },
+          {
+            "C": 66.73118572163015,
+            "M": 1.8410398557584295,
+            "Q": 22.5273041222761,
+            "R_cross": 66.39360286769663,
+            "R_over_C": 0.9949411530713428,
+            "effective_host_count": 197.67350427924936,
+            "form_key": "M_ANUSVARA",
+            "piece": "ṃ"
+          },
+          {
+            "C": 120.8851538847198,
+            "M": 3.874303632217607,
+            "Q": 77.62122785374994,
+            "R_cross": 120.24304668330305,
+            "R_over_C": 0.9946882873472694,
+            "effective_host_count": 188.26319595544004,
+            "form_key": "M_VISARGA",
+            "piece": "ḥ"
+          },
+          {
+            "C": 38.682815485130426,
+            "M": 0.5895695115027646,
+            "Q": 8.107978664498187,
+            "R_cross": 38.47321392012503,
+            "R_over_C": 0.9945815328492321,
+            "effective_host_count": 184.55403939438682,
+            "form_key": "C_R",
+            "piece": "r"
+          },
+          {
+            "C": 127.25264002231498,
+            "M": 7.5925024190170305,
+            "Q": 117.1677041893893,
+            "R_cross": 126.33189131196333,
+            "R_over_C": 0.9927644038647042,
+            "effective_host_count": 138.2056130968839,
+            "form_key": "C_S",
+            "piece": "s"
+          },
+          {
+            "C": 142.66377719336498,
+            "M": 7.948290539756733,
+            "Q": 168.38815243337393,
+            "R_cross": 141.4834624999923,
+            "R_over_C": 0.9917265986041229,
+            "effective_host_count": 120.86927155478548,
+            "form_key": "C_T",
+            "piece": "t"
+          },
+          {
+            "C": 124.48260556278039,
+            "M": 10.233108433325523,
+            "Q": 185.88689517668251,
+            "R_cross": 122.9893294995401,
+            "R_over_C": 0.988004138759072,
+            "effective_host_count": 83.36208463200238,
+            "form_key": "V_E",
+            "piece": "e"
+          },
+          {
+            "C": 27.2999836224509,
+            "M": 0.8384036553020298,
+            "Q": 9.013661080034371,
+            "R_cross": 26.969812688845586,
+            "R_over_C": 0.9879058193524414,
+            "effective_host_count": 82.68439418439343,
+            "form_key": "C_D",
+            "piece": "d"
+          },
+          {
+            "C": 70.84995804545393,
+            "M": 6.023616792295764,
+            "Q": 62.880310510822156,
+            "R_cross": 69.96244431579892,
+            "R_over_C": 0.9874733344360539,
+            "effective_host_count": 79.82970367454934,
+            "form_key": "C_Y.V_A",
+            "piece": "ya"
+          },
+          {
+            "C": 22.426323453662214,
+            "M": 1.468043567991763,
+            "Q": 7.935405644450072,
+            "R_cross": 22.072480093610515,
+            "R_over_C": 0.984221963052356,
+            "effective_host_count": 63.37924060631104,
+            "form_key": "C_P",
+            "piece": "p"
+          },
+          {
+            "C": 24.63978148600016,
+            "M": 1.159008361941579,
+            "Q": 10.042064478397561,
+            "R_cross": 24.232226553579057,
+            "R_over_C": 0.9834594745634141,
+            "effective_host_count": 60.45757154655472,
+            "form_key": "C_K",
+            "piece": "k"
+          },
+          {
+            "C": 17.580175180691707,
+            "M": 1.2727855810240905,
+            "Q": 5.346687778997682,
+            "R_cross": 17.276043525344498,
+            "R_over_C": 0.9827003057579746,
+            "effective_host_count": 57.80448983721043,
+            "form_key": "C_R.V_A",
+            "piece": "ra"
+          },
+          {
+            "C": 72.2715533392251,
+            "M": 8.43526930489707,
+            "Q": 96.86630665223625,
+            "R_cross": 70.93124304870776,
+            "R_over_C": 0.9814545249328426,
+            "effective_host_count": 53.92150895993592,
+            "form_key": "C_N",
+            "piece": "n"
+          },
+          {
+            "C": 6.181343049987402,
+            "M": 0.5905639788863055,
+            "Q": 0.7685937619716028,
+            "R_cross": 6.0570021493520345,
+            "R_over_C": 0.9798844847099012,
+            "effective_host_count": 49.712870169039,
+            "form_key": "V_A.C_R",
+            "piece": "ar"
+          },
+          {
+            "C": 21.782359865500506,
+            "M": 1.6261766358140217,
+            "Q": 9.934247704823878,
+            "R_cross": 21.32629138778896,
+            "R_over_C": 0.9790624853997624,
+            "effective_host_count": 47.76116072480991,
+            "form_key": "V_A.C_S",
+            "piece": "as"
+          },
+          {
+            "C": 2.8443562311851314,
+            "M": 0.18352827567685892,
+            "Q": 0.18551103142435812,
+            "R_cross": 2.7791354865433595,
+            "R_over_C": 0.9770701208495967,
+            "effective_host_count": 43.61121981676071,
+            "form_key": "V_A.C_V",
+            "piece": "av"
+          },
+          {
+            "C": 321.12912780658644,
+            "M": 49.13085493670167,
+            "Q": 2570.802681904103,
+            "R_cross": 313.1236170655848,
+            "R_over_C": 0.975070742427877,
+            "effective_host_count": 40.11350908092202,
+            "form_key": "V_AA",
+            "piece": "ā"
+          },
+          {
+            "C": 18.05534326073024,
+            "M": 2.114969497388241,
+            "Q": 8.295892720137632,
+            "R_cross": 17.595873030763418,
+            "R_over_C": 0.9745521188197981,
+            "effective_host_count": 39.2960024026671,
+            "form_key": "C_Y.V_AA",
+            "piece": "yā"
+          }
+        ],
+        "top_20_low_count_by_R_cross": [
+          {
+            "C": 0.9369652346641077,
+            "M": 0.17992459865630264,
+            "Q": 0.06041797810634034,
+            "R_cross": 0.8724826094064059,
+            "R_over_C": 0.9311792765920304,
+            "effective_host_count": 14.530506953145425,
+            "form_key": "V_AA.C_N.V_A",
+            "piece": "āna"
+          },
+          {
+            "C": 0.9892256714737995,
+            "M": 0.256123999279386,
+            "Q": 0.127742626358986,
+            "R_cross": 0.8600917134269279,
+            "R_over_C": 0.86945955632704,
+            "effective_host_count": 7.660461170986035,
+            "form_key": "C_R.V_E",
+            "piece": "re"
+          },
+          {
+            "C": 0.9460096418580521,
+            "M": 0.20196094761589606,
+            "Q": 0.09962318427790924,
+            "R_cross": 0.8407007952354745,
+            "R_over_C": 0.8886810007393359,
+            "effective_host_count": 8.983192506594527,
+            "form_key": "C_T.V_II",
+            "piece": "tī"
+          },
+          {
+            "C": 0.9519305703676747,
+            "M": 0.28352794458771075,
+            "Q": 0.10710462125105233,
+            "R_cross": 0.8394175105027266,
+            "R_over_C": 0.8818053927803885,
+            "effective_host_count": 8.460622895780261,
+            "form_key": "C_T.V_R",
+            "piece": "tṛ"
+          },
+          {
+            "C": 0.9131633935515692,
+            "M": 0.14519751188018568,
+            "Q": 0.07169239373832925,
+            "R_cross": 0.8346534639545276,
+            "R_over_C": 0.9140242259474587,
+            "effective_host_count": 11.631183446965915,
+            "form_key": "C_V.V_I.C_S",
+            "piece": "vis"
+          },
+          {
+            "C": 0.9794583572060511,
+            "M": 0.20180096619195875,
+            "Q": 0.14899069013180755,
+            "R_cross": 0.8273429670665355,
+            "R_over_C": 0.8446943772337279,
+            "effective_host_count": 6.43891690582867,
+            "form_key": "V_E.C_K",
+            "piece": "ek"
+          },
+          {
+            "C": 0.9581984695763679,
+            "M": 0.23530367195957386,
+            "Q": 0.1320000545255934,
+            "R_cross": 0.8204398958396009,
+            "R_over_C": 0.8562316909171521,
+            "effective_host_count": 6.955635816956994,
+            "form_key": "C_Y.V_AA.M_ANUSVARA",
+            "piece": "yāṃ"
+          },
+          {
+            "C": 0.9466224204033779,
+            "M": 0.2214105622208076,
+            "Q": 0.1214045843086443,
+            "R_cross": 0.8183721469132244,
+            "R_over_C": 0.8645180266958994,
+            "effective_host_count": 7.381055764189503,
+            "form_key": "C_L.V_II.C_N.V_A.C_S.C_V.V_A.C_BH",
+            "piece": "līnasvabh"
+          },
+          {
+            "C": 0.8744883543939935,
+            "M": 0.13552861043490558,
+            "Q": 0.05896675759552372,
+            "R_cross": 0.8070583454073252,
+            "R_over_C": 0.9228920446477572,
+            "effective_host_count": 12.968830458956198,
+            "form_key": "C_N.V_AA.M_ANUSVARA",
+            "piece": "nāṃ"
+          },
+          {
+            "C": 0.8760907785136386,
+            "M": 0.18491735007189503,
+            "Q": 0.07111500016548482,
+            "R_cross": 0.7949176833166576,
+            "R_over_C": 0.907346250882017,
+            "effective_host_count": 10.792871411243436,
+            "form_key": "V_A.C_K.V_A",
+            "piece": "aka"
+          },
+          {
+            "C": 0.997889100890717,
+            "M": 0.27628874696413913,
+            "Q": 0.20463145932108964,
+            "R_cross": 0.7928247714592849,
+            "R_over_C": 0.794501884780191,
+            "effective_host_count": 4.866224680116215,
+            "form_key": "C_C.V_A.C_L.V_A.C_J.C_J.V_I.C_H",
+            "piece": "calajjih"
+          },
+          {
+            "C": 0.9728333690843278,
+            "M": 0.3240340849627916,
+            "Q": 0.1796153833825452,
+            "R_cross": 0.788202178285839,
+            "R_over_C": 0.8102129340276727,
+            "effective_host_count": 5.269062962097791,
+            "form_key": "V_I.C_BH.V_O.C_G.V_A.C_BH.V_U.C_K",
+            "piece": "ibhogabhuk"
+          },
+          {
+            "C": 0.9394723249450522,
+            "M": 0.23616926062454102,
+            "Q": 0.14814893502643467,
+            "R_cross": 0.7817785525019952,
+            "R_over_C": 0.8321464419377333,
+            "effective_host_count": 5.957574039801064,
+            "form_key": "C_K.V_E",
+            "piece": "ke"
+          },
+          {
+            "C": 0.9984500536556875,
+            "M": 0.32205610580969324,
+            "Q": 0.2237030090998744,
+            "R_cross": 0.7743997786511276,
+            "R_over_C": 0.7756019200116915,
+            "effective_host_count": 4.456366115307677,
+            "form_key": "C_S.C_TH.V_AA",
+            "piece": "sthā"
+          },
+          {
+            "C": 0.9761967405016683,
+            "M": 0.4012882499198521,
+            "Q": 0.1977997848684002,
+            "R_cross": 0.7735738708875465,
+            "R_over_C": 0.7924364411317397,
+            "effective_host_count": 4.817801378298279,
+            "form_key": "V_II.C_T.V_A",
+            "piece": "īta"
+          },
+          {
+            "C": 0.9059879888862198,
+            "M": 0.2362364983678926,
+            "Q": 0.12124007865493504,
+            "R_cross": 0.7721671434200652,
+            "R_over_C": 0.85229291435677,
+            "effective_host_count": 6.770155918013224,
+            "form_key": "C_DH.C_V.V_AA.C_N.C_T.V_A.C_K.V_R",
+            "piece": "dhvāntakṛ"
+          },
+          {
+            "C": 0.9986799815535987,
+            "M": 0.35877486257946545,
+            "Q": 0.23287739257608106,
+            "R_cross": 0.7654947802103167,
+            "R_over_C": 0.7665065830392165,
+            "effective_host_count": 4.282775990074082,
+            "form_key": "C_G.V_U.C_H.V_A.C_C.V_A.C_N.C_D",
+            "piece": "guhacand"
+          },
+          {
+            "C": 0.9965339284050729,
+            "M": 0.3289941584431806,
+            "Q": 0.23095156449333135,
+            "R_cross": 0.7647790850321399,
+            "R_over_C": 0.7674390838414796,
+            "effective_host_count": 4.299948660841923,
+            "form_key": "V_I.C_SS.C_TTH.V_AA",
+            "piece": "iṣṭhā"
+          },
+          {
+            "C": 0.9951348563671631,
+            "M": 0.35360326404624326,
+            "Q": 0.23988921699470636,
+            "R_cross": 0.7540728380288192,
+            "R_over_C": 0.7577594465755482,
+            "effective_host_count": 4.128127953240797,
+            "form_key": "C_D.V_R.C_SS.C_TT.C_V.V_A.C_R.C_SS",
+            "piece": "dṛṣṭvarṣ"
+          },
+          {
+            "C": 0.9928263981152441,
+            "M": 0.37669880533111877,
+            "Q": 0.2371303312227605,
+            "R_cross": 0.7539826972699376,
+            "R_over_C": 0.7594305496925533,
+            "effective_host_count": 4.1568037783767,
+            "form_key": "C_J.V_A.C_G.V_A.C_D.V_AA.C_D.V_I",
+            "piece": "jagadādi"
+          }
+        ]
+      },
+      "qualification_identity": {
+        "challenge_sha256": "6f13a88fa49c0c05034f630cf63fb5ca7fa0ebd125c077e1f90dffc56d26ee59",
+        "model": "reusable_pieces_v3",
+        "passes": 3,
+        "piece_boundary_probability": 0.4,
+        "piece_role_diagnostics": true,
+        "sandhi_transformation_penalty": 1.0,
+        "training_git_commit": "9bd73b65b462284c3cd87f7daa38735664f41c1f",
+        "workers": 1
+      },
+      "run_directory": "artifacts/diagnostics/s1m2_lexeme_probe/noun_high_deva_E000_v3_p3"
+    },
+    "E100": {
+      "inputs": {
+        "config": {
+          "path": "artifacts/diagnostics/s1m2_lexeme_probe/noun_high_deva_E100_v3_p3/config.json",
+          "sha256": "817c4b325a49b97fa9a2bbe430ecc35246645141b7dce84b6967cb2dfc9c75f3"
+        },
+        "learner_sqlite": {
+          "path": "artifacts/diagnostics/s1m2_lexeme_probe/noun_high_deva_E100_v3_p3/learner.sqlite",
+          "sha256": "b388b4d1955e9a95340dd196ae4a9902424b9ebaccf61faebb22d343a82e98ca"
+        },
+        "provenance": {
+          "path": "artifacts/diagnostics/s1m2_lexeme_probe/noun_high_deva_E100_v3_p3/provenance.json",
+          "sha256": "07c6bce889d6a775a42423139de2523624bfcffd08ed386182a54b158df2f84a"
+        },
+        "semantic_diagnostics": {
+          "path": "artifacts/diagnostics/s1m2_lexeme_probe/noun_high_deva_E100_v3_p3/challenge_semantic_diagnostics.v4.jsonl",
+          "sha256": "7dbccf549f04b7c599385f9c7ad9996a60802783d08115ec8cfb3ef85caf4982"
+        }
+      },
+      "moment_contract_audit": {
+        "piece_lexicon": {
+          "C_zero_Q_positive_rows": 0,
+          "gross_bound_violation_rows": 0,
+          "max_ULP_scale_discrepancy": 0.0,
+          "max_absolute_discrepancy": 0.0,
+          "negative_C_rows": 0,
+          "negative_Q_rows": 0,
+          "nonfinite_rows": 0,
+          "rows": 142541,
+          "status": "PASS",
+          "stored_recomputed_mismatch_rows": 0
+        },
+        "piece_role_diagnostics": {
+          "C_zero_Q_positive_rows": 0,
+          "gross_bound_violation_rows": 0,
+          "max_ULP_scale_discrepancy": 0.0,
+          "max_absolute_discrepancy": 0.0,
+          "negative_C_rows": 0,
+          "negative_Q_rows": 0,
+          "nonfinite_rows": 0,
+          "rows": 190761,
+          "status": "PASS",
+          "stored_recomputed_mismatch_rows": 0
+        }
+      },
+      "posterior_tail_and_host_diversity": {
+        "C_total": 10525.52308683911,
+        "R_cross_total": 6546.936238323656,
+        "bins": {
+          "0.01<=C<0.1": {
+            "C_fraction": 0.021334603614534015,
+            "C_total": 224.5578628933389,
+            "R_cross_fraction": 0.012069254420291442,
+            "R_cross_total": 79.01663913375401,
+            "median_R_over_C": 0.33708011867271903,
+            "median_effective_host_count": 1.508477914401701,
+            "piece_types": 6167
+          },
+          "0.1<=C<1": {
+            "C_fraction": 0.3238102442584759,
+            "C_total": 3408.272201697599,
+            "R_cross_fraction": 0.16843708484358844,
+            "R_cross_total": 1102.7468546400853,
+            "median_R_over_C": 0.31935997702682184,
+            "median_effective_host_count": 1.469205404101555,
+            "piece_types": 6303
+          },
+          "0<C<0.01": {
+            "C_fraction": 0.003590793480884879,
+            "C_total": 37.79497968312516,
+            "R_cross_fraction": 0.0021337578831761104,
+            "R_cross_total": 13.96957680917445,
+            "median_R_over_C": 0.10093730241526175,
+            "median_effective_host_count": 1.1122694809767004,
+            "piece_types": 129144
+          },
+          "1<=C<10": {
+            "C_fraction": 0.18838252992951965,
+            "C_total": 1982.8246679303186,
+            "R_cross_fraction": 0.1624608232471108,
+            "R_cross_total": 1063.620651024404,
+            "median_R_over_C": 0.53891481993087,
+            "median_effective_host_count": 2.1687966632327482,
+            "piece_types": 845
+          },
+          "C=0": {
+            "C_fraction": 0.0,
+            "C_total": 0.0,
+            "R_cross_fraction": 0.0,
+            "R_cross_total": 0.0,
+            "median_R_over_C": null,
+            "median_effective_host_count": null,
+            "piece_types": 0
+          },
+          "C>=10": {
+            "C_fraction": 0.46288182871658556,
+            "C_total": 4872.073374634728,
+            "R_cross_fraction": 0.6548990796058332,
+            "R_cross_total": 4287.5825167162375,
+            "median_R_over_C": 0.9317776265093741,
+            "median_effective_host_count": 14.66410634380794,
+            "piece_types": 82
+          }
+        },
+        "maximum_effective_host_count_for_C_at_least_1": 301.28639139921796,
+        "piece_types": 142541,
+        "top_20_by_R_cross": [
+          {
+            "C": 658.526251553694,
+            "M": 110.92648317485116,
+            "Q": 12797.258638299698,
+            "R_cross": 639.0930723780629,
+            "R_over_C": 0.9704898944730275,
+            "effective_host_count": 33.88669684986352,
+            "form_key": "V_A",
+            "piece": "a"
+          },
+          {
+            "C": 341.07195825293155,
+            "M": 51.76325781571073,
+            "Q": 2850.401135362844,
+            "R_cross": 332.714774185489,
+            "R_over_C": 0.9754972994254629,
+            "effective_host_count": 40.8118279435365,
+            "form_key": "V_AA",
+            "piece": "ā"
+          },
+          {
+            "C": 341.05803869013255,
+            "M": 98.29253552903543,
+            "Q": 10582.169742835704,
+            "R_cross": 310.0305637668685,
+            "R_over_C": 0.9090258214043916,
+            "effective_host_count": 10.992130024554825,
+            "form_key": "V_I",
+            "piece": "i"
+          },
+          {
+            "C": 223.38487510992337,
+            "M": 5.3354693451255475,
+            "Q": 165.62580937071024,
+            "R_cross": 222.64343812011282,
+            "R_over_C": 0.9966808988771254,
+            "effective_host_count": 301.28639139921796,
+            "form_key": "C_M",
+            "piece": "m"
+          },
+          {
+            "C": 174.00649891003272,
+            "M": 45.4995545727322,
+            "Q": 2131.4577038105253,
+            "R_cross": 161.75719950362054,
+            "R_over_C": 0.9296043568306867,
+            "effective_host_count": 14.20542458280879,
+            "form_key": "V_A.C_M",
+            "piece": "am"
+          },
+          {
+            "C": 194.53387940242038,
+            "M": 88.53937488807563,
+            "Q": 7951.656078746563,
+            "R_cross": 153.6584488441398,
+            "R_over_C": 0.7898801448681128,
+            "effective_host_count": 4.7591885087314765,
+            "form_key": "V_U",
+            "piece": "u"
+          },
+          {
+            "C": 139.77153843590133,
+            "M": 6.619008773874637,
+            "Q": 156.57175233746636,
+            "R_cross": 138.65134076125622,
+            "R_over_C": 0.9919855094450518,
+            "effective_host_count": 124.7739944471696,
+            "form_key": "C_T",
+            "piece": "t"
+          },
+          {
+            "C": 135.81254979663478,
+            "M": 10.017609031619266,
+            "Q": 199.00197750598664,
+            "R_cross": 134.34728036605586,
+            "R_over_C": 0.9892110896027427,
+            "effective_host_count": 92.68776578719431,
+            "form_key": "V_E",
+            "piece": "e"
+          },
+          {
+            "C": 131.7468628415114,
+            "M": 4.423155864234802,
+            "Q": 98.1592902109262,
+            "R_cross": 131.00180304962086,
+            "R_over_C": 0.9943447625558506,
+            "effective_host_count": 176.82723490850958,
+            "form_key": "M_VISARGA",
+            "piece": "ḥ"
+          },
+          {
+            "C": 129.93811940365217,
+            "M": 7.448734249168243,
+            "Q": 120.81825795906694,
+            "R_cross": 129.0083055929432,
+            "R_over_C": 0.992844179868261,
+            "effective_host_count": 139.74638568185625,
+            "form_key": "C_S",
+            "piece": "s"
+          },
+          {
+            "C": 118.98822071742141,
+            "M": 40.51853575685366,
+            "Q": 1686.1915484246422,
+            "R_cross": 104.81714110754065,
+            "R_over_C": 0.8809035085621216,
+            "effective_host_count": 8.39655297924211,
+            "form_key": "V_A.M_VISARGA",
+            "piece": "aḥ"
+          },
+          {
+            "C": 104.801962644621,
+            "M": 23.904867371770536,
+            "Q": 605.625216808657,
+            "R_cross": 99.02320429386084,
+            "R_over_C": 0.944860208674186,
+            "effective_host_count": 18.135723330745456,
+            "form_key": "V_A.M_ANUSVARA",
+            "piece": "aṃ"
+          },
+          {
+            "C": 111.39301822508726,
+            "M": 38.99497110174638,
+            "Q": 1541.5845688616096,
+            "R_cross": 97.55386929614278,
+            "R_over_C": 0.8757628696173733,
+            "effective_host_count": 8.049123453835339,
+            "form_key": "V_II",
+            "piece": "ī"
+          },
+          {
+            "C": 95.25359319459807,
+            "M": 43.44483413896794,
+            "Q": 1911.4157483014224,
+            "R_cross": 75.18699324601134,
+            "R_over_C": 0.789334981751379,
+            "effective_host_count": 4.746872586220403,
+            "form_key": "C_S.V_A",
+            "piece": "sa"
+          },
+          {
+            "C": 74.46869018992307,
+            "M": 7.953804105849322,
+            "Q": 91.33525481954553,
+            "R_cross": 73.2421981623796,
+            "R_over_C": 0.9835300980262247,
+            "effective_host_count": 60.716815533710005,
+            "form_key": "C_N",
+            "piece": "n"
+          },
+          {
+            "C": 71.51883557430378,
+            "M": 5.942739811846124,
+            "Q": 62.04663561509508,
+            "R_cross": 70.6512790052286,
+            "R_over_C": 0.9878695372749206,
+            "effective_host_count": 82.43708609173815,
+            "form_key": "C_Y.V_A",
+            "piece": "ya"
+          },
+          {
+            "C": 66.8757387473402,
+            "M": 1.9560355609177889,
+            "Q": 24.03006826400952,
+            "R_cross": 66.51641459310848,
+            "R_over_C": 0.9946269878888477,
+            "effective_host_count": 186.11534448701002,
+            "form_key": "M_ANUSVARA",
+            "piece": "ṃ"
+          },
+          {
+            "C": 58.118544712201,
+            "M": 10.02935084270871,
+            "Q": 130.275304159037,
+            "R_cross": 55.877000213725495,
+            "R_over_C": 0.961431510207706,
+            "effective_host_count": 25.927901387515558,
+            "form_key": "C_T.V_A",
+            "piece": "ta"
+          },
+          {
+            "C": 68.9303959803132,
+            "M": 36.20213608724188,
+            "Q": 1320.47555509336,
+            "R_cross": 49.773744748097826,
+            "R_over_C": 0.7220870276490711,
+            "effective_host_count": 3.5982487306755515,
+            "form_key": "V_UU",
+            "piece": "ū"
+          },
+          {
+            "C": 51.080732256935086,
+            "M": 9.156497217282782,
+            "Q": 98.27774913991493,
+            "R_cross": 49.15676318292926,
+            "R_over_C": 0.9623347397541543,
+            "effective_host_count": 26.549663893807683,
+            "form_key": "V_O",
+            "piece": "o"
+          }
+        ],
+        "top_20_by_R_over_C_for_C_at_least_1": [
+          {
+            "C": 223.38487510992337,
+            "M": 5.3354693451255475,
+            "Q": 165.62580937071024,
+            "R_cross": 222.64343812011282,
+            "R_over_C": 0.9966808988771254,
+            "effective_host_count": 301.28639139921796,
+            "form_key": "C_M",
+            "piece": "m"
+          },
+          {
+            "C": 39.935662734211704,
+            "M": 1.3328535429070918,
+            "Q": 7.7098004852241715,
+            "R_cross": 39.74260720545947,
+            "R_over_C": 0.995165836359419,
+            "effective_host_count": 206.86101554472756,
+            "form_key": "C_V",
+            "piece": "v"
+          },
+          {
+            "C": 13.645584423116757,
+            "M": 0.3797887646963231,
+            "Q": 0.9335195469390092,
+            "R_cross": 13.577172582480783,
+            "R_over_C": 0.9949865217557059,
+            "effective_host_count": 199.46231962572077,
+            "form_key": "C_Y",
+            "piece": "y"
+          },
+          {
+            "C": 40.970801155207155,
+            "M": 0.5960074894111473,
+            "Q": 8.465620691817367,
+            "R_cross": 40.76417544975054,
+            "R_over_C": 0.9949567570164453,
+            "effective_host_count": 198.28511203224807,
+            "form_key": "C_R",
+            "piece": "r"
+          },
+          {
+            "C": 66.8757387473402,
+            "M": 1.9560355609177889,
+            "Q": 24.03006826400952,
+            "R_cross": 66.51641459310848,
+            "R_over_C": 0.9946269878888477,
+            "effective_host_count": 186.11534448701002,
+            "form_key": "M_ANUSVARA",
+            "piece": "ṃ"
+          },
+          {
+            "C": 131.7468628415114,
+            "M": 4.423155864234802,
+            "Q": 98.1592902109262,
+            "R_cross": 131.00180304962086,
+            "R_over_C": 0.9943447625558506,
+            "effective_host_count": 176.82723490850958,
+            "form_key": "M_VISARGA",
+            "piece": "ḥ"
+          },
+          {
+            "C": 129.93811940365217,
+            "M": 7.448734249168243,
+            "Q": 120.81825795906694,
+            "R_cross": 129.0083055929432,
+            "R_over_C": 0.992844179868261,
+            "effective_host_count": 139.74638568185625,
+            "form_key": "C_S",
+            "piece": "s"
+          },
+          {
+            "C": 139.77153843590133,
+            "M": 6.619008773874637,
+            "Q": 156.57175233746636,
+            "R_cross": 138.65134076125622,
+            "R_over_C": 0.9919855094450518,
+            "effective_host_count": 124.7739944471696,
+            "form_key": "C_T",
+            "piece": "t"
+          },
+          {
+            "C": 135.81254979663478,
+            "M": 10.017609031619266,
+            "Q": 199.00197750598664,
+            "R_cross": 134.34728036605586,
+            "R_over_C": 0.9892110896027427,
+            "effective_host_count": 92.68776578719431,
+            "form_key": "V_E",
+            "piece": "e"
+          },
+          {
+            "C": 28.417695369721717,
+            "M": 0.8591356338484328,
+            "Q": 9.297227934629623,
+            "R_cross": 28.090532036676223,
+            "R_over_C": 0.9884873375976125,
+            "effective_host_count": 86.86088109320666,
+            "form_key": "C_D",
+            "piece": "d"
+          },
+          {
+            "C": 71.51883557430378,
+            "M": 5.942739811846124,
+            "Q": 62.04663561509508,
+            "R_cross": 70.6512790052286,
+            "R_over_C": 0.9878695372749206,
+            "effective_host_count": 82.43708609173815,
+            "form_key": "C_Y.V_A",
+            "piece": "ya"
+          },
+          {
+            "C": 21.571227525554253,
+            "M": 0.903634026066816,
+            "Q": 6.239587215688663,
+            "R_cross": 21.281972442212474,
+            "R_over_C": 0.9865906989762584,
+            "effective_host_count": 74.57510262686061,
+            "form_key": "C_P",
+            "piece": "p"
+          },
+          {
+            "C": 26.788158205267717,
+            "M": 1.178977623148505,
+            "Q": 11.175069689260283,
+            "R_cross": 26.370993665487497,
+            "R_over_C": 0.9844272780314479,
+            "effective_host_count": 64.21484965951501,
+            "form_key": "C_K",
+            "piece": "k"
+          },
+          {
+            "C": 74.46869018992307,
+            "M": 7.953804105849322,
+            "Q": 91.33525481954553,
+            "R_cross": 73.2421981623796,
+            "R_over_C": 0.9835300980262247,
+            "effective_host_count": 60.716815533710005,
+            "form_key": "C_N",
+            "piece": "n"
+          },
+          {
+            "C": 6.251977414690059,
+            "M": 0.5698243640988458,
+            "Q": 0.7719530990462626,
+            "R_cross": 6.1285039841507185,
+            "R_over_C": 0.9802504995860638,
+            "effective_host_count": 50.634192209457176,
+            "form_key": "V_A.C_R",
+            "piece": "ar"
+          },
+          {
+            "C": 18.82552598692113,
+            "M": 1.6878969176412886,
+            "Q": 7.255118569576281,
+            "R_cross": 18.440138690193447,
+            "R_over_C": 0.9795284712365845,
+            "effective_host_count": 48.84833035953273,
+            "form_key": "C_R.V_A",
+            "piece": "ra"
+          },
+          {
+            "C": 2.9048623991434526,
+            "M": 0.17747369200647597,
+            "Q": 0.19943499837674444,
+            "R_cross": 2.836206824120157,
+            "R_over_C": 0.9763652918487499,
+            "effective_host_count": 42.31065573564551,
+            "form_key": "V_A.C_V",
+            "piece": "av"
+          },
+          {
+            "C": 341.07195825293155,
+            "M": 51.76325781571073,
+            "Q": 2850.401135362844,
+            "R_cross": 332.714774185489,
+            "R_over_C": 0.9754972994254629,
+            "effective_host_count": 40.8118279435365,
+            "form_key": "V_AA",
+            "piece": "ā"
+          },
+          {
+            "C": 17.67247151092034,
+            "M": 2.0146158225465998,
+            "Q": 7.69364719982596,
+            "R_cross": 17.23712509120356,
+            "R_over_C": 0.9753658440219997,
+            "effective_host_count": 40.59404352611281,
+            "form_key": "C_Y.V_AA",
+            "piece": "yā"
+          },
+          {
+            "C": 23.167820811912737,
+            "M": 2.3624292045394086,
+            "Q": 13.430200059711046,
+            "R_cross": 22.588128825828083,
+            "R_over_C": 0.9749785708897325,
+            "effective_host_count": 39.96574278763537,
+            "form_key": "V_A.C_S",
+            "piece": "as"
+          }
+        ],
+        "top_20_by_effective_host_count_for_C_at_least_1": [
+          {
+            "C": 223.38487510992337,
+            "M": 5.3354693451255475,
+            "Q": 165.62580937071024,
+            "R_cross": 222.64343812011282,
+            "R_over_C": 0.9966808988771254,
+            "effective_host_count": 301.28639139921796,
+            "form_key": "C_M",
+            "piece": "m"
+          },
+          {
+            "C": 39.935662734211704,
+            "M": 1.3328535429070918,
+            "Q": 7.7098004852241715,
+            "R_cross": 39.74260720545947,
+            "R_over_C": 0.995165836359419,
+            "effective_host_count": 206.86101554472756,
+            "form_key": "C_V",
+            "piece": "v"
+          },
+          {
+            "C": 13.645584423116757,
+            "M": 0.3797887646963231,
+            "Q": 0.9335195469390092,
+            "R_cross": 13.577172582480783,
+            "R_over_C": 0.9949865217557059,
+            "effective_host_count": 199.46231962572077,
+            "form_key": "C_Y",
+            "piece": "y"
+          },
+          {
+            "C": 40.970801155207155,
+            "M": 0.5960074894111473,
+            "Q": 8.465620691817367,
+            "R_cross": 40.76417544975054,
+            "R_over_C": 0.9949567570164453,
+            "effective_host_count": 198.28511203224807,
+            "form_key": "C_R",
+            "piece": "r"
+          },
+          {
+            "C": 66.8757387473402,
+            "M": 1.9560355609177889,
+            "Q": 24.03006826400952,
+            "R_cross": 66.51641459310848,
+            "R_over_C": 0.9946269878888477,
+            "effective_host_count": 186.11534448701002,
+            "form_key": "M_ANUSVARA",
+            "piece": "ṃ"
+          },
+          {
+            "C": 131.7468628415114,
+            "M": 4.423155864234802,
+            "Q": 98.1592902109262,
+            "R_cross": 131.00180304962086,
+            "R_over_C": 0.9943447625558506,
+            "effective_host_count": 176.82723490850958,
+            "form_key": "M_VISARGA",
+            "piece": "ḥ"
+          },
+          {
+            "C": 129.93811940365217,
+            "M": 7.448734249168243,
+            "Q": 120.81825795906694,
+            "R_cross": 129.0083055929432,
+            "R_over_C": 0.992844179868261,
+            "effective_host_count": 139.74638568185625,
+            "form_key": "C_S",
+            "piece": "s"
+          },
+          {
+            "C": 139.77153843590133,
+            "M": 6.619008773874637,
+            "Q": 156.57175233746636,
+            "R_cross": 138.65134076125622,
+            "R_over_C": 0.9919855094450518,
+            "effective_host_count": 124.7739944471696,
+            "form_key": "C_T",
+            "piece": "t"
+          },
+          {
+            "C": 135.81254979663478,
+            "M": 10.017609031619266,
+            "Q": 199.00197750598664,
+            "R_cross": 134.34728036605586,
+            "R_over_C": 0.9892110896027427,
+            "effective_host_count": 92.68776578719431,
+            "form_key": "V_E",
+            "piece": "e"
+          },
+          {
+            "C": 28.417695369721717,
+            "M": 0.8591356338484328,
+            "Q": 9.297227934629623,
+            "R_cross": 28.090532036676223,
+            "R_over_C": 0.9884873375976125,
+            "effective_host_count": 86.86088109320666,
+            "form_key": "C_D",
+            "piece": "d"
+          },
+          {
+            "C": 71.51883557430378,
+            "M": 5.942739811846124,
+            "Q": 62.04663561509508,
+            "R_cross": 70.6512790052286,
+            "R_over_C": 0.9878695372749206,
+            "effective_host_count": 82.43708609173815,
+            "form_key": "C_Y.V_A",
+            "piece": "ya"
+          },
+          {
+            "C": 21.571227525554253,
+            "M": 0.903634026066816,
+            "Q": 6.239587215688663,
+            "R_cross": 21.281972442212474,
+            "R_over_C": 0.9865906989762584,
+            "effective_host_count": 74.57510262686061,
+            "form_key": "C_P",
+            "piece": "p"
+          },
+          {
+            "C": 26.788158205267717,
+            "M": 1.178977623148505,
+            "Q": 11.175069689260283,
+            "R_cross": 26.370993665487497,
+            "R_over_C": 0.9844272780314479,
+            "effective_host_count": 64.21484965951501,
+            "form_key": "C_K",
+            "piece": "k"
+          },
+          {
+            "C": 74.46869018992307,
+            "M": 7.953804105849322,
+            "Q": 91.33525481954553,
+            "R_cross": 73.2421981623796,
+            "R_over_C": 0.9835300980262247,
+            "effective_host_count": 60.716815533710005,
+            "form_key": "C_N",
+            "piece": "n"
+          },
+          {
+            "C": 6.251977414690059,
+            "M": 0.5698243640988458,
+            "Q": 0.7719530990462626,
+            "R_cross": 6.1285039841507185,
+            "R_over_C": 0.9802504995860638,
+            "effective_host_count": 50.634192209457176,
+            "form_key": "V_A.C_R",
+            "piece": "ar"
+          },
+          {
+            "C": 18.82552598692113,
+            "M": 1.6878969176412886,
+            "Q": 7.255118569576281,
+            "R_cross": 18.440138690193447,
+            "R_over_C": 0.9795284712365845,
+            "effective_host_count": 48.84833035953273,
+            "form_key": "C_R.V_A",
+            "piece": "ra"
+          },
+          {
+            "C": 2.9048623991434526,
+            "M": 0.17747369200647597,
+            "Q": 0.19943499837674444,
+            "R_cross": 2.836206824120157,
+            "R_over_C": 0.9763652918487499,
+            "effective_host_count": 42.31065573564551,
+            "form_key": "V_A.C_V",
+            "piece": "av"
+          },
+          {
+            "C": 341.07195825293155,
+            "M": 51.76325781571073,
+            "Q": 2850.401135362844,
+            "R_cross": 332.714774185489,
+            "R_over_C": 0.9754972994254629,
+            "effective_host_count": 40.8118279435365,
+            "form_key": "V_AA",
+            "piece": "ā"
+          },
+          {
+            "C": 17.67247151092034,
+            "M": 2.0146158225465998,
+            "Q": 7.69364719982596,
+            "R_cross": 17.23712509120356,
+            "R_over_C": 0.9753658440219997,
+            "effective_host_count": 40.59404352611281,
+            "form_key": "C_Y.V_AA",
+            "piece": "yā"
+          },
+          {
+            "C": 23.167820811912737,
+            "M": 2.3624292045394086,
+            "Q": 13.430200059711046,
+            "R_cross": 22.588128825828083,
+            "R_over_C": 0.9749785708897325,
+            "effective_host_count": 39.96574278763537,
+            "form_key": "V_A.C_S",
+            "piece": "as"
+          }
+        ],
+        "top_20_low_count_by_R_cross": [
+          {
+            "C": 0.9981451163640073,
+            "M": 0.11236590970520882,
+            "Q": 0.0639925999008647,
+            "R_cross": 0.9340335970550978,
+            "R_over_C": 0.9357693402914682,
+            "effective_host_count": 15.568888822531731,
+            "form_key": "C_R.V_I",
+            "piece": "ri"
+          },
+          {
+            "C": 0.9974565402130092,
+            "M": 0.2570362833172264,
+            "Q": 0.15837186703360334,
+            "R_cross": 0.8386808335543686,
+            "R_over_C": 0.8408194239472994,
+            "effective_host_count": 6.282173521403296,
+            "form_key": "C_S.C_R",
+            "piece": "sr"
+          },
+          {
+            "C": 0.8826287133954226,
+            "M": 0.16775841125202498,
+            "Q": 0.06512417600486611,
+            "R_cross": 0.808844374616847,
+            "R_over_C": 0.916403876671164,
+            "effective_host_count": 11.962277198744891,
+            "form_key": "C_V.V_E",
+            "piece": "ve"
+          },
+          {
+            "C": 0.8751562080340072,
+            "M": 0.20686069764145137,
+            "Q": 0.06589874052917771,
+            "R_cross": 0.799856804425575,
+            "R_over_C": 0.9139588990888972,
+            "effective_host_count": 11.62235245029226,
+            "form_key": "C_SS",
+            "piece": "ṣ"
+          },
+          {
+            "C": 0.9983156332396393,
+            "M": 0.2824656549088324,
+            "Q": 0.19914955900484635,
+            "R_cross": 0.7988300673784847,
+            "R_over_C": 0.8001778603688665,
+            "effective_host_count": 5.004450467030202,
+            "form_key": "C_C.V_A.C_L.V_A.C_J.C_J.V_I.C_H",
+            "piece": "calajjih"
+          },
+          {
+            "C": 0.9736990229834235,
+            "M": 0.3216911793873779,
+            "Q": 0.18156603005183103,
+            "R_cross": 0.7872286396656802,
+            "R_over_C": 0.808492789952283,
+            "effective_host_count": 5.2217355145575715,
+            "form_key": "V_I.C_BH.V_O.C_G.V_A.C_BH.V_U.C_K",
+            "piece": "ibhogabhuk"
+          },
+          {
+            "C": 0.9498452336230384,
+            "M": 0.30740295581133775,
+            "Q": 0.15503265408368103,
+            "R_cross": 0.7866263758599343,
+            "R_over_C": 0.8281626816818032,
+            "effective_host_count": 5.819457669539903,
+            "form_key": "C_S.V_A.C_T.V_A",
+            "piece": "sata"
+          },
+          {
+            "C": 0.9166372537091335,
+            "M": 0.21486663483341475,
+            "Q": 0.12542128460302415,
+            "R_cross": 0.7798096437734559,
+            "R_over_C": 0.8507287267869481,
+            "effective_host_count": 6.699212638005168,
+            "form_key": "C_DH.C_V.V_AA.C_N.C_T.V_A.C_K.V_R",
+            "piece": "dhvāntakṛ"
+          },
+          {
+            "C": 0.9988165790225482,
+            "M": 0.3266731785069158,
+            "Q": 0.2249667356231751,
+            "R_cross": 0.7735832976093284,
+            "R_over_C": 0.7744998569871204,
+            "effective_host_count": 4.434586988013059,
+            "form_key": "C_G.V_U.C_H.V_A.C_C.V_A.C_N.C_D",
+            "piece": "guhacand"
+          },
+          {
+            "C": 0.9917476287432299,
+            "M": 0.32528358168608373,
+            "Q": 0.21775602458531304,
+            "R_cross": 0.7721796476619345,
+            "R_over_C": 0.77860498506103,
+            "effective_host_count": 4.516813534738628,
+            "form_key": "C_S.V_U.C_S.C_R.V_UU.C_SS.V_E.C_NN",
+            "piece": "susrūṣeṇ"
+          },
+          {
+            "C": 0.9402504321440949,
+            "M": 0.36431466005227486,
+            "Q": 0.16421915277867583,
+            "R_cross": 0.7655957367942617,
+            "R_over_C": 0.8142466204970943,
+            "effective_host_count": 5.383482134624406,
+            "form_key": "V_AA.C_P",
+            "piece": "āp"
+          },
+          {
+            "C": 0.8593109953388793,
+            "M": 0.18366085699098264,
+            "Q": 0.08491723226160613,
+            "R_cross": 0.7604908560386507,
+            "R_over_C": 0.8850007275174482,
+            "effective_host_count": 8.695707185032187,
+            "form_key": "V_A.C_BH",
+            "piece": "abh"
+          },
+          {
+            "C": 0.9954735204461269,
+            "M": 0.335719174035569,
+            "Q": 0.2369002011723095,
+            "R_cross": 0.7574961194338514,
+            "R_over_C": 0.7609405010535845,
+            "effective_host_count": 4.183059047673095,
+            "form_key": "C_D.V_R.C_SS.C_TT.C_V.V_A.C_R.C_SS",
+            "piece": "dṛṣṭvarṣ"
+          },
+          {
+            "C": 0.9931647474891269,
+            "M": 0.4100726612553981,
+            "Q": 0.23915269002401082,
+            "R_cross": 0.7523661381661262,
+            "R_over_C": 0.7575441436762868,
+            "effective_host_count": 4.124462139882723,
+            "form_key": "C_V.V_A.C_R.V_AA.C_V.V_I.C_NN.V_AU",
+            "piece": "varāviṇau"
+          },
+          {
+            "C": 0.8219443747377166,
+            "M": 0.20594334026780375,
+            "Q": 0.05774928589557505,
+            "R_cross": 0.7516850145297915,
+            "R_over_C": 0.9145205413318329,
+            "effective_host_count": 11.698717043611829,
+            "form_key": "V_AA.C_D",
+            "piece": "ād"
+          },
+          {
+            "C": 0.9997341087480431,
+            "M": 0.3702129145346294,
+            "Q": 0.24861682915243227,
+            "R_cross": 0.7510511569742234,
+            "R_over_C": 0.7512509080186902,
+            "effective_host_count": 4.0201151772450965,
+            "form_key": "C_P.V_I.C_T.V_AA.C_M.V_A.C_H",
+            "piece": "pitāmah"
+          },
+          {
+            "C": 0.9926068968153087,
+            "M": 0.3771722465975633,
+            "Q": 0.2399847895451932,
+            "R_cross": 0.7508346601774583,
+            "R_over_C": 0.7564270030627883,
+            "effective_host_count": 4.105545411742748,
+            "form_key": "C_J.V_A.C_G.V_A.C_D.V_AA.C_D.V_I",
+            "piece": "jagadādi"
+          },
+          {
+            "C": 0.9336145629236179,
+            "M": 0.2724161383671337,
+            "Q": 0.17188069528897734,
+            "R_cross": 0.7495121483782275,
+            "R_over_C": 0.8028068307237273,
+            "effective_host_count": 5.071169572810984,
+            "form_key": "V_AA.C_N.V_AA.C_M",
+            "piece": "ānām"
+          },
+          {
+            "C": 0.8894080309931072,
+            "M": 0.2310943040931431,
+            "Q": 0.1257489129517768,
+            "R_cross": 0.7480230776648059,
+            "R_over_C": 0.8410347687433947,
+            "effective_host_count": 6.290683768363015,
+            "form_key": "C_Y.V_U.C_K.C_T",
+            "piece": "yukt"
+          },
+          {
+            "C": 0.9406742330272122,
+            "M": 0.3779421915233574,
+            "Q": 0.1813727587958656,
+            "R_cross": 0.7478627873344941,
+            "R_over_C": 0.7950284605200402,
+            "effective_host_count": 4.878726102839125,
+            "form_key": "V_II.C_T.V_A",
+            "piece": "īta"
+          }
+        ]
+      },
+      "qualification_identity": {
+        "challenge_sha256": "6f13a88fa49c0c05034f630cf63fb5ca7fa0ebd125c077e1f90dffc56d26ee59",
+        "model": "reusable_pieces_v3",
+        "passes": 3,
+        "piece_boundary_probability": 0.4,
+        "piece_role_diagnostics": true,
+        "sandhi_transformation_penalty": 1.0,
+        "training_git_commit": "9bd73b65b462284c3cd87f7daa38735664f41c1f",
+        "workers": 1
+      },
+      "run_directory": "artifacts/diagnostics/s1m2_lexeme_probe/noun_high_deva_E100_v3_p3"
+    }
+  },
+  "schema_version": "sktlm-s1m2-v3-prefreeze-audit/v1",
+  "selection_provenance": {
+    "conditions": {
+      "E000": {
+        "corpus": "data/diagnostics/s1m2_lexeme_probe/controlled/noun_high_deva/E000/corpus.txt",
+        "corpus_sha256": "46c64985a210317fca98c2c386504c82d479478ddd2fae845ad62c08b739f6e3",
+        "diagnostics_training_selection_sha256": "291c2366fef3b362d6791af82f6552dd207d1ea7b8ebf77c806bab2da52b9897",
+        "diagnostics_training_selection_source": "D:/Repositories/sanskrit_llm/data/diagnostics/s1m2_lexeme_probe/controlled/background_1000.jsonl",
+        "duplicate_text_excess_rows": 0,
+        "reconstructed_corpus_order_selection_sha256": "78f3c09bc857d5dea2adb4c9bca55a5ad40e0a461cb0d617879e4c8678a9236e",
+        "run_selection_matches_reconstruction": null,
+        "run_selection_present": false,
+        "selected_rows": 1000,
+        "selected_source_counts": {
+          "background": 1000
+        },
+        "selected_source_row_id_set_sha256": "6a3db4a7c670850bf7bed5a210fb0758e453c811e5a6ec3d2ab52cb395ee9ed8"
+      },
+      "E100": {
+        "corpus": "data/diagnostics/s1m2_lexeme_probe/controlled/noun_high_deva/E100/corpus.txt",
+        "corpus_sha256": "46309a9263a5c80998a7f3c124191c574c7ef514c65a6712f8a3314dd8a4657c",
+        "diagnostics_training_selection_sha256": "642c2ba64c57dd838b37ae149b75bd24a4c4022328f26e05b72750a6866ff00f",
+        "diagnostics_training_selection_source": "D:/Repositories/sanskrit_llm/artifacts/diagnostics/s1m2_lexeme_probe/noun_high_deva_E100_v3_p3/training_selection.v1.jsonl",
+        "duplicate_text_excess_rows": 0,
+        "reconstructed_corpus_order_selection_sha256": "642c2ba64c57dd838b37ae149b75bd24a4c4022328f26e05b72750a6866ff00f",
+        "run_selection_matches_reconstruction": true,
+        "run_selection_present": true,
+        "selected_rows": 1000,
+        "selected_source_counts": {
+          "background": 900,
+          "target": 100
+        },
+        "selected_source_row_id_set_sha256": "c42eee8ca090740069f93867002bb52ee6b59ab46b8dd56911e8f0d3deff646c"
+      }
+    },
+    "contrast": {
+      "E000_only_selected_source_rows": 100,
+      "E000_only_source_row_id_set_sha256": "d0054c629f4a90cfd95089b430a47587dd390760db811536a6e225ec17e723ff",
+      "E000_only_text_multiset_sha256": "19d8ef92337066baf409bb80b5a7833283cb50da755b408fb239f6fbbb5e604a",
+      "E000_only_text_rows": 100,
+      "E100_only_selected_source_rows": 100,
+      "E100_only_source_row_id_set_sha256": "7dfdad3fd1afbe77cb044dd39f7471e5c4e702f0a03b338828c3bcf150f74384",
+      "E100_only_text_multiset_sha256": "cb359b89935d5a4a07530db1bbeaf971b4b735690a39b5975674595d3398518f",
+      "E100_only_text_rows": 100,
+      "scientific_design": "controlled evidence-condition contrast: E100 replaces 100 E000 background rows with 100 target-evidence rows at fixed n=1000",
+      "shared_selected_source_row_id_set_sha256": "8a7f40cee98223458160ad8c0001a4a8417890190f088d236f3001ec147a8270",
+      "shared_selected_source_rows": 900,
+      "shared_text_multiset_sha256": "0b9ffd39aa442e9f3aa86805ed9893d56a6accd5248ce21a021bc00315159b56",
+      "shared_text_rows": 900,
+      "strict_single_variable_causal_contrast": false
+    },
+    "identity_scheme": "repository-relative source JSONL path plus one-based physical line number; source file SHA-256 values below bind the bytes",
+    "reconstruction_rule": "queue target-evidence rows before background rows by exact text, then consume one source row for each corpus line in corpus order",
+    "sources": {
+      "E000_target": {
+        "path": "data/diagnostics/s1m2_lexeme_probe/controlled/noun_high_deva/E000/target_evidence.jsonl",
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "E100_target": {
+        "path": "data/diagnostics/s1m2_lexeme_probe/controlled/noun_high_deva/E100/target_evidence.jsonl",
+        "rows": 100,
+        "sha256": "ff514065999edfe674bd883c75b0218c0420f282ca350cfbeb446da529663054"
+      },
+      "background": {
+        "path": "data/diagnostics/s1m2_lexeme_probe/controlled/background_1000.jsonl",
+        "rows": 1000,
+        "sha256": "291c2366fef3b362d6791af82f6552dd207d1ea7b8ebf77c806bab2da52b9897"
+      }
+    }
+  },
+  "status": "PASS_PENDING_RESEARCHER_FREEZE_DECISION"
+}

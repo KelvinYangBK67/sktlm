@@ -1,12 +1,24 @@
 DATE=2026-09-22
 BRANCH=exp/s1m2-reusable-pieces
-STATUS=S1M2_V3_CODE_CLOSURE_COMPLETE_PENDING_RESEARCHER_FREEZE
+STATUS=PRE-FREEZE_CONTRACT_CLOSURE_COMPLETE_PENDING_RESEARCHER_SCIENTIFIC_FREEZE_DECISION
 
-The final pre-freeze code blockers are closed. The production/reference helper now carries explicit V2/V3 identity: V2 remains the default `R=C-M` historical path, while V3 uses `R_cross=C-Q/C` and retains Q in its pass state. SQLite V3 finalization validates C/Q through the authoritative Python roundoff contract before applying its clamp, and gross invalid piece or role-diagnostic moments fail closed.
+The existing E000/E100 V3 artifacts have passed read-only fail-closed C/Q/R
+retrovalidation, posterior-tail and host-diversity audit, exact occurrence
+pairing, and exact source-row selection reconstruction. The active production
+contract, cloud operator default, and registry now select the versioned V3
+contract with three passes, gamma 1.0, and rho 0.4. Historical V1/V2 contracts
+and artifacts remain unchanged and version-isolated.
 
-Focused validation completed locally: 39 V2/V3/training tests pass; 20 semantic/probe/alignment tests pass; the separate reference run reports 36 passes including P1AB coverage. `git diff --check` passes. The known scheduler/planner historical failures were not rerun in this closure batch.
+The learned host identity for downstream S2/S3 is exactly one latent
+script-neutral phonological wordform. Derivation paths sharing that wordform
+pool before Q; distinct wordforms remain distinct; roles are diagnostic-only.
 
-No E000/E100/E025/E050/E200/E300 cell, VM/cloud job, Full M0 run, representative/stress corpus, or long benchmark was run in this batch. Existing run artifacts were not modified.
+Authoritative report:
+`reports/core_methods/reusable_pieces/s1m2_v3_prefreeze_forensic_audit_20260922.md`
 
-NEXT_ACTION=RESEARCHER_FREEZE_DOCUMENTATION
-Do not start another scientific task or experiment automatically.
+Machine evidence:
+`reports/core_methods/reusable_pieces/evidence/s1m2_v3_prefreeze_audit_20260922.json`
+
+NEXT_ACTION=RESEARCHER_SCIENTIFIC_FREEZE_DECISION
+Do not launch another experiment, Full M0, cloud/VM work, or S2/S3
+implementation automatically.

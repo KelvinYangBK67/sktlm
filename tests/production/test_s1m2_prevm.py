@@ -157,6 +157,59 @@ def test_six_cell_contract_is_exact_and_iast_continuous_is_m0_prime(
         s1m2.load_contract(invalid_path, repo_root=Path("."), verify_files=False)
 
 
+def test_default_production_contract_is_qualified_v3_and_history_is_unchanged(
+    tmp_path: Path,
+) -> None:
+    contract = _contract()
+    assert s1m2.CONTRACT_PATH == Path("configs/production/s1m2_six_cell_v3.json")
+    assert contract["contract_id"] == "s1m2-six-cell-v3-prefreeze-v1"
+    assert contract["status"] == "V3_QUALIFIED_PENDING_RESEARCHER_FREEZE"
+    assert contract["model"] == "reusable_pieces_v3"
+    assert contract["passes"] == 3
+    assert contract["scientific_config"]["sandhi_transformation_penalty"] == 1.0
+    assert contract["scientific_config"]["piece_boundary_probability"] == 0.4
+
+    historical = json.loads(
+        Path("configs/production/s1m2_six_cell.json").read_text(encoding="utf-8")
+    )
+    assert historical["contract_id"] == "s1m2-six-cell-v2-repair-v1"
+    assert historical["model"] == "reusable_pieces_v1"
+    assert "sandhi_transformation_penalty" not in historical["scientific_config"]
+    assert historical["scientific_config"]["piece_boundary_probability"] == 0.5
+
+    plan = s1m2.build_bounded_plan(contract, identity=IDENTITY)
+    for job in plan["jobs"]:
+        command = job["training_command"]
+        assert job["model"] == "reusable_pieces_v3"
+        assert command[command.index("--model") + 1] == "reusable_pieces_v3"
+        assert command[command.index("--sandhi-transformation-penalty") + 1] == "1.0"
+        assert command[command.index("--piece-boundary-probability") + 1] == "0.4"
+        config = s1m2._config_for_job(job, resume=True)
+        assert config.model == "reusable_pieces_v3"
+        assert config.sandhi_transformation_penalty == 1.0
+        assert config.piece_boundary_probability == 0.4
+        assert config.resume is True
+
+    for field, value in (
+        ("model", "reusable_pieces_v2"),
+        ("sandhi_transformation_penalty", 0.0),
+        ("piece_boundary_probability", 0.5),
+    ):
+        invalid = copy.deepcopy(contract)
+        if field == "model":
+            invalid[field] = value
+        else:
+            invalid["scientific_config"][field] = value
+        invalid_path = tmp_path / f"invalid-{field}.json"
+        invalid_path.write_text(json.dumps(invalid), encoding="utf-8")
+        with pytest.raises(ValueError):
+            s1m2.load_contract(
+                invalid_path,
+                repo_root=Path("."),
+                verify_files=False,
+            )
+
+
 def test_s1m2_deployment_contract_is_bundle_bound_and_branch_explicit() -> None:
     contract = _contract()
     assert contract["deployment"] == {
@@ -667,6 +720,9 @@ def test_cloud_registry_contains_all_prevm_planned_identities(
     )
     registry = tomllib.loads(
         Path("configs/cloud/experiment_registry.toml").read_text(encoding="utf-8")
+    )
+    assert registry["s1m2_prevm"]["production_contract"] == (
+        s1m2.CONTRACT_PATH.as_posix()
     )
     planned = registry["s1m2_prevm"]["planned_runs"]
     registry_ids = {row["run_id"] for row in planned}

@@ -228,7 +228,7 @@ notes = "Manually bundle-deployed and launched; immediate PID/process-sample ver
 
 [s1m2_prevm]
 schema_version = 1
-production_contract = "configs/production/s1m2_six_cell.json"
+production_contract = "configs/production/s1m2_six_cell_v3.json"
 round1_status = "MANUALLY_TERMINATED_AFTER_DIAGNOSTIC_CONVERGENCE"
 round2_status = "NOT_STARTED"
 full_m0_process_running = false

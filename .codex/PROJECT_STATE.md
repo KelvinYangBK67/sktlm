@@ -1,3 +1,39 @@
+## S1M2 V3 pre-freeze forensic qualification (2026-09-22)
+
+The existing `noun_high_deva_E000_v3_p3` and `E100_v3_p3` artifacts pass the
+current fail-closed V3 contract. Read-only immutable SQLite validation
+recomputed 327,281 E000 and 333,302 E100 piece/role rows with zero nonfinite,
+negative, inconsistent, gross-bound, or stored-versus-recomputed failures and
+zero discrepancy. The extreme `0<C<0.01` posterior tail contributes only
+0.2146% (E000) and 0.2134% (E100) of total `R_cross`; no structural researcher
+review flag was raised.
+
+Exact pairing covers all 80 held-out occurrence identities. Among the 76
+evaluable in both conditions, transitions are CC=28, CW=6, WC=6, WW=36.
+Among 57 paired piece-metric rows, E100 shifts 41 multi-piece analyses to
+whole-form analyses, with 5 whole-to-whole and 11 multi-to-multi. This is a
+controlled fixed-size evidence contrast, not a strict causal single-variable
+contrast: E100 replaces 100 E000 background rows with 100 target rows. Exact
+source-row provenance confirms 900 shared, 100 E000-only, and 100 E100-only
+rows.
+
+The formal control-plane default is now
+`configs/production/s1m2_six_cell_v3.json`: model V3, passes 3, gamma 1.0, rho
+0.4. The historical contract remains unchanged. Commands and `TrainingConfig`
+take their model from the contract; gamma is explicitly bound as scientific
+configuration; model/gamma/rho remain resume-signature inputs. The S2/S3 host
+invariant is one latent script-neutral phonological wordform. Derivation paths
+sharing that form pool before Q, different forms remain distinct, and roles
+remain diagnostic-only.
+
+Authority:
+`reports/core_methods/reusable_pieces/s1m2_v3_prefreeze_forensic_audit_20260922.md`
+and
+`reports/core_methods/reusable_pieces/evidence/s1m2_v3_prefreeze_audit_20260922.json`.
+State is **pre-freeze contract closure complete, pending researcher scientific
+freeze decision**. V3 is not declared frozen; Full M0 and S2/S3 remain
+unauthorized.
+
 ## S1M2 V3 code-contract closure (2026-09-22)
 
 The final pre-freeze code blockers are closed. The finite production/reference
@@ -16,9 +52,9 @@ additional P1AB reference tests included in the 36-test reference run.
 `git diff --check` passes. No scientific experiment was run in this closure
 batch. Scientific freeze documentation remains a researcher follow-up.
 
-## S1M2 V3 cross-host objective implementation ready for bounded gate (2026-09-21)
+## S1M2 V3 cross-host objective implementation ready for bounded gate (historical checkpoint, 2026-09-21)
 
-`reusable_pieces_v3` is locally implemented but not yet empirically qualified. V3 replaces the V2 strongest-host deletion learned count `R=C-M` with symmetric cross-host corroboration `R_cross=C-Q/C`, where `Q=sum_h S(q,h)^2` is computed only after posterior support has been aggregated by latent phonological wordform host. V2 remains unchanged and reproducible as the historical comparison baseline.
+At this historical checkpoint, `reusable_pieces_v3` was locally implemented but not yet empirically qualified. V3 replaces the V2 strongest-host deletion learned count `R=C-M` with symmetric cross-host corroboration `R_cross=C-Q/C`, where `Q=sum_h S(q,h)^2` is computed only after posterior support has been aggregated by latent phonological wordform host. V2 remains unchanged and reproducible as the historical comparison baseline.
 
 V3 authoritative piece state records C/Q/M/R_cross. The scorer uses only R_cross; M remains diagnostic. Optional role diagnostics are V3-only and default off. When explicitly enabled they preserve bounded disk-backed `(piece, host, role)` aggregate support and compact it to per-piece/per-role C_r/Q_r/R_r shadow state. PieceRole remains structural/diagnostic and never enters learned identity or scoring.
 
@@ -26,7 +62,7 @@ Held-out semantic diagnostics #3 and #5 are versioned for V3, and #4 reports rol
 
 Local validation before the empirical gate: touched modules compile; 27 V3/training/semantic-diagnostic focused tests and 14 probe/alignment tests pass. A broader scheduler/planner set reports 17 failures and 14 passes both on this worktree and on clean baseline `c67fe3c70daad106ee40934ec25496188e4a254a`, so no new failure was introduced there. `git diff --check` passes. No formal E000/E100 V3 cell, VM/cloud job, Full M0, stress corpus, or long benchmark has been run.
 
-Next scientific action: researcher-run `noun_high_deva/E000` under V3 with role diagnostics enabled, followed by read-only #3/#4/#5 evaluation. E100 is contingent on the E000 gate.
+That checkpoint's E000/E100 action was later completed and is superseded by the pre-freeze qualification state above.
 # PROJECT_STATE.md
 
 ## S1M2 V2 held-out semantic diagnostics (2026-09-21)

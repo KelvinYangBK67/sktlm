@@ -29,14 +29,14 @@ from sktlm.cloud.contracts import load_experiment_contract
 from sktlm.latent.execution_bundles import load_execution_bundle_plan
 from sktlm.latent.training import (
     COMPACT_EXACT_S1M2,
-    S1M2_MODEL,
     TrainingConfig,
     load_documents,
     run_training,
 )
+from sktlm.pieces import S1M2_REUSABLE_PIECES_V3
 
 
-CONTRACT_PATH = Path("configs/production/s1m2_six_cell.json")
+CONTRACT_PATH = Path("configs/production/s1m2_six_cell_v3.json")
 CONTRACT_SCHEMA = "sktlm-s1m2-production-contract/v1"
 PLAN_SCHEMA = "sktlm-s1m2-production-plan/v1"
 RUN_SCHEMA = "sktlm-s1m2-run-manifest/v1"
@@ -171,6 +171,7 @@ SCIENTIFIC_CONFIG_FIELDS = (
     "high_confidence_threshold",
     "low_count_threshold",
     "seed",
+    "sandhi_transformation_penalty",
     "piece_max_length",
     "piece_boundary_probability",
     "piece_alpha",
@@ -294,8 +295,17 @@ def load_contract(
     contract = _read_json(resolved)
     if contract.get("schema_version") != CONTRACT_SCHEMA:
         raise ValueError("Unsupported S1M2 production contract schema.")
-    if contract.get("model") != S1M2_MODEL or contract.get("passes") != 3:
-        raise ValueError("Production contract must select exact three-pass S1M2.")
+    if (
+        contract.get("model") != S1M2_REUSABLE_PIECES_V3
+        or contract.get("passes") != 3
+    ):
+        raise ValueError("Production contract must select exact three-pass S1M2 V3.")
+    scientific = contract.get("scientific_config", {})
+    if (
+        scientific.get("sandhi_transformation_penalty") != 1.0
+        or scientific.get("piece_boundary_probability") != 0.4
+    ):
+        raise ValueError("Production contract must select qualified V3 gamma/rho.")
     if contract.get("inference", {}).get("approximate_inference_allowed") is not False:
         raise ValueError("Approximate inference is forbidden by the production contract.")
     deployment = contract.get("deployment", {})
@@ -446,7 +456,7 @@ def _training_command(
         "--run-id",
         job["run_id"],
         "--model",
-        S1M2_MODEL,
+        job["model"],
         "--script",
         job["script"],
         "--condition",
@@ -1430,7 +1440,7 @@ def _config_for_job(job: dict[str, Any], *, resume: bool) -> TrainingConfig:
         ),
         "output_root": Path(job["output_root"]),
         "run_id": job["run_id"],
-        "model": S1M2_MODEL,
+        "model": job["model"],
         "script": job["script"],
         "condition": job["condition"],
         "passes": int(job["passes"]),
