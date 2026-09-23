@@ -1,0 +1,81 @@
+{
+  "schema_version": "sktlm-s1m2-v3-engineering-freeze/v1",
+  "decision_date": "2026-09-23",
+  "status": "S1M2_V3_ENGINEERING_IMPLEMENTATION_FROZEN",
+  "scientific_semantics": "FROZEN",
+  "engineering_implementation": "FROZEN",
+  "accepted_implementation_head": "7ae18240b2e81125cc2fc159969760e4deccafc6",
+  "branch": "exp/s1m2-reusable-pieces",
+  "engineering_sweep": "PASS",
+  "static_review": "PASS",
+  "rework_required": false,
+  "performance_result": "NOT_YET_MEASURED_AT_FULL_SCALE",
+  "full_scale_runtime_rss_result": "NOT_YET_AVAILABLE",
+  "small_scale_performance_gate_used": false,
+  "small_scale_probe_policy": "INTENTIONALLY_SKIPPED",
+  "tests_run_for_engineering_freeze": false,
+  "benchmarks_run_for_engineering_freeze": false,
+  "profiling_run_for_engineering_freeze": false,
+  "vm_or_cloud_run": false,
+  "full_m0_run": false,
+  "source_files_modified_by_closure": false,
+  "production_contract_modified_by_closure": false,
+  "completed_optimization_ids": [
+    "OPT01_ROLE_NEUTRAL_SCORE_CACHE",
+    "OPT02_SEGMENT_OBJECT_LIFETIME",
+    "OPT03_TOKEN_INTERNAL_MATCH_REUSE",
+    "OPT04_POSTERIOR_MAP_COPY_REMOVAL",
+    "OPT05_PIECE_ENDS_SIMPLIFICATION",
+    "OPT06_SQLITE_ROW_MATERIALIZATION",
+    "OPT07_BUNDLE_PLAN_STREAMING",
+    "OPT08_SLICE_TUPLE_ALLOCATION",
+    "OPT09_SCORER_CONSTANT_PRECOMPUTE",
+    "OPT10_UNUSED_FACTOR_TOP_PATHS",
+    "OPT11_COUNT_ONLY_SET_REMOVAL",
+    "OPT12_JSONL_RECORD_LIFETIME",
+    "OPT13_SINGLE_PASS_STATISTICS",
+    "OPT14_ASCII_KEY_LENGTH"
+  ],
+  "qualified_production_contract": {
+    "path": "configs/production/s1m2_six_cell_v3.json",
+    "contract_id": "s1m2-six-cell-v3-prefreeze-v1",
+    "file_sha256": "6a29480ba27d82ed334cdc6027f2aedab30e6fc7b3f5ebe2465ff6469b3022fa",
+    "canonical_sha256": "03c524b8978919bbfb98f65caaf75625e4cd053314c704f433ad002009b27bd2",
+    "bytes_modified_by_engineering_freeze": false
+  },
+  "references": {
+    "scientific_freeze_report": {
+      "path": "reports/core_methods/reusable_pieces/s1m2_v3_scientific_freeze_20260922.md",
+      "sha256": "fed5cc6efb46d2b12e6bc8e1893b8d0661933846594c663f4794c03ff136e783"
+    },
+    "scientific_freeze_attestation": {
+      "path": "reports/core_methods/reusable_pieces/evidence/s1m2_v3_scientific_freeze_20260922.json",
+      "sha256": "b4fa01022603a5f1b0accac20529bbcb5bdd8163a36344d643b6f2de704c40cd"
+    },
+    "engineering_optimization_report": {
+      "path": "reports/core_methods/reusable_pieces/s1m2_v3_engineering_optimization_20260922.md",
+      "sha256": "0b6e7780b0cee0de07d39f0c82c5aef7715168e4ebbdf838843f0d12e2763256"
+    },
+    "engineering_freeze_report": {
+      "path": "reports/core_methods/reusable_pieces/s1m2_v3_engineering_freeze_20260923.md",
+      "sha256": "7f9563825e4017ed72fbb794abc4cb9a734855a62068c0def5af0917383d0bb1"
+    }
+  },
+  "small_scale_performance_gate_rationale": [
+    "End repeated optimization-small-test-more-optimization loops after completion of the structurally justified sweep.",
+    "Small workloads do not reproduce the corpus-scale regimes that determine Full M0 runtime and peak RSS.",
+    "A prior scale mismatch already cost the project a valuable production round."
+  ],
+  "reopening_conditions": [
+    "CORRECTNESS_BUG",
+    "OOM_OR_HARD_RSS_FAILURE",
+    "PRODUCTION_BLOCKING_RUNTIME_FAILURE",
+    "EXECUTION_OR_CONTROL_PLANE_DEFECT",
+    "FROZEN_SCIENTIFIC_SEMANTICS_VIOLATION",
+    "EXISTING_SCIENTIFIC_REQUALIFICATION_TRIGGER"
+  ],
+  "reopening_requires_researcher_authorization": true,
+  "next_phase": "VM_PREPARATION",
+  "next_scientific_gate": "RESEARCHER_AUTHORIZED_FROZEN_V3_FULL_M0_CONFIRMATORY_PRODUCTION",
+  "automatic_vm_launch_authorized": false
+}

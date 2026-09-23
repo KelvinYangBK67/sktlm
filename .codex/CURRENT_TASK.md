@@ -1,21 +1,29 @@
-DATE=2026-09-22
+DATE=2026-09-23
 BRANCH=exp/s1m2-reusable-pieces
-STATUS=S1M2_V3_ENGINEERING_OPTIMIZATION_SWEEP_COMPLETE
+STATUS=S1M2_V3_ENGINEERING_IMPLEMENTATION_FROZEN
 SCIENTIFIC_SEMANTICS=FROZEN
+ENGINEERING_IMPLEMENTATION=FROZEN
+ACCEPTED_IMPLEMENTATION_HEAD=7ae18240b2e81125cc2fc159969760e4deccafc6
+PERFORMANCE_RESULT=NOT_YET_MEASURED_AT_FULL_SCALE
 
-All fourteen authorized engineering optimizations are implemented. The frozen
-`reusable_pieces_v3` model, exact inference, candidate universe, canonical
-accumulation, piece/host identities, role diagnostics, gamma, rho, and pass
-count remain unchanged. The qualified production contract remains
-byte-identical at file SHA-256
-`6a29480ba27d82ed334cdc6027f2aedab30e6fc7b3f5ebe2465ff6469b3022fa`.
+ENGINEERING_SWEEP=PASS
+STATIC_REVIEW=PASS
+REWORK_REQUIRED=NO
 
-Engineering report:
-`reports/core_methods/reusable_pieces/s1m2_v3_engineering_optimization_20260922.md`
+The fourteen-item engineering optimization sweep is closed. The accepted
+runtime implementation is the production candidate, subject only to the
+explicit reopening conditions in:
+`reports/core_methods/reusable_pieces/s1m2_v3_engineering_freeze_20260923.md`
 
-No test, benchmark, profiling workload, scientific experiment, VM/cloud job,
-or Full M0 job was run during this sweep.
+Machine attestation:
+`reports/core_methods/reusable_pieces/evidence/s1m2_v3_engineering_freeze_20260923.json`
 
-NEXT_SCIENTIFIC_GATE=researcher-authorized frozen-V3 Full M0 confirmatory production evaluation
-NEXT_ACTION=RESEARCHER_REVIEW_BEFORE_VM
-Do not launch VM / cloud / Full M0 automatically.
+No test, benchmark, profiling workload, small-scale performance probe,
+VM/cloud job, or Full M0 job was run during this closure.
+
+NEXT_ACTION=VM_PREPARATION
+NEXT_SCIENTIFIC_GATE=RESEARCHER_AUTHORIZED_FROZEN_V3_FULL_M0_CONFIRMATORY_PRODUCTION
+
+Do not modify frozen runtime code without an explicit reopening condition.
+Do not run another small-scale performance tuning loop.
+Do not launch VM/cloud/Full M0 automatically.

@@ -1,6 +1,52 @@
 # PROJECT_STATE.md
 
-## S1M2 V3 frozen engineering optimization sweep complete (2026-09-22)
+## S1M2 V3 engineering implementation frozen (2026-09-23)
+
+`S1M2_V3_SCIENTIFIC_SEMANTICS=FROZEN` and
+`S1M2_V3_ENGINEERING_IMPLEMENTATION=FROZEN`. The accepted production-candidate
+runtime baseline is commit
+`7ae18240b2e81125cc2fc159969760e4deccafc6` on
+`exp/s1m2-reusable-pieces`. All fourteen authorized engineering optimizations
+are closed, researcher static review passed, and no rework is required.
+`PERFORMANCE_RESULT=NOT_YET_MEASURED_AT_FULL_SCALE`.
+
+The engineering freeze claims no measured speedup or RSS result. No test,
+benchmark, profiler, small-scale performance probe, VM/cloud job, or Full M0
+run was executed for this closure. Another small performance gate is
+intentionally omitted because repeated probe-driven tuning has no natural
+stopping point after the structurally justified work is complete, and small
+workloads do not reproduce the corpus-scale regimes that determine Full M0
+runtime and peak RSS. A prior scale mismatch already cost the project a
+valuable production round. This policy is specific to repeated small-scale
+performance gates for this frozen path and is not a general rejection of
+correctness testing.
+
+Runtime implementation work may reopen only with researcher authorization for
+a correctness bug, OOM or hard RSS failure, a clear production-blocking runtime
+failure, an execution/control-plane defect preventing the planned run, a
+violation of frozen scientific semantics, or an existing scientific
+requalification trigger. Possible small speedups, speculative cache tuning,
+small benchmark regressions, micro-allocation cleanup, style cleanup, general
+refactoring, and unmeasured theoretical optimizations do not reopen it.
+
+Authoritative engineering freeze:
+`reports/core_methods/reusable_pieces/s1m2_v3_engineering_freeze_20260923.md`
+
+Machine attestation:
+`reports/core_methods/reusable_pieces/evidence/s1m2_v3_engineering_freeze_20260923.json`
+
+The qualified production contract remains byte-identical at file SHA-256
+`6a29480ba27d82ed334cdc6027f2aedab30e6fc7b3f5ebe2465ff6469b3022fa`
+and canonical SHA-256
+`03c524b8978919bbfb98f65caaf75625e4cd053314c704f433ad002009b27bd2`.
+
+`NEXT_ACTION=VM_PREPARATION`.
+`NEXT_SCIENTIFIC_GATE=RESEARCHER_AUTHORIZED_FROZEN_V3_FULL_M0_CONFIRMATORY_PRODUCTION`.
+The next operational sequence is VM preparation, separately
+researcher-authorized deployment, then frozen V3 full-scale confirmatory
+production. Do not launch VM, cloud, or Full M0 automatically.
+
+## S1M2 V3 frozen engineering optimization sweep complete (historical checkpoint, 2026-09-22)
 
 All fourteen authorized runtime/RSS changes are implemented with
 `SCIENTIFIC_SEMANTICS=FROZEN`. The sweep adds role-neutral production score
