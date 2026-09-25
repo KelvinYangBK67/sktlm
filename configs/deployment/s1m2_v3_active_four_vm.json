@@ -1,0 +1,65 @@
+{
+  "active_cell_count": 4,
+  "active_cell_ids": [
+    "s1m2_m0_prime_iast_continuous",
+    "s1m2_m0_devanagari_continuous",
+    "s1m2_m0_iast_surface_word",
+    "s1m2_m0_iast_legacy_joined"
+  ],
+  "active_execution_scope": "EXPLICIT_SUBSET",
+  "active_jobs": [
+    {
+      "cell_id": "s1m2_m0_prime_iast_continuous",
+      "condition": "continuous",
+      "execution_bundle_materialization_sha256": "0bced4aa2e3377ff084432fae9eedc715a7c04aba4633eda689c31a2e26591f3",
+      "execution_bundle_plan": "artifacts/s1m2_execution_bundle_plans/full_m0_prime_iast_continuous_tp279047_v2",
+      "execution_bundle_plan_sha256": "80bb77722abe9863865331a1f67809d4db703d7eb52cf75e6e36ddbf3b06ed4d",
+      "host_role": "core-07",
+      "script": "iast_m0_prime"
+    },
+    {
+      "cell_id": "s1m2_m0_devanagari_continuous",
+      "condition": "continuous",
+      "execution_bundle_materialization_sha256": "19e444d6b9b341a9df93faa33c452ef0393841cef3986109ccd6709c4867762c",
+      "execution_bundle_plan": "artifacts/s1m2_execution_bundle_plans/full_m0_devanagari_continuous_tp279047_v2",
+      "execution_bundle_plan_sha256": "d664239965cf9a629a9b3953f137860cd57c7a81184a1497039e843431f4c224",
+      "host_role": "core-08",
+      "script": "devanagari"
+    },
+    {
+      "cell_id": "s1m2_m0_iast_surface_word",
+      "condition": "surface_word",
+      "execution_bundle_materialization_sha256": "55ae6730b6eed6ae739e5658e8a843e285150a56200a1db6787be48d9c29289d",
+      "execution_bundle_plan": "artifacts/s1m2_execution_bundle_plans/full_m0_iast_surface_word_tp279047_v2",
+      "execution_bundle_plan_sha256": "1eaade371365aa527f010d036165ed2621dcaa5a0152e0f79bd190af5bf7bdcd",
+      "host_role": "core-09",
+      "script": "iast"
+    },
+    {
+      "cell_id": "s1m2_m0_iast_legacy_joined",
+      "condition": "legacy_joined",
+      "execution_bundle_materialization_sha256": "3723ecbe0c1cbdda8fb8d60f35d96bdcbf6d3ee4e14dc0fe34f15eeee04af4da",
+      "execution_bundle_plan": "artifacts/s1m2_execution_bundle_plans/full_m0_iast_legacy_joined_tp279047_v2",
+      "execution_bundle_plan_sha256": "6cd1c29159b5905fd1897a1698c42212d759f0edd5cf0c01355176fd01bea04f",
+      "host_role": "core-10",
+      "script": "iast"
+    }
+  ],
+  "active_vm_count": 4,
+  "active_vm_roles": [
+    "core-07",
+    "core-08",
+    "core-09",
+    "core-10"
+  ],
+  "deployment_id": "s1m2-v3-active-four-vm-20260925",
+  "inactive_scientific_cell_ids": [
+    "s1m2_m0_devanagari_surface_word",
+    "s1m2_m0_devanagari_legacy_joined"
+  ],
+  "schema_version": "sktlm-s1m2-active-deployment/v1",
+  "scientific_matrix_cell_count": 6,
+  "scientific_production_contract": "configs/production/s1m2_six_cell_v3.json",
+  "scientific_production_contract_id": "s1m2-six-cell-v3-prefreeze-v1",
+  "scientific_production_contract_sha256": "03c524b8978919bbfb98f65caaf75625e4cd053314c704f433ad002009b27bd2"
+}

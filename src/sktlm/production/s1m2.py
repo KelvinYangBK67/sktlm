@@ -48,6 +48,20 @@ ROUND3_CLOSURE_SCHEMA = "sktlm-s1m2-round3-closure/v1"
 BOUND_VALIDATION_SCHEMA = "sktlm-s1m2-bounded-validation/v1"
 FULL_AUTHORIZATION_SCHEMA = "sktlm-s1m2-full-authorization/v1"
 FAILED_RESET_SCHEMA = "sktlm-s1m2-failed-reset/v1"
+ACTIVE_DEPLOYMENT_SCHEMA = "sktlm-s1m2-active-deployment/v1"
+ACTIVE_DEPLOYMENT_ID = "s1m2-v3-active-four-vm-20260925"
+ACTIVE_DEPLOYMENT_CELL_IDS = (
+    "s1m2_m0_prime_iast_continuous",
+    "s1m2_m0_devanagari_continuous",
+    "s1m2_m0_iast_surface_word",
+    "s1m2_m0_iast_legacy_joined",
+)
+ACTIVE_DEPLOYMENT_HOST_ROLES = (
+    "core-07",
+    "core-08",
+    "core-09",
+    "core-10",
+)
 SCRIPT_NEUTRAL_ARTIFACTS = (
     "piece_inventory.tsv",
     "lexical_diagnostics.tsv",
@@ -721,6 +735,147 @@ def _bundle_plan_details(
     }
 
 
+def validate_active_deployment(
+    deployment_path: Path,
+    contract: dict[str, Any],
+    *,
+    contract_path: Path = CONTRACT_PATH,
+    repo_root: Path = Path("."),
+) -> dict[str, Any]:
+    """Validate and resolve the exact current four-VM deployment."""
+
+    repo_root = repo_root.resolve()
+    raw_path = str(deployment_path)
+    local_path = Path(deployment_path)
+    if not raw_path or local_path.is_absolute() or ".." in local_path.parts:
+        raise ValueError("Active deployment manifest path must be repository-relative.")
+    resolved_path = _resolve(repo_root, deployment_path).resolve()
+    if not resolved_path.is_relative_to(repo_root) or not resolved_path.is_file():
+        raise ValueError("Active deployment manifest does not resolve inside the repository.")
+    deployment = _read_json(resolved_path)
+    if deployment.get("schema_version") != ACTIVE_DEPLOYMENT_SCHEMA:
+        raise ValueError("Unsupported active deployment manifest schema.")
+    if deployment.get("deployment_id") != ACTIVE_DEPLOYMENT_ID:
+        raise ValueError("Active deployment identity differs from the current deployment.")
+
+    resolved_contract = _resolve(repo_root, contract_path).resolve()
+    if not resolved_contract.is_relative_to(repo_root):
+        raise ValueError("Production contract path escapes the repository.")
+    expected_contract_path = resolved_contract.relative_to(repo_root).as_posix()
+    if (
+        deployment.get("scientific_production_contract") != expected_contract_path
+        or deployment.get("scientific_production_contract_id")
+        != contract.get("contract_id")
+        or deployment.get("scientific_production_contract_sha256")
+        != _canonical_sha256(contract)
+    ):
+        raise ValueError("Active deployment scientific-contract identity differs.")
+    if (
+        deployment.get("active_execution_scope") != "EXPLICIT_SUBSET"
+        or deployment.get("scientific_matrix_cell_count") != len(contract["cells"])
+        or deployment.get("active_cell_count") != 4
+        or deployment.get("active_vm_count") != 4
+        or deployment.get("active_cell_ids") != list(ACTIVE_DEPLOYMENT_CELL_IDS)
+        or deployment.get("active_vm_roles") != list(ACTIVE_DEPLOYMENT_HOST_ROLES)
+    ):
+        raise ValueError("Active deployment scope or count differs from four-VM authority.")
+
+    scientific_cell_ids = {str(cell["cell_id"]) for cell in contract["cells"]}
+    expected_inactive = [
+        str(cell["cell_id"])
+        for cell in contract["cells"]
+        if cell["cell_id"] not in ACTIVE_DEPLOYMENT_CELL_IDS
+    ]
+    if (
+        set(ACTIVE_DEPLOYMENT_CELL_IDS) | set(expected_inactive)
+        != scientific_cell_ids
+        or deployment.get("inactive_scientific_cell_ids") != expected_inactive
+    ):
+        raise ValueError("Active deployment does not partition the six-cell matrix exactly.")
+
+    active_jobs = deployment.get("active_jobs")
+    if not isinstance(active_jobs, list) or len(active_jobs) != 4:
+        raise ValueError("Active deployment must contain exactly four jobs.")
+    cell_ids = [job.get("cell_id") for job in active_jobs if isinstance(job, dict)]
+    host_roles = [job.get("host_role") for job in active_jobs if isinstance(job, dict)]
+    if (
+        len(cell_ids) != 4
+        or cell_ids != list(ACTIVE_DEPLOYMENT_CELL_IDS)
+        or len(cell_ids) != len(set(cell_ids))
+        or host_roles != list(ACTIVE_DEPLOYMENT_HOST_ROLES)
+        or len(host_roles) != len(set(host_roles))
+    ):
+        raise ValueError("Active deployment cell/host mapping differs from authority.")
+
+    resolved_jobs: list[dict[str, str]] = []
+    for job in active_jobs:
+        cell_id = str(job["cell_id"])
+        cell = _cell(contract, cell_id)
+        if (
+            job.get("script") != cell["script"]
+            or job.get("condition") != cell["condition"]
+        ):
+            raise ValueError(f"Active deployment cell metadata differs: {cell_id}")
+        plan_path = str(job.get("execution_bundle_plan", ""))
+        relative_plan = PurePosixPath(plan_path)
+        plan_sha = _require_lower_sha256(
+            job.get("execution_bundle_plan_sha256"),
+            label=f"Active deployment bundle plan for {cell_id}",
+        )
+        if (
+            not plan_path
+            or "\\" in plan_path
+            or relative_plan.is_absolute()
+            or ".." in relative_plan.parts
+        ):
+            raise ValueError(f"Invalid active deployment bundle path: {cell_id}")
+        details = _bundle_plan_details(
+            repo_root,
+            {
+                "execution_bundle_plan": plan_path,
+                "execution_bundle_plan_sha256": plan_sha,
+                "script": cell["script"],
+                "condition": cell["condition"],
+                "target_pressure": contract["round2"]["target_pressure"],
+                "max_segments_per_bundle": contract["round2"][
+                    "max_segments_per_bundle"
+                ],
+            },
+            contract["workloads"]["full"],
+            contract["scientific_config"],
+            manifest=_manifest_details(contract, cell)[0],
+        )
+        materialization_sha = _require_lower_sha256(
+            job.get("execution_bundle_materialization_sha256"),
+            label=f"Active deployment bundle materialization for {cell_id}",
+        )
+        if materialization_sha != details["materialization_sha256"]:
+            raise ValueError(
+                f"Active deployment bundle materialization differs: {cell_id}"
+            )
+        resolved_jobs.append(
+            {
+                "cell_id": cell_id,
+                "host_role": str(job["host_role"]),
+                "script": str(job["script"]),
+                "condition": str(job["condition"]),
+                "execution_bundle_plan": details["path"],
+                "execution_bundle_plan_sha256": details["plan_sha256"],
+                "execution_bundle_materialization_sha256": details[
+                    "materialization_sha256"
+                ],
+            }
+        )
+    return {
+        "deployment": deployment,
+        "deployment_manifest": resolved_path.relative_to(repo_root).as_posix(),
+        "deployment_manifest_sha256": _sha256(resolved_path),
+        "deployment_id": deployment["deployment_id"],
+        "jobs": resolved_jobs,
+        "jobs_by_cell": {job["cell_id"]: job for job in resolved_jobs},
+    }
+
+
 def validate_production_inputs(
     contract: dict[str, Any], cell_id: str, *, repo_root: Path
 ) -> dict[str, Any]:
@@ -1131,48 +1286,78 @@ def build_final_plan(
     identity: dict[str, Any],
     repo_root: Path = Path("."),
     selected_cell_ids: Iterable[str] | None = None,
+    deployment_manifest_path: Path | None = None,
 ) -> dict[str, Any]:
     validate_round3_closure(
         round3_closure, contract, round2, repo_root=repo_root
     )
     winner = int(round3_closure["retained_workers"])
-    execution_cell_ids = _full_execution_cell_ids(contract, selected_cell_ids)
+    deployment: dict[str, Any] | None = None
+    if deployment_manifest_path is not None:
+        if selected_cell_ids is not None:
+            raise ValueError(
+                "Explicit cell selection cannot be combined with a deployment manifest."
+            )
+        deployment = validate_active_deployment(
+            deployment_manifest_path,
+            contract,
+            contract_path=contract_path,
+            repo_root=repo_root,
+        )
+        execution_cell_ids = tuple(job["cell_id"] for job in deployment["jobs"])
+    else:
+        execution_cell_ids = _full_execution_cell_ids(contract, selected_cell_ids)
 
     full_bundles: dict[str, dict[str, str]] = {}
-    bundle_specs = _full_execution_bundle_specs(contract)
-    for bundle_cell_id in execution_cell_ids:
-        bundle_spec = bundle_specs[bundle_cell_id]
-        declaration = {
-            **bundle_spec,
-            "target_pressure": contract["round2"]["target_pressure"],
-            "max_segments_per_bundle": contract["round2"]["max_segments_per_bundle"],
-        }
-        full_bundle = _bundle_plan_details(
-            repo_root.resolve(),
-            declaration,
-            contract["workloads"]["full"],
-            contract["scientific_config"],
-            manifest=_manifest_details(
-                contract, _cell(contract, bundle_cell_id)
-            )[0],
-        )
-        if (
-            full_bundle["plan_sha256"]
-            != bundle_spec["execution_bundle_plan_sha256"]
-        ):
-            raise RuntimeError(
-                f"Full execution bundle plan identity differs for {bundle_cell_id}."
+    if deployment is not None:
+        for deployment_job in deployment["jobs"]:
+            full_bundles[deployment_job["cell_id"]] = {
+                "path": deployment_job["execution_bundle_plan"],
+                "plan_sha256": deployment_job["execution_bundle_plan_sha256"],
+                "materialization_sha256": deployment_job[
+                    "execution_bundle_materialization_sha256"
+                ],
+            }
+    else:
+        bundle_specs = _full_execution_bundle_specs(contract)
+        for bundle_cell_id in execution_cell_ids:
+            bundle_spec = bundle_specs[bundle_cell_id]
+            declaration = {
+                **bundle_spec,
+                "target_pressure": contract["round2"]["target_pressure"],
+                "max_segments_per_bundle": contract["round2"][
+                    "max_segments_per_bundle"
+                ],
+            }
+            full_bundle = _bundle_plan_details(
+                repo_root.resolve(),
+                declaration,
+                contract["workloads"]["full"],
+                contract["scientific_config"],
+                manifest=_manifest_details(
+                    contract, _cell(contract, bundle_cell_id)
+                )[0],
             )
-        full_bundles[bundle_cell_id] = full_bundle
+            if (
+                full_bundle["plan_sha256"]
+                != bundle_spec["execution_bundle_plan_sha256"]
+            ):
+                raise RuntimeError(
+                    f"Full execution bundle plan identity differs for {bundle_cell_id}."
+                )
+            full_bundles[bundle_cell_id] = full_bundle
 
     jobs = []
-    full_host_roles = _full_host_roles(contract)
-    for cell in contract["cells"]:
-        if cell["cell_id"] not in execution_cell_ids:
-            continue
-        host_role = full_host_roles[cell["cell_id"]]
+    full_host_roles = (
+        {job["cell_id"]: job["host_role"] for job in deployment["jobs"]}
+        if deployment is not None
+        else _full_host_roles(contract)
+    )
+    for cell_id in execution_cell_ids:
+        cell = _cell(contract, cell_id)
+        host_role = full_host_roles[cell_id]
         bundle_kwargs = {}
-        full_bundle = full_bundles.get(cell["cell_id"])
+        full_bundle = full_bundles.get(cell_id)
         if full_bundle is not None:
             bundle_kwargs = {
                 "execution_bundle_plan": full_bundle["path"],
@@ -1185,7 +1370,7 @@ def build_final_plan(
             _job(
                 contract,
                 plan_type="full",
-                cell_id=cell["cell_id"],
+                cell_id=cell_id,
                 workload_id="full",
                 workers=winner,
                 output_root=output_root,
@@ -1232,13 +1417,28 @@ def build_final_plan(
             "FULL_M0_PROCESS_RUNNING": "NO",
         }
     )
+    if deployment is not None:
+        plan.update(
+            {
+                "deployment_manifest": deployment["deployment_manifest"],
+                "deployment_manifest_sha256": deployment[
+                    "deployment_manifest_sha256"
+                ],
+                "deployment_id": deployment["deployment_id"],
+            }
+        )
     plan["plan_sha256"] = _canonical_sha256(
         {key: value for key, value in plan.items() if key != "plan_sha256"}
     )
     return plan
 
 
-def _validate_plan(plan: dict[str, Any], contract: dict[str, Any]) -> None:
+def _validate_plan(
+    plan: dict[str, Any],
+    contract: dict[str, Any],
+    *,
+    repo_root: Path = Path("."),
+) -> None:
     if plan.get("schema_version") != PLAN_SCHEMA:
         raise ValueError("Unsupported production plan schema.")
     expected_hash = _canonical_sha256(
@@ -1255,6 +1455,27 @@ def _validate_plan(plan: dict[str, Any], contract: dict[str, Any]) -> None:
         raise ValueError("Production plan contains duplicate job IDs.")
     plan_type = plan.get("plan_type")
     jobs = plan.get("jobs", [])
+    deployment: dict[str, Any] | None = None
+    if plan.get("deployment_manifest") is not None:
+        if plan_type != "full":
+            raise ValueError("Only a Full plan may bind an active deployment.")
+        deployment = validate_active_deployment(
+            Path(str(plan["deployment_manifest"])),
+            contract,
+            contract_path=Path(str(plan.get("contract_path", CONTRACT_PATH))),
+            repo_root=repo_root,
+        )
+        if (
+            plan.get("deployment_manifest_sha256")
+            != deployment["deployment_manifest_sha256"]
+            or plan.get("deployment_id") != deployment["deployment_id"]
+        ):
+            raise ValueError("Full plan deployment-manifest identity differs.")
+    elif any(
+        plan.get(name) is not None
+        for name in ("deployment_manifest_sha256", "deployment_id")
+    ):
+        raise ValueError("Full plan has incomplete deployment-manifest provenance.")
     actual_cells = [(job.get("cell_id"), job.get("workload_id")) for job in jobs]
     if plan_type == "round1":
         expected_cells = [
@@ -1291,18 +1512,29 @@ def _validate_plan(plan: dict[str, Any], contract: dict[str, Any]) -> None:
         raw_execution_cell_ids = plan.get("execution_cell_ids")
         if not isinstance(raw_execution_cell_ids, list):
             raise ValueError("Full plan lacks explicit execution_cell_ids.")
-        execution_cell_ids = _full_execution_cell_ids(
-            contract, raw_execution_cell_ids
-        )
+        if deployment is not None:
+            execution_cell_ids = tuple(job["cell_id"] for job in deployment["jobs"])
+        else:
+            execution_cell_ids = _full_execution_cell_ids(
+                contract, raw_execution_cell_ids
+            )
         if raw_execution_cell_ids != list(execution_cell_ids):
             raise ValueError(
-                "Full plan execution_cell_ids are not in frozen canonical order."
+                "Full plan execution_cell_ids differ from their governing authority."
             )
         expected_cells = [(cell_id, "full") for cell_id in execution_cell_ids]
         if actual_cells != expected_cells:
             raise ValueError("Full plan jobs differ from its execution scope.")
+        governing_host_roles = (
+            {
+                item["cell_id"]: item["host_role"]
+                for item in deployment["jobs"]
+            }
+            if deployment is not None
+            else _full_host_roles(contract)
+        )
         expected_host_roles = tuple(
-            _full_host_roles(contract)[cell_id] for cell_id in execution_cell_ids
+            governing_host_roles[cell_id] for cell_id in execution_cell_ids
         )
         if tuple(job.get("host_role") for job in jobs) != expected_host_roles:
             raise ValueError("Full plan differs from the deployed host mapping.")
@@ -1390,7 +1622,11 @@ def _validate_plan(plan: dict[str, Any], contract: dict[str, Any]) -> None:
                 "execution_bundle_plan_sha256",
                 "execution_bundle_materialization_sha256",
             )
-            bundle_spec = _full_execution_bundle_specs(contract).get(job["cell_id"])
+            bundle_spec = (
+                deployment["jobs_by_cell"].get(job["cell_id"])
+                if deployment is not None
+                else _full_execution_bundle_specs(contract).get(job["cell_id"])
+            )
             if bundle_spec is not None:
                 if (
                     job.get("execution_bundle_plan")
@@ -1409,7 +1645,17 @@ def _validate_plan(plan: dict[str, Any], contract: dict[str, Any]) -> None:
                 materialization_sha = job.get(
                     "execution_bundle_materialization_sha256"
                 )
-                if not materialization_sha or len(str(materialization_sha)) != 64:
+                expected_materialization_sha = bundle_spec.get(
+                    "execution_bundle_materialization_sha256"
+                )
+                if (
+                    not materialization_sha
+                    or len(str(materialization_sha)) != 64
+                    or (
+                        expected_materialization_sha is not None
+                        and materialization_sha != expected_materialization_sha
+                    )
+                ):
                     raise ValueError(
                         "Full job has invalid bundle materialization."
                     )
@@ -1685,10 +1931,11 @@ def build_full_authorization(
     contract: dict[str, Any],
     *,
     identity: dict[str, Any],
+    repo_root: Path = Path("."),
 ) -> dict[str, Any]:
     """Create an explicit, plan-specific researcher launch authorization."""
 
-    _validate_plan(plan, contract)
+    _validate_plan(plan, contract, repo_root=repo_root)
     if plan.get("plan_type") != "full":
         raise ValueError("Full authorization can bind only a Full plan.")
     if identity.get("dirty_worktree") is not False:
@@ -1717,8 +1964,10 @@ def _validate_full_authorization(
     authorization: dict[str, Any],
     plan: dict[str, Any],
     contract: dict[str, Any],
+    *,
+    repo_root: Path = Path("."),
 ) -> None:
-    _validate_plan(plan, contract)
+    _validate_plan(plan, contract, repo_root=repo_root)
     if authorization.get("schema_version") != FULL_AUTHORIZATION_SCHEMA:
         raise ValueError("Unsupported Full authorization schema.")
     expected_sha = _canonical_sha256(
@@ -1840,7 +2089,7 @@ def reset_failed_job(
 ) -> dict[str, Any]:
     """Discard only one exactly identified FAILED run and preserve a receipt."""
 
-    _validate_plan(plan, contract)
+    _validate_plan(plan, contract, repo_root=repo_root)
     if confirmed_job_id != job["job_id"]:
         raise RuntimeError("Failed-run reset confirmation does not match the job ID.")
     if host_id != job["host_role"]:
@@ -2117,7 +2366,7 @@ def run_job(
         if loaded_plan is not None
         else _read_json(_resolve(repo_root, plan_path))
     )
-    _validate_plan(plan, contract)
+    _validate_plan(plan, contract, repo_root=repo_root)
     identity = git_identity(repo_root)
     if identity["dirty_worktree"]:
         raise RuntimeError("Production execution requires a clean Git worktree.")
@@ -2156,7 +2405,9 @@ def run_job(
                 "Full M0 launch requires an explicit authorization artifact."
             )
         authorization = _read_json(_resolve(repo_root, authorization_path))
-        _validate_full_authorization(authorization, plan, contract)
+        _validate_full_authorization(
+            authorization, plan, contract, repo_root=repo_root
+        )
         launch_preflight = _full_launch_preflight(
             job, contract, repo_root=repo_root
         )
@@ -2480,7 +2731,7 @@ def job_status(
 ) -> dict[str, Any]:
     """Read compact live/completed engineering state without mutating a run."""
 
-    _validate_plan(plan, contract)
+    _validate_plan(plan, contract, repo_root=repo_root)
     run_dir = _resolve(repo_root, job["run_dir"])
     control_dir = _resolve(repo_root, job["control_dir"])
     database = run_dir / "learner.sqlite"
@@ -3125,6 +3376,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     commands.add_parser("validate-contract")
     item = commands.add_parser("validate-production-inputs")
     item.add_argument("--cell-id", required=True)
+    item = commands.add_parser("validate-deployment")
+    item.add_argument("--deployment-manifest", required=True, type=Path)
     for name in ("plan-round1", "plan-bounded"):
         item = commands.add_parser(name)
         item.add_argument("--output", required=True, type=Path)
@@ -3159,6 +3412,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     item.add_argument("--round3-closure", required=True, type=Path)
     item.add_argument("--output", required=True, type=Path)
     item.add_argument("--cell-id", action="append")
+    item.add_argument("--deployment-manifest", type=Path)
     item = commands.add_parser("run")
     item.add_argument("--plan", required=True, type=Path)
     item.add_argument("--job-id", required=True)
@@ -3199,6 +3453,29 @@ def main(argv: list[str] | None = None) -> None:
         )
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         return
+    if args.command == "validate-deployment":
+        deployment = validate_active_deployment(
+            args.deployment_manifest,
+            contract,
+            contract_path=args.contract,
+            repo_root=repo_root,
+        )
+        result = {
+            "status": "PASS",
+            "deployment_id": deployment["deployment_id"],
+            "deployment_manifest": deployment["deployment_manifest"],
+            "deployment_manifest_sha256": deployment[
+                "deployment_manifest_sha256"
+            ],
+            "active_cell_count": len(deployment["jobs"]),
+            "active_vm_count": len(
+                {job["host_role"] for job in deployment["jobs"]}
+            ),
+            "active_execution_scope": "EXPLICIT_SUBSET",
+            "jobs": deployment["jobs"],
+        }
+        print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        return
     output_payload: dict[str, Any]
     if args.command == "run":
         plan = _read_json(_resolve(repo_root, args.plan))
@@ -3218,7 +3495,10 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "authorize-full":
         plan = _read_json(_resolve(repo_root, args.plan))
         authorization = build_full_authorization(
-            plan, contract, identity=git_identity(repo_root)
+            plan,
+            contract,
+            identity=git_identity(repo_root),
+            repo_root=repo_root,
         )
         _write_json(_resolve(repo_root, args.output), authorization)
         print(json.dumps(authorization, ensure_ascii=False, indent=2, sort_keys=True))
@@ -3247,7 +3527,7 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(0 if result["status"] == "PASS" else 1)
     if args.command == "audit":
         plan = _read_json(_resolve(repo_root, args.plan))
-        _validate_plan(plan, contract)
+        _validate_plan(plan, contract, repo_root=repo_root)
         result = audit_job(
             plan,
             _job_from_plan(plan, args.job_id),
@@ -3287,7 +3567,7 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.command == "attest-round1":
         plan = _read_json(_resolve(repo_root, args.plan))
-        _validate_plan(plan, contract)
+        _validate_plan(plan, contract, repo_root=repo_root)
         result = build_round1_attestation(
             plan,
             _job_from_plan(plan, args.job_id),
@@ -3299,7 +3579,7 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(0 if result["valid"] else 2)
     if args.command == "attest-round2":
         plan = _read_json(_resolve(repo_root, args.plan))
-        _validate_plan(plan, contract)
+        _validate_plan(plan, contract, repo_root=repo_root)
         result = build_round2_attestation(
             plan,
             _job_from_plan(plan, args.job_id),
@@ -3392,9 +3672,10 @@ def main(argv: list[str] | None = None) -> None:
             identity=identity,
             repo_root=repo_root,
             selected_cell_ids=args.cell_id,
+            deployment_manifest_path=args.deployment_manifest,
         )
         _write_plan_commands(plan, output)
-        _validate_plan(plan, contract)
+        _validate_plan(plan, contract, repo_root=repo_root)
         _write_json(_resolve(repo_root, output), plan)
         output_payload = plan
     else:  # pragma: no cover

@@ -1,3 +1,49 @@
+## S1M2 V3 four-VM deployment control-plane repair (2026-09-25)
+
+`S1M2_V3_SCIENTIFIC_SEMANTICS=FROZEN` and
+`S1M2_V3_RUNTIME_IMPLEMENTATION=FROZEN`. The frozen scientific matrix remains
+six cells, while the current active deployment is an operational four-cell
+subset. `FULL_SIX_CELL_SCIENTIFIC_MATRIX != CURRENT_ACTIVE_VM_DEPLOYMENT`.
+
+The tracked authority for current topology is
+`configs/deployment/s1m2_v3_active_four_vm.json`, deployment ID
+`s1m2-v3-active-four-vm-20260925`. It maps IAST-prime continuous to `core-07`,
+Devanagari continuous to `core-08`, IAST `surface_word` to `core-09`, and IAST
+`legacy_joined` to `core-10`. Current counts are four VMs and four cells with
+`CURRENT_EXECUTION_SCOPE=EXPLICIT_SUBSET`. Devanagari `surface_word` and
+`legacy_joined` remain members of the scientific matrix and are outside this
+deployment.
+
+The IAST non-continuous Full execution plans were stale v1 artifacts after the
+v2 direct-seek loader made `first_line_byte_offset` part of execution metadata.
+They were deterministically rematerialized as v2 plans with exact old/new
+manifest, representation, segment-sequence, document, segment, phoneme, and
+pressure coverage. Runtime backward compatibility with v1 was not added. All
+four active plans now pass the current v2 loader.
+
+`src/sktlm/production/s1m2.py` validates the deployment manifest and its four
+bundle identities, lets `plan-final --deployment-manifest` derive exact scope,
+host mapping, and bundle mapping, binds deployment provenance into the plan,
+and revalidates it on the run path. Historical no-manifest planning behavior is
+preserved. The frozen six-cell contract remains byte-identical at SHA-256
+`6a29480ba27d82ed334cdc6027f2aedab30e6fc7b3f5ebe2465ff6469b3022fa`.
+
+The repair changes control-plane and execution metadata only. It changes no
+candidate, score, inference, posterior, training, V3 objective, piece/host
+identity, PieceRole, gamma, rho, pass count, or worker-selection semantics. The
+accepted frozen runtime remains
+`7ae18240b2e81125cc2fc159969760e4deccafc6`.
+
+Authority:
+`reports/core_methods/reusable_pieces/s1m2_v3_pre_vm_control_plane_repair_20260925.md`
+and
+`reports/core_methods/reusable_pieces/evidence/s1m2_v3_pre_vm_control_plane_repair_20260925.json`.
+
+The post-repair final launch candidate is
+`artifacts/s1m2_production/final_plan_v3_active4_20260925.json`. It is generated
+only after the repair commit is pushed, remains unauthorized, and requires a
+separate plan-specific `--authorization <artifact>` before any Full launch.
+
 # PROJECT_STATE.md
 
 ## S1M2 V3 engineering implementation frozen (2026-09-23)

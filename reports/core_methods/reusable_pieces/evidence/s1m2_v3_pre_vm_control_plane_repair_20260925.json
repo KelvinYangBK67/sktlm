@@ -1,0 +1,96 @@
+{
+  "active_bundle_validation": {
+    "s1m2_m0_devanagari_continuous": "PASS",
+    "s1m2_m0_iast_legacy_joined": "PASS",
+    "s1m2_m0_iast_surface_word": "PASS",
+    "s1m2_m0_prime_iast_continuous": "PASS"
+  },
+  "active_cell_count": 4,
+  "active_deployment_manifest": "configs/deployment/s1m2_v3_active_four_vm.json",
+  "active_deployment_manifest_sha256": "f91b26900b5000c5bd2354a60f5fa6dbb883f5db0a9d0fab2e643fc533880e89",
+  "active_execution_scope": "EXPLICIT_SUBSET",
+  "active_mapping": {
+    "core-07": "s1m2_m0_prime_iast_continuous",
+    "core-08": "s1m2_m0_devanagari_continuous",
+    "core-09": "s1m2_m0_iast_surface_word",
+    "core-10": "s1m2_m0_iast_legacy_joined"
+  },
+  "active_vm_count": 4,
+  "active_vm_inventory": {
+    "core-07": "PRESENT_MACHINE_ID_AND_ROLE_MATCH",
+    "core-08": "PRESENT_MACHINE_ID_AND_ROLE_MATCH",
+    "core-09": "PRESENT_MACHINE_ID_AND_ROLE_MATCH",
+    "core-10": "PRESENT_MACHINE_ID_AND_ROLE_MATCH",
+    "data_disk_capacity_recorded": false,
+    "ram_recorded": false,
+    "sku_recorded": false
+  },
+  "bundle_repairs": {
+    "s1m2_m0_iast_legacy_joined": {
+      "coverage_equal": true,
+      "documents": 240,
+      "new_materialization_sha256": "3723ecbe0c1cbdda8fb8d60f35d96bdcbf6d3ee4e14dc0fe34f15eeee04af4da",
+      "new_path": "artifacts/s1m2_execution_bundle_plans/full_m0_iast_legacy_joined_tp279047_v2",
+      "new_plan_sha256": "6cd1c29159b5905fd1897a1698c42212d759f0edd5cf0c01355176fd01bea04f",
+      "new_schema": "sktlm-s1m2-execution-bundle-plan/v2",
+      "old_path": "artifacts/s1m2_execution_bundle_plans/full_m0_iast_legacy_joined_tp279047",
+      "old_plan_sha256": "e54f7ab98a1afb4236802a7d02d72e2ea7550ebbbd72cffd662698182e722897",
+      "old_schema": "sktlm-s1m2-execution-bundle-plan/v1",
+      "representation_set_sha256": "e6c1a1e575193f14c0732e6e6091afeeadf31d9885581d1d8696b90d6daaff9e",
+      "segment_sequence_sha256": "2521aaa5832b58bd6422340dc6a26b56212d1fe9910c8a8997c026618649a401",
+      "segments": 1261515
+    },
+    "s1m2_m0_iast_surface_word": {
+      "coverage_equal": true,
+      "documents": 240,
+      "new_materialization_sha256": "55ae6730b6eed6ae739e5658e8a843e285150a56200a1db6787be48d9c29289d",
+      "new_path": "artifacts/s1m2_execution_bundle_plans/full_m0_iast_surface_word_tp279047_v2",
+      "new_plan_sha256": "1eaade371365aa527f010d036165ed2621dcaa5a0152e0f79bd190af5bf7bdcd",
+      "new_schema": "sktlm-s1m2-execution-bundle-plan/v2",
+      "old_path": "artifacts/s1m2_execution_bundle_plans/full_m0_iast_surface_word_tp279047",
+      "old_plan_sha256": "a672a4c46de043c68a3b5921e885774f08fcad1b721a9f6afc25acb2134d3092",
+      "old_schema": "sktlm-s1m2-execution-bundle-plan/v1",
+      "representation_set_sha256": "2bf021410877a5d754d5e3c8b2108cd068c83b7d8498f4e3d9ac12ff0f4ac2f1",
+      "segment_sequence_sha256": "2e1e75704fa90f4f1be1433da1164b9ea1c0057c7bbb4a9f9dc2138342585bd2",
+      "segments": 1261520
+    }
+  },
+  "benchmarks_run": false,
+  "cloud_contacted": false,
+  "control_plane_modified": true,
+  "decision_date": "2026-09-25",
+  "deployment_id": "s1m2-v3-active-four-vm-20260925",
+  "execution_metadata_rematerialized": true,
+  "full_authorization_created": false,
+  "full_m0_run": false,
+  "historical_evidence": {
+    "round2_formal_result": "PRESERVED_FAIL",
+    "round2_result_valid": true,
+    "round3_bound_evidence_valid": true,
+    "round3_closure_sha256": "0062e2a5442b298e2ceae2ad97b811f8f57775a0d67ac6d7ab295528bc8dd937",
+    "round3_closure_valid": true,
+    "round3_retained_workers": 12
+  },
+  "inactive_scientific_cells": [
+    "s1m2_m0_devanagari_surface_word",
+    "s1m2_m0_devanagari_legacy_joined"
+  ],
+  "precommit_four_job_plan_validation": "PASS",
+  "production_contract": {
+    "canonical_sha256": "03c524b8978919bbfb98f65caaf75625e4cd053314c704f433ad002009b27bd2",
+    "file_sha256": "6a29480ba27d82ed334cdc6027f2aedab30e6fc7b3f5ebe2465ff6469b3022fa",
+    "modified": false,
+    "path": "configs/production/s1m2_six_cell_v3.json",
+    "scientific_matrix_cell_count": 6
+  },
+  "profiling_run": false,
+  "root_cause_1": "STALE_ACTIVE_V1_BUNDLE_ARTIFACTS",
+  "root_cause_2": "ACTIVE_FOUR_VM_DEPLOYMENT_NOT_EXPLICITLY_ENCODED",
+  "runtime_scientific_implementation_modified": false,
+  "schema_version": "sktlm-s1m2-v3-pre-vm-control-plane-repair/v1",
+  "scientific_semantics_modified": false,
+  "scientific_workload_run": false,
+  "ssh_used": false,
+  "tests_run": false,
+  "vm_started": false
+}
