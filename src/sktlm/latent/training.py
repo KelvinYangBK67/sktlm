@@ -7651,6 +7651,7 @@ def run_training(
         if stop_after_training or next_pass_only:
             runtime = store.runtime_payload()
             runtime["grammar_cache"] = grammar.cache_statistics()
+            _write_json(run_dir / "timing_metrics.json", runtime)
             return TrainingResult(
                 run_dir=run_dir,
                 history=tuple(checkpoint["history"]),

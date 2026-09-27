@@ -1,4 +1,5 @@
 import json
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -57,6 +58,46 @@ def _run(reference: Path, candidate: Path) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
     )
+
+
+def _write_training_state(
+    root: Path,
+    *,
+    delta: float,
+    piece_score_calls: int,
+) -> None:
+    root.mkdir()
+    (root / "checkpoint.json").write_text(
+        json.dumps(
+            {
+                "completed_passes": 1,
+                "active_pass": None,
+                "inspection_complete": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (root / "iteration_metrics.json").write_text(
+        json.dumps(
+            [
+                {
+                    "log_partition": 3.0 + delta,
+                    "piece_score_calls": piece_score_calls,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    with sqlite3.connect(root / "learner.sqlite") as connection:
+        connection.execute(
+            "CREATE TABLE piece_lexicon("
+            "form_key TEXT PRIMARY KEY, raw_expected_count REAL NOT NULL, "
+            "max_host_expected_usage REAL NOT NULL, reusable_count REAL NOT NULL)"
+        )
+        connection.execute(
+            "INSERT INTO piece_lexicon VALUES (?, ?, ?, ?)",
+            ("V_A", 2.0 + delta, 1.0, 1.0 + delta),
+        )
 
 
 def test_streaming_comparator_preserves_tolerance_and_contract(tmp_path: Path) -> None:
@@ -153,3 +194,33 @@ def test_streaming_comparator_keeps_nonfinite_looking_text_exact(
 
     assert mismatch.returncode != 0
     assert "'nan' != 'NaN'" in mismatch.stderr
+
+
+def test_training_state_comparator_checks_pass_boundary_science(
+    tmp_path: Path,
+) -> None:
+    reference = tmp_path / "reference"
+    candidate = tmp_path / "candidate"
+    _write_training_state(reference, delta=0.0, piece_score_calls=50)
+    _write_training_state(candidate, delta=1e-13, piece_score_calls=0)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(COMPARATOR),
+            str(reference),
+            str(candidate),
+            "--training-state-only",
+            "--expected-completed-passes",
+            "1",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "PASS"
+    assert payload["completed_passes"] == 1
+    assert payload["piece_lexicon_rows"] == 1

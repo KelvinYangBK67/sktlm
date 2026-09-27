@@ -24,7 +24,17 @@ CANONICAL_ARTIFACTS = (
     "rule_usage.tsv",
     "summary.json",
 )
-ENGINEERING_ONLY_KEYS = frozenset({"lazy_span_traversals"})
+ENGINEERING_ONLY_KEYS = frozenset(
+    {
+        "lazy_span_traversals",
+        "piece_score_calls",
+        "piece_score_cache_hits",
+        "piece_score_cache_misses",
+        "form_cache_hits",
+        "form_cache_misses",
+        "piece_store_lookups",
+    }
+)
 TSV_NUMERIC_COLUMNS = frozenset(
     {
         "active",
@@ -389,12 +399,131 @@ def compare_artifacts(
     }
 
 
+def _compare_sqlite_piece_lexicon(
+    left_path: Path,
+    right_path: Path,
+    *,
+    result: Comparison,
+    rtol: float,
+    atol: float,
+) -> int:
+    with (
+        closing(sqlite3.connect(f"file:{left_path.as_posix()}?mode=ro", uri=True))
+        as left,
+        closing(sqlite3.connect(f"file:{right_path.as_posix()}?mode=ro", uri=True))
+        as right,
+    ):
+        left_columns = tuple(
+            str(row[1]) for row in left.execute("PRAGMA table_info(piece_lexicon)")
+        )
+        right_columns = tuple(
+            str(row[1]) for row in right.execute("PRAGMA table_info(piece_lexicon)")
+        )
+        if not left_columns or left_columns != right_columns:
+            raise AssertionError(
+                "learner.sqlite.piece_lexicon: schemas differ: "
+                f"{left_columns!r} != {right_columns!r}"
+            )
+        if left_columns[0] != "form_key":
+            raise AssertionError(
+                "learner.sqlite.piece_lexicon: first column is not form_key"
+            )
+        quoted = ", ".join(f'"{name}"' for name in left_columns)
+        query = f"SELECT {quoted} FROM piece_lexicon ORDER BY form_key"
+        rows = 0
+        for index, (left_row, right_row) in enumerate(
+            zip_longest(left.execute(query), right.execute(query), fillvalue=_MISSING)
+        ):
+            if left_row is _MISSING or right_row is _MISSING:
+                raise AssertionError(
+                    "learner.sqlite.piece_lexicon: row counts differ at "
+                    f"{index}"
+                )
+            assert isinstance(left_row, tuple) and isinstance(right_row, tuple)
+            _compare(
+                list(left_row),
+                list(right_row),
+                path=f"learner.sqlite.piece_lexicon[{index}]",
+                result=result,
+                rtol=rtol,
+                atol=atol,
+            )
+            rows += 1
+        return rows
+
+
+def compare_training_state(
+    reference: Path,
+    candidate: Path,
+    *,
+    expected_completed_passes: int | None = None,
+    rtol: float = 1e-10,
+    atol: float = 1e-12,
+) -> dict[str, Any]:
+    """Compare a stopped training checkpoint without requiring inspection."""
+
+    result = Comparison()
+    checkpoints = tuple(_load(root / "checkpoint.json") for root in (reference, candidate))
+    completed = tuple(int(item.get("completed_passes", -1)) for item in checkpoints)
+    if completed[0] != completed[1]:
+        raise AssertionError(f"completed passes differ: {completed[0]} != {completed[1]}")
+    if expected_completed_passes is not None and completed[0] != expected_completed_passes:
+        raise AssertionError(
+            f"completed passes {completed[0]} != expected {expected_completed_passes}"
+        )
+    for label, checkpoint in zip(("reference", "candidate"), checkpoints):
+        if checkpoint.get("active_pass") is not None:
+            raise AssertionError(f"{label} checkpoint has an active partial pass")
+        if checkpoint.get("inspection_complete"):
+            raise AssertionError(f"{label} checkpoint unexpectedly completed inspection")
+    _compare(
+        _load(reference / "iteration_metrics.json"),
+        _load(candidate / "iteration_metrics.json"),
+        path="iteration_metrics.json",
+        result=result,
+        rtol=rtol,
+        atol=atol,
+    )
+    piece_rows = _compare_sqlite_piece_lexicon(
+        reference / "learner.sqlite",
+        candidate / "learner.sqlite",
+        result=result,
+        rtol=rtol,
+        atol=atol,
+    )
+    return {
+        "schema_version": "sktlm-s1m2-training-state-comparison/v1",
+        "status": "PASS",
+        "reference": reference.as_posix(),
+        "candidate": candidate.as_posix(),
+        "completed_passes": completed[0],
+        "artifacts": [
+            "checkpoint.json:pass-boundary-state",
+            "iteration_metrics.json",
+            "learner.sqlite:piece_lexicon",
+        ],
+        "piece_lexicon_rows": piece_rows,
+        "excluded_engineering_keys": sorted(ENGINEERING_ONLY_KEYS),
+        "numeric_values": result.numeric_values,
+        "max_absolute_difference": result.max_absolute_difference,
+        "max_relative_difference": result.max_relative_difference,
+        "rtol": rtol,
+        "atol": atol,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("reference", type=Path)
     parser.add_argument("candidate", type=Path)
     parser.add_argument("--rtol", type=float, default=1e-10)
     parser.add_argument("--atol", type=float, default=1e-12)
+    parser.add_argument(
+        "--training-state-only",
+        action="store_true",
+        help="Compare a pass-boundary checkpoint before inspection artifacts exist.",
+    )
+    parser.add_argument("--expected-completed-passes", type=int)
     parser.add_argument(
         "--scratch-dir",
         type=Path,
@@ -403,12 +532,22 @@ def main() -> None:
     args = parser.parse_args()
     print(
         json.dumps(
-            compare_artifacts(
-                args.reference,
-                args.candidate,
-                rtol=args.rtol,
-                atol=args.atol,
-                scratch_dir=args.scratch_dir,
+            (
+                compare_training_state(
+                    args.reference,
+                    args.candidate,
+                    expected_completed_passes=args.expected_completed_passes,
+                    rtol=args.rtol,
+                    atol=args.atol,
+                )
+                if args.training_state_only
+                else compare_artifacts(
+                    args.reference,
+                    args.candidate,
+                    rtol=args.rtol,
+                    atol=args.atol,
+                    scratch_dir=args.scratch_dir,
+                )
             ),
             ensure_ascii=False,
             indent=2,

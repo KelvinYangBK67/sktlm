@@ -29,3 +29,23 @@ def test_memory_status_reports_available_and_used_swap(monkeypatch) -> None:
         "mem_available_bytes": 600 * 1024,
         "swap_used_bytes": 150 * 1024,
     }
+
+
+def test_watched_storage_reports_streaming_training_shards(tmp_path: Path) -> None:
+    bundle_dir = tmp_path / "shards" / "pass_0001" / "bundles"
+    bundle_dir.mkdir(parents=True)
+    (bundle_dir / "document_00000000.bundle_000000.segments.jsonl").write_bytes(
+        b"segment"
+    )
+    (bundle_dir / "document_00000000.bundle_000000.host-support.tsv").write_bytes(
+        b"host-support"
+    )
+    (bundle_dir / "document_00000000.bundle_000000.complete.json").write_bytes(
+        b"marker"
+    )
+
+    storage = run_with_metrics.watched_storage(tmp_path)
+
+    assert storage["training_shard_bytes"] == len(b"segmenthost-supportmarker")
+    assert storage["training_host_support_shard_bytes"] == len(b"host-support")
+    assert storage["training_bundle_marker_count"] == 1

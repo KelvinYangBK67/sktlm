@@ -94,6 +94,9 @@ def watched_storage(path: Path) -> dict[str, int]:
         "sqlite_wal_bytes": 0,
         "sqlite_shm_bytes": 0,
         "topology_bytes": 0,
+        "training_shard_bytes": 0,
+        "training_host_support_shard_bytes": 0,
+        "training_bundle_marker_count": 0,
         "inspection_shard_bytes": 0,
         "completed_artifact_bytes": 0,
     }
@@ -118,6 +121,12 @@ def watched_storage(path: Path) -> dict[str, int]:
             values["topology_bytes"] += size
         elif relative.parts[:2] == ("shards", "inspection"):
             values["inspection_shard_bytes"] += size
+        elif relative.parts and relative.parts[0] == "shards":
+            values["training_shard_bytes"] += size
+            if item.name.endswith(".host-support.tsv"):
+                values["training_host_support_shard_bytes"] += size
+            if item.name.endswith(".complete.json") and "bundles" in relative.parts:
+                values["training_bundle_marker_count"] += 1
         elif not (relative.parts and relative.parts[0] == "shards"):
             values["completed_artifact_bytes"] += size
     return values
@@ -250,6 +259,9 @@ def main() -> None:
         "sqlite_bytes",
         "sqlite_wal_bytes",
         "topology_bytes",
+        "training_shard_bytes",
+        "training_host_support_shard_bytes",
+        "training_bundle_marker_count",
         "inspection_shard_bytes",
         "filesystem_free_bytes",
         "filesystem_used_bytes",
@@ -369,6 +381,13 @@ def main() -> None:
                     "sqlite_bytes": storage["sqlite_bytes"],
                     "sqlite_wal_bytes": storage["sqlite_wal_bytes"],
                     "topology_bytes": storage["topology_bytes"],
+                    "training_shard_bytes": storage["training_shard_bytes"],
+                    "training_host_support_shard_bytes": storage[
+                        "training_host_support_shard_bytes"
+                    ],
+                    "training_bundle_marker_count": storage[
+                        "training_bundle_marker_count"
+                    ],
                     "inspection_shard_bytes": storage["inspection_shard_bytes"],
                     "filesystem_free_bytes": (
                         None if filesystem_sample is None else filesystem_sample.free
@@ -434,6 +453,13 @@ def main() -> None:
         "peak_sqlite_wal_bytes": storage_peaks.get("sqlite_wal_bytes"),
         "peak_sqlite_shm_bytes": storage_peaks.get("sqlite_shm_bytes"),
         "peak_topology_archive_bytes": storage_peaks.get("topology_bytes"),
+        "peak_training_shard_bytes": storage_peaks.get("training_shard_bytes"),
+        "peak_training_host_support_shard_bytes": storage_peaks.get(
+            "training_host_support_shard_bytes"
+        ),
+        "peak_training_bundle_marker_count": storage_peaks.get(
+            "training_bundle_marker_count"
+        ),
         "peak_pending_inspection_shard_bytes": storage_peaks.get(
             "inspection_shard_bytes"
         ),

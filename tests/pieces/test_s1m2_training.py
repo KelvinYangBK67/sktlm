@@ -813,6 +813,10 @@ def test_next_pass_only_is_restartable_and_stops_at_one_pass(
     assert first_checkpoint["active_pass"] is None
     assert first_checkpoint["next_document_index"] == 0
     assert first.inspection_complete is False
+    partial_runtime = json.loads(
+        (first.run_dir / "timing_metrics.json").read_text(encoding="utf-8")
+    )
+    assert partial_runtime["grammar_cache"]["internal_matches"]["misses"] > 0
 
     resumed_config = _config(
         tmp_path, manifest, "isolated", passes=3, resume=True
