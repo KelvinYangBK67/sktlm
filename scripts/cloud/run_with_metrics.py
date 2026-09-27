@@ -130,10 +130,36 @@ def filesystem_usage(path: Path):
     return shutil.disk_usage(candidate)
 
 
+def memory_status() -> dict[str, int | None]:
+    """Read physical availability and swap use from one procfs snapshot."""
+
+    values: dict[str, int] = {}
+    try:
+        for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
+            key, raw = line.split(":", 1)
+            fields = raw.split()
+            if fields:
+                values[key] = int(fields[0]) * 1024
+    except (FileNotFoundError, PermissionError, ValueError):
+        return {"mem_available_bytes": None, "swap_used_bytes": None}
+    swap_total = values.get("SwapTotal")
+    swap_free = values.get("SwapFree")
+    return {
+        "mem_available_bytes": values.get("MemAvailable"),
+        "swap_used_bytes": (
+            None
+            if swap_total is None or swap_free is None
+            else max(0, swap_total - swap_free)
+        ),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--interval", type=float, default=1.0)
+    parser.add_argument("--filesystem-interval", type=float, default=5.0)
+    parser.add_argument("--storage-interval", type=float, default=30.0)
     parser.add_argument(
         "--watch-dir",
         type=Path,
@@ -147,6 +173,10 @@ def main() -> None:
         parser.error("a command is required after --")
     if args.interval <= 0:
         parser.error("--interval must be positive")
+    if args.filesystem_interval <= 0:
+        parser.error("--filesystem-interval must be positive")
+    if args.storage_interval <= 0:
+        parser.error("--storage-interval must be positive")
     if sys.platform != "linux" or not Path("/proc").is_dir():
         parser.error("this process-tree monitor requires Linux /proc")
 
@@ -181,10 +211,13 @@ def main() -> None:
     peak_main_rss_bytes = 0
     peak_worker_rss_bytes = 0
     peak_processes = 0
+    peak_process_breakdown: list[dict[str, int]] = []
     cumulative_io_wait_ticks = 0
     storage_peaks: dict[str, int] = {}
     started = time.monotonic()
     previous_sample_time = started
+    next_filesystem_sample = started
+    next_storage_sample = started
     filesystem_before = (
         filesystem_usage(args.watch_dir) if args.watch_dir is not None else None
     )
@@ -194,12 +227,19 @@ def main() -> None:
     filesystem_used_peak = (
         None if filesystem_before is None else filesystem_before.used
     )
+    last_filesystem_sample = filesystem_before
+    last_storage = watched_storage(Path("__sktlm_metrics_no_watch__"))
+    mem_available_min: int | None = None
+    swap_used_peak: int | None = None
 
     fieldnames = (
         "wall_seconds",
         "process_count",
         "rss_bytes",
         "peak_rss_bytes",
+        "main_process_rss_bytes",
+        "sum_worker_rss_bytes",
+        "max_single_worker_rss_bytes",
         "cumulative_cpu_seconds",
         "cpu_percent_one_core",
         "cpu_percent_capacity",
@@ -213,6 +253,8 @@ def main() -> None:
         "inspection_shard_bytes",
         "filesystem_free_bytes",
         "filesystem_used_bytes",
+        "mem_available_bytes",
+        "swap_used_bytes",
         "load_average_1m",
     )
     with samples_path.open("w", encoding="utf-8", newline="") as handle:
@@ -222,16 +264,31 @@ def main() -> None:
             now = time.monotonic()
             samples = process_tree(process.pid, page_size)
             rss_bytes = sum(item.rss_bytes for item in samples)
-            peak_rss_bytes = max(peak_rss_bytes, rss_bytes)
             root_sample = next((item for item in samples if item.pid == process.pid), None)
+            main_rss_bytes = 0 if root_sample is None else root_sample.rss_bytes
+            worker_samples = tuple(
+                item for item in samples if item.pid != process.pid
+            )
+            sum_worker_rss_bytes = sum(item.rss_bytes for item in worker_samples)
+            max_single_worker_rss_bytes = max(
+                (item.rss_bytes for item in worker_samples), default=0
+            )
+            if rss_bytes > peak_rss_bytes:
+                peak_rss_bytes = rss_bytes
+                peak_process_breakdown = [
+                    {
+                        "pid": item.pid,
+                        "parent_pid": item.parent_pid,
+                        "rss_bytes": item.rss_bytes,
+                        "cpu_ticks": item.cpu_ticks,
+                    }
+                    for item in sorted(samples, key=lambda item: item.pid)
+                ]
             if root_sample is not None:
                 peak_main_rss_bytes = max(peak_main_rss_bytes, root_sample.rss_bytes)
             peak_worker_rss_bytes = max(
                 peak_worker_rss_bytes,
-                max(
-                    (item.rss_bytes for item in samples if item.pid != process.pid),
-                    default=0,
-                ),
+                max_single_worker_rss_bytes,
             )
             peak_processes = max(peak_processes, len(samples))
             delta_cpu_ticks = 0
@@ -253,18 +310,24 @@ def main() -> None:
             cpu_percent_one_core = (
                 delta_cpu_ticks / clock_ticks / elapsed * 100.0
             )
-            storage = (
-                watched_storage(args.watch_dir)
-                if args.watch_dir is not None
-                else watched_storage(Path("__sktlm_metrics_no_watch__"))
-            )
+            if now >= next_storage_sample:
+                last_storage = (
+                    watched_storage(args.watch_dir)
+                    if args.watch_dir is not None
+                    else watched_storage(Path("__sktlm_metrics_no_watch__"))
+                )
+                next_storage_sample = now + args.storage_interval
+            storage = last_storage
             for key, value in storage.items():
                 storage_peaks[key] = max(storage_peaks.get(key, 0), value)
-            filesystem_sample = (
-                filesystem_usage(args.watch_dir)
-                if args.watch_dir is not None
-                else None
-            )
+            if now >= next_filesystem_sample:
+                last_filesystem_sample = (
+                    filesystem_usage(args.watch_dir)
+                    if args.watch_dir is not None
+                    else None
+                )
+                next_filesystem_sample = now + args.filesystem_interval
+            filesystem_sample = last_filesystem_sample
             if filesystem_sample is not None:
                 filesystem_free_min = min(
                     filesystem_free_min, filesystem_sample.free
@@ -272,12 +335,30 @@ def main() -> None:
                 filesystem_used_peak = max(
                     filesystem_used_peak, filesystem_sample.used
                 )
+            memory = memory_status()
+            mem_available = memory["mem_available_bytes"]
+            swap_used = memory["swap_used_bytes"]
+            if mem_available is not None:
+                mem_available_min = (
+                    mem_available
+                    if mem_available_min is None
+                    else min(mem_available_min, mem_available)
+                )
+            if swap_used is not None:
+                swap_used_peak = (
+                    swap_used
+                    if swap_used_peak is None
+                    else max(swap_used_peak, swap_used)
+                )
             writer.writerow(
                 {
                     "wall_seconds": now - started,
                     "process_count": len(samples),
                     "rss_bytes": rss_bytes,
                     "peak_rss_bytes": peak_rss_bytes,
+                    "main_process_rss_bytes": main_rss_bytes,
+                    "sum_worker_rss_bytes": sum_worker_rss_bytes,
+                    "max_single_worker_rss_bytes": max_single_worker_rss_bytes,
                     "cumulative_cpu_seconds": cumulative_cpu_ticks / clock_ticks,
                     "cpu_percent_one_core": cpu_percent_one_core,
                     "cpu_percent_capacity": cpu_percent_one_core / logical_cpus,
@@ -295,6 +376,8 @@ def main() -> None:
                     "filesystem_used_bytes": (
                         None if filesystem_sample is None else filesystem_sample.used
                     ),
+                    "mem_available_bytes": mem_available,
+                    "swap_used_bytes": swap_used,
                     "load_average_1m": os.getloadavg()[0],
                 }
             )
@@ -306,6 +389,10 @@ def main() -> None:
 
     return_code = process.wait()
     finished = time.monotonic()
+    if args.watch_dir is not None:
+        final_storage = watched_storage(args.watch_dir)
+        for key, value in final_storage.items():
+            storage_peaks[key] = max(storage_peaks.get(key, 0), value)
     filesystem_end = (
         filesystem_usage(args.watch_dir) if args.watch_dir is not None else None
     )
@@ -320,12 +407,17 @@ def main() -> None:
         "forwarded_signal": forwarded_signal,
         "wall_seconds": finished - started,
         "sample_interval_seconds": args.interval,
+        "filesystem_sample_interval_seconds": args.filesystem_interval,
+        "storage_sample_interval_seconds": args.storage_interval,
         "logical_cpu_count": logical_cpus,
         "peak_process_count": peak_processes,
         "peak_process_tree_rss_bytes": peak_rss_bytes,
         "peak_main_process_rss_bytes": peak_main_rss_bytes,
         "peak_worker_rss_bytes": peak_worker_rss_bytes,
+        "peak_sample_process_breakdown": peak_process_breakdown,
         "host_memory_bytes": host_memory_bytes,
+        "minimum_mem_available_bytes": mem_available_min,
+        "peak_swap_used_bytes": swap_used_peak,
         "sampled_process_tree_cpu_seconds": cumulative_cpu_ticks / clock_ticks,
         "mean_process_tree_cpu_capacity_fraction": (
             cumulative_cpu_ticks
@@ -364,9 +456,9 @@ def main() -> None:
             None if filesystem_end is None else filesystem_end.used
         ),
         "caveat": (
-            "One-second /proc sampling can undercount processes that start and "
-            "exit between samples; RSS is the simultaneous sum for observed "
-            "members of the command's process tree."
+            "Procfs sampling can undercount processes that start and exit between "
+            "samples; process-tree RSS is a simultaneous sum that may double-count "
+            "shared pages and is not the sole physical-memory truth."
         ),
     }
     summary_path.write_text(

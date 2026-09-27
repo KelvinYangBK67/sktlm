@@ -603,27 +603,47 @@ class LexiconStore:
 
         if not self.connection.in_transaction:
             raise RuntimeError("Piece host support requires an open transaction.")
-        source_rows = [
-            (identity, host, float(value))
-            for identity, host, value in support
-            if value > 0.0
-        ]
+        row_count = 0
+
+        def pooled_rows() -> Iterable[tuple[str, str, float]]:
+            nonlocal row_count
+            for identity, host, value in support:
+                numeric = float(value)
+                if numeric > 0.0:
+                    row_count += 1
+                    yield identity.key, host.key, numeric
+
         started = time.perf_counter()
+        if collect_roles:
+            # Role diagnostics consume the same source a second time. They are
+            # opt-in and deliberately retain the old bounded-by-caller copy;
+            # the production V3 path keeps diagnostics disabled and streams.
+            source_rows = [
+                (identity, host, float(value))
+                for identity, host, value in support
+                if value > 0.0
+            ]
+            row_count = len(source_rows)
+            pooled_source: Iterable[tuple[str, str, float]] = (
+                (identity.key, host.key, value)
+                for identity, host, value in source_rows
+            )
+        else:
+            source_rows = None
+            pooled_source = pooled_rows()
         self.connection.executemany(
             "INSERT INTO piece_host_support_next(piece_key, host_key, support) "
             "VALUES (?, ?, ?) ON CONFLICT(piece_key, host_key) DO UPDATE SET "
             "support = support + excluded.support",
-            (
-                (identity.key, host.key, value)
-                for identity, host, value in source_rows
-            ),
+            pooled_source,
         )
         self.telemetry.elapsed("sqlite_piece_host_support_upsert", started)
         self.telemetry.increment("sqlite_piece_host_support_upsert_calls")
         self.telemetry.increment(
-            "sqlite_piece_host_support_upsert_rows", len(source_rows)
+            "sqlite_piece_host_support_upsert_rows", row_count
         )
         if collect_roles:
+            assert source_rows is not None
             if not self.has_table("piece_host_role_support_next"):
                 raise RuntimeError("Role-diagnostic collection table is unavailable.")
             role_started = time.perf_counter()

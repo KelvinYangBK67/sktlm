@@ -401,3 +401,37 @@ def test_v2_v3_identity_and_default_role_collection_are_isolated(tmp_path) -> No
             )
     finally:
         store.close()
+
+
+def test_default_v3_host_support_consumes_source_once_and_streams_rows(tmp_path) -> None:
+    store = LexiconStore(tmp_path / "streaming.sqlite")
+    checkpoint = {"history": [{}]}
+    piece = PieceIdentity(parse_iast_form("ti"), PieceRole.RIGHT)
+    hosts = (parse_iast_form("gacchati"), parse_iast_form("bhavati"))
+    yielded: list[str] = []
+
+    def rows():
+        for index, host in enumerate(hosts, start=1):
+            yielded.append(host.key)
+            yield piece, host, float(index)
+
+    try:
+        store.begin_piece_count_pass(
+            resume=False,
+            checkpoint=checkpoint,
+            objective_model=S1M2_REUSABLE_PIECES_V3,
+        )
+        store.begin_document_counts()
+        store.add_document_piece_host_support(rows(), collect_roles=False)
+        observed = store.connection.execute(
+            "SELECT host_key, support FROM piece_host_support_next "
+            "ORDER BY host_key"
+        ).fetchall()
+        store.rollback_document()
+    finally:
+        store.close()
+
+    assert yielded == [host.key for host in hosts]
+    assert observed == sorted(
+        [(hosts[0].key, 1.0), (hosts[1].key, 2.0)]
+    )

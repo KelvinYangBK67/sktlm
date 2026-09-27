@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from enum import Enum
-from functools import lru_cache
 from typing import Iterable, Iterator
 
 from sktlm.latent.frontend import SurfaceUnit
@@ -121,6 +121,12 @@ def _unit_keys(units: Iterable[SurfaceUnit]) -> tuple[tuple[str, str], ...]:
 class StructuredSandhiGrammar:
     """Indexed, script-neutral view of the fixed external grammar."""
 
+    _INTERNAL_CACHE_MAX_ENTRIES = 100_000
+    _INTERNAL_CACHE_MAX_TOKEN_UNITS = 1_000_000
+    _INTERNAL_CACHE_MAX_MATCHES = 1_000_000
+    _INTERNAL_CACHE_MAX_ENTRY_TOKEN_UNITS = 256
+    _INTERNAL_CACHE_MAX_ENTRY_MATCHES = 4_096
+
     def __init__(self, rules: Iterable[SandhiRule]) -> None:
         self.rules = tuple(
             StructuredSandhiRule(
@@ -170,9 +176,19 @@ class StructuredSandhiGrammar:
         self._boundary_buckets = {
             key: tuple(value) for key, value in boundary_buckets.items()
         }
-        self._cached_internal_matches = lru_cache(maxsize=100_000)(
-            self._compute_internal_matches
-        )
+        self._internal_match_cache: OrderedDict[
+            tuple[tuple[str, str], ...], tuple[InternalRuleMatch, ...]
+        ] = OrderedDict()
+        self._internal_cache_token_units = 0
+        self._internal_cache_match_count = 0
+        self._internal_cache_hits = 0
+        self._internal_cache_misses = 0
+        self._internal_cache_evictions = 0
+        self._internal_cache_long_token_bypasses = 0
+        self._internal_cache_large_match_bypasses = 0
+        self._internal_cache_peak_entries = 0
+        self._internal_cache_peak_token_units = 0
+        self._internal_cache_peak_match_count = 0
 
     @classmethod
     def from_default_inventory(cls) -> "StructuredSandhiGrammar":
@@ -182,7 +198,50 @@ class StructuredSandhiGrammar:
         self,
         units: tuple[SurfaceUnit, ...],
     ) -> Iterator[InternalRuleMatch]:
-        yield from self._cached_internal_matches(_unit_keys(units))
+        keys = _unit_keys(units)
+        if len(keys) > self._INTERNAL_CACHE_MAX_ENTRY_TOKEN_UNITS:
+            self._internal_cache_misses += 1
+            self._internal_cache_long_token_bypasses += 1
+            yield from self._compute_internal_matches(keys)
+            return
+        cached = self._internal_match_cache.get(keys)
+        if cached is not None:
+            self._internal_cache_hits += 1
+            self._internal_match_cache.move_to_end(keys)
+            yield from cached
+            return
+        self._internal_cache_misses += 1
+        matches = self._compute_internal_matches(keys)
+        if len(matches) > self._INTERNAL_CACHE_MAX_ENTRY_MATCHES:
+            self._internal_cache_large_match_bypasses += 1
+            yield from matches
+            return
+        while self._internal_match_cache and (
+            len(self._internal_match_cache) >= self._INTERNAL_CACHE_MAX_ENTRIES
+            or self._internal_cache_token_units + len(keys)
+            > self._INTERNAL_CACHE_MAX_TOKEN_UNITS
+            or self._internal_cache_match_count + len(matches)
+            > self._INTERNAL_CACHE_MAX_MATCHES
+        ):
+            old_keys, old_matches = self._internal_match_cache.popitem(last=False)
+            self._internal_cache_token_units -= len(old_keys)
+            self._internal_cache_match_count -= len(old_matches)
+            self._internal_cache_evictions += 1
+        self._internal_match_cache[keys] = matches
+        self._internal_cache_token_units += len(keys)
+        self._internal_cache_match_count += len(matches)
+        self._internal_cache_peak_entries = max(
+            self._internal_cache_peak_entries, len(self._internal_match_cache)
+        )
+        self._internal_cache_peak_token_units = max(
+            self._internal_cache_peak_token_units,
+            self._internal_cache_token_units,
+        )
+        self._internal_cache_peak_match_count = max(
+            self._internal_cache_peak_match_count,
+            self._internal_cache_match_count,
+        )
+        yield from matches
 
     def _compute_internal_matches(
         self,
@@ -240,9 +299,26 @@ class StructuredSandhiGrammar:
 
     def cache_statistics(self) -> dict[str, dict[str, int | None]]:
         return {
-            'internal_matches': dict(
-                self._cached_internal_matches.cache_info()._asdict()
-            )
+            "internal_matches": {
+                "hits": self._internal_cache_hits,
+                "misses": self._internal_cache_misses,
+                "maxsize": self._INTERNAL_CACHE_MAX_ENTRIES,
+                "currsize": len(self._internal_match_cache),
+                "cached_token_units": self._internal_cache_token_units,
+                "cached_match_count": self._internal_cache_match_count,
+                "max_cached_token_units": self._INTERNAL_CACHE_MAX_TOKEN_UNITS,
+                "max_cached_match_count": self._INTERNAL_CACHE_MAX_MATCHES,
+                "max_entry_token_units": (
+                    self._INTERNAL_CACHE_MAX_ENTRY_TOKEN_UNITS
+                ),
+                "max_entry_match_count": self._INTERNAL_CACHE_MAX_ENTRY_MATCHES,
+                "evictions": self._internal_cache_evictions,
+                "long_token_bypasses": self._internal_cache_long_token_bypasses,
+                "large_match_bypasses": self._internal_cache_large_match_bypasses,
+                "peak_entries": self._internal_cache_peak_entries,
+                "peak_cached_token_units": self._internal_cache_peak_token_units,
+                "peak_cached_match_count": self._internal_cache_peak_match_count,
+            }
         }
 
     def match_visible_boundary(

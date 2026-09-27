@@ -166,9 +166,13 @@ out = {
     "cores_15m": None,
     "rss": None,
     "peak": None,
+    "main_rss": None,
+    "worker_rss": None,
+    "max_worker_rss": None,
     "proc": None,
     "load1": None,
     "mem_avail": None,
+    "swap_used": None,
     "disk_free": None,
     "live_pid": None,
     "metrics_dir": None,
@@ -438,6 +442,13 @@ if metrics_dir is not None:
                 out["wall"] = num(last, "wall_seconds")
                 out["rss"] = num(last, "rss_bytes")
                 out["peak"] = num(last, "peak_rss_bytes")
+                out["main_rss"] = num(last, "main_process_rss_bytes")
+                out["worker_rss"] = num(last, "sum_worker_rss_bytes")
+                out["max_worker_rss"] = num(last, "max_single_worker_rss_bytes")
+                sampled_mem = num(last, "mem_available_bytes")
+                if sampled_mem is not None:
+                    out["mem_avail"] = sampled_mem
+                out["swap_used"] = num(last, "swap_used_bytes")
                 proc_value = num(last, "process_count")
                 out["proc"] = None if proc_value is None else int(proc_value)
                 out["load1"] = num(last, "load_average_1m")
@@ -726,11 +737,14 @@ except Exception as exc:
     out["bundle_progress_error"] = "bundle-progress: " + repr(exc)
 
 try:
+    memory = {}
     with open("/proc/meminfo", encoding="utf-8") as handle:
         for line in handle:
-            if line.startswith("MemAvailable:"):
-                out["mem_avail"] = int(line.split()[1]) * 1024
-                break
+            if line.startswith(("MemAvailable:", "SwapTotal:", "SwapFree:")):
+                memory[line.split(":", 1)[0]] = int(line.split()[1]) * 1024
+    out["mem_avail"] = memory.get("MemAvailable", out.get("mem_avail"))
+    if "SwapTotal" in memory and "SwapFree" in memory:
+        out["swap_used"] = max(0, memory["SwapTotal"] - memory["SwapFree"])
 except Exception:
     pass
 
@@ -1169,10 +1183,13 @@ def render_table(
         f"{'CPU5M':>7s} "
         f"{'CPU15M':>7s} "
         f"{'RSS':>7s} "
+        f"{'MAIN':>7s} "
+        f"{'WMAX':>7s} "
         f"{'PEAK':>7s} "
         f"{'PROC':>5s} "
         f"{'LOAD1':>6s} "
         f"{'MEMAVL':>8s} "
+        f"{'SWAP':>7s} "
         f"{'DISK':>8s}"
     )
     print(header)
@@ -1219,10 +1236,13 @@ def render_table(
             f"{fmt_cores(live.get('cores_5m')):>7s} "
             f"{fmt_cores(live.get('cores_15m')):>7s} "
             f"{fmt_gib(live.get('rss')):>7s} "
+            f"{fmt_gib(live.get('main_rss')):>7s} "
+            f"{fmt_gib(live.get('max_worker_rss')):>7s} "
             f"{fmt_gib(live.get('peak')):>7s} "
             f"{proc:>5s} "
             f"{load1:>6s} "
             f"{fmt_gib(live.get('mem_avail')):>8s} "
+            f"{fmt_gib(live.get('swap_used')):>7s} "
             f"{fmt_gib(live.get('disk_free')):>8s}"
         )
 

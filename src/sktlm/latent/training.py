@@ -727,6 +727,38 @@ def _record_candidate_telemetry(
         )
 
 
+def _record_grammar_cache_telemetry(
+    telemetry: RuntimeTelemetry,
+    grammar: StructuredSandhiGrammar,
+    before: Mapping[str, int | None],
+    *,
+    phase: str,
+) -> None:
+    after = grammar.cache_statistics()["internal_matches"]
+    for name in (
+        "hits",
+        "misses",
+        "evictions",
+        "long_token_bypasses",
+        "large_match_bypasses",
+    ):
+        telemetry.increment(
+            f"{phase}_grammar_cache_{name}",
+            int(after.get(name) or 0) - int(before.get(name) or 0),
+        )
+    for name in (
+        "currsize",
+        "cached_token_units",
+        "cached_match_count",
+        "peak_entries",
+        "peak_cached_token_units",
+        "peak_cached_match_count",
+    ):
+        telemetry.maximum(
+            f"{phase}_grammar_cache_{name}", int(after.get(name) or 0)
+        )
+
+
 def _record_exact_hypothesis_count(
     telemetry: RuntimeTelemetry,
     inference: ComposedSegmentInference,
@@ -1799,6 +1831,7 @@ def _write_training_bundle_shard(
     sqlite_seconds_before = float(getattr(active_scorer, "sqlite_seconds", 0.0))
     piece_counters_before = _WORKER_PIECE_ENGINE.counter_snapshot()
     engineering = RuntimeTelemetry()
+    grammar_cache_before = _WORKER_GRAMMAR.cache_statistics()["internal_matches"]
     records = 0
     segment_digest = hashlib.sha256()
 
@@ -1988,6 +2021,12 @@ def _write_training_bundle_shard(
             _replace_file(topology_temporary, paths["topology"])
             topology_name = paths["topology"].name
             topology_sha = _file_sha256(paths["topology"])
+        _record_grammar_cache_telemetry(
+            engineering,
+            _WORKER_GRAMMAR,
+            grammar_cache_before,
+            phase="training",
+        )
         payload = {
             "schema_version": "sktlm-s1m2-training-bundle-shard/v1",
             "config_signature": config_signature,
@@ -4372,6 +4411,7 @@ def _write_inspection_bundle_shard(
     sqlite_seconds_before = float(getattr(active_scorer, "sqlite_seconds", 0.0))
     piece_counters_before = _WORKER_PIECE_ENGINE.counter_snapshot()
     engineering = RuntimeTelemetry()
+    grammar_cache_before = _WORKER_GRAMMAR.cache_statistics()["internal_matches"]
     records = 0
     first_identity: tuple[int, int] | None = None
     last_identity: tuple[int, int] | None = None
@@ -4646,6 +4686,12 @@ def _write_inspection_bundle_shard(
             handle.flush()
             os.fsync(handle.fileno())
         _replace_file(temporary, paths["segments"])
+        _record_grammar_cache_telemetry(
+            engineering,
+            _WORKER_GRAMMAR,
+            grammar_cache_before,
+            phase="inspection",
+        )
         payload = {
             "schema_version": "sktlm-s1m2-inspection-bundle-shard/v1",
             "config_signature": config_signature,
