@@ -19,7 +19,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wai
 from contextlib import ExitStack
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Mapping
+from typing import Any, Callable, Iterable, Iterator, Mapping
 
 from sktlm.latent.candidates import (
     CandidateBuildProfile,
@@ -1164,6 +1164,7 @@ def _training_bundle_paths(
     )
     return {
         "segments": root / f"{stem}.segments.jsonl",
+        "host_support": root / f"{stem}.host-support.tsv",
         "marker": root / f"{stem}.complete.json",
         "topology": root / f"{stem}.topology.bin",
     }
@@ -1837,6 +1838,7 @@ def _write_training_bundle_shard(
     paths = _training_bundle_paths(run_dir, pass_index, bundle)
     paths["segments"].parent.mkdir(parents=True, exist_ok=True)
     segment_temporary = paths["segments"].with_suffix(".jsonl.tmp")
+    host_support_temporary = paths["host_support"].with_suffix(".tsv.tmp")
     topology_temporary = paths["topology"].with_suffix(".bin.tmp")
     wall_started = time.perf_counter()
     cpu_started = time.process_time()
@@ -1853,11 +1855,16 @@ def _write_training_bundle_shard(
     grammar_cache_before = _WORKER_GRAMMAR.cache_statistics()["internal_matches"]
     records = 0
     segment_digest = hashlib.sha256()
+    host_support_digest = hashlib.sha256()
+    host_support_rows = 0
 
     try:
         with ExitStack() as resources:
             handle = resources.enter_context(
                 segment_temporary.open("wb")
+            )
+            host_support_handle = resources.enter_context(
+                host_support_temporary.open("wb")
             )
             topology_writer: TopologyArchiveWriter | None = None
             topology_reader: TopologyArchiveReader | None = None
@@ -1944,8 +1951,57 @@ def _write_training_bundle_shard(
                     candidate_nodes=candidate_counts["lattice_nodes"],
                     candidate_edges=inference.candidate_span_hypotheses,
                 )
+                segment_host_support_rows = 0
+                for (piece, host), value in sorted(
+                    inference.piece_host_support.items(),
+                    key=lambda item: (
+                        (
+                            item[0][0].key,
+                            item[0][1].key,
+                            item[0][0].role.value,
+                        )
+                        if config.model == S1M2_REUSABLE_PIECES_V3
+                        else (
+                            item[0][0].key,
+                            item[0][1].key,
+                        )
+                    ),
+                ):
+                    encoded_support = (
+                        f"H\t{piece.key}\t{host.key}\t{float(value).hex()}\n"
+                    ).encode("utf-8")
+                    host_support_handle.write(encoded_support)
+                    host_support_digest.update(encoded_support)
+                    segment_host_support_rows += 1
+                    host_support_rows += 1
+                segment_host_role_support_rows = 0
+                if config.piece_role_diagnostics:
+                    for (piece, host), value in sorted(
+                        inference.piece_host_support.items(),
+                        key=lambda item: (
+                            item[0][0].key,
+                            item[0][1].key,
+                            item[0][0].role.value,
+                        ),
+                    ):
+                        encoded_support = (
+                            f"D\t{piece.key}\t{piece.role.value}\t{host.key}\t"
+                            f"{float(value).hex()}\n"
+                        ).encode("utf-8")
+                        host_support_handle.write(encoded_support)
+                        host_support_digest.update(encoded_support)
+                        segment_host_role_support_rows += 1
+                        host_support_rows += 1
+                engineering.maximum(
+                    "training_segment_host_support_rows",
+                    segment_host_support_rows,
+                )
+                engineering.maximum(
+                    "training_segment_host_role_support_rows",
+                    segment_host_role_support_rows,
+                )
                 record = {
-                    "schema_version": "sktlm-s1m2-training-segment-result/v2",
+                    "schema_version": "sktlm-s1m2-training-segment-result/v3",
                     "line_number": line_number,
                     "segment_index": segment_index,
                     "lexical_counts": [
@@ -1965,45 +2021,9 @@ def _write_training_bundle_shard(
                             key=lambda item: item[0].key,
                         )
                     ],
-                    "piece_host_support": [
-                        (piece.key, host.key, float(value).hex())
-                        for (piece, host), value in sorted(
-                            inference.piece_host_support.items(),
-                            key=lambda item: (
-                                (
-                                    item[0][0].key,
-                                    item[0][1].key,
-                                    item[0][0].role.value,
-                                )
-                                if config.model == S1M2_REUSABLE_PIECES_V3
-                                else (
-                                    item[0][0].key,
-                                    item[0][1].key,
-                                )
-                            ),
-                        )
-                    ],
-                    **(
-                        {
-                            "piece_host_role_support": [
-                            (
-                                piece.key,
-                                piece.role.value,
-                                host.key,
-                                float(value).hex(),
-                            )
-                            for (piece, host), value in sorted(
-                                inference.piece_host_support.items(),
-                                key=lambda item: (
-                                    item[0][0].key,
-                                    item[0][1].key,
-                                    item[0][0].role.value,
-                                ),
-                            )
-                            ]
-                        }
-                        if config.piece_role_diagnostics
-                        else {}
+                    "piece_host_support_rows": segment_host_support_rows,
+                    "piece_host_role_support_rows": (
+                        segment_host_role_support_rows
                     ),
                     "metrics": _exact_metrics_payload(segment_metrics),
                 }
@@ -2033,7 +2053,17 @@ def _write_training_bundle_shard(
                 )
             handle.flush()
             os.fsync(handle.fileno())
+            host_support_handle.flush()
+            os.fsync(host_support_handle.fileno())
         _replace_file(segment_temporary, paths["segments"])
+        _replace_file(host_support_temporary, paths["host_support"])
+        engineering.increment(
+            "training_bundle_host_support_rows", host_support_rows
+        )
+        engineering.maximum(
+            "training_bundle_host_support_bytes",
+            paths["host_support"].stat().st_size,
+        )
         topology_name = None
         topology_sha = None
         if topology_writer is not None:
@@ -2047,7 +2077,7 @@ def _write_training_bundle_shard(
             phase="training",
         )
         payload = {
-            "schema_version": "sktlm-s1m2-training-bundle-shard/v1",
+            "schema_version": "sktlm-s1m2-training-bundle-shard/v2",
             "config_signature": config_signature,
             "plan_sha256": plan_sha256,
             "pass_index": pass_index,
@@ -2061,6 +2091,9 @@ def _write_training_bundle_shard(
             "segment_count": records,
             "segment_shard": paths["segments"].name,
             "segment_shard_sha256": segment_digest.hexdigest(),
+            "host_support_shard": paths["host_support"].name,
+            "host_support_shard_sha256": host_support_digest.hexdigest(),
+            "host_support_rows": host_support_rows,
             "topology_shard": topology_name,
             "topology_shard_sha256": topology_sha,
             "runtime": {
@@ -2093,7 +2126,11 @@ def _write_training_bundle_shard(
         _write_json(paths["marker"], payload)
         return payload
     except BaseException:
-        for temporary in (segment_temporary, topology_temporary):
+        for temporary in (
+            segment_temporary,
+            host_support_temporary,
+            topology_temporary,
+        ):
             if temporary.exists():
                 temporary.unlink()
         raise
@@ -2112,9 +2149,13 @@ def _load_training_bundle_shard(
     if not paths["segments"].is_file() or not paths["marker"].is_file():
         return None
     payload = json.loads(paths["marker"].read_text(encoding="utf-8"))
+    schema_version = payload.get("schema_version")
     expected = (
-        payload.get("schema_version")
-        == "sktlm-s1m2-training-bundle-shard/v1"
+        schema_version
+        in {
+            "sktlm-s1m2-training-bundle-shard/v1",
+            "sktlm-s1m2-training-bundle-shard/v2",
+        }
         and payload.get("config_signature") == config_signature
         and payload.get("plan_sha256") == plan_sha256
         and int(payload.get("pass_index", -1)) == pass_index
@@ -2131,6 +2172,14 @@ def _load_training_bundle_shard(
         raise RuntimeError(f"Stale or mismatched bundle shard: {paths['marker']}")
     if payload.get("segment_shard_sha256") != _file_sha256(paths["segments"]):
         raise RuntimeError(f"Bundle shard checksum mismatch: {paths['segments']}")
+    if schema_version == "sktlm-s1m2-training-bundle-shard/v2":
+        if not paths["host_support"].is_file() or (
+            payload.get("host_support_shard_sha256")
+            != _file_sha256(paths["host_support"])
+        ):
+            raise RuntimeError(
+                f"Bundle host-support checksum mismatch: {paths['host_support']}"
+            )
     if pass_index == 1 and not COMPACT_EXACT_S1M2:
         if not paths["topology"].is_file() or (
             payload.get("topology_shard_sha256")
@@ -2140,6 +2189,58 @@ def _load_training_bundle_shard(
                 f"Bundle topology checksum mismatch: {paths['topology']}"
             )
     return payload
+
+
+def _consume_training_segment_support(
+    record: Mapping[str, Any],
+    support_handle: Any | None,
+    piece_host_support: Counter[tuple[str, str]],
+    piece_host_role_support: Counter[tuple[str, str, str]],
+) -> int:
+    """Fold one segment's host rows without materializing its wire payload."""
+
+    schema = record.get("schema_version")
+    if schema == "sktlm-s1m2-training-segment-result/v2":
+        for piece_key, host_key, value in record["piece_host_support"]:
+            piece_host_support[(piece_key, host_key)] += float.fromhex(value)
+        for piece_key, role, host_key, value in record.get(
+            "piece_host_role_support", []
+        ):
+            piece_host_role_support[(piece_key, role, host_key)] += (
+                float.fromhex(value)
+            )
+        return len(record["piece_host_support"]) + len(
+            record.get("piece_host_role_support", [])
+        )
+    if schema != "sktlm-s1m2-training-segment-result/v3":
+        raise RuntimeError(f"Invalid bundle segment record schema: {schema!r}")
+    if support_handle is None:
+        raise RuntimeError("Streaming bundle record has no host-support shard.")
+
+    consumed = 0
+    for _ in range(int(record["piece_host_support_rows"])):
+        line = support_handle.readline()
+        if not line:
+            raise RuntimeError("Truncated bundle host-support shard.")
+        fields = line.rstrip("\n").split("\t")
+        if len(fields) != 4 or fields[0] != "H":
+            raise RuntimeError("Invalid bundle host-support row.")
+        _kind, piece_key, host_key, value = fields
+        piece_host_support[(piece_key, host_key)] += float.fromhex(value)
+        consumed += 1
+    for _ in range(int(record.get("piece_host_role_support_rows", 0))):
+        line = support_handle.readline()
+        if not line:
+            raise RuntimeError("Truncated bundle host-role-support shard.")
+        fields = line.rstrip("\n").split("\t")
+        if len(fields) != 5 or fields[0] != "D":
+            raise RuntimeError("Invalid bundle host-role-support row.")
+        _kind, piece_key, role, host_key, value = fields
+        piece_host_role_support[(piece_key, role, host_key)] += float.fromhex(
+            value
+        )
+        consumed += 1
+    return consumed
 
 
 def _coalesce_training_bundle_shards(
@@ -2228,16 +2329,28 @@ def _coalesce_training_bundle_shards(
                         ),
                     )
                 record_count = 0
+                support_rows_consumed = 0
                 first_identity: tuple[int, int] | None = None
                 last_identity: tuple[int, int] | None = None
                 try:
-                    with paths["segments"].open(encoding="utf-8") as source:
+                    with ExitStack() as shard_resources:
+                        source = shard_resources.enter_context(
+                            paths["segments"].open(encoding="utf-8")
+                        )
+                        support_source = (
+                            shard_resources.enter_context(
+                                paths["host_support"].open(encoding="utf-8")
+                            )
+                            if payload.get("schema_version")
+                            == "sktlm-s1m2-training-bundle-shard/v2"
+                            else None
+                        )
                         for line in source:
                             record = json.loads(line)
-                            if (
-                                record.get("schema_version")
-                                != "sktlm-s1m2-training-segment-result/v2"
-                            ):
+                            if record.get("schema_version") not in {
+                                "sktlm-s1m2-training-segment-result/v2",
+                                "sktlm-s1m2-training-segment-result/v3",
+                            }:
                                 raise RuntimeError(
                                     f"Invalid bundle segment record: {paths['segments']}"
                                 )
@@ -2255,18 +2368,14 @@ def _coalesce_training_bundle_shards(
                                 counts[key] += float.fromhex(value)
                             for key, value in record["piece_counts"]:
                                 piece_counts[key] += float.fromhex(value)
-                            for piece_key, host_key, value in record[
-                                "piece_host_support"
-                            ]:
-                                piece_host_support[(piece_key, host_key)] += (
-                                    float.fromhex(value)
+                            support_rows_consumed += (
+                                _consume_training_segment_support(
+                                    record,
+                                    support_source,
+                                    piece_host_support,
+                                    piece_host_role_support,
                                 )
-                            for piece_key, role, host_key, value in record.get(
-                                "piece_host_role_support", []
-                            ):
-                                piece_host_role_support[
-                                    (piece_key, role, host_key)
-                                ] += float.fromhex(value)
+                            )
                             metrics = metrics.merged(
                                 _metrics_from_exact_payload(record["metrics"])
                             )
@@ -2287,11 +2396,18 @@ def _coalesce_training_bundle_shards(
                             ):
                                 flush(handle)
                             del record
+                        if support_source is not None and support_source.readline():
+                            raise RuntimeError(
+                                f"Trailing bundle host-support rows: "
+                                f"{paths['host_support']}"
+                            )
                 finally:
                     if topology_reader is not None:
                         topology_reader.close()
                 if (
                     record_count != bundle.segment_count
+                    or support_rows_consumed
+                    != int(payload.get("host_support_rows", support_rows_consumed))
                     or first_identity
                     != (bundle.first_line_number, bundle.first_segment_index)
                     or last_identity
@@ -2392,7 +2508,7 @@ def _retire_training_bundle_shards(
 def _apply_compact_training_bundle_shards(
     *,
     bundles: tuple[ExecutionBundle, ...],
-    payloads: dict[tuple[int, int], dict[str, Any]],
+    payload_for_bundle: Callable[[ExecutionBundle], dict[str, Any]],
     store: LexiconStore,
     config: TrainingConfig,
     checkpoint: dict[str, Any],
@@ -2467,18 +2583,30 @@ def _apply_compact_training_bundle_shards(
     store.begin_document_counts()
     try:
         for bundle in bundles:
-            payload = payloads[bundle.key]
+            payload = payload_for_bundle(bundle)
             paths = _training_bundle_paths(run_dir, pass_index, bundle)
             record_count = 0
+            support_rows_consumed = 0
             first_identity: tuple[int, int] | None = None
             last_identity: tuple[int, int] | None = None
-            with paths["segments"].open(encoding="utf-8") as source:
+            with ExitStack() as shard_resources:
+                source = shard_resources.enter_context(
+                    paths["segments"].open(encoding="utf-8")
+                )
+                support_source = (
+                    shard_resources.enter_context(
+                        paths["host_support"].open(encoding="utf-8")
+                    )
+                    if payload.get("schema_version")
+                    == "sktlm-s1m2-training-bundle-shard/v2"
+                    else None
+                )
                 for line in source:
                     record = json.loads(line)
-                    if (
-                        record.get("schema_version")
-                        != "sktlm-s1m2-training-segment-result/v2"
-                    ):
+                    if record.get("schema_version") not in {
+                        "sktlm-s1m2-training-segment-result/v2",
+                        "sktlm-s1m2-training-segment-result/v3",
+                    }:
                         raise RuntimeError(
                             f"Invalid bundle segment record: {paths['segments']}"
                         )
@@ -2496,18 +2624,12 @@ def _apply_compact_training_bundle_shards(
                         lexical_counts[key] += float.fromhex(value)
                     for key, value in record["piece_counts"]:
                         piece_counts[key] += float.fromhex(value)
-                    for piece_key, host_key, value in record[
-                        "piece_host_support"
-                    ]:
-                        piece_host_support[(piece_key, host_key)] += (
-                            float.fromhex(value)
-                        )
-                    for piece_key, role, host_key, value in record.get(
-                        "piece_host_role_support", []
-                    ):
-                        piece_host_role_support[(piece_key, role, host_key)] += (
-                            float.fromhex(value)
-                        )
+                    support_rows_consumed += _consume_training_segment_support(
+                        record,
+                        support_source,
+                        piece_host_support,
+                        piece_host_role_support,
+                    )
                     document_metrics = document_metrics.merged(
                         _metrics_from_exact_payload(record["metrics"])
                     )
@@ -2521,8 +2643,15 @@ def _apply_compact_training_bundle_shards(
                     ):
                         flush()
                     del record
+                if support_source is not None and support_source.readline():
+                    raise RuntimeError(
+                        f"Trailing bundle host-support rows: "
+                        f"{paths['host_support']}"
+                    )
             if (
                 record_count != bundle.segment_count
+                or support_rows_consumed
+                != int(payload.get("host_support_rows", support_rows_consumed))
                 or first_identity
                 != (bundle.first_line_number, bundle.first_segment_index)
                 or last_identity
@@ -3074,9 +3203,41 @@ def _parallel_training_bundles(
             for document_index in range(start_document, len(documents)):
                 document_bundles = plan.by_document[document_index]
                 compact_bundle_apply = False
+                compact_payload_for_bundle: (
+                    Callable[[ExecutionBundle], dict[str, Any]] | None
+                ) = None
                 if document_index in existing_documents:
                     payload = existing_documents[document_index]
                     telemetry.add_seconds("training_reducer_stall", 0.0)
+                elif COMPACT_EXACT_S1M2:
+                    compact_bundle_apply = True
+
+                    def wait_for_bundle(
+                        bundle: ExecutionBundle,
+                    ) -> dict[str, Any]:
+                        wait_started = telemetry.now()
+                        with condition:
+                            while bundle.key not in ready:
+                                if dispatch_error is not None:
+                                    raise dispatch_error
+                                if dispatch_done:
+                                    raise RuntimeError(
+                                        "Bundle scheduler exhausted work before "
+                                        f"bundle {bundle.key} became ready."
+                                    )
+                                condition.wait()
+                            bundle_payload = ready.pop(bundle.key)
+                            telemetry.add_seconds(
+                                "training_reducer_stall",
+                                time.perf_counter() - wait_started,
+                            )
+                            telemetry.observe(
+                                "training_bundle_ready_shards", len(ready)
+                            )
+                            condition.notify_all()
+                            return bundle_payload
+
+                    compact_payload_for_bundle = wait_for_bundle
                 else:
                     expected_keys = tuple(bundle.key for bundle in document_bundles)
                     wait_started = telemetry.now()
@@ -3095,22 +3256,20 @@ def _parallel_training_bundles(
                             time.perf_counter() - wait_started,
                         )
                         payloads = {key: ready[key] for key in expected_keys}
-                    if COMPACT_EXACT_S1M2:
-                        compact_bundle_apply = True
-                    else:
-                        payload = _coalesce_training_bundle_shards(
-                            bundles=document_bundles,
-                            payloads=payloads,
-                            document=documents[document_index],
-                            config=config,
-                            pass_index=pass_index,
-                            run_dir=run_dir,
-                            config_signature=signature,
-                        )
-                if compact_bundle_apply:
-                    metrics = _apply_compact_training_bundle_shards(
+                    payload = _coalesce_training_bundle_shards(
                         bundles=document_bundles,
                         payloads=payloads,
+                        document=documents[document_index],
+                        config=config,
+                        pass_index=pass_index,
+                        run_dir=run_dir,
+                        config_signature=signature,
+                    )
+                if compact_bundle_apply:
+                    assert compact_payload_for_bundle is not None
+                    metrics = _apply_compact_training_bundle_shards(
+                        bundles=document_bundles,
+                        payload_for_bundle=compact_payload_for_bundle,
                         store=store,
                         config=config,
                         checkpoint=checkpoint,

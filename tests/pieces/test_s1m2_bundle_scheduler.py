@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import io
 import json
 import runpy
 import sqlite3
+from collections import Counter
 from concurrent.futures import Future
 from dataclasses import asdict, replace
 from pathlib import Path
@@ -680,6 +682,136 @@ def test_bundle_scheduler_refills_while_canonical_first_bundle_waits(
     )
     assert submitted == list(range(12))
     assert first_completed_after == 12
+
+
+def test_streaming_bundle_host_support_rows_decode_without_json_materialization() -> None:
+    support: Counter[tuple[str, str]] = Counter()
+    role_support: Counter[tuple[str, str, str]] = Counter()
+    stream = io.StringIO(
+        "H\tpiece-a\thost-a\t0x1.0000000000000p-2\n"
+        "H\tpiece-b\thost-b\t0x1.0000000000000p-1\n"
+        "D\tpiece-a\tleft\thost-a\t0x1.0000000000000p-2\n"
+    )
+
+    consumed = training._consume_training_segment_support(
+        {
+            "schema_version": "sktlm-s1m2-training-segment-result/v3",
+            "piece_host_support_rows": 2,
+            "piece_host_role_support_rows": 1,
+        },
+        stream,
+        support,
+        role_support,
+    )
+
+    assert consumed == 3
+    assert support == {("piece-a", "host-a"): 0.25, ("piece-b", "host-b"): 0.5}
+    assert role_support == {("piece-a", "left", "host-a"): 0.25}
+    assert stream.readline() == ""
+
+
+def test_compact_bundle_reducer_overlaps_with_later_bundle_workers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(training, "COMPACT_EXACT_S1M2", True)
+    bundles = tuple(
+        ExecutionBundle(
+            document_index=0,
+            relative_path="tiny.txt",
+            bundle_index=index,
+            first_segment_ordinal=index,
+            last_segment_ordinal_exclusive=index + 1,
+            first_line_number=1,
+            first_line_byte_offset=0,
+            first_segment_index=index,
+            last_line_number=1,
+            last_segment_index=index,
+            segment_count=1,
+            phonemes=1,
+            pressure=1,
+        )
+        for index in range(3)
+    )
+    plan = ExecutionBundlePlan(
+        root=tmp_path,
+        scan_signature_sha256="1" * 64,
+        plan_sha256="2" * 64,
+        materialization_sha256="5" * 64,
+        planner_implementation=PLANNER_IMPLEMENTATION,
+        representation_set_sha256="3" * 64,
+        segment_sequence_sha256="4" * 64,
+        bundles=bundles,
+        by_document=(bundles,),
+    )
+    futures: dict[int, Future[dict[str, object]]] = {}
+    reduced: list[int] = []
+
+    class FakeExecutor:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def __enter__(self) -> FakeExecutor:
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            pass
+
+        def submit(self, _function: object, bundle: ExecutionBundle, *_: object) -> Future:
+            future: Future[dict[str, object]] = Future()
+            futures[bundle.bundle_index] = future
+            if bundle.bundle_index == 0:
+                future.set_result({"bundle_index": 0})
+            return future
+
+    def apply_compact(**kwargs: object) -> PassMetrics:
+        payload_for_bundle = kwargs["payload_for_bundle"]
+        assert callable(payload_for_bundle)
+        payload_for_bundle(bundles[0])
+        reduced.append(0)
+        assert not futures[1].done()
+        futures[1].set_result({"bundle_index": 1})
+        payload_for_bundle(bundles[1])
+        reduced.append(1)
+        futures[2].set_result({"bundle_index": 2})
+        payload_for_bundle(bundles[2])
+        reduced.append(2)
+        return kwargs["metrics"]  # type: ignore[return-value]
+
+    monkeypatch.setattr(training, "ProcessPoolExecutor", FakeExecutor)
+    monkeypatch.setattr(training, "_load_training_shard", lambda *_args: None)
+    monkeypatch.setattr(
+        training, "_load_training_bundle_shard", lambda **_kwargs: None
+    )
+    monkeypatch.setattr(
+        training, "_apply_compact_training_bundle_shards", apply_compact
+    )
+    monkeypatch.setattr(
+        training, "_retire_training_bundle_shards", lambda *_args: None
+    )
+    document = CorpusDocument(
+        "tiny.txt", tmp_path / "unused", "tiny", EXPECTED_FREEZE_ID
+    )
+
+    class FakeStore:
+        path = tmp_path / "learner.sqlite"
+
+    training._parallel_training_bundles(
+        pass_index=1,
+        documents=(document,),
+        grammar=training.StructuredSandhiGrammar.from_default_inventory(),
+        store=FakeStore(),  # type: ignore[arg-type]
+        config=TrainingConfig(model=S1M2_MODEL, workers=2),
+        run_dir=tmp_path,
+        checkpoint={},
+        telemetry=RuntimeTelemetry(),
+        start_document=0,
+        metrics=PassMetrics(),
+        vocabulary=None,
+        plan=plan,
+    )
+
+    assert reduced == [0, 1, 2]
 
 
 def test_inspection_bundle_scheduler_refills_and_reduces_canonically(
