@@ -564,6 +564,50 @@ def test_compact_shared_dp_matches_legacy_with_role_conditioned_scores() -> None
     _assert_piece_host_conservation(legacy)
 
 
+def test_host_adjoint_endpoint_batches_preserve_exact_marginals() -> None:
+    grammar = StructuredSandhiGrammar.from_default_inventory()
+    graph = build_lazy_candidate_graph(
+        next(iter_observed_segments("tattvamasi")), grammar
+    )
+    config = PieceModelConfig(max_piece_length=3, rho=0.41)
+
+    def run(batch_size: int):
+        return infer_composed_segment(
+            graph,
+            ComposedPieceInference(
+                _RoleTableScorer(),
+                model_config=config,
+                cache_config=ComposedCacheConfig(
+                    host_adjoint_endpoint_batch_size=batch_size
+                ),
+            ),
+            whitespace_merge_penalty=8.0,
+        )
+
+    batched = run(1)
+    wide = run(1_000_000)
+
+    assert batched.log_partition == pytest.approx(
+        wide.log_partition, rel=1e-10, abs=1e-12
+    )
+    assert batched.piece_expected_counts == pytest.approx(
+        wide.piece_expected_counts, rel=1e-10, abs=1e-12
+    )
+    assert batched.piece_host_support == pytest.approx(
+        wide.piece_host_support, rel=1e-10, abs=1e-12
+    )
+    _assert_piece_host_conservation(batched)
+    assert batched.counters.host_adjoint_batches > wide.counters.host_adjoint_batches
+    assert (
+        batched.counters.host_adjoint_endpoints
+        == wide.counters.host_adjoint_endpoints
+    )
+    assert (
+        batched.counters.host_adjoint_peak_entries
+        <= wide.counters.host_adjoint_peak_entries
+    )
+
+
 def test_neutral_fast_path_matches_exact_zero_score_route_without_score_calls() -> None:
     grammar = StructuredSandhiGrammar.from_default_inventory()
     graph = build_lazy_candidate_graph(

@@ -593,6 +593,32 @@ class PassMetrics:
         )
 
 
+_COMPOSED_GAUGE_NAMES = frozenset(
+    {
+        "piece_score_cache_entries",
+        "piece_score_cache_estimated_bytes",
+        "form_cache_entries",
+        "form_cache_estimated_bytes",
+        "retained_budget_peak_bytes",
+        "host_adjoint_peak_entries",
+    }
+)
+
+
+def _merge_composed_counter_payload(
+    target: Counter[str],
+    payload: Mapping[str, Any],
+) -> None:
+    """Merge additive work counters and peak/current gauges correctly."""
+
+    for name, raw_value in payload.items():
+        value = int(raw_value)
+        if name in _COMPOSED_GAUGE_NAMES:
+            target[name] = max(target[name], value)
+        else:
+            target[name] += value
+
+
 def _record_composed_telemetry(
     telemetry: RuntimeTelemetry,
     counters: ComposedInferenceCounters,
@@ -600,16 +626,9 @@ def _record_composed_telemetry(
     phase: str,
     timings: ComposedInferenceTimings | None = None,
 ) -> None:
-    gauges = {
-        "piece_score_cache_entries",
-        "piece_score_cache_estimated_bytes",
-        "form_cache_entries",
-        "form_cache_estimated_bytes",
-        "retained_budget_peak_bytes",
-    }
     for name, value in asdict(counters).items():
         label = f"{phase}_{name}"
-        if name in gauges:
+        if name in _COMPOSED_GAUGE_NAMES:
             telemetry.maximum(label, int(value))
         else:
             telemetry.increment(label, int(value))
@@ -2294,7 +2313,10 @@ def _coalesce_training_bundle_shards(
                     "sqlite_seconds",
                 ):
                     runtime_totals[label] += runtime[label]
-                composed_totals.update(runtime.get("composed_counters", {}))
+                _merge_composed_counter_payload(
+                    composed_totals,
+                    runtime.get("composed_counters", {}),
+                )
                 if runtime.get("engineering_telemetry"):
                     engineering.merge_payload(runtime["engineering_telemetry"])
             flush(handle)
@@ -2522,7 +2544,10 @@ def _apply_compact_training_bundle_shards(
                 "sqlite_seconds",
             ):
                 runtime_totals[label] += runtime[label]
-            composed_totals.update(runtime.get("composed_counters", {}))
+            _merge_composed_counter_payload(
+                composed_totals,
+                runtime.get("composed_counters", {}),
+            )
             if runtime.get("engineering_telemetry"):
                 engineering.merge_payload(runtime["engineering_telemetry"])
         flush()
@@ -4978,7 +5003,10 @@ def _coalesce_inspection_bundle_shards(
                 "sqlite_seconds",
             ):
                 runtime_totals[label] += runtime.get(label, 0)
-            composed_totals.update(runtime.get("composed_counters", {}))
+            _merge_composed_counter_payload(
+                composed_totals,
+                runtime.get("composed_counters", {}),
+            )
             engineering.merge_payload(runtime.get("engineering_telemetry", {}))
             bundle_records = 0
             first_identity: tuple[int, int] | None = None

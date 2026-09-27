@@ -42,6 +42,7 @@ class ComposedCacheConfig:
     shared_token_marginals: bool = True
     shared_prefix_nodes: int = 262_144
     shared_top_k_piece_references: int = 4_194_304
+    host_adjoint_endpoint_batch_size: int = 128
     inspection_retained_factor_bytes: int = 320 * 1024 * 1024
 
     def __post_init__(self) -> None:
@@ -54,6 +55,10 @@ class ComposedCacheConfig:
             (
                 "shared_top_k_piece_references",
                 self.shared_top_k_piece_references,
+            ),
+            (
+                "host_adjoint_endpoint_batch_size",
+                self.host_adjoint_endpoint_batch_size,
             ),
             (
                 "inspection_retained_factor_bytes",
@@ -126,6 +131,9 @@ class ComposedInferenceCounters:
     neutral_prior_fast_path_forms: int = 0
     neutral_prior_fast_path_nodes: int = 0
     neutral_prior_fast_path_transitions: int = 0
+    host_adjoint_batches: int = 0
+    host_adjoint_endpoints: int = 0
+    host_adjoint_peak_entries: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,6 +195,8 @@ _EVENT_COUNTERS = (
     "neutral_prior_fast_path_forms",
     "neutral_prior_fast_path_nodes",
     "neutral_prior_fast_path_transitions",
+    "host_adjoint_batches",
+    "host_adjoint_endpoints",
 )
 
 _TIMING_COUNTERS = tuple(ComposedInferenceTimings.__dataclass_fields__)
@@ -788,6 +798,9 @@ class ComposedPieceInference:
                 "retained_budget_peak_bytes": self._events[
                     "retained_budget_peak_bytes"
                 ],
+                "host_adjoint_peak_entries": self._events[
+                    "host_adjoint_peak_entries"
+                ],
             }
         )
         return ComposedInferenceCounters(**payload)
@@ -811,6 +824,9 @@ class ComposedPieceInference:
                 "form_cache_estimated_bytes": after.form_cache_estimated_bytes,
                 "retained_budget_peak_bytes": (
                     after.retained_budget_peak_bytes
+                ),
+                "host_adjoint_peak_entries": (
+                    after.host_adjoint_peak_entries
                 ),
             }
         )
@@ -1608,24 +1624,27 @@ class ComposedPieceInference:
         float,
         dict[tuple[PieceIdentity, PhonologicalForm], float],
     ]:
-        """Reverse the compact shared DAG with endpoint-indexed adjoints."""
+        """Reverse the compact DAG with bounded endpoint-indexed adjoints."""
 
         started = time.perf_counter()
         topology = batch.topology
+        active_endpoints = tuple(
+            (endpoint_id, mass)
+            for endpoint_id, mass in endpoint_masses.items()
+            if mass > 0.0
+        )
         log_adjoint = [-math.inf] * len(topology.parent)
         piece_counts: dict[PieceIdentity, float] = {}
         piece_host_support: dict[
             tuple[PieceIdentity, PhonologicalForm], float
         ] = {}
-        host_log_adjoints: dict[int, dict[int, float]] = {}
-        endpoint_hosts: dict[int, PhonologicalForm] = {}
         expected_raw_score = 0.0
-        for endpoint_id, mass in endpoint_masses.items():
-            if mass <= 0.0:
-                continue
+
+        # Keep the aggregate reverse pass in its original endpoint/node order.
+        # It remains independent of the host-indexed state, so batching the
+        # latter cannot change piece counts or expected raw score.
+        for endpoint_id, mass in active_endpoints:
             score = batch.endpoint_scores[endpoint_id]
-            host = self._compact_form(topology, endpoint_id)
-            endpoint_hosts[endpoint_id] = host
             seed = math.log(mass) - score.raw_log_partition
             for transition_index in range(
                 topology.transition_offsets[score.node - 1],
@@ -1654,29 +1673,16 @@ class ComposedPieceInference:
                 piece_counts[identity] = (
                     piece_counts.get(identity, 0.0) + contribution
                 )
-                host_key = (identity, host)
-                piece_host_support[host_key] = (
-                    piece_host_support.get(host_key, 0.0) + contribution
-                )
                 expected_raw_score += contribution * raw_score
                 log_adjoint[source] = logaddexp(
-                    log_adjoint[source],
-                    seed + raw_score,
-                )
-                source_hosts = host_log_adjoints.setdefault(source, {})
-                source_hosts[endpoint_id] = logaddexp(
-                    source_hosts.get(endpoint_id, -math.inf),
-                    seed + raw_score,
+                    log_adjoint[source], seed + raw_score
                 )
             if topology.depth[score.node] > topology.max_piece_length:
+                host = self._compact_form(topology, endpoint_id)
                 contribution = math.exp(seed + score.whole_raw_score)
                 identity = PieceIdentity(host, PieceRole.WHOLE)
                 piece_counts[identity] = (
                     piece_counts.get(identity, 0.0) + contribution
-                )
-                host_key = (identity, host)
-                piece_host_support[host_key] = (
-                    piece_host_support.get(host_key, 0.0) + contribution
                 )
                 expected_raw_score += contribution * score.whole_raw_score
 
@@ -1684,7 +1690,6 @@ class ComposedPieceInference:
             adjoint = log_adjoint[node_index]
             if adjoint == -math.inf:
                 continue
-            node_host_adjoints = host_log_adjoints.pop(node_index)
             for transition_index in range(
                 topology.transition_offsets[node_index - 1],
                 topology.transition_offsets[node_index],
@@ -1710,20 +1715,108 @@ class ComposedPieceInference:
                 log_adjoint[source] = logaddexp(
                     log_adjoint[source], adjoint + raw_score
                 )
-                source_hosts = host_log_adjoints.setdefault(source, {})
-                for endpoint_id, host_adjoint in node_host_adjoints.items():
-                    host_contribution = math.exp(
-                        host_adjoint + batch.alpha[source] + raw_score
+
+        batch_size = self.cache_config.host_adjoint_endpoint_batch_size
+        for batch_start in range(0, len(active_endpoints), batch_size):
+            endpoint_batch = active_endpoints[batch_start : batch_start + batch_size]
+            self._events["host_adjoint_batches"] += 1
+            self._events["host_adjoint_endpoints"] += len(endpoint_batch)
+            host_log_adjoints: dict[int, dict[int, float]] = {}
+            endpoint_hosts: dict[int, PhonologicalForm] = {}
+            live_entries = 0
+            peak_entries = 0
+
+            for endpoint_id, mass in endpoint_batch:
+                score = batch.endpoint_scores[endpoint_id]
+                host = self._compact_form(topology, endpoint_id)
+                endpoint_hosts[endpoint_id] = host
+                seed = math.log(mass) - score.raw_log_partition
+                for transition_index in range(
+                    topology.transition_offsets[score.node - 1],
+                    topology.transition_offsets[score.node],
+                ):
+                    source = topology.transition_sources[transition_index]
+                    source_depth = topology.depth[source]
+                    role = (
+                        PieceRole.WHOLE
+                        if source_depth == 0
+                        else PieceRole.RIGHT
                     )
-                    host_key = (identity, endpoint_hosts[endpoint_id])
+                    piece = batch.pieces[
+                        topology.transition_piece_ids[transition_index]
+                    ]
+                    raw_score = self._piece_prior(
+                        source_depth,
+                        topology.depth[score.node],
+                    ) + (
+                        0.0
+                        if self._all_piece_scores_zero
+                        else self._piece_and_score(piece.symbols, role)[1]
+                    )
+                    contribution = math.exp(
+                        seed + batch.alpha[source] + raw_score
+                    )
+                    identity = PieceIdentity(piece, role)
+                    host_key = (identity, host)
                     piece_host_support[host_key] = (
-                        piece_host_support.get(host_key, 0.0)
-                        + host_contribution
+                        piece_host_support.get(host_key, 0.0) + contribution
                     )
+                    source_hosts = host_log_adjoints.setdefault(source, {})
+                    if endpoint_id not in source_hosts:
+                        live_entries += 1
                     source_hosts[endpoint_id] = logaddexp(
                         source_hosts.get(endpoint_id, -math.inf),
-                        host_adjoint + raw_score,
+                        seed + raw_score,
                     )
+                    peak_entries = max(peak_entries, live_entries)
+                if topology.depth[score.node] > topology.max_piece_length:
+                    contribution = math.exp(seed + score.whole_raw_score)
+                    identity = PieceIdentity(host, PieceRole.WHOLE)
+                    host_key = (identity, host)
+                    piece_host_support[host_key] = (
+                        piece_host_support.get(host_key, 0.0) + contribution
+                    )
+
+            for node_index in range(len(topology.parent) - 1, 0, -1):
+                node_host_adjoints = host_log_adjoints.pop(node_index, None)
+                if node_host_adjoints is None:
+                    continue
+                live_entries -= len(node_host_adjoints)
+                for transition_index in range(
+                    topology.transition_offsets[node_index - 1],
+                    topology.transition_offsets[node_index],
+                ):
+                    source = topology.transition_sources[transition_index]
+                    raw_score = batch.transition_raw_scores[transition_index]
+                    piece = batch.pieces[
+                        topology.transition_piece_ids[transition_index]
+                    ]
+                    role = (
+                        PieceRole.LEFT
+                        if topology.depth[source] == 0
+                        else PieceRole.INTERNAL
+                    )
+                    identity = PieceIdentity(piece, role)
+                    source_hosts = host_log_adjoints.setdefault(source, {})
+                    for endpoint_id, host_adjoint in node_host_adjoints.items():
+                        host_contribution = math.exp(
+                            host_adjoint + batch.alpha[source] + raw_score
+                        )
+                        host_key = (identity, endpoint_hosts[endpoint_id])
+                        piece_host_support[host_key] = (
+                            piece_host_support.get(host_key, 0.0)
+                            + host_contribution
+                        )
+                        if endpoint_id not in source_hosts:
+                            live_entries += 1
+                        source_hosts[endpoint_id] = logaddexp(
+                            source_hosts.get(endpoint_id, -math.inf),
+                            host_adjoint + raw_score,
+                        )
+                    peak_entries = max(peak_entries, live_entries)
+            self._events["host_adjoint_peak_entries"] = max(
+                self._events["host_adjoint_peak_entries"], peak_entries
+            )
         self.add_timing("inner_piece_backward_seconds", started)
         self.add_timing("inner_piece_posterior_seconds", started)
         return piece_counts, expected_raw_score, piece_host_support
@@ -2078,23 +2171,25 @@ class ComposedPieceInference:
         float,
         dict[tuple[PieceIdentity, PhonologicalForm], float],
     ]:
-        """Reverse one shared DAG for posterior-weighted exact piece counts."""
+        """Reverse one shared DAG with bounded host-indexed adjoints."""
 
         started = time.perf_counter()
         topology = batch.topology
+        active_endpoints = tuple(
+            (form_key, mass)
+            for form_key, mass in endpoint_masses.items()
+            if mass > 0.0
+        )
         log_adjoint = [-math.inf] * len(topology.parent)
         piece_counts: dict[PieceIdentity, float] = {}
         piece_host_support: dict[
             tuple[PieceIdentity, PhonologicalForm], float
         ] = {}
-        host_log_adjoints: dict[int, dict[str, float]] = {}
         expected_raw_score = 0.0
         max_piece_length = self.model_config.max_piece_length
-        for form_key, mass in endpoint_masses.items():
-            if mass <= 0.0:
-                continue
+
+        for form_key, mass in active_endpoints:
             score = batch.forms[form_key]
-            host = score.form
             seed = math.log(mass) - score.raw_log_partition
             for transition_index in range(
                 topology.transition_offsets[score.node - 1],
@@ -2123,19 +2218,9 @@ class ComposedPieceInference:
                 piece_counts[identity] = (
                     piece_counts.get(identity, 0.0) + contribution
                 )
-                host_key = (identity, host)
-                piece_host_support[host_key] = (
-                    piece_host_support.get(host_key, 0.0) + contribution
-                )
                 expected_raw_score += contribution * raw_score
                 log_adjoint[source] = logaddexp(
-                    log_adjoint[source],
-                    seed + raw_score,
-                )
-                source_hosts = host_log_adjoints.setdefault(source, {})
-                source_hosts[form_key] = logaddexp(
-                    source_hosts.get(form_key, -math.inf),
-                    seed + raw_score,
+                    log_adjoint[source], seed + raw_score
                 )
             if len(score.form.symbols) > max_piece_length:
                 contribution = math.exp(seed + score.whole_raw_score)
@@ -2143,17 +2228,12 @@ class ComposedPieceInference:
                 piece_counts[identity] = (
                     piece_counts.get(identity, 0.0) + contribution
                 )
-                host_key = (identity, host)
-                piece_host_support[host_key] = (
-                    piece_host_support.get(host_key, 0.0) + contribution
-                )
                 expected_raw_score += contribution * score.whole_raw_score
 
         for node_index in range(len(topology.parent) - 1, 0, -1):
             adjoint = log_adjoint[node_index]
             if adjoint == -math.inf:
                 continue
-            node_host_adjoints = host_log_adjoints.pop(node_index)
             for transition_index in range(
                 topology.transition_offsets[node_index - 1],
                 topology.transition_offsets[node_index],
@@ -2177,23 +2257,108 @@ class ComposedPieceInference:
                 )
                 expected_raw_score += contribution * raw_score
                 log_adjoint[source] = logaddexp(
-                    log_adjoint[source],
-                    adjoint + raw_score,
+                    log_adjoint[source], adjoint + raw_score
                 )
-                source_hosts = host_log_adjoints.setdefault(source, {})
-                for form_key, host_adjoint in node_host_adjoints.items():
-                    host_contribution = math.exp(
-                        host_adjoint + batch.alpha[source] + raw_score
+
+        batch_size = self.cache_config.host_adjoint_endpoint_batch_size
+        for batch_start in range(0, len(active_endpoints), batch_size):
+            endpoint_batch = active_endpoints[batch_start : batch_start + batch_size]
+            self._events["host_adjoint_batches"] += 1
+            self._events["host_adjoint_endpoints"] += len(endpoint_batch)
+            host_log_adjoints: dict[int, dict[str, float]] = {}
+            live_entries = 0
+            peak_entries = 0
+
+            for form_key, mass in endpoint_batch:
+                score = batch.forms[form_key]
+                host = score.form
+                seed = math.log(mass) - score.raw_log_partition
+                for transition_index in range(
+                    topology.transition_offsets[score.node - 1],
+                    topology.transition_offsets[score.node],
+                ):
+                    source = topology.transition_sources[transition_index]
+                    source_depth = topology.depth[source]
+                    role = (
+                        PieceRole.WHOLE
+                        if source_depth == 0
+                        else PieceRole.RIGHT
                     )
-                    host_key = (identity, batch.forms[form_key].form)
+                    piece = batch.pieces[
+                        topology.transition_piece_ids[transition_index]
+                    ]
+                    raw_score = self._piece_prior(
+                        source_depth,
+                        topology.depth[score.node],
+                    ) + (
+                        0.0
+                        if self._all_piece_scores_zero
+                        else self._piece_and_score(piece.symbols, role)[1]
+                    )
+                    contribution = math.exp(
+                        seed + batch.alpha[source] + raw_score
+                    )
+                    identity = PieceIdentity(piece, role)
+                    host_key = (identity, host)
                     piece_host_support[host_key] = (
-                        piece_host_support.get(host_key, 0.0)
-                        + host_contribution
+                        piece_host_support.get(host_key, 0.0) + contribution
                     )
+                    source_hosts = host_log_adjoints.setdefault(source, {})
+                    if form_key not in source_hosts:
+                        live_entries += 1
                     source_hosts[form_key] = logaddexp(
                         source_hosts.get(form_key, -math.inf),
-                        host_adjoint + raw_score,
+                        seed + raw_score,
                     )
+                    peak_entries = max(peak_entries, live_entries)
+                if len(score.form.symbols) > max_piece_length:
+                    contribution = math.exp(seed + score.whole_raw_score)
+                    identity = PieceIdentity(score.whole_piece, PieceRole.WHOLE)
+                    host_key = (identity, host)
+                    piece_host_support[host_key] = (
+                        piece_host_support.get(host_key, 0.0) + contribution
+                    )
+
+            for node_index in range(len(topology.parent) - 1, 0, -1):
+                node_host_adjoints = host_log_adjoints.pop(node_index, None)
+                if node_host_adjoints is None:
+                    continue
+                live_entries -= len(node_host_adjoints)
+                for transition_index in range(
+                    topology.transition_offsets[node_index - 1],
+                    topology.transition_offsets[node_index],
+                ):
+                    source = topology.transition_sources[transition_index]
+                    raw_score = batch.transition_raw_scores[transition_index]
+                    piece = batch.pieces[
+                        topology.transition_piece_ids[transition_index]
+                    ]
+                    role = (
+                        PieceRole.LEFT
+                        if topology.depth[source] == 0
+                        else PieceRole.INTERNAL
+                    )
+                    identity = PieceIdentity(piece, role)
+                    source_hosts = host_log_adjoints.setdefault(source, {})
+                    for form_key, host_adjoint in node_host_adjoints.items():
+                        host_contribution = math.exp(
+                            host_adjoint + batch.alpha[source] + raw_score
+                        )
+                        host_key = (identity, batch.forms[form_key].form)
+                        piece_host_support[host_key] = (
+                            piece_host_support.get(host_key, 0.0)
+                            + host_contribution
+                        )
+                        if form_key not in source_hosts:
+                            live_entries += 1
+                        source_hosts[form_key] = logaddexp(
+                            source_hosts.get(form_key, -math.inf),
+                            host_adjoint + raw_score,
+                        )
+                    peak_entries = max(peak_entries, live_entries)
+            self._events["host_adjoint_peak_entries"] = max(
+                self._events["host_adjoint_peak_entries"], peak_entries
+            )
         self.add_timing("inner_piece_backward_seconds", started)
         self.add_timing("inner_piece_posterior_seconds", started)
         return piece_counts, expected_raw_score, piece_host_support

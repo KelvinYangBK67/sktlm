@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -92,6 +93,31 @@ def test_s1m2_configuration_identity_includes_piece_model_and_cache_bounds(
     assert payload["piece_shared_prefix_nodes"] == 262_144
     assert payload["piece_shared_top_k_piece_references"] == 4_194_304
     assert "inspection_retained_factor_bytes" not in payload
+
+
+def test_composed_counter_merge_takes_maximum_for_gauges() -> None:
+    totals: Counter[str] = Counter()
+
+    latent_training._merge_composed_counter_payload(
+        totals,
+        {
+            "piece_score_calls": 7,
+            "piece_score_cache_entries": 11,
+            "host_adjoint_peak_entries": 23,
+        },
+    )
+    latent_training._merge_composed_counter_payload(
+        totals,
+        {
+            "piece_score_calls": 5,
+            "piece_score_cache_entries": 3,
+            "host_adjoint_peak_entries": 29,
+        },
+    )
+
+    assert totals["piece_score_calls"] == 12
+    assert totals["piece_score_cache_entries"] == 11
+    assert totals["host_adjoint_peak_entries"] == 29
 
 
 def test_v3_tiny_training_role_diagnostics_do_not_change_learned_state(
