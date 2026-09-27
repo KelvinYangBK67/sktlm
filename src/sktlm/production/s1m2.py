@@ -49,12 +49,12 @@ BOUND_VALIDATION_SCHEMA = "sktlm-s1m2-bounded-validation/v1"
 FULL_AUTHORIZATION_SCHEMA = "sktlm-s1m2-full-authorization/v1"
 FAILED_RESET_SCHEMA = "sktlm-s1m2-failed-reset/v1"
 ACTIVE_DEPLOYMENT_SCHEMA = "sktlm-s1m2-active-deployment/v1"
-ACTIVE_DEPLOYMENT_ID = "s1m2-v3-active-four-vm-20260925"
+ACTIVE_DEPLOYMENT_ID = "s1m2-v3-active-four-vm-20260927-corrected"
 ACTIVE_DEPLOYMENT_CELL_IDS = (
     "s1m2_m0_prime_iast_continuous",
     "s1m2_m0_devanagari_continuous",
-    "s1m2_m0_iast_surface_word",
-    "s1m2_m0_iast_legacy_joined",
+    "s1m2_m0_devanagari_surface_word",
+    "s1m2_m0_devanagari_legacy_joined",
 )
 ACTIVE_DEPLOYMENT_HOST_ROLES = (
     "core-07",
@@ -811,6 +811,13 @@ def validate_active_deployment(
     for job in active_jobs:
         cell_id = str(job["cell_id"])
         cell = _cell(contract, cell_id)
+
+        expected_host_role = contract["full_host_role_by_cell"][cell_id]
+        if job.get("host_role") != expected_host_role:
+            raise ValueError(
+                f"Active deployment host role differs from production contract: {cell_id}"
+            )
+
         if (
             job.get("script") != cell["script"]
             or job.get("condition") != cell["condition"]

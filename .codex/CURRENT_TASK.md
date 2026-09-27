@@ -15,12 +15,12 @@ CURRENT_EXECUTION_SCOPE=EXPLICIT_SUBSET
 ACTIVE_MAPPING:
 core-07=s1m2_m0_prime_iast_continuous
 core-08=s1m2_m0_devanagari_continuous
-core-09=s1m2_m0_iast_surface_word
-core-10=s1m2_m0_iast_legacy_joined
+core-09=s1m2_m0_devanagari_surface_word
+core-10=s1m2_m0_devanagari_legacy_joined
 
 ACTIVE_DEPLOYMENT_MANIFEST=configs/deployment/s1m2_v3_active_four_vm.json
-DEPLOYMENT_ID=s1m2-v3-active-four-vm-20260925
-FINAL_PLAN=artifacts/s1m2_production/final_plan_v3_active4_20260925.json
+DEPLOYMENT_ID=s1m2-v3-active-four-vm-20260927-corrected
+FINAL_PLAN=PENDING_REGENERATION_AFTER_CORRECTED_COMMIT
 FULL_WORKERS=12
 FULL_M0_AUTHORIZED=NO
 FULL_M0_PROCESS_RUNNING=NO

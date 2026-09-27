@@ -7,7 +7,7 @@ subset. `FULL_SIX_CELL_SCIENTIFIC_MATRIX != CURRENT_ACTIVE_VM_DEPLOYMENT`.
 
 The tracked authority for current topology is
 `configs/deployment/s1m2_v3_active_four_vm.json`, deployment ID
-`s1m2-v3-active-four-vm-20260925`. It maps IAST-prime continuous to `core-07`,
+`s1m2-v3-active-four-vm-20260927-corrected`. It maps IAST-prime continuous to `core-07`,
 Devanagari continuous to `core-08`, IAST `surface_word` to `core-09`, and IAST
 `legacy_joined` to `core-10`. Current counts are four VMs and four cells with
 `CURRENT_EXECUTION_SCOPE=EXPLICIT_SUBSET`. Devanagari `surface_word` and
@@ -40,7 +40,7 @@ and
 `reports/core_methods/reusable_pieces/evidence/s1m2_v3_pre_vm_control_plane_repair_20260925.json`.
 
 The post-repair final launch candidate is
-`artifacts/s1m2_production/final_plan_v3_active4_20260925.json`. It is generated
+`PENDING_REGENERATION_AFTER_CORRECTED_COMMIT`. It is generated
 only after the repair commit is pushed, remains unauthorized, and requires a
 separate plan-specific `--authorization <artifact>` before any Full launch.
 

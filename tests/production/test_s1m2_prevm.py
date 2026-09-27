@@ -370,7 +370,11 @@ def test_production_run_isolates_passes_and_inspection(
     plan_path.write_text(json.dumps(plan), encoding="utf-8")
 
     monkeypatch.setattr(s1m2, "load_contract", lambda *args, **kwargs: contract)
-    monkeypatch.setattr(s1m2, "_validate_plan", lambda *args: None)
+    monkeypatch.setattr(
+        s1m2,
+        "_validate_plan",
+        lambda *args, **kwargs: None,
+    )
     monkeypatch.setattr(s1m2, "git_identity", lambda root: IDENTITY)
     monkeypatch.setattr(
         s1m2,
