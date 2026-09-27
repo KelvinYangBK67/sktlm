@@ -399,10 +399,11 @@ def compare_artifacts(
     }
 
 
-def _compare_sqlite_piece_lexicon(
+def _compare_sqlite_table(
     left_path: Path,
     right_path: Path,
     *,
+    table: str,
     result: Comparison,
     rtol: float,
     atol: float,
@@ -414,36 +415,36 @@ def _compare_sqlite_piece_lexicon(
         as right,
     ):
         left_columns = tuple(
-            str(row[1]) for row in left.execute("PRAGMA table_info(piece_lexicon)")
+            str(row[1]) for row in left.execute(f'PRAGMA table_info("{table}")')
         )
         right_columns = tuple(
-            str(row[1]) for row in right.execute("PRAGMA table_info(piece_lexicon)")
+            str(row[1]) for row in right.execute(f'PRAGMA table_info("{table}")')
         )
         if not left_columns or left_columns != right_columns:
             raise AssertionError(
-                "learner.sqlite.piece_lexicon: schemas differ: "
+                f"learner.sqlite.{table}: schemas differ: "
                 f"{left_columns!r} != {right_columns!r}"
             )
         if left_columns[0] != "form_key":
             raise AssertionError(
-                "learner.sqlite.piece_lexicon: first column is not form_key"
+                f"learner.sqlite.{table}: first column is not form_key"
             )
         quoted = ", ".join(f'"{name}"' for name in left_columns)
-        query = f"SELECT {quoted} FROM piece_lexicon ORDER BY form_key"
+        query = f'SELECT {quoted} FROM "{table}" ORDER BY form_key'
         rows = 0
         for index, (left_row, right_row) in enumerate(
             zip_longest(left.execute(query), right.execute(query), fillvalue=_MISSING)
         ):
             if left_row is _MISSING or right_row is _MISSING:
                 raise AssertionError(
-                    "learner.sqlite.piece_lexicon: row counts differ at "
+                    f"learner.sqlite.{table}: row counts differ at "
                     f"{index}"
                 )
             assert isinstance(left_row, tuple) and isinstance(right_row, tuple)
             _compare(
                 list(left_row),
                 list(right_row),
-                path=f"learner.sqlite.piece_lexicon[{index}]",
+                path=f"learner.sqlite.{table}[{index}]",
                 result=result,
                 rtol=rtol,
                 atol=atol,
@@ -484,9 +485,18 @@ def compare_training_state(
         rtol=rtol,
         atol=atol,
     )
-    piece_rows = _compare_sqlite_piece_lexicon(
+    lexicon_rows = _compare_sqlite_table(
         reference / "learner.sqlite",
         candidate / "learner.sqlite",
+        table="lexicon",
+        result=result,
+        rtol=rtol,
+        atol=atol,
+    )
+    piece_rows = _compare_sqlite_table(
+        reference / "learner.sqlite",
+        candidate / "learner.sqlite",
+        table="piece_lexicon",
         result=result,
         rtol=rtol,
         atol=atol,
@@ -500,8 +510,10 @@ def compare_training_state(
         "artifacts": [
             "checkpoint.json:pass-boundary-state",
             "iteration_metrics.json",
+            "learner.sqlite:lexicon",
             "learner.sqlite:piece_lexicon",
         ],
+        "lexicon_rows": lexicon_rows,
         "piece_lexicon_rows": piece_rows,
         "excluded_engineering_keys": sorted(ENGINEERING_ONLY_KEYS),
         "numeric_values": result.numeric_values,

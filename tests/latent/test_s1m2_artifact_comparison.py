@@ -90,6 +90,15 @@ def _write_training_state(
     )
     with sqlite3.connect(root / "learner.sqlite") as connection:
         connection.execute(
+            "CREATE TABLE lexicon("
+            "form_key TEXT PRIMARY KEY, expected_count REAL NOT NULL, "
+            "probability REAL NOT NULL)"
+        )
+        connection.execute(
+            "INSERT INTO lexicon VALUES (?, ?, ?)",
+            ("V_A", 4.0 + delta, 1.0),
+        )
+        connection.execute(
             "CREATE TABLE piece_lexicon("
             "form_key TEXT PRIMARY KEY, raw_expected_count REAL NOT NULL, "
             "max_host_expected_usage REAL NOT NULL, reusable_count REAL NOT NULL)"
@@ -223,4 +232,5 @@ def test_training_state_comparator_checks_pass_boundary_science(
     payload = json.loads(result.stdout)
     assert payload["status"] == "PASS"
     assert payload["completed_passes"] == 1
+    assert payload["lexicon_rows"] == 1
     assert payload["piece_lexicon_rows"] == 1
