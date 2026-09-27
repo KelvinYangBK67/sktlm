@@ -1,3 +1,73 @@
+## S1M2 V3 runtime/RSS engineering reopen candidate (2026-09-28)
+
+The production-blocking Full M0 scaling evidence authorized a narrow
+engineering reopen from
+`5ec5d5c33a59abe06fadc9bde84f48b380b7fe39`. The benchmark candidate is
+`4f8e09707ab283a0a796d89d882e4b45c6621762` on
+`exp/s1m2-runtime-reopen`. This is an exact engineering candidate, not a
+performance-qualified replacement and not a Full M0 readiness claim.
+
+The audit confirmed seven concrete mechanisms: all-endpoint host adjoints,
+giant JSON host-support materialization and round-trip, all-bundle wait before
+canonical reduction, whole-document SQLite support-row materialization,
+count-only grammar-cache retention, redundant neutral Pass-1 learned scoring,
+and one-second recursive monitor scans.
+
+The candidate adds a scorer-free exact neutral Pass-1 route; deterministic
+128-endpoint bounded host-adjoint reverse batches; row-streamed bundle
+host-support sidecars; strict incremental bundle-index reduction inside one
+atomic document transaction while later workers run; truly streamed SQLite
+host-support upsert when role diagnostics are disabled; token-unit/match-count
+bounded grammar caching with bypass telemetry; separated process/filesystem/
+storage monitoring cadence; main/worker/host-memory telemetry; and a
+Pass-1-only Core-11 benchmark capture/comparison path.
+
+The scientific contract is unchanged: `reusable_pieces_v3`, three configured
+passes, exact composed marginal inference, gamma 1.0, rho 0.4, maximum piece
+length 8, zero support epsilon, unchanged candidate/grammar/boundary/host/role
+semantics, and canonical pass/checkpoint semantics. No pruning, truncation,
+sampling, probability change, or threshold tuning was introduced.
+
+Final focused validation passed 38 tests in 3.43 seconds. Change-local exact
+checks include an exploding scorer that proves no neutral learned-score call,
+batch-size-one versus wide host marginals/support, legacy/new bundle decoding,
+worker/reducer overlap, restartable next-pass-only state, bounded cache/store
+behavior, metrics, and a streaming Pass-1 comparator. Tiny bundled-versus-
+legacy and baseline-versus-candidate fixtures had identical learned keys with
+maximum absolute difference `1.7763568394002505e-15`, within the unchanged
+`rtol=1e-10`, `atol=1e-12` contract. Broad historical scheduler/composed test
+files still contain known stale schema/API expectations; they were not
+rewritten to imply a full green suite.
+
+A planner-only 1.5-second sanity check selected the complete first production
+Devanagari continuous document `1_veda/2_bra/gopbra_u.txt`: 5315 segments,
+195480 phonemes, pressure 10579072, and 39 bundles. Its normalized geometry
+matches document 0 of the tracked Full plan; subset plan SHA-256 is
+`e66b0363d19ea53b8023653ba33e27367466dbeaa8b3e30eaf103c31ab7d4d81`.
+
+Authority and exact researcher-operated commands:
+`reports/core_methods/reusable_pieces/s1m2_runtime_reopen_core11_benchmark_20260928.md`.
+The benchmark uses Core-11 only, workers 12, the complete first document, and
+Pass 1. It compares baseline and candidate `iteration_metrics.json` plus every
+ordered row of SQLite `lexicon` and `piece_lexicon` before performance can be
+interpreted. Frozen comparator tolerances must not be widened.
+
+No >5-minute test, representative/stress workload, repeated timing run,
+Passes 2/3 benchmark, Full M0 run, VM/cloud action, SSH, or action on
+Core-07 through Core-10 occurred. Remaining high-risk mechanisms include the
+serialized SQLite writer/reducer, text support sidecars and parent key
+reconstruction, compact topology/candidate object pressure, Passes 2/3 score
+lookup behavior, and the RSS/wall tradeoff of bounded reverse recomputation.
+
+```text
+S1M2_V3_SCIENTIFIC_SEMANTICS=FROZEN
+RUNTIME_REOPEN_CANDIDATE=4f8e09707ab283a0a796d89d882e4b45c6621762
+PERFORMANCE_RESULT=NOT_YET_MEASURED_ON_CORE_11
+FULL_M0_RUNTIME_VIABLE=NOT_REQUALIFIED
+CORE_07_TO_10_TOUCHED=NO
+NEXT_ACTION=RESEARCHER_RUNS_EXACT_CORE_11_BASELINE_CANDIDATE_AND_COMPARATOR_COMMANDS
+```
+
 ## S1M2 V3 four-VM deployment control-plane repair (2026-09-25)
 
 `S1M2_V3_SCIENTIFIC_SEMANTICS=FROZEN` and

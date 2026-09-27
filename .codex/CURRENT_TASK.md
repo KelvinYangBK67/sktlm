@@ -1,46 +1,41 @@
-DATE=2026-09-25
-BRANCH=exp/s1m2-reusable-pieces
-STATUS=S1M2_V3_FOUR_VM_PRE_VM_CONTROL_PLANE_READY
+DATE=2026-09-28
+BRANCH=exp/s1m2-runtime-reopen
+STATUS=S1M2_V3_RUNTIME_RSS_CANDIDATE_AWAITING_CORE11_BENCHMARK
 
+BASELINE_SHA=5ec5d5c33a59abe06fadc9bde84f48b380b7fe39
+BENCHMARK_CANDIDATE_SHA=4f8e09707ab283a0a796d89d882e4b45c6621762
 SCIENTIFIC_SEMANTICS=FROZEN
-RUNTIME_IMPLEMENTATION=FROZEN
-CONTROL_PLANE_REOPENED_FOR_PRE_VM_COMPATIBILITY=YES
+PERFORMANCE_RESULT=NOT_YET_MEASURED_ON_CORE_11
+FULL_M0_RUNTIME_VIABLE=NOT_REQUALIFIED
 
-FULL_SIX_CELL_SCIENTIFIC_MATRIX != CURRENT_ACTIVE_VM_DEPLOYMENT
+The candidate implements exact engineering changes for the confirmed Full M0
+scaling mechanisms: bounded grammar cache and monitoring, streamed SQLite
+host support, an exact neutral Pass-1 route, bounded host-specific adjoints,
+row-streamed bundle host support, and strict incremental canonical reduction
+overlapped with later workers. Pass/checkpoint and document transaction
+semantics are unchanged.
 
-CURRENT_ACTIVE_VM_SET=core-07,core-08,core-09,core-10
-CURRENT_ACTIVE_CELL_COUNT=4
-CURRENT_EXECUTION_SCOPE=EXPLICIT_SUBSET
+Focused final validation: 38 passed in 3.43 seconds. No >5-minute,
+representative, stress, Passes 2/3, Full M0, VM, or cloud workload was run.
+Core-07 through Core-10 were not contacted or changed.
 
-ACTIVE_MAPPING:
-core-07=s1m2_m0_prime_iast_continuous
-core-08=s1m2_m0_devanagari_continuous
-core-09=s1m2_m0_devanagari_surface_word
-core-10=s1m2_m0_devanagari_legacy_joined
+The next action is researcher-operated on idle Core-11 only:
 
-ACTIVE_DEPLOYMENT_MANIFEST=configs/deployment/s1m2_v3_active_four_vm.json
-DEPLOYMENT_ID=s1m2-v3-active-four-vm-20260927-corrected
-FINAL_PLAN=PENDING_REGENERATION_AFTER_CORRECTED_COMMIT
-FULL_WORKERS=12
-FULL_M0_AUTHORIZED=NO
-FULL_M0_PROCESS_RUNNING=NO
+1. Make `BENCHMARK_CANDIDATE_SHA` available in `/root/sktlm`.
+2. Follow the exact worktree, first-document plan, baseline, and candidate
+   commands in the authority report.
+3. Run the training-state comparator without changing its tolerance.
+4. Interpret wall/RSS/reducer telemetry only if the comparator reports PASS.
+5. Decide whether the measured result justifies any later Full redeployment or
+   a separately scoped secondary optimization.
 
-The six-cell production/scientific contract remains byte-identical. The two
-active IAST non-continuous bundle plans were rematerialized from stale v1 into
-current v2 direct-seek execution metadata with exact input and segment
-coverage. All four active plans pass the v2 loader. The deployment manifest is
-the authority for current scope, host roles, and bundle identities.
-
-No VM, SSH, cloud operation, Full authorization, training, inference,
-scientific workload, benchmark, or profiling run occurred in this repair.
+First-document identity:
+`1_veda/2_bra/gopbra_u.txt`, 5315 segments, 195480 phonemes, 39 bundles,
+plan SHA-256
+`e66b0363d19ea53b8023653ba33e27367466dbeaa8b3e30eaf103c31ab7d4d81`.
 
 Authority:
-reports/core_methods/reusable_pieces/s1m2_v3_pre_vm_control_plane_repair_20260925.md
-reports/core_methods/reusable_pieces/evidence/s1m2_v3_pre_vm_control_plane_repair_20260925.json
+reports/core_methods/reusable_pieces/s1m2_runtime_reopen_core11_benchmark_20260928.md
 
-NEXT_RESEARCHER_ACTION=CONFIRM COST/TIME STOP RULE, THEN CREATE PLAN-SPECIFIC FULL AUTHORIZATION AND POWER ON core-07/core-08/core-09/core-10
-
-Every Full run command must include:
---authorization <artifact>
-
-Do not launch VM/cloud/Full M0 automatically.
+Do not launch VM/cloud/Full M0 automatically. Do not touch Core-07 through
+Core-10 or their run/checkpoint/artifact state.
