@@ -123,6 +123,9 @@ class ComposedInferenceCounters:
     compact_endpoint_occurrences: int = 0
     historical_match_pressure_tokens: int = 0
     support_truncation_tokens: int = 0
+    neutral_prior_fast_path_forms: int = 0
+    neutral_prior_fast_path_nodes: int = 0
+    neutral_prior_fast_path_transitions: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,6 +184,9 @@ _EVENT_COUNTERS = (
     "compact_endpoint_occurrences",
     "historical_match_pressure_tokens",
     "support_truncation_tokens",
+    "neutral_prior_fast_path_forms",
+    "neutral_prior_fast_path_nodes",
+    "neutral_prior_fast_path_transitions",
 )
 
 _TIMING_COUNTERS = tuple(ComposedInferenceTimings.__dataclass_fields__)
@@ -707,6 +713,11 @@ class ComposedPieceInference:
         self._piece_scores_are_role_neutral = bool(
             getattr(scorer, "piece_scores_are_role_neutral", False)
         )
+        self._all_piece_scores_zero = bool(
+            getattr(scorer, "all_piece_scores_zero", False)
+        )
+        self._neutral_prior_alpha_by_depth = [0.0]
+        self._neutral_singleton_score_by_depth = [0.0]
         self._piece_scores: OrderedDict[
             tuple[Phoneme, ...]
             | tuple[tuple[Phoneme, ...], PieceRole],
@@ -739,6 +750,30 @@ class ComposedPieceInference:
             0,
             int(getattr(self.scorer, "store_lookups", 0))
             - self._initial_store_lookups,
+        )
+
+    def _neutral_prior_states(self, max_depth: int) -> tuple[list[float], list[float]]:
+        """Extend exact score-free prefix states once per observed host length."""
+
+        while len(self._neutral_prior_alpha_by_depth) <= max_depth:
+            depth = len(self._neutral_prior_alpha_by_depth)
+            value = -math.inf
+            for source_depth in range(
+                max(0, depth - self.model_config.max_piece_length), depth
+            ):
+                value = logaddexp(
+                    value,
+                    self._neutral_prior_alpha_by_depth[source_depth]
+                    + self._piece_prior(source_depth, depth),
+                )
+            self._neutral_prior_alpha_by_depth.append(value)
+            self._neutral_singleton_score_by_depth.append(
+                self._neutral_singleton_score_by_depth[-1]
+                + self._piece_prior(depth - 1, depth)
+            )
+        return (
+            self._neutral_prior_alpha_by_depth,
+            self._neutral_singleton_score_by_depth,
         )
 
     def counter_snapshot(self) -> ComposedInferenceCounters:
@@ -808,6 +843,8 @@ class ComposedPieceInference:
         symbols: tuple[Phoneme, ...],
         role: PieceRole,
     ) -> tuple[PhonologicalForm, float]:
+        if self._all_piece_scores_zero:
+            return PhonologicalForm(symbols), 0.0
         self._events["piece_score_calls"] += 1
         cache_key = (
             symbols
@@ -862,6 +899,7 @@ class ComposedPieceInference:
         transitions_by_start: list[
             tuple[tuple[int, PieceIdentity, float, float], ...]
         ] = []
+        neutral_pieces: dict[tuple[Phoneme, ...], PhonologicalForm] = {}
         for start in range(length):
             transitions: list[tuple[int, PieceIdentity, float, float]] = []
             for end in _piece_ends(
@@ -872,10 +910,15 @@ class ComposedPieceInference:
                 transition_count += 1
                 prior = self._piece_prior(start, end)
                 role = piece_role(start, end, length)
-                piece, piece_score = self._piece_and_score(
-                    form.symbols[start:end],
-                    role,
-                )
+                symbols = form.symbols[start:end]
+                if self._all_piece_scores_zero:
+                    piece = neutral_pieces.get(symbols)
+                    if piece is None:
+                        piece = PhonologicalForm(symbols)
+                        neutral_pieces[symbols] = piece
+                    piece_score = 0.0
+                else:
+                    piece, piece_score = self._piece_and_score(symbols, role)
                 transitions.append(
                     (end, PieceIdentity(piece, role), prior, prior + piece_score)
                 )
@@ -888,7 +931,13 @@ class ComposedPieceInference:
                 prior_alpha[end] = logaddexp(
                     prior_alpha[end], prior_alpha[start] + prior
                 )
-                alpha[end] = logaddexp(alpha[end], alpha[start] + score)
+                if not self._all_piece_scores_zero:
+                    alpha[end] = logaddexp(alpha[end], alpha[start] + score)
+        if self._all_piece_scores_zero:
+            alpha = prior_alpha
+            self._events["neutral_prior_fast_path_forms"] += 1
+            self._events["neutral_prior_fast_path_nodes"] += length + 1
+            self._events["neutral_prior_fast_path_transitions"] += transition_count
         self.add_timing("inner_piece_forward_seconds", started)
         self._events["composed_transition_count"] += transition_count
         prior_log_z = prior_alpha[-1]
@@ -1004,6 +1053,9 @@ class ComposedPieceInference:
     def _score_form(self, form: PhonologicalForm) -> float:
         """Compute only the exact normalized form score for an outer prepass."""
 
+        if self._all_piece_scores_zero:
+            self._events["neutral_prior_fast_path_forms"] += 1
+            return 0.0
         cached = self._forms.get(form.key)
         if cached is not None:
             return cached[0].log_score
@@ -1352,55 +1404,81 @@ class ComposedPieceInference:
 
         transition_started = time.perf_counter()
         pieces = tuple(PhonologicalForm(symbols) for symbols in topology.pieces)
-        prior_alpha = [-math.inf] * len(topology.parent)
-        alpha = [-math.inf] * len(topology.parent)
-        singleton_scores = [-math.inf] * len(topology.parent)
-        prior_alpha[0] = 0.0
-        alpha[0] = 0.0
-        singleton_scores[0] = 0.0
         transition_raw_scores = array("d")
 
         forward_started = time.perf_counter()
-        for node_index in range(1, len(topology.parent)):
-            node_prior_alpha = -math.inf
-            node_alpha = -math.inf
-            start = topology.transition_offsets[node_index - 1]
-            end = topology.transition_offsets[node_index]
-            for transition_index in range(start, end):
-                source = topology.transition_sources[transition_index]
-                prior = self._piece_prior(
-                    topology.depth[source], topology.depth[node_index]
-                )
-                role = (
-                    PieceRole.LEFT
-                    if topology.depth[source] == 0
-                    else PieceRole.INTERNAL
-                )
-                piece = pieces[topology.transition_piece_ids[transition_index]]
-                raw = (
-                    prior
-                    + self._piece_and_score(piece.symbols, role)[1]
-                )
-                transition_raw_scores.append(raw)
-                node_prior_alpha = logaddexp(
-                    node_prior_alpha,
-                    prior_alpha[source] + prior,
-                )
-                node_alpha = logaddexp(
-                    node_alpha,
-                    alpha[source] + raw,
-                )
-            prior_alpha[node_index] = node_prior_alpha
-            alpha[node_index] = node_alpha
-            singleton_index = end - 1
-            assert (
-                topology.transition_sources[singleton_index]
-                == topology.parent[node_index]
+        if self._all_piece_scores_zero:
+            max_depth = max(topology.depth, default=0)
+            prior_by_depth, singleton_by_depth = self._neutral_prior_states(
+                max_depth
             )
-            singleton_scores[node_index] = (
-                singleton_scores[topology.parent[node_index]]
-                + transition_raw_scores[singleton_index]
+            prior_alpha = [prior_by_depth[depth] for depth in topology.depth]
+            alpha = prior_alpha
+            singleton_scores = [
+                singleton_by_depth[depth] for depth in topology.depth
+            ]
+            for node_index in range(1, len(topology.parent)):
+                for transition_index in range(
+                    topology.transition_offsets[node_index - 1],
+                    topology.transition_offsets[node_index],
+                ):
+                    source = topology.transition_sources[transition_index]
+                    transition_raw_scores.append(
+                        self._piece_prior(
+                            topology.depth[source], topology.depth[node_index]
+                        )
+                    )
+            self._events["neutral_prior_fast_path_forms"] += len(
+                topology.endpoint_nodes
             )
+            self._events["neutral_prior_fast_path_nodes"] += len(topology.parent)
+            self._events["neutral_prior_fast_path_transitions"] += len(
+                topology.transition_sources
+            )
+        else:
+            prior_alpha = [-math.inf] * len(topology.parent)
+            alpha = [-math.inf] * len(topology.parent)
+            singleton_scores = [-math.inf] * len(topology.parent)
+            prior_alpha[0] = 0.0
+            alpha[0] = 0.0
+            singleton_scores[0] = 0.0
+            for node_index in range(1, len(topology.parent)):
+                node_prior_alpha = -math.inf
+                node_alpha = -math.inf
+                start = topology.transition_offsets[node_index - 1]
+                end = topology.transition_offsets[node_index]
+                for transition_index in range(start, end):
+                    source = topology.transition_sources[transition_index]
+                    prior = self._piece_prior(
+                        topology.depth[source], topology.depth[node_index]
+                    )
+                    role = (
+                        PieceRole.LEFT
+                        if topology.depth[source] == 0
+                        else PieceRole.INTERNAL
+                    )
+                    piece = pieces[topology.transition_piece_ids[transition_index]]
+                    raw = prior + self._piece_and_score(piece.symbols, role)[1]
+                    transition_raw_scores.append(raw)
+                    node_prior_alpha = logaddexp(
+                        node_prior_alpha,
+                        prior_alpha[source] + prior,
+                    )
+                    node_alpha = logaddexp(
+                        node_alpha,
+                        alpha[source] + raw,
+                    )
+                prior_alpha[node_index] = node_prior_alpha
+                alpha[node_index] = node_alpha
+                singleton_index = end - 1
+                assert (
+                    topology.transition_sources[singleton_index]
+                    == topology.parent[node_index]
+                )
+                singleton_scores[node_index] = (
+                    singleton_scores[topology.parent[node_index]]
+                    + transition_raw_scores[singleton_index]
+                )
         self.add_timing("inner_piece_forward_seconds", forward_started)
 
         endpoint_scores: list[_CompactEndpointScore] = []
@@ -1408,36 +1486,43 @@ class ComposedPieceInference:
         for endpoint_id, node_index in enumerate(topology.endpoint_nodes):
             node_depth = topology.depth[node_index]
             form_symbols = self._compact_form_symbols(topology, endpoint_id)
-            _whole_piece, piece_score = self._piece_and_score(
-                form_symbols,
-                PieceRole.WHOLE,
+            piece_score = (
+                0.0
+                if self._all_piece_scores_zero
+                else self._piece_and_score(form_symbols, PieceRole.WHOLE)[1]
             )
             whole_prior = self._piece_prior(0, node_depth)
             whole_raw = whole_prior + piece_score
-            terminal_raw_z = -math.inf
-            terminal_singleton_score = -math.inf
-            transition_start = topology.transition_offsets[node_index - 1]
-            transition_end = topology.transition_offsets[node_index]
-            for transition_index in range(transition_start, transition_end):
-                source = topology.transition_sources[transition_index]
-                source_depth = topology.depth[source]
-                role = (
-                    PieceRole.WHOLE if source_depth == 0 else PieceRole.RIGHT
-                )
-                piece = pieces[topology.transition_piece_ids[transition_index]]
-                prior = self._piece_prior(source_depth, node_depth)
-                terminal_raw = prior + self._piece_and_score(
-                    piece.symbols,
-                    role,
-                )[1]
-                terminal_raw_z = logaddexp(
-                    terminal_raw_z,
-                    alpha[source] + terminal_raw,
-                )
-                if source == topology.parent[node_index]:
-                    terminal_singleton_score = (
-                        singleton_scores[source] + terminal_raw
+            if self._all_piece_scores_zero:
+                terminal_raw_z = prior_alpha[node_index]
+                terminal_singleton_score = singleton_scores[node_index]
+            else:
+                terminal_raw_z = -math.inf
+                terminal_singleton_score = -math.inf
+                transition_start = topology.transition_offsets[node_index - 1]
+                transition_end = topology.transition_offsets[node_index]
+                for transition_index in range(transition_start, transition_end):
+                    source = topology.transition_sources[transition_index]
+                    source_depth = topology.depth[source]
+                    role = (
+                        PieceRole.WHOLE if source_depth == 0 else PieceRole.RIGHT
                     )
+                    piece = pieces[
+                        topology.transition_piece_ids[transition_index]
+                    ]
+                    prior = self._piece_prior(source_depth, node_depth)
+                    terminal_raw = prior + self._piece_and_score(
+                        piece.symbols,
+                        role,
+                    )[1]
+                    terminal_raw_z = logaddexp(
+                        terminal_raw_z,
+                        alpha[source] + terminal_raw,
+                    )
+                    if source == topology.parent[node_index]:
+                        terminal_singleton_score = (
+                            singleton_scores[source] + terminal_raw
+                        )
             if node_depth > topology.max_piece_length:
                 prior_log_z = logaddexp(whole_prior, prior_alpha[node_index])
                 raw_log_z = logaddexp(whole_raw, terminal_raw_z)
@@ -1445,6 +1530,8 @@ class ComposedPieceInference:
             else:
                 prior_log_z = prior_alpha[node_index]
                 raw_log_z = terminal_raw_z
+            if self._all_piece_scores_zero:
+                raw_log_z = prior_log_z
             if prior_log_z == -math.inf or raw_log_z == -math.inf:
                 raise ValueError("Lexical form has no complete piece segmentation.")
             endpoint_scores.append(
@@ -1555,7 +1642,11 @@ class ComposedPieceInference:
                 raw_score = self._piece_prior(
                     source_depth,
                     topology.depth[score.node],
-                ) + self._piece_and_score(piece.symbols, role)[1]
+                ) + (
+                    0.0
+                    if self._all_piece_scores_zero
+                    else self._piece_and_score(piece.symbols, role)[1]
+                )
                 contribution = math.exp(
                     seed + batch.alpha[source] + raw_score
                 )
@@ -1700,7 +1791,11 @@ class ComposedPieceInference:
             raw_score = self._piece_prior(
                 source_depth,
                 topology.depth[score.node],
-            ) + self._piece_and_score(piece.symbols, role)[1]
+            ) + (
+                0.0
+                if self._all_piece_scores_zero
+                else self._piece_and_score(piece.symbols, role)[1]
+            )
             candidates.extend(
                 _SharedInnerPath(
                     prefix.score + raw_score,
@@ -1780,55 +1875,79 @@ class ComposedPieceInference:
 
         reweight_started = time.perf_counter()
         pieces = tuple(PhonologicalForm(symbols) for symbols in topology.pieces)
-        prior_alpha = [-math.inf] * len(topology.parent)
-        alpha = [-math.inf] * len(topology.parent)
-        singleton_scores = [-math.inf] * len(topology.parent)
-        prior_alpha[0] = 0.0
-        alpha[0] = 0.0
-        singleton_scores[0] = 0.0
         transition_raw_scores = array("d")
 
         forward_started = time.perf_counter()
-        for node_index in range(1, len(topology.parent)):
-            node_prior_alpha = -math.inf
-            node_alpha = -math.inf
-            start = topology.transition_offsets[node_index - 1]
-            end = topology.transition_offsets[node_index]
-            for transition_index in range(start, end):
-                source = topology.transition_sources[transition_index]
-                prior = self._piece_prior(
-                    topology.depth[source], topology.depth[node_index]
-                )
-                role = (
-                    PieceRole.LEFT
-                    if topology.depth[source] == 0
-                    else PieceRole.INTERNAL
-                )
-                piece = pieces[topology.transition_piece_ids[transition_index]]
-                raw = (
-                    prior
-                    + self._piece_and_score(piece.symbols, role)[1]
-                )
-                transition_raw_scores.append(raw)
-                node_prior_alpha = logaddexp(
-                    node_prior_alpha,
-                    prior_alpha[source] + prior,
-                )
-                node_alpha = logaddexp(
-                    node_alpha,
-                    alpha[source] + raw,
-                )
-            prior_alpha[node_index] = node_prior_alpha
-            alpha[node_index] = node_alpha
-            singleton_index = end - 1
-            assert (
-                topology.transition_sources[singleton_index]
-                == topology.parent[node_index]
+        if self._all_piece_scores_zero:
+            max_depth = max(topology.depth, default=0)
+            prior_by_depth, singleton_by_depth = self._neutral_prior_states(
+                max_depth
             )
-            singleton_scores[node_index] = (
-                singleton_scores[topology.parent[node_index]]
-                + transition_raw_scores[singleton_index]
+            prior_alpha = [prior_by_depth[depth] for depth in topology.depth]
+            alpha = prior_alpha
+            singleton_scores = [
+                singleton_by_depth[depth] for depth in topology.depth
+            ]
+            for node_index in range(1, len(topology.parent)):
+                for transition_index in range(
+                    topology.transition_offsets[node_index - 1],
+                    topology.transition_offsets[node_index],
+                ):
+                    source = topology.transition_sources[transition_index]
+                    transition_raw_scores.append(
+                        self._piece_prior(
+                            topology.depth[source], topology.depth[node_index]
+                        )
+                    )
+            self._events["neutral_prior_fast_path_forms"] += len(forms)
+            self._events["neutral_prior_fast_path_nodes"] += len(topology.parent)
+            self._events["neutral_prior_fast_path_transitions"] += len(
+                topology.transition_sources
             )
+        else:
+            prior_alpha = [-math.inf] * len(topology.parent)
+            alpha = [-math.inf] * len(topology.parent)
+            singleton_scores = [-math.inf] * len(topology.parent)
+            prior_alpha[0] = 0.0
+            alpha[0] = 0.0
+            singleton_scores[0] = 0.0
+            for node_index in range(1, len(topology.parent)):
+                node_prior_alpha = -math.inf
+                node_alpha = -math.inf
+                start = topology.transition_offsets[node_index - 1]
+                end = topology.transition_offsets[node_index]
+                for transition_index in range(start, end):
+                    source = topology.transition_sources[transition_index]
+                    prior = self._piece_prior(
+                        topology.depth[source], topology.depth[node_index]
+                    )
+                    role = (
+                        PieceRole.LEFT
+                        if topology.depth[source] == 0
+                        else PieceRole.INTERNAL
+                    )
+                    piece = pieces[topology.transition_piece_ids[transition_index]]
+                    raw = prior + self._piece_and_score(piece.symbols, role)[1]
+                    transition_raw_scores.append(raw)
+                    node_prior_alpha = logaddexp(
+                        node_prior_alpha,
+                        prior_alpha[source] + prior,
+                    )
+                    node_alpha = logaddexp(
+                        node_alpha,
+                        alpha[source] + raw,
+                    )
+                prior_alpha[node_index] = node_prior_alpha
+                alpha[node_index] = node_alpha
+                singleton_index = end - 1
+                assert (
+                    topology.transition_sources[singleton_index]
+                    == topology.parent[node_index]
+                )
+                singleton_scores[node_index] = (
+                    singleton_scores[topology.parent[node_index]]
+                    + transition_raw_scores[singleton_index]
+                )
         self.add_timing("inner_piece_forward_seconds", forward_started)
 
         scores: dict[str, _SharedFormScore] = {}
@@ -1836,36 +1955,46 @@ class ComposedPieceInference:
         for form_index, form in enumerate(forms):
             node_index = topology.endpoint_nodes[form_index]
             node_depth = topology.depth[node_index]
-            whole_piece, piece_score = self._piece_and_score(
-                form.symbols,
-                PieceRole.WHOLE,
-            )
+            if self._all_piece_scores_zero:
+                whole_piece = form
+                piece_score = 0.0
+            else:
+                whole_piece, piece_score = self._piece_and_score(
+                    form.symbols,
+                    PieceRole.WHOLE,
+                )
             whole_prior = self._piece_prior(0, len(form.symbols))
             whole_raw = whole_prior + piece_score
-            terminal_raw_z = -math.inf
-            terminal_singleton_score = -math.inf
-            for transition_index in range(
-                topology.transition_offsets[node_index - 1],
-                topology.transition_offsets[node_index],
-            ):
-                source = topology.transition_sources[transition_index]
-                source_depth = topology.depth[source]
-                role = (
-                    PieceRole.WHOLE if source_depth == 0 else PieceRole.RIGHT
-                )
-                piece = pieces[topology.transition_piece_ids[transition_index]]
-                terminal_raw = self._piece_prior(
-                    source_depth,
-                    node_depth,
-                ) + self._piece_and_score(piece.symbols, role)[1]
-                terminal_raw_z = logaddexp(
-                    terminal_raw_z,
-                    alpha[source] + terminal_raw,
-                )
-                if source == topology.parent[node_index]:
-                    terminal_singleton_score = (
-                        singleton_scores[source] + terminal_raw
+            if self._all_piece_scores_zero:
+                terminal_raw_z = prior_alpha[node_index]
+                terminal_singleton_score = singleton_scores[node_index]
+            else:
+                terminal_raw_z = -math.inf
+                terminal_singleton_score = -math.inf
+                for transition_index in range(
+                    topology.transition_offsets[node_index - 1],
+                    topology.transition_offsets[node_index],
+                ):
+                    source = topology.transition_sources[transition_index]
+                    source_depth = topology.depth[source]
+                    role = (
+                        PieceRole.WHOLE if source_depth == 0 else PieceRole.RIGHT
                     )
+                    piece = pieces[
+                        topology.transition_piece_ids[transition_index]
+                    ]
+                    terminal_raw = self._piece_prior(
+                        source_depth,
+                        node_depth,
+                    ) + self._piece_and_score(piece.symbols, role)[1]
+                    terminal_raw_z = logaddexp(
+                        terminal_raw_z,
+                        alpha[source] + terminal_raw,
+                    )
+                    if source == topology.parent[node_index]:
+                        terminal_singleton_score = (
+                            singleton_scores[source] + terminal_raw
+                        )
             if node_depth > topology.max_piece_length:
                 prior_log_z = logaddexp(whole_prior, prior_alpha[node_index])
                 raw_log_z = logaddexp(whole_raw, terminal_raw_z)
@@ -1873,6 +2002,8 @@ class ComposedPieceInference:
             else:
                 prior_log_z = prior_alpha[node_index]
                 raw_log_z = terminal_raw_z
+            if self._all_piece_scores_zero:
+                raw_log_z = prior_log_z
             if prior_log_z == -math.inf or raw_log_z == -math.inf:
                 raise ValueError("Lexical form has no complete piece segmentation.")
             scores[form.key] = _SharedFormScore(
@@ -1980,7 +2111,11 @@ class ComposedPieceInference:
                 raw_score = self._piece_prior(
                     source_depth,
                     topology.depth[score.node],
-                ) + self._piece_and_score(piece.symbols, role)[1]
+                ) + (
+                    0.0
+                    if self._all_piece_scores_zero
+                    else self._piece_and_score(piece.symbols, role)[1]
+                )
                 contribution = math.exp(
                     seed + batch.alpha[source] + raw_score
                 )
@@ -2149,7 +2284,11 @@ class ComposedPieceInference:
             raw_score = self._piece_prior(
                 source_depth,
                 topology.depth[score.node],
-            ) + self._piece_and_score(piece.symbols, role)[1]
+            ) + (
+                0.0
+                if self._all_piece_scores_zero
+                else self._piece_and_score(piece.symbols, role)[1]
+            )
             candidates.extend(
                 _SharedInnerPath(
                     prefix.score + raw_score,

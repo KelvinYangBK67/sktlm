@@ -32,6 +32,7 @@ class NeutralPieceScorer:
     """Pass-1 scorer: the normalized segmentation prior is the whole score."""
 
     piece_scores_are_role_neutral = True
+    all_piece_scores_zero = True
 
     def score(self, piece: PhonologicalForm) -> float:
         del piece

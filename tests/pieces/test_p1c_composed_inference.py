@@ -70,6 +70,29 @@ class _LowWholePosteriorScorer:
         return 0.0
 
 
+class _LegacyZeroPieceScorer:
+    piece_scores_are_role_neutral = True
+
+    def score(self, piece: PhonologicalForm) -> float:
+        del piece
+        return 0.0
+
+
+class _ExplodingNeutralPieceScorer:
+    piece_scores_are_role_neutral = True
+    all_piece_scores_zero = True
+
+    def score(self, piece: PhonologicalForm) -> float:
+        raise AssertionError(f"neutral fast path scored {piece.key}")
+
+    def score_piece(
+        self,
+        piece: PhonologicalForm,
+        role: PieceRole,
+    ) -> float:
+        raise AssertionError(f"neutral fast path scored {piece.key}:{role.value}")
+
+
 def _assert_piece_host_conservation(inference) -> None:
     support_by_piece: dict[PieceIdentity, float] = defaultdict(float)
     for (identity, _host), support in inference.piece_host_support.items():
@@ -539,6 +562,62 @@ def test_compact_shared_dp_matches_legacy_with_role_conditioned_scores() -> None
     )
     _assert_piece_host_conservation(compact)
     _assert_piece_host_conservation(legacy)
+
+
+def test_neutral_fast_path_matches_exact_zero_score_route_without_score_calls() -> None:
+    grammar = StructuredSandhiGrammar.from_default_inventory()
+    graph = build_lazy_candidate_graph(
+        next(iter_observed_segments("tattvamasi")), grammar
+    )
+    config = PieceModelConfig(max_piece_length=3, rho=0.41)
+
+    def run(scorer):
+        return infer_composed_segment(
+            graph,
+            ComposedPieceInference(scorer, model_config=config),
+            whitespace_merge_penalty=8.0,
+        )
+
+    observed = run(_ExplodingNeutralPieceScorer())
+    reference = run(_LegacyZeroPieceScorer())
+
+    for name in (
+        "log_partition",
+        "entropy",
+        "identity_mass",
+        "latent_mass",
+        "expected_lexical_tokens",
+        "expected_piece_tokens",
+        "piece_segmentation_entropy",
+        "expected_whole_form_uses",
+        "expected_singleton_path_uses",
+        "expected_multi_piece_uses",
+        "total_posterior_mass",
+    ):
+        assert getattr(observed, name) == pytest.approx(
+            getattr(reference, name), rel=1e-10, abs=1e-12
+        )
+    assert observed.lexical_expected_counts == pytest.approx(
+        reference.lexical_expected_counts, rel=1e-10, abs=1e-12
+    )
+    assert observed.piece_expected_counts == pytest.approx(
+        reference.piece_expected_counts, rel=1e-10, abs=1e-12
+    )
+    assert observed.piece_host_support == pytest.approx(
+        reference.piece_host_support, rel=1e-10, abs=1e-12
+    )
+    assert observed.rule_usage == pytest.approx(
+        reference.rule_usage, rel=1e-10, abs=1e-12
+    )
+    _assert_piece_host_conservation(observed)
+    assert observed.counters.piece_score_calls == 0
+    assert observed.counters.piece_score_cache_hits == 0
+    assert observed.counters.piece_score_cache_misses == 0
+    assert observed.counters.piece_score_cache_entries == 0
+    assert observed.counters.store_lookups == 0
+    assert observed.counters.neutral_prior_fast_path_forms > 0
+    assert observed.counters.neutral_prior_fast_path_nodes > 0
+    assert observed.counters.neutral_prior_fast_path_transitions > 0
 
 
 def test_legal_piece_host_support_uses_inner_posterior_not_host_mass() -> None:
