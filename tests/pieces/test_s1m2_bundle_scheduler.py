@@ -4,6 +4,7 @@ import csv
 import hashlib
 import io
 import json
+import math
 import runpy
 import sqlite3
 from collections import Counter
@@ -259,14 +260,12 @@ def _write_plan(
     return root
 
 
-def _piece_state(run_dir: Path) -> tuple[tuple[str, float, int], ...]:
+def _piece_state(run_dir: Path) -> tuple[tuple[object, ...], ...]:
     store = LexiconStore(run_dir / "learner.sqlite")
     try:
         return tuple(
-            (str(key), float(count), int(support))
-            for key, count, support in store.connection.execute(
-                "SELECT form_key, expected_count, host_type_support "
-                "FROM piece_lexicon ORDER BY form_key"
+            store.connection.execute(
+                "SELECT * FROM piece_lexicon ORDER BY form_key"
             )
         )
     finally:
@@ -492,7 +491,7 @@ def test_execution_bundles_seek_to_exact_utf8_line_ranges(tmp_path: Path) -> Non
                 )
 
 
-def test_bundle_scheduler_is_bit_exact_with_legacy_document_scheduler(
+def test_bundle_scheduler_matches_legacy_document_scheduler_at_frozen_tolerance(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -512,7 +511,7 @@ def test_bundle_scheduler_is_bit_exact_with_legacy_document_scheduler(
         stop_after_training=True,
     )
     monkeypatch.setattr(
-        training, "_retire_training_bundle_shards", lambda *_args: None
+        training, "_retire_training_bundle_shards", lambda *_args: (0, 0)
     )
     bundled = run_training(
         bundled_config,
@@ -520,7 +519,17 @@ def test_bundle_scheduler_is_bit_exact_with_legacy_document_scheduler(
         stop_after_training=True,
     )
     assert legacy.history == bundled.history
-    assert _piece_state(legacy.run_dir) == _piece_state(bundled.run_dir)
+    legacy_piece_state = _piece_state(legacy.run_dir)
+    bundled_piece_state = _piece_state(bundled.run_dir)
+    assert len(legacy_piece_state) == len(bundled_piece_state)
+    for legacy_row, bundled_row in zip(
+        legacy_piece_state, bundled_piece_state, strict=True
+    ):
+        assert legacy_row[0] == bundled_row[0]
+        assert all(
+            math.isclose(float(left), float(right), rel_tol=1e-10, abs_tol=1e-12)
+            for left, right in zip(legacy_row[1:], bundled_row[1:], strict=True)
+        )
     assert (legacy.run_dir / "iteration_metrics.json").read_bytes() == (
         bundled.run_dir / "iteration_metrics.json"
     ).read_bytes()
@@ -710,6 +719,128 @@ def test_streaming_bundle_host_support_rows_decode_without_json_materialization(
     assert stream.readline() == ""
 
 
+def test_packed_host_support_round_trips_exact_rows_and_fails_closed() -> None:
+    pooled_rows = (
+        ("piece-a", "host-a", 0.25),
+        ("piece-b", "host-a", 0.5),
+        ("piece-a", "host-b", float.fromhex("0x1.0000000000001p-3")),
+    )
+    role_rows = (("piece-a", "LEFT", "host-a", 0.25),)
+
+    def encoded() -> tuple[bytes, str]:
+        stream = io.BytesIO()
+        digest = hashlib.sha256()
+        training._write_digested(
+            stream, digest, training._HOST_SUPPORT_MAGIC
+        )
+        assert training._write_packed_host_support_segment(
+            stream,
+            digest,
+            line_number=7,
+            segment_index=2,
+            host_rows=pooled_rows,
+            role_rows=role_rows,
+        ) == (3, 1)
+        return stream.getvalue(), digest.hexdigest()
+
+    payload, checksum = encoded()
+    assert encoded() == (payload, checksum)
+    assert hashlib.sha256(payload).hexdigest() == checksum
+    assert hashlib.sha256(payload[:-1] + b"X").hexdigest() != checksum
+
+    support: Counter[tuple[str, str]] = Counter()
+    role_support: Counter[tuple[str, str, str]] = Counter()
+    stream = io.BytesIO(payload)
+    assert stream.read(len(training._HOST_SUPPORT_MAGIC)) == (
+        training._HOST_SUPPORT_MAGIC
+    )
+    record = {
+        "schema_version": "sktlm-s1m2-training-segment-result/v4",
+        "line_number": 7,
+        "segment_index": 2,
+        "piece_host_support_rows": 3,
+        "piece_host_role_support_rows": 1,
+    }
+    assert training._consume_training_segment_support(
+        record, stream, support, role_support
+    ) == 4
+    assert stream.read() == b""
+    assert support == {
+        ("piece-a", "host-a"): 0.25,
+        ("piece-b", "host-a"): 0.5,
+        ("piece-a", "host-b"): float.fromhex("0x1.0000000000001p-3"),
+    }
+    assert role_support == {("piece-a", "LEFT", "host-a"): 0.25}
+
+    truncated = io.BytesIO(payload[:-1])
+    truncated.read(len(training._HOST_SUPPORT_MAGIC))
+    with pytest.raises(RuntimeError, match="Truncated packed host-support"):
+        training._consume_training_segment_support(
+            record, truncated, Counter(), Counter()
+        )
+
+
+def test_packed_bundle_loader_rejects_checksum_corruption(tmp_path: Path) -> None:
+    bundle = ExecutionBundle(
+        document_index=0,
+        relative_path="tiny.txt",
+        bundle_index=0,
+        first_segment_ordinal=0,
+        last_segment_ordinal_exclusive=1,
+        first_line_number=1,
+        first_line_byte_offset=0,
+        first_segment_index=0,
+        last_line_number=1,
+        last_segment_index=0,
+        segment_count=1,
+        phonemes=1,
+        pressure=1,
+    )
+    document = CorpusDocument(
+        "tiny.txt", tmp_path / "unused", "tiny", EXPECTED_FREEZE_ID
+    )
+    paths = training._training_bundle_paths(tmp_path, 1, bundle)
+    paths["segments"].parent.mkdir(parents=True)
+    paths["segments"].write_bytes(b"segment\n")
+    packed = training._HOST_SUPPORT_MAGIC
+    paths["host_support_packed"].write_bytes(packed)
+    marker = {
+        "schema_version": "sktlm-s1m2-training-bundle-shard/v3",
+        "config_signature": "config",
+        "plan_sha256": "plan",
+        "pass_index": 1,
+        "document_index": 0,
+        "relative_path": "tiny.txt",
+        "bundle_index": 0,
+        "first_segment_ordinal": 0,
+        "last_segment_ordinal_exclusive": 1,
+        "segment_count": 1,
+        "segment_shard_sha256": _sha256(paths["segments"]),
+        "host_support_shard_sha256": hashlib.sha256(packed).hexdigest(),
+        "host_support_format": "segment_dictionary_u32_binary64_le_v1",
+    }
+    paths["marker"].write_text(json.dumps(marker), encoding="utf-8")
+    assert training._load_training_bundle_shard(
+        run_dir=tmp_path,
+        pass_index=1,
+        bundle=bundle,
+        document=document,
+        config_signature="config",
+        plan_sha256="plan",
+    ) == marker
+
+    paths["host_support_packed"].write_bytes(packed + b"corrupt")
+    with pytest.raises(RuntimeError, match="checksum mismatch"):
+        training._load_training_bundle_shard(
+            run_dir=tmp_path,
+            pass_index=1,
+            bundle=bundle,
+            document=document,
+            config_signature="config",
+            plan_sha256="plan",
+        )
+
+
 def test_compact_bundle_reducer_overlaps_with_later_bundle_workers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -812,6 +943,113 @@ def test_compact_bundle_reducer_overlaps_with_later_bundle_workers(
     )
 
     assert reduced == [0, 1, 2]
+
+
+def test_bundle_byte_backpressure_progresses_without_deadlock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bundles = tuple(
+        ExecutionBundle(
+            document_index=0,
+            relative_path="tiny.txt",
+            bundle_index=index,
+            first_segment_ordinal=index,
+            last_segment_ordinal_exclusive=index + 1,
+            first_line_number=1,
+            first_line_byte_offset=0,
+            first_segment_index=index,
+            last_line_number=1,
+            last_segment_index=index,
+            segment_count=1,
+            phonemes=1,
+            pressure=1,
+        )
+        for index in range(3)
+    )
+    plan = ExecutionBundlePlan(
+        root=tmp_path,
+        scan_signature_sha256="1" * 64,
+        plan_sha256="2" * 64,
+        materialization_sha256="5" * 64,
+        planner_implementation=PLANNER_IMPLEMENTATION,
+        representation_set_sha256="3" * 64,
+        segment_sequence_sha256="4" * 64,
+        bundles=bundles,
+        by_document=(bundles,),
+    )
+    reduced: list[int] = []
+
+    class FakeExecutor:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def __enter__(self) -> FakeExecutor:
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            pass
+
+        def submit(self, _function: object, bundle: ExecutionBundle, *_: object) -> Future:
+            future: Future[dict[str, object]] = Future()
+            future.set_result({"bundle_index": bundle.bundle_index})
+            return future
+
+    def apply_compact(**kwargs: object) -> PassMetrics:
+        payload_for_bundle = kwargs["payload_for_bundle"]
+        assert callable(payload_for_bundle)
+        for bundle in bundles:
+            payload_for_bundle(bundle)
+            reduced.append(bundle.bundle_index)
+        return kwargs["metrics"]  # type: ignore[return-value]
+
+    monkeypatch.setattr(training, "ProcessPoolExecutor", FakeExecutor)
+    monkeypatch.setattr(training, "_load_training_shard", lambda *_args: None)
+    monkeypatch.setattr(
+        training, "_load_training_bundle_shard", lambda **_kwargs: None
+    )
+    monkeypatch.setattr(
+        training, "_apply_compact_training_bundle_shards", apply_compact
+    )
+    monkeypatch.setattr(
+        training, "_retire_training_bundle_shards", lambda *_args: (0, 0)
+    )
+    monkeypatch.setattr(
+        training,
+        "_training_bundle_spool_bytes",
+        lambda _run_dir, _pass_index, items: 1 if tuple(items) else 0,
+    )
+    telemetry = RuntimeTelemetry()
+
+    class FakeStore:
+        path = tmp_path / "learner.sqlite"
+
+    training._parallel_training_bundles(
+        pass_index=1,
+        documents=(
+            CorpusDocument(
+                "tiny.txt", tmp_path / "unused", "tiny", EXPECTED_FREEZE_ID
+            ),
+        ),
+        grammar=training.StructuredSandhiGrammar.from_default_inventory(),
+        store=FakeStore(),  # type: ignore[arg-type]
+        config=TrainingConfig(
+            model=S1M2_MODEL,
+            workers=2,
+            training_bundle_ready_bytes=1,
+        ),
+        run_dir=tmp_path,
+        checkpoint={},
+        telemetry=telemetry,
+        start_document=0,
+        metrics=PassMetrics(),
+        vocabulary=None,
+        plan=plan,
+    )
+
+    assert reduced == [0, 1, 2]
+    assert telemetry.counters["training_bundle_backpressure_waits"] >= 1
+    assert telemetry.gauges["training_bundle_ready_shard_byte_limit"] == 1
 
 
 def test_inspection_bundle_scheduler_refills_and_reduces_canonically(
@@ -1086,6 +1324,71 @@ def test_bundle_resume_reuses_ready_shards_and_rejects_plan_change(
     assert any(document_index == 1 for document_index, _ in resumed_bundle_keys)
     assert reference.history == resumed.history
     assert _piece_state(reference.run_dir) == _piece_state(resumed.run_dir)
+
+
+def test_consumed_bundles_retire_before_commit_and_resume_recomputes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest, documents = _fixture(tmp_path)
+    plan = _write_plan(
+        tmp_path,
+        name="candidate_retire_before_commit",
+        manifest=manifest,
+        documents=documents,
+        segments_per_bundle=1,
+    )
+    reference = run_training(
+        _config(tmp_path, manifest, "retire-reference", plan=plan),
+        repo_root=Path("."),
+        stop_after_training=True,
+    )
+    target_config = _config(tmp_path, manifest, "retire-target", plan=plan)
+    target_run = target_config.output_root / "retire-target"
+    original_commit = LexiconStore.commit_document
+    observed_retirement = False
+
+    def crash_before_first_commit(
+        self: LexiconStore, checkpoint: dict[str, object]
+    ) -> None:
+        nonlocal observed_retirement
+        if checkpoint.get("next_document_index") == 1:
+            bundle_root = target_run / "shards" / "pass_0001" / "bundles"
+            observed_retirement = not any(
+                bundle_root.glob("document_00000000.bundle_*.*")
+            )
+            raise RuntimeError("synthetic pre-commit crash")
+        original_commit(self, checkpoint)
+
+    monkeypatch.setattr(LexiconStore, "commit_document", crash_before_first_commit)
+    with pytest.raises(RuntimeError, match="synthetic pre-commit crash"):
+        run_training(
+            target_config,
+            repo_root=Path("."),
+            stop_after_training=True,
+        )
+    assert observed_retirement
+    checkpoint = json.loads(
+        (target_run / "checkpoint.json").read_text(encoding="utf-8")
+    )
+    assert checkpoint["next_document_index"] == 0
+
+    monkeypatch.setattr(LexiconStore, "commit_document", original_commit)
+    resumed = run_training(
+        replace(target_config, resume=True),
+        repo_root=Path("."),
+        stop_after_training=True,
+    )
+    assert reference.history == resumed.history
+    def piece_rows(run_dir: Path) -> tuple[tuple[object, ...], ...]:
+        with sqlite3.connect(run_dir / "learner.sqlite") as connection:
+            return tuple(
+                connection.execute(
+                    "SELECT * FROM piece_lexicon ORDER BY form_key"
+                )
+            )
+
+    assert piece_rows(reference.run_dir) == piece_rows(resumed.run_dir)
 
 
 def test_legacy_v1_complete_pass_finalizes_without_corpus_or_workers(

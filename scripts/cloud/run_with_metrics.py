@@ -123,7 +123,7 @@ def watched_storage(path: Path) -> dict[str, int]:
             values["inspection_shard_bytes"] += size
         elif relative.parts and relative.parts[0] == "shards":
             values["training_shard_bytes"] += size
-            if item.name.endswith(".host-support.tsv"):
+            if item.name.endswith((".host-support.tsv", ".host-support.bin")):
                 values["training_host_support_shard_bytes"] += size
             if item.name.endswith(".complete.json") and "bundles" in relative.parts:
                 values["training_bundle_marker_count"] += 1

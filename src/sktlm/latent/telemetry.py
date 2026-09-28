@@ -24,14 +24,12 @@ class _FixedHistogram:
         self.count += 1
         self.total += value
         self.maximum = max(self.maximum, value)
-        bucket = next(
-            (
-                upper
-                for upper in _HISTOGRAM_UPPER_BOUNDS
-                if value <= upper
-            ),
-            -1,
-        )
+        if value == 0:
+            bucket = 0
+        else:
+            bucket = 1 << (value - 1).bit_length()
+            if bucket > _HISTOGRAM_UPPER_BOUNDS[-1]:
+                bucket = -1
         self.buckets[bucket] += 1
 
     def merge_payload(self, payload: dict[str, Any]) -> None:
@@ -99,6 +97,9 @@ class RuntimeTelemetry:
 
     def maximum(self, label: str, value: int | float) -> None:
         self.gauges[label] = max(value, self.gauges.get(label, value))
+
+    def set_gauge(self, label: str, value: int | float) -> None:
+        self.gauges[label] = value
 
     def observe(self, label: str, value: int) -> None:
         self.histograms.setdefault(label, _FixedHistogram()).observe(value)

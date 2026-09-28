@@ -66,6 +66,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "scientific training identity."
         ),
     )
+    parser.add_argument(
+        "--training-bundle-ready-bytes",
+        type=int,
+        help=(
+            "Execution-only soft byte bound for completed plus observable "
+            "inflight training-bundle spool files."
+        ),
+    )
     parser.add_argument("--lexical-alpha", type=float, default=0.1)
     parser.add_argument("--complexity-weight", type=float, default=0.5)
     parser.add_argument("--complexity-tau", type=float, default=1.0)
@@ -183,6 +191,7 @@ def main(argv: list[str] | None = None) -> None:
         passes=args.passes,
         vocab_budget=args.vocab_budget,
         workers=args.workers,
+        training_bundle_ready_bytes=args.training_bundle_ready_bytes,
         execution_bundle_plan=args.execution_bundle_plan,
         lexical_alpha=args.lexical_alpha,
         complexity_weight=args.complexity_weight,

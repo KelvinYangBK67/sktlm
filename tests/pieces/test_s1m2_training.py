@@ -93,6 +93,17 @@ def test_s1m2_configuration_identity_includes_piece_model_and_cache_bounds(
     assert payload["piece_shared_prefix_nodes"] == 262_144
     assert payload["piece_shared_top_k_piece_references"] == 4_194_304
     assert "inspection_retained_factor_bytes" not in payload
+    assert "training_bundle_ready_bytes" not in payload
+    assert latent_training._config_signature(
+        _config(tmp_path, tmp_path / "manifest.csv", "config-contract")
+    ) == latent_training._config_signature(
+        _config(
+            tmp_path,
+            tmp_path / "manifest.csv",
+            "config-contract",
+            training_bundle_ready_bytes=1,
+        )
+    )
 
 
 def test_composed_counter_merge_takes_maximum_for_gauges() -> None:

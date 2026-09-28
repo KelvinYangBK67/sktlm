@@ -11,6 +11,7 @@ import multiprocessing
 import os
 import shutil
 import sqlite3
+import struct
 import subprocess
 import threading
 import time
@@ -111,6 +112,20 @@ _WORKER_CONNECTION: sqlite3.Connection | None = None
 _WORKER_VOCABULARY: FrozenVocabulary | None = None
 _WORKER_PIECE_ENGINE: ComposedPieceInference | None = None
 
+_HOST_SUPPORT_MAGIC = b"SKTLM-S1M2-HOST-SUPPORT\x01"
+_HOST_SUPPORT_HEADER = struct.Struct("<qIIIQQ")
+_HOST_SUPPORT_ROW = struct.Struct("<IId")
+_HOST_ROLE_SUPPORT_ROW = struct.Struct("<IBId")
+_WIRE_UINT32 = struct.Struct("<I")
+_WIRE_ROLE_IDS = {
+    PieceRole.WHOLE.value: 0,
+    PieceRole.LEFT.value: 1,
+    PieceRole.RIGHT.value: 2,
+    PieceRole.INTERNAL.value: 3,
+}
+_WIRE_ROLES = tuple(_WIRE_ROLE_IDS)
+_MAX_WIRE_KEY_BYTES = 1024 * 1024
+
 
 @dataclass(frozen=True, slots=True)
 class TrainingConfig:
@@ -124,6 +139,7 @@ class TrainingConfig:
     passes: int = 3
     vocab_budget: int | None = None
     workers: int = 1
+    training_bundle_ready_bytes: int | None = None
     lexical_alpha: float = 0.1
     complexity_weight: float = 0.5
     complexity_tau: float = 1.0
@@ -190,6 +206,11 @@ class TrainingConfig:
             raise ValueError("vocab_budget is an S1M1-only comparison condition")
         if self.workers < 1:
             raise ValueError('workers must be >= 1')
+        if (
+            self.training_bundle_ready_bytes is not None
+            and self.training_bundle_ready_bytes < 1
+        ):
+            raise ValueError("training_bundle_ready_bytes must be >= 1")
         if self.execution_bundle_plan is not None and self.model not in S1M2_MODELS:
             raise ValueError("execution_bundle_plan is supported only for S1M2")
         if self.execution_bundle_plan is not None and self.workers < 2:
@@ -270,6 +291,7 @@ class TrainingConfig:
         # tradeoff must not invalidate or rename an existing learned state.
         payload.pop("inspection_retained_factor_bytes")
         payload.pop("execution_bundle_plan")
+        payload.pop("training_bundle_ready_bytes")
         if self.vocab_budget is None:
             payload.pop("vocab_budget")
         if self.model == S1M1_MODEL:
@@ -647,7 +669,43 @@ def _record_composed_timings(
 
 
 def _existing_path_bytes(paths: Iterable[Path]) -> int:
-    return sum(path.stat().st_size for path in paths if path.is_file())
+    total = 0
+    for path in paths:
+        try:
+            if path.is_file():
+                total += path.stat().st_size
+        except FileNotFoundError:
+            continue
+    return total
+
+
+def _default_training_bundle_ready_bytes(workers: int) -> int:
+    """Derive a host-relative soft spool bound without scientific identity."""
+
+    fallback = max(256 * 1024 * 1024, workers * 512 * 1024 * 1024)
+    try:
+        physical = int(os.sysconf("SC_PHYS_PAGES")) * int(
+            os.sysconf("SC_PAGE_SIZE")
+        )
+    except (AttributeError, OSError, TypeError, ValueError):
+        return fallback
+    return max(
+        256 * 1024 * 1024,
+        min(physical // 8, workers * 512 * 1024 * 1024),
+    )
+
+
+def _training_bundle_spool_bytes(
+    run_dir: Path,
+    pass_index: int,
+    bundles: Iterable[ExecutionBundle],
+) -> int:
+    paths: set[Path] = set()
+    for bundle in bundles:
+        for path in _training_bundle_paths(run_dir, pass_index, bundle).values():
+            paths.add(path)
+            paths.add(path.with_suffix(path.suffix + ".tmp"))
+    return _existing_path_bytes(paths)
 
 
 def _record_store_storage(
@@ -1165,9 +1223,143 @@ def _training_bundle_paths(
     return {
         "segments": root / f"{stem}.segments.jsonl",
         "host_support": root / f"{stem}.host-support.tsv",
+        "host_support_packed": root / f"{stem}.host-support.bin",
         "marker": root / f"{stem}.complete.json",
         "topology": root / f"{stem}.topology.bin",
     }
+
+
+def _write_digested(handle: Any, digest: Any, payload: bytes) -> None:
+    handle.write(payload)
+    digest.update(payload)
+
+
+def _write_wire_key(handle: Any, digest: Any, key: str) -> None:
+    encoded = key.encode("utf-8")
+    if not encoded or len(encoded) > _MAX_WIRE_KEY_BYTES:
+        raise ValueError("Invalid packed host-support key length.")
+    _write_digested(handle, digest, _WIRE_UINT32.pack(len(encoded)))
+    _write_digested(handle, digest, encoded)
+
+
+def _write_packed_host_support_segment(
+    handle: Any,
+    digest: Any,
+    *,
+    line_number: int,
+    segment_index: int,
+    host_rows: Iterable[tuple[str, str, float]],
+    role_rows: Iterable[tuple[str, str, str, float]],
+) -> tuple[int, int]:
+    """Write one deterministic dictionary-framed exact binary64 segment."""
+
+    pooled = tuple(host_rows)
+    diagnostic = tuple(role_rows)
+    piece_keys = tuple(
+        dict.fromkeys(
+            [row[0] for row in pooled] + [row[0] for row in diagnostic]
+        )
+    )
+    host_keys = tuple(
+        dict.fromkeys(
+            [row[1] for row in pooled] + [row[2] for row in diagnostic]
+        )
+    )
+    piece_ids = {key: index for index, key in enumerate(piece_keys)}
+    host_ids = {key: index for index, key in enumerate(host_keys)}
+    _write_digested(
+        handle,
+        digest,
+        _HOST_SUPPORT_HEADER.pack(
+            line_number,
+            segment_index,
+            len(piece_keys),
+            len(host_keys),
+            len(pooled),
+            len(diagnostic),
+        ),
+    )
+    for key in piece_keys:
+        _write_wire_key(handle, digest, key)
+    for key in host_keys:
+        _write_wire_key(handle, digest, key)
+    for piece_key, host_key, value in pooled:
+        _write_digested(
+            handle,
+            digest,
+            _HOST_SUPPORT_ROW.pack(
+                piece_ids[piece_key], host_ids[host_key], float(value)
+            ),
+        )
+    for piece_key, role, host_key, value in diagnostic:
+        try:
+            role_id = _WIRE_ROLE_IDS[role]
+        except KeyError as error:
+            raise ValueError(f"Invalid packed PieceRole: {role!r}") from error
+        _write_digested(
+            handle,
+            digest,
+            _HOST_ROLE_SUPPORT_ROW.pack(
+                piece_ids[piece_key], role_id, host_ids[host_key], float(value)
+            ),
+        )
+    return len(pooled), len(diagnostic)
+
+
+def _read_exact(handle: Any, size: int, *, label: str) -> bytes:
+    payload = handle.read(size)
+    if len(payload) != size:
+        raise RuntimeError(f"Truncated packed host-support {label}.")
+    return payload
+
+
+def _read_wire_key(handle: Any) -> str:
+    size = _WIRE_UINT32.unpack(
+        _read_exact(handle, _WIRE_UINT32.size, label="key length")
+    )[0]
+    if size < 1 or size > _MAX_WIRE_KEY_BYTES:
+        raise RuntimeError("Invalid packed host-support key length.")
+    try:
+        return _read_exact(handle, size, label="key").decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise RuntimeError("Invalid packed host-support UTF-8 key.") from error
+
+
+def _packed_host_support_path(
+    paths: Mapping[str, Path], payload: Mapping[str, Any]
+) -> Path:
+    if payload.get("schema_version") == "sktlm-s1m2-training-bundle-shard/v3":
+        return paths["host_support_packed"]
+    return paths["host_support"]
+
+
+def _enter_host_support_source(
+    resources: ExitStack,
+    paths: Mapping[str, Path],
+    payload: Mapping[str, Any],
+) -> Any | None:
+    schema = payload.get("schema_version")
+    if schema == "sktlm-s1m2-training-bundle-shard/v2":
+        return resources.enter_context(paths["host_support"].open(encoding="utf-8"))
+    if schema == "sktlm-s1m2-training-bundle-shard/v3":
+        path = paths["host_support_packed"]
+        source = resources.enter_context(path.open("rb"))
+        if source.read(len(_HOST_SUPPORT_MAGIC)) != _HOST_SUPPORT_MAGIC:
+            raise RuntimeError(f"Invalid packed host-support magic: {path}")
+        return source
+    return None
+
+
+def _ensure_host_support_eof(
+    source: Any | None,
+    paths: Mapping[str, Path],
+    payload: Mapping[str, Any],
+) -> None:
+    if source is not None and source.read(1):
+        raise RuntimeError(
+            "Trailing bundle host-support data: "
+            f"{_packed_host_support_path(paths, payload)}"
+        )
 
 
 def _iter_execution_bundle_segments(
@@ -1838,7 +2030,7 @@ def _write_training_bundle_shard(
     paths = _training_bundle_paths(run_dir, pass_index, bundle)
     paths["segments"].parent.mkdir(parents=True, exist_ok=True)
     segment_temporary = paths["segments"].with_suffix(".jsonl.tmp")
-    host_support_temporary = paths["host_support"].with_suffix(".tsv.tmp")
+    host_support_temporary = paths["host_support_packed"].with_suffix(".bin.tmp")
     topology_temporary = paths["topology"].with_suffix(".bin.tmp")
     wall_started = time.perf_counter()
     cpu_started = time.process_time()
@@ -1865,6 +2057,9 @@ def _write_training_bundle_shard(
             )
             host_support_handle = resources.enter_context(
                 host_support_temporary.open("wb")
+            )
+            _write_digested(
+                host_support_handle, host_support_digest, _HOST_SUPPORT_MAGIC
             )
             topology_writer: TopologyArchiveWriter | None = None
             topology_reader: TopologyArchiveReader | None = None
@@ -1952,7 +2147,7 @@ def _write_training_bundle_shard(
                     candidate_edges=inference.candidate_span_hypotheses,
                 )
                 segment_host_support_rows = 0
-                for (piece, host), value in sorted(
+                support_items = tuple(sorted(
                     inference.piece_host_support.items(),
                     key=lambda item: (
                         (
@@ -1966,32 +2161,31 @@ def _write_training_bundle_shard(
                             item[0][1].key,
                         )
                     ),
-                ):
-                    encoded_support = (
-                        f"H\t{piece.key}\t{host.key}\t{float(value).hex()}\n"
-                    ).encode("utf-8")
-                    host_support_handle.write(encoded_support)
-                    host_support_digest.update(encoded_support)
-                    segment_host_support_rows += 1
-                    host_support_rows += 1
+                ))
                 segment_host_role_support_rows = 0
-                if config.piece_role_diagnostics:
-                    for (piece, host), value in sorted(
-                        inference.piece_host_support.items(),
-                        key=lambda item: (
-                            item[0][0].key,
-                            item[0][1].key,
-                            item[0][0].role.value,
-                        ),
-                    ):
-                        encoded_support = (
-                            f"D\t{piece.key}\t{piece.role.value}\t{host.key}\t"
-                            f"{float(value).hex()}\n"
-                        ).encode("utf-8")
-                        host_support_handle.write(encoded_support)
-                        host_support_digest.update(encoded_support)
-                        segment_host_role_support_rows += 1
-                        host_support_rows += 1
+                (
+                    segment_host_support_rows,
+                    segment_host_role_support_rows,
+                ) = _write_packed_host_support_segment(
+                    host_support_handle,
+                    host_support_digest,
+                    line_number=line_number,
+                    segment_index=segment_index,
+                    host_rows=(
+                        (piece.key, host.key, value)
+                        for (piece, host), value in support_items
+                    ),
+                    role_rows=(
+                        (piece.key, piece.role.value, host.key, value)
+                        for (piece, host), value in support_items
+                    )
+                    if config.piece_role_diagnostics
+                    else (),
+                )
+                host_support_rows += (
+                    segment_host_support_rows
+                    + segment_host_role_support_rows
+                )
                 engineering.maximum(
                     "training_segment_host_support_rows",
                     segment_host_support_rows,
@@ -2001,7 +2195,7 @@ def _write_training_bundle_shard(
                     segment_host_role_support_rows,
                 )
                 record = {
-                    "schema_version": "sktlm-s1m2-training-segment-result/v3",
+                    "schema_version": "sktlm-s1m2-training-segment-result/v4",
                     "line_number": line_number,
                     "segment_index": segment_index,
                     "lexical_counts": [
@@ -2052,17 +2246,16 @@ def _write_training_bundle_shard(
                     segment,
                 )
             handle.flush()
-            os.fsync(handle.fileno())
             host_support_handle.flush()
-            os.fsync(host_support_handle.fileno())
+            engineering.increment("training_reconstructible_fsync_skipped", 2)
         _replace_file(segment_temporary, paths["segments"])
-        _replace_file(host_support_temporary, paths["host_support"])
+        _replace_file(host_support_temporary, paths["host_support_packed"])
         engineering.increment(
             "training_bundle_host_support_rows", host_support_rows
         )
         engineering.maximum(
             "training_bundle_host_support_bytes",
-            paths["host_support"].stat().st_size,
+            paths["host_support_packed"].stat().st_size,
         )
         topology_name = None
         topology_sha = None
@@ -2077,7 +2270,7 @@ def _write_training_bundle_shard(
             phase="training",
         )
         payload = {
-            "schema_version": "sktlm-s1m2-training-bundle-shard/v2",
+            "schema_version": "sktlm-s1m2-training-bundle-shard/v3",
             "config_signature": config_signature,
             "plan_sha256": plan_sha256,
             "pass_index": pass_index,
@@ -2091,8 +2284,9 @@ def _write_training_bundle_shard(
             "segment_count": records,
             "segment_shard": paths["segments"].name,
             "segment_shard_sha256": segment_digest.hexdigest(),
-            "host_support_shard": paths["host_support"].name,
+            "host_support_shard": paths["host_support_packed"].name,
             "host_support_shard_sha256": host_support_digest.hexdigest(),
+            "host_support_format": "segment_dictionary_u32_binary64_le_v1",
             "host_support_rows": host_support_rows,
             "topology_shard": topology_name,
             "topology_shard_sha256": topology_sha,
@@ -2155,6 +2349,7 @@ def _load_training_bundle_shard(
         in {
             "sktlm-s1m2-training-bundle-shard/v1",
             "sktlm-s1m2-training-bundle-shard/v2",
+            "sktlm-s1m2-training-bundle-shard/v3",
         }
         and payload.get("config_signature") == config_signature
         and payload.get("plan_sha256") == plan_sha256
@@ -2172,14 +2367,23 @@ def _load_training_bundle_shard(
         raise RuntimeError(f"Stale or mismatched bundle shard: {paths['marker']}")
     if payload.get("segment_shard_sha256") != _file_sha256(paths["segments"]):
         raise RuntimeError(f"Bundle shard checksum mismatch: {paths['segments']}")
-    if schema_version == "sktlm-s1m2-training-bundle-shard/v2":
-        if not paths["host_support"].is_file() or (
+    if schema_version in {
+        "sktlm-s1m2-training-bundle-shard/v2",
+        "sktlm-s1m2-training-bundle-shard/v3",
+    }:
+        support_path = _packed_host_support_path(paths, payload)
+        if not support_path.is_file() or (
             payload.get("host_support_shard_sha256")
-            != _file_sha256(paths["host_support"])
+            != _file_sha256(support_path)
         ):
             raise RuntimeError(
-                f"Bundle host-support checksum mismatch: {paths['host_support']}"
+                f"Bundle host-support checksum mismatch: {support_path}"
             )
+        if schema_version == "sktlm-s1m2-training-bundle-shard/v3" and (
+            payload.get("host_support_format")
+            != "segment_dictionary_u32_binary64_le_v1"
+        ):
+            raise RuntimeError(f"Invalid packed host-support format: {support_path}")
     if pass_index == 1 and not COMPACT_EXACT_S1M2:
         if not paths["topology"].is_file() or (
             payload.get("topology_shard_sha256")
@@ -2212,6 +2416,76 @@ def _consume_training_segment_support(
         return len(record["piece_host_support"]) + len(
             record.get("piece_host_role_support", [])
         )
+    if schema == "sktlm-s1m2-training-segment-result/v4":
+        if support_handle is None:
+            raise RuntimeError(
+                "Packed bundle record has no host-support shard."
+            )
+        header = _HOST_SUPPORT_HEADER.unpack(
+            _read_exact(
+                support_handle,
+                _HOST_SUPPORT_HEADER.size,
+                label="segment header",
+            )
+        )
+        (
+            line_number,
+            segment_index,
+            piece_count,
+            host_count,
+            pooled_count,
+            diagnostic_count,
+        ) = header
+        expected_pooled = int(record["piece_host_support_rows"])
+        expected_diagnostic = int(
+            record.get("piece_host_role_support_rows", 0)
+        )
+        if (
+            (line_number, segment_index)
+            != (int(record["line_number"]), int(record["segment_index"]))
+            or pooled_count != expected_pooled
+            or diagnostic_count != expected_diagnostic
+            or piece_count > pooled_count + diagnostic_count
+            or host_count > pooled_count + diagnostic_count
+        ):
+            raise RuntimeError("Packed host-support segment identity mismatch.")
+        piece_keys = tuple(_read_wire_key(support_handle) for _ in range(piece_count))
+        host_keys = tuple(_read_wire_key(support_handle) for _ in range(host_count))
+        if len(set(piece_keys)) != len(piece_keys) or len(set(host_keys)) != len(
+            host_keys
+        ):
+            raise RuntimeError("Duplicate packed host-support dictionary key.")
+        for _ in range(pooled_count):
+            piece_id, host_id, value = _HOST_SUPPORT_ROW.unpack(
+                _read_exact(
+                    support_handle,
+                    _HOST_SUPPORT_ROW.size,
+                    label="pooled row",
+                )
+            )
+            if piece_id >= piece_count or host_id >= host_count:
+                raise RuntimeError("Packed host-support row ID is out of range.")
+            piece_host_support[(piece_keys[piece_id], host_keys[host_id])] += value
+        for _ in range(diagnostic_count):
+            piece_id, role_id, host_id, value = _HOST_ROLE_SUPPORT_ROW.unpack(
+                _read_exact(
+                    support_handle,
+                    _HOST_ROLE_SUPPORT_ROW.size,
+                    label="diagnostic row",
+                )
+            )
+            if (
+                piece_id >= piece_count
+                or host_id >= host_count
+                or role_id >= len(_WIRE_ROLES)
+            ):
+                raise RuntimeError(
+                    "Packed host-role-support row ID is out of range."
+                )
+            piece_host_role_support[
+                (piece_keys[piece_id], _WIRE_ROLES[role_id], host_keys[host_id])
+            ] += value
+        return pooled_count + diagnostic_count
     if schema != "sktlm-s1m2-training-segment-result/v3":
         raise RuntimeError(f"Invalid bundle segment record schema: {schema!r}")
     if support_handle is None:
@@ -2337,19 +2611,15 @@ def _coalesce_training_bundle_shards(
                         source = shard_resources.enter_context(
                             paths["segments"].open(encoding="utf-8")
                         )
-                        support_source = (
-                            shard_resources.enter_context(
-                                paths["host_support"].open(encoding="utf-8")
-                            )
-                            if payload.get("schema_version")
-                            == "sktlm-s1m2-training-bundle-shard/v2"
-                            else None
+                        support_source = _enter_host_support_source(
+                            shard_resources, paths, payload
                         )
                         for line in source:
                             record = json.loads(line)
                             if record.get("schema_version") not in {
                                 "sktlm-s1m2-training-segment-result/v2",
                                 "sktlm-s1m2-training-segment-result/v3",
+                                "sktlm-s1m2-training-segment-result/v4",
                             }:
                                 raise RuntimeError(
                                     f"Invalid bundle segment record: {paths['segments']}"
@@ -2396,11 +2666,9 @@ def _coalesce_training_bundle_shards(
                             ):
                                 flush(handle)
                             del record
-                        if support_source is not None and support_source.readline():
-                            raise RuntimeError(
-                                f"Trailing bundle host-support rows: "
-                                f"{paths['host_support']}"
-                            )
+                        _ensure_host_support_eof(
+                            support_source, paths, payload
+                        )
                 finally:
                     if topology_reader is not None:
                         topology_reader.close()
@@ -2498,11 +2766,16 @@ def _retire_training_bundle_shards(
     run_dir: Path,
     pass_index: int,
     bundles: tuple[ExecutionBundle, ...],
-) -> None:
+) -> tuple[int, int]:
+    retired_count = 0
+    retired_bytes = 0
     for bundle in bundles:
         for path in _training_bundle_paths(run_dir, pass_index, bundle).values():
             if path.is_file():
+                retired_bytes += path.stat().st_size
                 path.unlink()
+                retired_count += 1
+    return retired_count, retired_bytes
 
 
 def _apply_compact_training_bundle_shards(
@@ -2576,19 +2849,15 @@ def _apply_compact_training_bundle_shards(
                 source = shard_resources.enter_context(
                     paths["segments"].open(encoding="utf-8")
                 )
-                support_source = (
-                    shard_resources.enter_context(
-                        paths["host_support"].open(encoding="utf-8")
-                    )
-                    if payload.get("schema_version")
-                    == "sktlm-s1m2-training-bundle-shard/v2"
-                    else None
+                support_source = _enter_host_support_source(
+                    shard_resources, paths, payload
                 )
                 for line in source:
                     record = json.loads(line)
                     if record.get("schema_version") not in {
                         "sktlm-s1m2-training-segment-result/v2",
                         "sktlm-s1m2-training-segment-result/v3",
+                        "sktlm-s1m2-training-segment-result/v4",
                     }:
                         raise RuntimeError(
                             f"Invalid bundle segment record: {paths['segments']}"
@@ -2626,11 +2895,7 @@ def _apply_compact_training_bundle_shards(
                     ):
                         flush()
                     del record
-                if support_source is not None and support_source.readline():
-                    raise RuntimeError(
-                        f"Trailing bundle host-support rows: "
-                        f"{paths['host_support']}"
-                    )
+                _ensure_host_support_eof(support_source, paths, payload)
             if (
                 record_count != bundle.segment_count
                 or support_rows_consumed
@@ -2662,6 +2927,15 @@ def _apply_compact_training_bundle_shards(
             )
             if runtime.get("engineering_telemetry"):
                 engineering.merge_payload(runtime["engineering_telemetry"])
+            retired_count, retired_bytes = _retire_training_bundle_shards(
+                run_dir, pass_index, (bundle,)
+            )
+            telemetry.increment(
+                "training_bundle_retired_shard_count", retired_count
+            )
+            telemetry.increment(
+                "training_bundle_retired_shard_bytes", retired_bytes
+            )
         flush()
         document_metrics.documents = 1
         document_metrics.lines = line_count
@@ -3073,21 +3347,67 @@ def _parallel_training_bundles(
         initializer=_initialize_training_worker,
         initargs=(pass_index, store.path, config, vocabulary),
     ) as executor:
-        max_inflight = config.workers * 2
+        # Submitting only runnable work makes the byte gate effective: futures
+        # queued inside ProcessPoolExecutor cannot otherwise be backpressured.
+        max_inflight = config.workers
+        ready_byte_limit = (
+            config.training_bundle_ready_bytes
+            if config.training_bundle_ready_bytes is not None
+            else _default_training_bundle_ready_bytes(config.workers)
+        )
         telemetry.maximum("training_pending_shard_limit", max_inflight)
         telemetry.maximum("training_bundle_inflight_limit", max_inflight)
+        telemetry.maximum(
+            "training_bundle_ready_shard_byte_limit", ready_byte_limit
+        )
         inflight: dict[Future[dict[str, Any]], ExecutionBundle] = {}
         ready: dict[tuple[int, int], dict[str, Any]] = {}
+        ready_bytes: dict[tuple[int, int], int] = {}
         validated_topology: set[int] = set()
         next_submit = 0
         reduction_document_index = start_document
         dispatch_error: BaseException | None = None
         dispatch_done = False
         dispatch_stop = False
+        backpressure_started: float | None = None
         condition = threading.Condition()
 
-        def fill_inflight() -> None:
+        def observe_spool_state() -> int:
+            ready_total = sum(ready_bytes.values())
+            inflight_total = _training_bundle_spool_bytes(
+                run_dir, pass_index, inflight.values()
+            )
+            telemetry.set_gauge(
+                "training_bundle_ready_shard_bytes_current", ready_total
+            )
+            telemetry.maximum(
+                "training_bundle_ready_shard_bytes_peak", ready_total
+            )
+            telemetry.set_gauge(
+                "training_bundle_inflight_shard_bytes_current", inflight_total
+            )
+            telemetry.maximum(
+                "training_bundle_inflight_shard_bytes_peak", inflight_total
+            )
+            telemetry.maximum(
+                "training_bundle_spool_bytes_peak", ready_total + inflight_total
+            )
+            return ready_total + inflight_total
+
+        def set_backpressure(active: bool) -> None:
+            nonlocal backpressure_started
+            if active and backpressure_started is None:
+                backpressure_started = telemetry.now()
+                telemetry.increment("training_bundle_backpressure_waits")
+            elif not active and backpressure_started is not None:
+                telemetry.elapsed(
+                    "training_bundle_backpressure_wait", backpressure_started
+                )
+                backpressure_started = None
+
+        def fill_inflight() -> bool:
             nonlocal next_submit
+            backpressured = False
             while (
                 next_submit < len(todo)
                 and len(inflight) < max_inflight
@@ -3104,6 +3424,9 @@ def _parallel_training_bundles(
                     )
                 )
             ):
+                if (ready or inflight) and observe_spool_state() >= ready_byte_limit:
+                    backpressured = True
+                    break
                 bundle = todo[next_submit]
                 document = documents[bundle.document_index]
                 existing = _load_training_bundle_shard(
@@ -3116,6 +3439,9 @@ def _parallel_training_bundles(
                 )
                 if existing is not None:
                     ready[bundle.key] = existing
+                    ready_bytes[bundle.key] = _training_bundle_spool_bytes(
+                        run_dir, pass_index, (bundle,)
+                    )
                     telemetry.increment("training_bundle_shards_resumed", 1)
                     next_submit += 1
                     continue
@@ -3150,6 +3476,8 @@ def _parallel_training_bundles(
             telemetry.maximum("training_pending_shards", len(inflight))
             telemetry.maximum("training_bundle_true_inflight", len(inflight))
             telemetry.maximum("training_bundle_ready_shards", len(ready))
+            observe_spool_state()
+            return backpressured
 
         def dispatch() -> None:
             nonlocal dispatch_error, dispatch_done
@@ -3158,7 +3486,7 @@ def _parallel_training_bundles(
                     with condition:
                         if dispatch_stop:
                             return
-                        fill_inflight()
+                        set_backpressure(fill_inflight())
                         if not inflight:
                             dispatch_done = next_submit == len(todo)
                             condition.notify_all()
@@ -3172,8 +3500,14 @@ def _parallel_training_bundles(
                         for future in tuple(item for item in inflight if item.done()):
                             bundle = inflight.pop(future)
                             ready[bundle.key] = future.result()
+                            ready_bytes[bundle.key] = (
+                                _training_bundle_spool_bytes(
+                                    run_dir, pass_index, (bundle,)
+                                )
+                            )
                         telemetry.observe("training_bundle_true_inflight", len(inflight))
                         telemetry.observe("training_bundle_ready_shards", len(ready))
+                        observe_spool_state()
                         condition.notify_all()
             except BaseException as error:
                 with condition:
@@ -3210,6 +3544,7 @@ def _parallel_training_bundles(
                                     )
                                 condition.wait()
                             bundle_payload = ready.pop(bundle.key)
+                            ready_bytes.pop(bundle.key, None)
                             telemetry.add_seconds(
                                 "training_reducer_stall",
                                 time.perf_counter() - wait_started,
@@ -3217,6 +3552,7 @@ def _parallel_training_bundles(
                             telemetry.observe(
                                 "training_bundle_ready_shards", len(ready)
                             )
+                            observe_spool_state()
                             condition.notify_all()
                             return bundle_payload
 
@@ -3277,12 +3613,15 @@ def _parallel_training_bundles(
                 with condition:
                     for bundle in document_bundles:
                         ready.pop(bundle.key, None)
+                        ready_bytes.pop(bundle.key, None)
                     reduction_document_index = document_index + 1
                     telemetry.observe("training_bundle_ready_shards", len(ready))
+                    observe_spool_state()
                     condition.notify_all()
         finally:
             with condition:
                 dispatch_stop = True
+                set_backpressure(False)
                 condition.notify_all()
             dispatcher.join()
         if dispatch_error is not None:
