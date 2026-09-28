@@ -27,6 +27,7 @@ from sktlm.latent.execution_bundles import (
     load_execution_bundle_plan,
 )
 from sktlm.latent.store import LexiconStore
+from sktlm.latent.phonology import host_blob_to_key
 from sktlm.latent.telemetry import RuntimeTelemetry
 from sktlm.latent.training import (
     EXPECTED_FREEZE_ID,
@@ -718,12 +719,11 @@ def test_bundle_scheduler_refills_while_canonical_first_bundle_waits(
 
 
 def test_streaming_bundle_host_support_rows_decode_without_json_materialization() -> None:
-    support: Counter[tuple[str, str]] = Counter()
-    role_support: Counter[tuple[str, str, str]] = Counter()
+    support = training._CompactSupportAccumulator()
     stream = io.StringIO(
-        "H\tpiece-a\thost-a\t0x1.0000000000000p-2\n"
-        "H\tpiece-b\thost-b\t0x1.0000000000000p-1\n"
-        "D\tpiece-a\tleft\thost-a\t0x1.0000000000000p-2\n"
+        "H\tpiece-a\tV_A\t0x1.0000000000000p-2\n"
+        "H\tpiece-b\tC_K.V_A\t0x1.0000000000000p-1\n"
+        "D\tpiece-a\tLEFT\tV_A\t0x1.0000000000000p-2\n"
     )
 
     consumed = training._consume_training_segment_support(
@@ -734,22 +734,31 @@ def test_streaming_bundle_host_support_rows_decode_without_json_materialization(
         },
         stream,
         support,
-        role_support,
     )
 
     assert consumed == 3
-    assert support == {("piece-a", "host-a"): 0.25, ("piece-b", "host-b"): 0.5}
-    assert role_support == {("piece-a", "left", "host-a"): 0.25}
+    assert {
+        (support.piece_keys[piece_id], host_blob_to_key(support.host_blobs[host_id])): value
+        for (piece_id, host_id), value in support.pooled.items()
+    } == {("piece-a", "V_A"): 0.25, ("piece-b", "C_K.V_A"): 0.5}
+    assert {
+        (
+            support.piece_keys[piece_id],
+            role,
+            host_blob_to_key(support.host_blobs[host_id]),
+        ): value
+        for (piece_id, role, host_id), value in support.roles.items()
+    } == {("piece-a", "LEFT", "V_A"): 0.25}
     assert stream.readline() == ""
 
 
 def test_packed_host_support_round_trips_exact_rows_and_fails_closed() -> None:
     pooled_rows = (
-        ("piece-a", "host-a", 0.25),
-        ("piece-b", "host-a", 0.5),
-        ("piece-a", "host-b", float.fromhex("0x1.0000000000001p-3")),
+        ("piece-a", "V_A", 0.25),
+        ("piece-b", "V_A", 0.5),
+        ("piece-a", "C_K.V_A", float.fromhex("0x1.0000000000001p-3")),
     )
-    role_rows = (("piece-a", "LEFT", "host-a", 0.25),)
+    role_rows = (("piece-a", "LEFT", "V_A", 0.25),)
 
     def encoded() -> tuple[bytes, str]:
         stream = io.BytesIO()
@@ -772,36 +781,132 @@ def test_packed_host_support_round_trips_exact_rows_and_fails_closed() -> None:
     assert hashlib.sha256(payload).hexdigest() == checksum
     assert hashlib.sha256(payload[:-1] + b"X").hexdigest() != checksum
 
-    support: Counter[tuple[str, str]] = Counter()
-    role_support: Counter[tuple[str, str, str]] = Counter()
+    support = training._CompactSupportAccumulator()
     stream = io.BytesIO(payload)
     assert stream.read(len(training._HOST_SUPPORT_MAGIC)) == (
         training._HOST_SUPPORT_MAGIC
     )
     record = {
-        "schema_version": "sktlm-s1m2-training-segment-result/v4",
+        "schema_version": "sktlm-s1m2-training-segment-result/v5",
         "line_number": 7,
         "segment_index": 2,
         "piece_host_support_rows": 3,
         "piece_host_role_support_rows": 1,
     }
     assert training._consume_training_segment_support(
-        record, stream, support, role_support
+        record, stream, support
     ) == 4
     assert stream.read() == b""
-    assert support == {
-        ("piece-a", "host-a"): 0.25,
-        ("piece-b", "host-a"): 0.5,
-        ("piece-a", "host-b"): float.fromhex("0x1.0000000000001p-3"),
+    assert {
+        (support.piece_keys[piece_id], host_blob_to_key(support.host_blobs[host_id])): value
+        for (piece_id, host_id), value in support.pooled.items()
+    } == {
+        ("piece-a", "V_A"): 0.25,
+        ("piece-b", "V_A"): 0.5,
+        ("piece-a", "C_K.V_A"): float.fromhex("0x1.0000000000001p-3"),
     }
-    assert role_support == {("piece-a", "LEFT", "host-a"): 0.25}
+    assert {
+        (
+            support.piece_keys[piece_id],
+            role,
+            host_blob_to_key(support.host_blobs[host_id]),
+        ): value
+        for (piece_id, role, host_id), value in support.roles.items()
+    } == {("piece-a", "LEFT", "V_A"): 0.25}
 
     truncated = io.BytesIO(payload[:-1])
     truncated.read(len(training._HOST_SUPPORT_MAGIC))
     with pytest.raises(RuntimeError, match="Truncated packed host-support"):
         training._consume_training_segment_support(
-            record, truncated, Counter(), Counter()
+            record, truncated, training._CompactSupportAccumulator()
         )
+
+
+def test_compact_support_reducer_matches_string_counter_order_and_floats_across_flushes() -> None:
+    bundles = (
+        (
+            ("C_T.V_I", "C_G.V_A.C_C.C_CH.V_A.C_T.V_I", 0.1),
+            ("V_A", "C_BH.V_A.C_V.V_A.C_T.V_I", 1.0),
+            ("C_T.V_I", "C_G.V_A.C_C.C_CH.V_A.C_T.V_I", 0.2),
+        ),
+        (
+            ("C_T.V_I", "C_G.V_A.C_C.C_CH.V_A.C_T.V_I", 0.3),
+            ("V_A", "V_A", 2.0),
+            ("C_T.V_I", "C_BH.V_A.C_V.V_A.C_T.V_I", 0.4),
+        ),
+    )
+    reference: Counter[tuple[str, str]] = Counter()
+    compact = training._CompactSupportAccumulator()
+    reference_flushes: list[list[tuple[tuple[str, str], float]]] = []
+    compact_flushes: list[list[tuple[tuple[str, str], float]]] = []
+
+    def flush() -> None:
+        reference_flushes.append(sorted(reference.items()))
+        compact_flushes.append(
+            [
+                (
+                    (
+                        compact.piece_keys[piece_id],
+                        host_blob_to_key(compact.host_blobs[host_id]),
+                    ),
+                    compact.pooled[(piece_id, host_id)],
+                )
+                for piece_id, host_id in compact.sorted_pooled_keys()
+            ]
+        )
+        reference.clear()
+        compact.clear()
+
+    for bundle in bundles:
+        for piece_key, host_key, value in bundle:
+            reference[(piece_key, host_key)] += value
+            compact.add_pooled(piece_key, training.pack_host_key(host_key), value)
+            if len(reference) >= 3:
+                flush()
+    if reference:
+        flush()
+
+    assert compact_flushes == reference_flushes
+
+
+def test_legacy_packed_string_dictionary_remains_resume_readable() -> None:
+    stream = io.BytesIO()
+    digest = hashlib.sha256()
+    training._write_digested(
+        stream, digest, training._HOST_SUPPORT_MAGIC_V1
+    )
+    training._write_digested(
+        stream,
+        digest,
+        training._HOST_SUPPORT_HEADER.pack(4, 1, 1, 1, 1, 0),
+    )
+    training._write_wire_key(stream, digest, "C_T.V_I")
+    training._write_wire_key(stream, digest, "C_G.V_A.C_C.C_CH.V_A.C_T.V_I")
+    training._write_digested(
+        stream, digest, training._HOST_SUPPORT_ROW.pack(0, 0, 0.75)
+    )
+    stream.seek(len(training._HOST_SUPPORT_MAGIC_V1))
+    support = training._CompactSupportAccumulator()
+
+    assert training._consume_training_segment_support(
+        {
+            "schema_version": "sktlm-s1m2-training-segment-result/v4",
+            "line_number": 4,
+            "segment_index": 1,
+            "piece_host_support_rows": 1,
+            "piece_host_role_support_rows": 0,
+        },
+        stream,
+        support,
+    ) == 1
+    assert [
+        (
+            support.piece_keys[piece_id],
+            host_blob_to_key(support.host_blobs[host_id]),
+            value,
+        )
+        for (piece_id, host_id), value in support.pooled.items()
+    ] == [("C_T.V_I", "C_G.V_A.C_C.C_CH.V_A.C_T.V_I", 0.75)]
 
 
 def test_packed_bundle_loader_rejects_checksum_corruption(tmp_path: Path) -> None:

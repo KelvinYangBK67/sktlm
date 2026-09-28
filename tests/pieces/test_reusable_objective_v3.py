@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import itertools
 import math
+import sqlite3
 from dataclasses import replace
 
 import pytest
 
-from sktlm.latent.phonology import parse_iast_form
-from sktlm.latent.store import LexiconStore
+from sktlm.latent.phonology import host_blob_to_key, pack_host_key, parse_iast_form
+from sktlm.latent.store import (
+    TRANSIENT_SUPPORT_BLOB_V1,
+    TRANSIENT_SUPPORT_SCHEMA_KEY,
+    TRANSIENT_SUPPORT_TEXT_V1,
+    LexiconStore,
+)
 from sktlm.latent.training import TrainingConfig, _config_signature
 from sktlm.pieces import (
     PieceIdentity,
@@ -427,6 +433,7 @@ def test_default_v3_host_support_consumes_source_once_and_streams_rows(tmp_path)
             "SELECT host_key, support FROM piece_host_support_next "
             "ORDER BY host_key"
         ).fetchall()
+        observed = [(host_blob_to_key(row[0]), row[1]) for row in observed]
         store.rollback_document()
     finally:
         store.close()
@@ -487,3 +494,214 @@ def test_raw_key_store_apis_match_object_apis_exactly(tmp_path) -> None:
     finally:
         raw_store.close()
         object_store.close()
+
+
+def test_transient_blob_schema_rolls_back_commits_reopens_and_resumes(tmp_path) -> None:
+    path = tmp_path / "resume.sqlite"
+    checkpoint = {"history": [{}], "next_document_index": 0}
+    piece = "C_T.V_I"
+    host = "C_G.V_A.C_C.C_CH.V_A.C_T.V_I"
+    store = LexiconStore(path)
+    try:
+        store.begin_piece_count_pass(
+            resume=False,
+            checkpoint=checkpoint,
+            objective_model=S1M2_REUSABLE_PIECES_V3,
+        )
+        schema = {
+            row[1]: row[2]
+            for row in store.connection.execute(
+                "PRAGMA table_info(piece_host_support_next)"
+            )
+        }
+        assert schema["host_key"] == "BLOB"
+        assert store.get_metadata(TRANSIENT_SUPPORT_SCHEMA_KEY) == (
+            TRANSIENT_SUPPORT_BLOB_V1
+        )
+
+        store.begin_document_counts()
+        store.add_document_piece_host_support_keys([(piece, host, 1.25)])
+        store.rollback_document()
+        assert store.connection.execute(
+            "SELECT COUNT(*) FROM piece_host_support_next"
+        ).fetchone()[0] == 0
+
+        committed = {**checkpoint, "next_document_index": 1}
+        store.begin_document_counts()
+        store.add_document_piece_host_support_keys([(piece, host, 2.5)])
+        store.commit_document(committed)
+    finally:
+        store.close()
+
+    reopened = LexiconStore(path)
+    try:
+        reopened.begin_piece_count_pass(
+            resume=True,
+            checkpoint=committed,
+            objective_model=S1M2_REUSABLE_PIECES_V3,
+        )
+        row = reopened.connection.execute(
+            "SELECT host_key, support, typeof(host_key) "
+            "FROM piece_host_support_next"
+        ).fetchone()
+        assert row == (pack_host_key(host), 2.5, "blob")
+        assert reopened.load_training_checkpoint() == committed
+        assert reopened.runtime_payload()["sqlite_journal_mode"] == "wal"
+        assert reopened.runtime_payload()["sqlite_synchronous"] == "normal"
+    finally:
+        reopened.close()
+
+
+def test_transient_schema_metadata_mismatch_fails_closed(tmp_path) -> None:
+    path = tmp_path / "mismatch.sqlite"
+    checkpoint = {"history": [{}]}
+    store = LexiconStore(path)
+    try:
+        store.begin_piece_count_pass(
+            resume=False,
+            checkpoint=checkpoint,
+            objective_model=S1M2_REUSABLE_PIECES_V3,
+        )
+        store.set_metadata(TRANSIENT_SUPPORT_SCHEMA_KEY, TRANSIENT_SUPPORT_TEXT_V1)
+    finally:
+        store.close()
+
+    reopened = LexiconStore(path)
+    try:
+        with pytest.raises(RuntimeError, match="metadata conflicts"):
+            reopened.begin_piece_count_pass(
+                resume=True,
+                checkpoint=checkpoint,
+                objective_model=S1M2_REUSABLE_PIECES_V3,
+            )
+    finally:
+        reopened.close()
+
+
+def test_legacy_text_transient_schema_resumes_explicitly_and_matches_blob_final_state(
+    tmp_path,
+) -> None:
+    piece = "C_T.V_I"
+    hosts = ("C_G.V_A.C_C.C_CH.V_A.C_T.V_I", "C_BH.V_A.C_V.V_A.C_T.V_I")
+    checkpoint = {"history": [{}]}
+
+    def prepare(path, *, legacy_text: bool) -> LexiconStore:
+        store = LexiconStore(path)
+        store.begin_piece_count_pass(
+            resume=False,
+            checkpoint=checkpoint,
+            objective_model=S1M2_REUSABLE_PIECES_V3,
+        )
+        if legacy_text:
+            with store.connection:
+                store.connection.execute("DROP TABLE piece_host_support_next")
+                store.connection.execute(
+                    "CREATE TABLE piece_host_support_next ("
+                    "piece_key TEXT NOT NULL, host_key TEXT NOT NULL, "
+                    "support REAL NOT NULL, PRIMARY KEY(piece_key, host_key)"
+                    ") WITHOUT ROWID"
+                )
+                store.connection.execute(
+                    "DELETE FROM metadata WHERE key = ?",
+                    (TRANSIENT_SUPPORT_SCHEMA_KEY,),
+                )
+            store.begin_piece_count_pass(
+                resume=True,
+                checkpoint=checkpoint,
+                objective_model=S1M2_REUSABLE_PIECES_V3,
+            )
+            assert store.get_metadata(TRANSIENT_SUPPORT_SCHEMA_KEY) == (
+                TRANSIENT_SUPPORT_TEXT_V1
+            )
+        return store
+
+    blob = prepare(tmp_path / "blob.sqlite", legacy_text=False)
+    text = prepare(tmp_path / "text.sqlite", legacy_text=True)
+    try:
+        for store in (blob, text):
+            store.begin_document_counts()
+            store.add_document_piece_count_keys([(piece, 10.0)])
+            store.add_document_piece_host_support_keys(
+                [
+                    (piece, pack_host_key(hosts[0]), 4.0),
+                    (piece, pack_host_key(hosts[1]), 6.0),
+                ]
+            )
+            store.commit_document(checkpoint)
+            store.finalize_piece_count_pass(
+                checkpoint=checkpoint,
+                objective_model=S1M2_REUSABLE_PIECES_V3,
+            )
+        assert tuple(blob.connection.execute("SELECT * FROM piece_lexicon")) == tuple(
+            text.connection.execute("SELECT * FROM piece_lexicon")
+        )
+        assert blob.load_training_checkpoint() == text.load_training_checkpoint()
+    finally:
+        blob.close()
+        text.close()
+
+
+def test_bounded_multirow_upserts_match_ordered_executemany_across_batches(
+    tmp_path,
+) -> None:
+    store = LexiconStore(tmp_path / "batched.sqlite")
+    reference = sqlite3.connect(tmp_path / "reference.sqlite")
+    checkpoint = {"history": [{}]}
+    try:
+        store.begin_piece_count_pass(
+            resume=False,
+            checkpoint=checkpoint,
+            objective_model=S1M2_REUSABLE_PIECES_V3,
+        )
+        reference.executescript(
+            "CREATE TABLE piece_counts_next(form_key TEXT PRIMARY KEY, expected_count REAL NOT NULL) WITHOUT ROWID;"
+            "CREATE TABLE lexical_diagnostics_next(form_key TEXT PRIMARY KEY, expected_count REAL NOT NULL) WITHOUT ROWID;"
+            "CREATE TABLE piece_host_support_next(piece_key TEXT NOT NULL, host_key BLOB NOT NULL, support REAL NOT NULL, PRIMARY KEY(piece_key, host_key)) WITHOUT ROWID;"
+        )
+        piece_rows = [(f"piece-{index % 470:04d}", float(index % 7 + 1)) for index in range(940)]
+        lexical_rows = [(f"host-{index % 460:04d}", float(index % 5 + 1)) for index in range(920)]
+        host_rows = [
+            (
+                f"piece-{index % 310:04d}",
+                pack_host_key("V_A" if index % 2 else "C_K.V_A"),
+                float(index % 11 + 1),
+            )
+            for index in range(930)
+        ]
+
+        store.begin_document_counts()
+        store.add_document_piece_count_keys(piece_rows)
+        store.add_document_lexical_diagnostic_keys(lexical_rows)
+        store.add_document_piece_host_support_keys(host_rows)
+        store.commit_document(checkpoint)
+
+        reference.executemany(
+            "INSERT INTO piece_counts_next VALUES (?, ?) ON CONFLICT(form_key) DO UPDATE SET expected_count=expected_count+excluded.expected_count",
+            piece_rows,
+        )
+        reference.executemany(
+            "INSERT INTO lexical_diagnostics_next VALUES (?, ?) ON CONFLICT(form_key) DO UPDATE SET expected_count=expected_count+excluded.expected_count",
+            lexical_rows,
+        )
+        reference.executemany(
+            "INSERT INTO piece_host_support_next VALUES (?, ?, ?) ON CONFLICT(piece_key, host_key) DO UPDATE SET support=support+excluded.support",
+            host_rows,
+        )
+        reference.commit()
+
+        for table, columns, order in (
+            ("piece_counts_next", "form_key, expected_count", "form_key"),
+            ("lexical_diagnostics_next", "*", "form_key"),
+            ("piece_host_support_next", "*", "piece_key, host_key"),
+        ):
+            assert tuple(store.connection.execute(f"SELECT {columns} FROM {table} ORDER BY {order}")) == tuple(
+                reference.execute(f"SELECT {columns} FROM {table} ORDER BY {order}")
+            )
+        assert store.telemetry.counters["sqlite_piece_count_batch_calls"] == 3
+        assert store.telemetry.counters["sqlite_lexical_diagnostic_batch_calls"] == 3
+        assert store.telemetry.counters["sqlite_piece_host_support_batch_calls"] == 4
+        assert store.telemetry.gauges["sqlite_piece_count_batch_max_rows"] == 450
+        assert store.telemetry.gauges["sqlite_piece_host_support_batch_max_rows"] == 300
+    finally:
+        reference.close()
+        store.close()

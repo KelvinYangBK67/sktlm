@@ -9,9 +9,15 @@ import sqlite3
 import time
 from collections import Counter, OrderedDict
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator, Sequence
 
-from sktlm.latent.phonology import PhonologicalForm
+from sktlm.latent.phonology import (
+    PhonologicalForm,
+    host_blob_to_key,
+    pack_host_key,
+    pack_phonological_form,
+    validate_host_blob,
+)
 from sktlm.latent.telemetry import RuntimeTelemetry
 from sktlm.latent.vocabulary import (
     BASE_FORMS,
@@ -43,6 +49,25 @@ S1M2_PASS_DIAGNOSTIC_TABLES = (
     "lexical_diagnostics",
     "lexical_diagnostics_next",
 )
+TRANSIENT_SUPPORT_SCHEMA_KEY = "s1m2_transient_support_schema"
+TRANSIENT_SUPPORT_BLOB_V1 = "host_blob_v1"
+TRANSIENT_SUPPORT_TEXT_V1 = "host_text_v1_legacy"
+_SQLITE_SAFE_BIND_PARAMETERS = 900
+
+
+def _bounded_batches(
+    rows: Iterable[Sequence[object]], batch_size: int
+) -> Iterator[list[Sequence[object]]]:
+    """Materialize only one conservative SQLite statement batch at a time."""
+
+    batch: list[Sequence[object]] = []
+    for row in rows:
+        batch.append(row)
+        if len(batch) == batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
 
 
 def _sqlite_cross_host_moments_valid(raw_count: object, squared_sum: object) -> int:
@@ -348,6 +373,7 @@ class LexiconStore:
         self.telemetry = telemetry or RuntimeTelemetry()
         self._scorers: list[LexiconScorer] = []
         self._piece_scorers: list[PieceStoreScorer] = []
+        self._piece_host_support_schema: str | None = None
         self.connection = sqlite3.connect(path)
         self.connection.create_function(
             "sktlm_cross_host_moments_valid",
@@ -355,8 +381,12 @@ class LexiconStore:
             _sqlite_cross_host_moments_valid,
             deterministic=True,
         )
-        self.connection.execute("PRAGMA journal_mode=WAL")
+        journal_row = self.connection.execute("PRAGMA journal_mode=WAL").fetchone()
+        if journal_row is None or str(journal_row[0]).lower() != "wal":
+            raise RuntimeError(f"Failed to enable SQLite WAL mode: {journal_row!r}")
+        self.journal_mode = "wal"
         self.connection.execute("PRAGMA synchronous=NORMAL")
+        self.synchronous = "normal"
         self.connection.execute(
             "CREATE TABLE IF NOT EXISTS metadata "
             "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
@@ -470,6 +500,45 @@ class LexiconStore:
             (key,),
         ).fetchone()
         return None if row is None else str(row[0])
+
+    def _execute_bounded_upsert(
+        self,
+        rows: Iterable[Sequence[object]],
+        *,
+        columns_per_row: int,
+        insert_sql: str,
+        conflict_sql: str,
+        telemetry_prefix: str,
+    ) -> int:
+        """Execute ordered multi-row UPSERT statements below 900 bind values."""
+
+        batch_size = _SQLITE_SAFE_BIND_PARAMETERS // columns_per_row
+        total = 0
+        for batch in _bounded_batches(rows, batch_size):
+            placeholders = ",".join(
+                "(" + ",".join("?" for _ in range(columns_per_row)) + ")"
+                for _ in batch
+            )
+            parameters = tuple(value for row in batch for value in row)
+            self.connection.execute(
+                f"{insert_sql} VALUES {placeholders} {conflict_sql}", parameters
+            )
+            count = len(batch)
+            total += count
+            self.telemetry.increment(f"{telemetry_prefix}_batch_calls")
+            self.telemetry.increment(f"{telemetry_prefix}_batch_rows", count)
+            self.telemetry.maximum(f"{telemetry_prefix}_batch_max_rows", count)
+        return total
+
+    def _transient_host_storage_key(self, host: str | bytes) -> str | bytes:
+        schema = self._piece_host_support_schema
+        if schema == TRANSIENT_SUPPORT_BLOB_V1:
+            payload = pack_host_key(host) if isinstance(host, str) else bytes(host)
+            validate_host_blob(payload)
+            return payload
+        if schema == TRANSIENT_SUPPORT_TEXT_V1:
+            return host if isinstance(host, str) else host_blob_to_key(bytes(host))
+        raise RuntimeError("Transient piece/host support schema is not initialized.")
 
     def has_lexicon(self) -> bool:
         return self.has_table("lexicon")
@@ -595,14 +664,52 @@ class LexiconStore:
             has_squared = "sum_host_support_squared" in count_columns
             if has_squared != (objective_model == S1M2_REUSABLE_PIECES_V3):
                 raise RuntimeError("Active piece-count schema does not match objective model.")
-            self.connection.execute(
-                "CREATE TABLE IF NOT EXISTS piece_host_support_next ("
-                "piece_key TEXT NOT NULL, "
-                "host_key TEXT NOT NULL, "
-                "support REAL NOT NULL, "
-                "PRIMARY KEY(piece_key, host_key)"
-                ") WITHOUT ROWID"
+            if not self.has_table("piece_host_support_next"):
+                self.connection.execute(
+                    "CREATE TABLE piece_host_support_next ("
+                    "piece_key TEXT NOT NULL, "
+                    "host_key BLOB NOT NULL, "
+                    "support REAL NOT NULL, "
+                    "PRIMARY KEY(piece_key, host_key)"
+                    ") WITHOUT ROWID"
+                )
+            host_columns = tuple(
+                self.connection.execute(
+                    "PRAGMA table_info(piece_host_support_next)"
+                )
             )
+            host_column = next(
+                (row for row in host_columns if str(row[1]) == "host_key"), None
+            )
+            if host_column is None:
+                raise RuntimeError(
+                    "Active transient support schema has no host_key column."
+                )
+            declared_host_type = str(host_column[2]).upper()
+            stored_support_schema = self.get_metadata(TRANSIENT_SUPPORT_SCHEMA_KEY)
+            if declared_host_type == "BLOB":
+                if stored_support_schema not in (None, TRANSIENT_SUPPORT_BLOB_V1):
+                    raise RuntimeError(
+                        "Transient support schema metadata conflicts with its BLOB table."
+                    )
+                self._piece_host_support_schema = TRANSIENT_SUPPORT_BLOB_V1
+                self._set_metadata(
+                    TRANSIENT_SUPPORT_SCHEMA_KEY, TRANSIENT_SUPPORT_BLOB_V1
+                )
+            elif declared_host_type == "TEXT" and resume:
+                if stored_support_schema not in (None, TRANSIENT_SUPPORT_TEXT_V1):
+                    raise RuntimeError(
+                        "Transient support schema metadata conflicts with its legacy TEXT table."
+                    )
+                self._piece_host_support_schema = TRANSIENT_SUPPORT_TEXT_V1
+                self._set_metadata(
+                    TRANSIENT_SUPPORT_SCHEMA_KEY, TRANSIENT_SUPPORT_TEXT_V1
+                )
+            else:
+                raise RuntimeError(
+                    "Unsupported transient support host schema "
+                    f"{declared_host_type!r}; restart the active engineering pass."
+                )
             if collect_role_diagnostics:
                 if resume and not self.has_table("piece_host_role_support_next"):
                     raise RuntimeError(
@@ -654,13 +761,17 @@ class LexiconStore:
                     yield key, float(value)
 
         started = time.perf_counter()
-        self.connection.executemany(
-            "INSERT INTO piece_counts_next("
-            "form_key, expected_count"
-            ") VALUES (?, ?) "
-            "ON CONFLICT(form_key) DO UPDATE SET "
-            "expected_count = expected_count + excluded.expected_count",
+        row_count = self._execute_bounded_upsert(
             rows(),
+            columns_per_row=2,
+            insert_sql=(
+                "INSERT INTO piece_counts_next(form_key, expected_count)"
+            ),
+            conflict_sql=(
+                "ON CONFLICT(form_key) DO UPDATE SET "
+                "expected_count = expected_count + excluded.expected_count"
+            ),
+            telemetry_prefix="sqlite_piece_count",
         )
         self.telemetry.elapsed("sqlite_piece_count_upsert", started)
         self.telemetry.increment("sqlite_piece_count_upsert_calls")
@@ -678,7 +789,7 @@ class LexiconStore:
             raise RuntimeError("Piece host support requires an open transaction.")
         if not collect_roles:
             self.add_document_piece_host_support_keys(
-                (identity.key, host.key, value)
+                (identity.key, pack_phonological_form(host), value)
                 for identity, host, value in support
             )
             return
@@ -694,14 +805,24 @@ class LexiconStore:
             if value > 0.0
         ]
         row_count = len(source_rows)
-        self.connection.executemany(
-            "INSERT INTO piece_host_support_next(piece_key, host_key, support) "
-            "VALUES (?, ?, ?) ON CONFLICT(piece_key, host_key) DO UPDATE SET "
-            "support = support + excluded.support",
+        row_count = self._execute_bounded_upsert(
             (
-                (identity.key, host.key, value)
+                (
+                    identity.key,
+                    self._transient_host_storage_key(pack_phonological_form(host)),
+                    value,
+                )
                 for identity, host, value in source_rows
             ),
+            columns_per_row=3,
+            insert_sql=(
+                "INSERT INTO piece_host_support_next(piece_key, host_key, support)"
+            ),
+            conflict_sql=(
+                "ON CONFLICT(piece_key, host_key) DO UPDATE SET "
+                "support = support + excluded.support"
+            ),
+            telemetry_prefix="sqlite_piece_host_support",
         )
         self.telemetry.elapsed("sqlite_piece_host_support_upsert", started)
         self.telemetry.increment("sqlite_piece_host_support_upsert_calls")
@@ -711,15 +832,21 @@ class LexiconStore:
         if not self.has_table("piece_host_role_support_next"):
             raise RuntimeError("Role-diagnostic collection table is unavailable.")
         role_started = time.perf_counter()
-        self.connection.executemany(
-            "INSERT INTO piece_host_role_support_next("
-            "piece_key, host_key, role, support) VALUES (?, ?, ?, ?) "
-            "ON CONFLICT(piece_key, host_key, role) DO UPDATE SET "
-            "support = support + excluded.support",
+        self._execute_bounded_upsert(
             (
                 (identity.key, host.key, identity.role.value, value)
                 for identity, host, value in source_rows
             ),
+            columns_per_row=4,
+            insert_sql=(
+                "INSERT INTO piece_host_role_support_next("
+                "piece_key, host_key, role, support)"
+            ),
+            conflict_sql=(
+                "ON CONFLICT(piece_key, host_key, role) DO UPDATE SET "
+                "support = support + excluded.support"
+            ),
+            telemetry_prefix="sqlite_piece_host_role_support",
         )
         self.telemetry.elapsed("sqlite_piece_host_role_support_upsert", role_started)
         self.telemetry.increment(
@@ -728,28 +855,38 @@ class LexiconStore:
 
     def add_document_piece_host_support_keys(
         self,
-        support: Iterable[tuple[str, str, float]],
+        support: Iterable[tuple[str, str | bytes, float]],
     ) -> None:
-        """Stream canonical pooled piece/host keys into the active document."""
+        """Stream canonical pieces and compact/legacy hosts into the document."""
 
         if not self.connection.in_transaction:
             raise RuntimeError("Piece host support requires an open transaction.")
         row_count = 0
 
-        def rows() -> Iterable[tuple[str, str, float]]:
+        def rows() -> Iterable[tuple[str, str | bytes, float]]:
             nonlocal row_count
             for piece_key, host_key, value in support:
                 numeric = float(value)
                 if numeric > 0.0:
                     row_count += 1
-                    yield piece_key, host_key, numeric
+                    yield (
+                        piece_key,
+                        self._transient_host_storage_key(host_key),
+                        numeric,
+                    )
 
         started = time.perf_counter()
-        self.connection.executemany(
-            "INSERT INTO piece_host_support_next(piece_key, host_key, support) "
-            "VALUES (?, ?, ?) ON CONFLICT(piece_key, host_key) DO UPDATE SET "
-            "support = support + excluded.support",
+        row_count = self._execute_bounded_upsert(
             rows(),
+            columns_per_row=3,
+            insert_sql=(
+                "INSERT INTO piece_host_support_next(piece_key, host_key, support)"
+            ),
+            conflict_sql=(
+                "ON CONFLICT(piece_key, host_key) DO UPDATE SET "
+                "support = support + excluded.support"
+            ),
+            telemetry_prefix="sqlite_piece_host_support",
         )
         self.telemetry.elapsed("sqlite_piece_host_support_upsert", started)
         self.telemetry.increment("sqlite_piece_host_support_upsert_calls")
@@ -791,12 +928,18 @@ class LexiconStore:
                     )
 
         started = time.perf_counter()
-        self.connection.executemany(
-            "INSERT INTO piece_host_role_support_next("
-            "piece_key, host_key, role, support) VALUES (?, ?, ?, ?) "
-            "ON CONFLICT(piece_key, host_key, role) DO UPDATE SET "
-            "support = support + excluded.support",
+        row_count = self._execute_bounded_upsert(
             rows(),
+            columns_per_row=4,
+            insert_sql=(
+                "INSERT INTO piece_host_role_support_next("
+                "piece_key, host_key, role, support)"
+            ),
+            conflict_sql=(
+                "ON CONFLICT(piece_key, host_key, role) DO UPDATE SET "
+                "support = support + excluded.support"
+            ),
+            telemetry_prefix="sqlite_piece_host_role_support",
         )
         self.telemetry.elapsed("sqlite_piece_host_role_support_upsert", started)
         self.telemetry.increment(
@@ -831,11 +974,17 @@ class LexiconStore:
                     yield key, float(value)
 
         started = time.perf_counter()
-        self.connection.executemany(
-            "INSERT INTO lexical_diagnostics_next(form_key, expected_count) "
-            "VALUES (?, ?) ON CONFLICT(form_key) DO UPDATE SET "
-            "expected_count = expected_count + excluded.expected_count",
+        row_count = self._execute_bounded_upsert(
             rows(),
+            columns_per_row=2,
+            insert_sql=(
+                "INSERT INTO lexical_diagnostics_next(form_key, expected_count)"
+            ),
+            conflict_sql=(
+                "ON CONFLICT(form_key) DO UPDATE SET "
+                "expected_count = expected_count + excluded.expected_count"
+            ),
+            telemetry_prefix="sqlite_lexical_diagnostic",
         )
         self.telemetry.elapsed("sqlite_lexical_diagnostic_upsert", started)
         self.telemetry.increment("sqlite_lexical_diagnostic_upsert_calls")
@@ -1384,6 +1533,11 @@ class LexiconStore:
 
     def runtime_payload(self) -> dict[str, Any]:
         payload = self.telemetry.payload()
+        payload["sqlite_journal_mode"] = self.journal_mode
+        payload["sqlite_synchronous"] = self.synchronous
+        payload["sqlite_transient_support_schema"] = (
+            self._piece_host_support_schema
+        )
         payload['lexical_scorers'] = [
             {
                 'score_calls': scorer.score_calls,

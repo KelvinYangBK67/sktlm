@@ -47,7 +47,12 @@ from sktlm.latent.inference import (
     infer_segment,
     infer_training_segment,
 )
-from sktlm.latent.phonology import PhonologicalForm
+from sktlm.latent.phonology import (
+    PhonologicalForm,
+    canonical_host_key_utf8_length,
+    host_blob_to_key,
+    pack_host_key,
+)
 from sktlm.latent.store import LexiconScorer, LexiconStore, PieceStoreScorer
 from sktlm.latent.telemetry import RuntimeTelemetry
 from sktlm.latent.vocabulary import (
@@ -112,7 +117,8 @@ _WORKER_CONNECTION: sqlite3.Connection | None = None
 _WORKER_VOCABULARY: FrozenVocabulary | None = None
 _WORKER_PIECE_ENGINE: ComposedPieceInference | None = None
 
-_HOST_SUPPORT_MAGIC = b"SKTLM-S1M2-HOST-SUPPORT\x01"
+_HOST_SUPPORT_MAGIC_V1 = b"SKTLM-S1M2-HOST-SUPPORT\x01"
+_HOST_SUPPORT_MAGIC = b"SKTLM-S1M2-HOST-SUPPORT\x02"
 _HOST_SUPPORT_HEADER = struct.Struct("<qIIIQQ")
 _HOST_SUPPORT_ROW = struct.Struct("<IId")
 _HOST_ROLE_SUPPORT_ROW = struct.Struct("<IBId")
@@ -125,6 +131,99 @@ _WIRE_ROLE_IDS = {
 }
 _WIRE_ROLES = tuple(_WIRE_ROLE_IDS)
 _MAX_WIRE_KEY_BYTES = 1024 * 1024
+_REDUCER_ACCUMULATION_BATCH = 4096
+
+
+class _CompactSupportAccumulator:
+    """Flush-local compact identities with canonical-order reconstruction."""
+
+    __slots__ = (
+        "piece_ids",
+        "piece_keys",
+        "host_ids",
+        "host_blobs",
+        "pooled",
+        "roles",
+    )
+
+    def __init__(self) -> None:
+        self.piece_ids: dict[str, int] = {}
+        self.piece_keys: list[str] = []
+        self.host_ids: dict[bytes, int] = {}
+        self.host_blobs: list[bytes] = []
+        self.pooled: Counter[tuple[int, int]] = Counter()
+        self.roles: Counter[tuple[int, str, int]] = Counter()
+
+    def _piece_id(self, key: str) -> int:
+        identifier = self.piece_ids.get(key)
+        if identifier is None:
+            identifier = len(self.piece_keys)
+            self.piece_ids[key] = identifier
+            self.piece_keys.append(key)
+        return identifier
+
+    def _host_id(self, payload: bytes) -> int:
+        identifier = self.host_ids.get(payload)
+        if identifier is None:
+            identifier = len(self.host_blobs)
+            self.host_ids[payload] = identifier
+            self.host_blobs.append(payload)
+        return identifier
+
+    def add_pooled(self, piece_key: str, host_blob: bytes, value: float) -> None:
+        self.pooled[(self._piece_id(piece_key), self._host_id(host_blob))] += value
+
+    def add_role(
+        self, piece_key: str, role: str, host_blob: bytes, value: float
+    ) -> None:
+        self.roles[
+            (self._piece_id(piece_key), role, self._host_id(host_blob))
+        ] += value
+
+    def observe_peaks(self, telemetry: RuntimeTelemetry) -> None:
+        telemetry.maximum(
+            "training_reducer_unique_piece_keys_peak", len(self.piece_keys)
+        )
+        telemetry.maximum(
+            "training_reducer_unique_host_keys_peak", len(self.host_blobs)
+        )
+        telemetry.maximum(
+            "training_reducer_unique_pairs_peak", len(self.pooled)
+        )
+
+    def sorted_pooled_keys(self) -> list[tuple[int, int]]:
+        piece_order = [0] * len(self.piece_keys)
+        for rank, identifier in enumerate(
+            sorted(range(len(self.piece_keys)), key=self.piece_keys.__getitem__)
+        ):
+            piece_order[identifier] = rank
+        host_order = [0] * len(self.host_blobs)
+        for rank, identifier in enumerate(
+            sorted(range(len(self.host_blobs)), key=self.host_blobs.__getitem__)
+        ):
+            host_order[identifier] = rank
+        return sorted(
+            self.pooled,
+            key=lambda pair: (piece_order[pair[0]], host_order[pair[1]]),
+        )
+
+    def sorted_role_keys(self) -> list[tuple[int, str, int]]:
+        return sorted(
+            self.roles,
+            key=lambda item: (
+                self.piece_keys[item[0]],
+                item[1],
+                self.host_blobs[item[2]],
+            ),
+        )
+
+    def clear(self) -> None:
+        self.piece_ids.clear()
+        self.piece_keys.clear()
+        self.host_ids.clear()
+        self.host_blobs.clear()
+        self.pooled.clear()
+        self.roles.clear()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1242,6 +1341,13 @@ def _write_wire_key(handle: Any, digest: Any, key: str) -> None:
     _write_digested(handle, digest, encoded)
 
 
+def _write_wire_bytes(handle: Any, digest: Any, payload: bytes) -> None:
+    if not payload or len(payload) > _MAX_WIRE_KEY_BYTES:
+        raise ValueError("Invalid packed host-support byte-key length.")
+    _write_digested(handle, digest, _WIRE_UINT32.pack(len(payload)))
+    _write_digested(handle, digest, payload)
+
+
 def _write_packed_host_support_segment(
     handle: Any,
     digest: Any,
@@ -1265,6 +1371,7 @@ def _write_packed_host_support_segment(
             [row[1] for row in pooled] + [row[2] for row in diagnostic]
         )
     )
+    host_blobs = tuple(pack_host_key(key) for key in host_keys)
     piece_ids = {key: index for index, key in enumerate(piece_keys)}
     host_ids = {key: index for index, key in enumerate(host_keys)}
     _write_digested(
@@ -1281,8 +1388,8 @@ def _write_packed_host_support_segment(
     )
     for key in piece_keys:
         _write_wire_key(handle, digest, key)
-    for key in host_keys:
-        _write_wire_key(handle, digest, key)
+    for payload in host_blobs:
+        _write_wire_bytes(handle, digest, payload)
     for piece_key, host_key, value in pooled:
         _write_digested(
             handle,
@@ -1325,10 +1432,22 @@ def _read_wire_key(handle: Any) -> str:
         raise RuntimeError("Invalid packed host-support UTF-8 key.") from error
 
 
+def _read_wire_bytes(handle: Any) -> bytes:
+    size = _WIRE_UINT32.unpack(
+        _read_exact(handle, _WIRE_UINT32.size, label="byte-key length")
+    )[0]
+    if size < 1 or size > _MAX_WIRE_KEY_BYTES:
+        raise RuntimeError("Invalid packed host-support byte-key length.")
+    return _read_exact(handle, size, label="byte-key")
+
+
 def _packed_host_support_path(
     paths: Mapping[str, Path], payload: Mapping[str, Any]
 ) -> Path:
-    if payload.get("schema_version") == "sktlm-s1m2-training-bundle-shard/v3":
+    if payload.get("schema_version") in {
+        "sktlm-s1m2-training-bundle-shard/v3",
+        "sktlm-s1m2-training-bundle-shard/v4",
+    }:
         return paths["host_support_packed"]
     return paths["host_support"]
 
@@ -1342,6 +1461,12 @@ def _enter_host_support_source(
     if schema == "sktlm-s1m2-training-bundle-shard/v2":
         return resources.enter_context(paths["host_support"].open(encoding="utf-8"))
     if schema == "sktlm-s1m2-training-bundle-shard/v3":
+        path = paths["host_support_packed"]
+        source = resources.enter_context(path.open("rb"))
+        if source.read(len(_HOST_SUPPORT_MAGIC_V1)) != _HOST_SUPPORT_MAGIC_V1:
+            raise RuntimeError(f"Invalid packed host-support magic: {path}")
+        return source
+    if schema == "sktlm-s1m2-training-bundle-shard/v4":
         path = paths["host_support_packed"]
         source = resources.enter_context(path.open("rb"))
         if source.read(len(_HOST_SUPPORT_MAGIC)) != _HOST_SUPPORT_MAGIC:
@@ -2200,7 +2325,7 @@ def _write_training_bundle_shard(
                     segment_host_role_support_rows,
                 )
                 record = {
-                    "schema_version": "sktlm-s1m2-training-segment-result/v4",
+                    "schema_version": "sktlm-s1m2-training-segment-result/v5",
                     "line_number": line_number,
                     "segment_index": segment_index,
                     "lexical_counts": [
@@ -2275,7 +2400,7 @@ def _write_training_bundle_shard(
             phase="training",
         )
         payload = {
-            "schema_version": "sktlm-s1m2-training-bundle-shard/v3",
+            "schema_version": "sktlm-s1m2-training-bundle-shard/v4",
             "config_signature": config_signature,
             "plan_sha256": plan_sha256,
             "pass_index": pass_index,
@@ -2291,7 +2416,9 @@ def _write_training_bundle_shard(
             "segment_shard_sha256": segment_digest.hexdigest(),
             "host_support_shard": paths["host_support_packed"].name,
             "host_support_shard_sha256": host_support_digest.hexdigest(),
-            "host_support_format": "segment_dictionary_u32_binary64_le_v1",
+            "host_support_format": (
+                "segment_dictionary_u32_host_blob_v1_binary64_le_v2"
+            ),
             "host_support_rows": host_support_rows,
             "topology_shard": topology_name,
             "topology_shard_sha256": topology_sha,
@@ -2367,6 +2494,7 @@ def _load_training_bundle_shard(
             "sktlm-s1m2-training-bundle-shard/v1",
             "sktlm-s1m2-training-bundle-shard/v2",
             "sktlm-s1m2-training-bundle-shard/v3",
+            "sktlm-s1m2-training-bundle-shard/v4",
         }
         and payload.get("config_signature") == config_signature
         and payload.get("plan_sha256") == plan_sha256
@@ -2387,6 +2515,7 @@ def _load_training_bundle_shard(
     if schema_version in {
         "sktlm-s1m2-training-bundle-shard/v2",
         "sktlm-s1m2-training-bundle-shard/v3",
+        "sktlm-s1m2-training-bundle-shard/v4",
     }:
         support_path = _packed_host_support_path(paths, payload)
         if not support_path.is_file() or (
@@ -2399,6 +2528,11 @@ def _load_training_bundle_shard(
         if schema_version == "sktlm-s1m2-training-bundle-shard/v3" and (
             payload.get("host_support_format")
             != "segment_dictionary_u32_binary64_le_v1"
+        ):
+            raise RuntimeError(f"Invalid packed host-support format: {support_path}")
+        if schema_version == "sktlm-s1m2-training-bundle-shard/v4" and (
+            payload.get("host_support_format")
+            != "segment_dictionary_u32_host_blob_v1_binary64_le_v2"
         ):
             raise RuntimeError(f"Invalid packed host-support format: {support_path}")
     if pass_index == 1 and not COMPACT_EXACT_S1M2:
@@ -2415,25 +2549,95 @@ def _load_training_bundle_shard(
 def _consume_training_segment_support(
     record: Mapping[str, Any],
     support_handle: Any | None,
-    piece_host_support: Counter[tuple[str, str]],
-    piece_host_role_support: Counter[tuple[str, str, str]],
+    support: _CompactSupportAccumulator,
+    telemetry: RuntimeTelemetry | None = None,
 ) -> int:
     """Fold one segment's host rows without materializing its wire payload."""
 
+    decode_started = time.perf_counter()
+    accumulation_seconds = 0.0
+    pooled_rows = 0
+    role_rows = 0
+
+    def accumulate_pooled(rows: list[tuple[str, bytes, float]]) -> None:
+        nonlocal accumulation_seconds, pooled_rows
+        if not rows:
+            return
+        started = time.perf_counter()
+        for piece_key, host_blob, value in rows:
+            support.add_pooled(piece_key, host_blob, value)
+        accumulation_seconds += time.perf_counter() - started
+        pooled_rows += len(rows)
+        rows.clear()
+
+    def accumulate_roles(rows: list[tuple[str, str, bytes, float]]) -> None:
+        nonlocal accumulation_seconds, role_rows
+        if not rows:
+            return
+        started = time.perf_counter()
+        for piece_key, role, host_blob, value in rows:
+            support.add_role(piece_key, role, host_blob, value)
+        accumulation_seconds += time.perf_counter() - started
+        role_rows += len(rows)
+        rows.clear()
+
+    def record_host_dictionary(
+        blobs: Iterable[bytes], canonical_lengths: Iterable[int]
+    ) -> None:
+        if telemetry is None:
+            return
+        compact_bytes = sum(len(payload) for payload in blobs)
+        canonical_bytes = sum(canonical_lengths)
+        telemetry.increment(
+            "training_reducer_compact_host_bytes", compact_bytes
+        )
+        telemetry.increment(
+            "training_reducer_canonical_host_bytes", canonical_bytes
+        )
+        telemetry.increment(
+            "training_reducer_host_bytes_avoided",
+            canonical_bytes - compact_bytes,
+        )
+
+    def finish() -> int:
+        if telemetry is not None:
+            total = time.perf_counter() - decode_started
+            telemetry.add_seconds(
+                "training_reducer_decode", max(0.0, total - accumulation_seconds)
+            )
+            telemetry.add_seconds(
+                "training_reducer_accumulate", accumulation_seconds
+            )
+            telemetry.increment("training_reducer_support_rows", pooled_rows)
+            telemetry.increment("training_reducer_role_support_rows", role_rows)
+            support.observe_peaks(telemetry)
+        return pooled_rows + role_rows
+
     schema = record.get("schema_version")
     if schema == "sktlm-s1m2-training-segment-result/v2":
+        pooled_batch: list[tuple[str, bytes, float]] = []
         for piece_key, host_key, value in record["piece_host_support"]:
-            piece_host_support[(piece_key, host_key)] += float.fromhex(value)
+            pooled_batch.append(
+                (piece_key, pack_host_key(host_key), float.fromhex(value))
+            )
+            if len(pooled_batch) == _REDUCER_ACCUMULATION_BATCH:
+                accumulate_pooled(pooled_batch)
+        accumulate_pooled(pooled_batch)
+        diagnostic_batch: list[tuple[str, str, bytes, float]] = []
         for piece_key, role, host_key, value in record.get(
             "piece_host_role_support", []
         ):
-            piece_host_role_support[(piece_key, role, host_key)] += (
-                float.fromhex(value)
+            diagnostic_batch.append(
+                (piece_key, role, pack_host_key(host_key), float.fromhex(value))
             )
-        return len(record["piece_host_support"]) + len(
-            record.get("piece_host_role_support", [])
-        )
-    if schema == "sktlm-s1m2-training-segment-result/v4":
+            if len(diagnostic_batch) == _REDUCER_ACCUMULATION_BATCH:
+                accumulate_roles(diagnostic_batch)
+        accumulate_roles(diagnostic_batch)
+        return finish()
+    if schema in {
+        "sktlm-s1m2-training-segment-result/v4",
+        "sktlm-s1m2-training-segment-result/v5",
+    }:
         if support_handle is None:
             raise RuntimeError(
                 "Packed bundle record has no host-support shard."
@@ -2467,11 +2671,29 @@ def _consume_training_segment_support(
         ):
             raise RuntimeError("Packed host-support segment identity mismatch.")
         piece_keys = tuple(_read_wire_key(support_handle) for _ in range(piece_count))
-        host_keys = tuple(_read_wire_key(support_handle) for _ in range(host_count))
-        if len(set(piece_keys)) != len(piece_keys) or len(set(host_keys)) != len(
-            host_keys
+        if schema == "sktlm-s1m2-training-segment-result/v5":
+            host_blobs = tuple(
+                _read_wire_bytes(support_handle) for _ in range(host_count)
+            )
+            try:
+                canonical_lengths = tuple(
+                    canonical_host_key_utf8_length(payload)
+                    for payload in host_blobs
+                )
+            except ValueError as error:
+                raise RuntimeError("Invalid packed host identity.") from error
+        else:
+            host_keys = tuple(
+                _read_wire_key(support_handle) for _ in range(host_count)
+            )
+            host_blobs = tuple(pack_host_key(key) for key in host_keys)
+            canonical_lengths = tuple(len(key.encode("utf-8")) for key in host_keys)
+        record_host_dictionary(host_blobs, canonical_lengths)
+        if len(set(piece_keys)) != len(piece_keys) or len(set(host_blobs)) != len(
+            host_blobs
         ):
             raise RuntimeError("Duplicate packed host-support dictionary key.")
+        pooled_batch = []
         for _ in range(pooled_count):
             piece_id, host_id, value = _HOST_SUPPORT_ROW.unpack(
                 _read_exact(
@@ -2482,7 +2704,13 @@ def _consume_training_segment_support(
             )
             if piece_id >= piece_count or host_id >= host_count:
                 raise RuntimeError("Packed host-support row ID is out of range.")
-            piece_host_support[(piece_keys[piece_id], host_keys[host_id])] += value
+            pooled_batch.append(
+                (piece_keys[piece_id], host_blobs[host_id], value)
+            )
+            if len(pooled_batch) == _REDUCER_ACCUMULATION_BATCH:
+                accumulate_pooled(pooled_batch)
+        accumulate_pooled(pooled_batch)
+        diagnostic_batch = []
         for _ in range(diagnostic_count):
             piece_id, role_id, host_id, value = _HOST_ROLE_SUPPORT_ROW.unpack(
                 _read_exact(
@@ -2499,16 +2727,24 @@ def _consume_training_segment_support(
                 raise RuntimeError(
                     "Packed host-role-support row ID is out of range."
                 )
-            piece_host_role_support[
-                (piece_keys[piece_id], _WIRE_ROLES[role_id], host_keys[host_id])
-            ] += value
-        return pooled_count + diagnostic_count
+            diagnostic_batch.append(
+                (
+                    piece_keys[piece_id],
+                    _WIRE_ROLES[role_id],
+                    host_blobs[host_id],
+                    value,
+                )
+            )
+            if len(diagnostic_batch) == _REDUCER_ACCUMULATION_BATCH:
+                accumulate_roles(diagnostic_batch)
+        accumulate_roles(diagnostic_batch)
+        return finish()
     if schema != "sktlm-s1m2-training-segment-result/v3":
         raise RuntimeError(f"Invalid bundle segment record schema: {schema!r}")
     if support_handle is None:
         raise RuntimeError("Streaming bundle record has no host-support shard.")
 
-    consumed = 0
+    pooled_batch = []
     for _ in range(int(record["piece_host_support_rows"])):
         line = support_handle.readline()
         if not line:
@@ -2517,8 +2753,13 @@ def _consume_training_segment_support(
         if len(fields) != 4 or fields[0] != "H":
             raise RuntimeError("Invalid bundle host-support row.")
         _kind, piece_key, host_key, value = fields
-        piece_host_support[(piece_key, host_key)] += float.fromhex(value)
-        consumed += 1
+        host_blob = pack_host_key(host_key)
+        record_host_dictionary((host_blob,), (len(host_key.encode("utf-8")),))
+        pooled_batch.append((piece_key, host_blob, float.fromhex(value)))
+        if len(pooled_batch) == _REDUCER_ACCUMULATION_BATCH:
+            accumulate_pooled(pooled_batch)
+    accumulate_pooled(pooled_batch)
+    diagnostic_batch = []
     for _ in range(int(record.get("piece_host_role_support_rows", 0))):
         line = support_handle.readline()
         if not line:
@@ -2527,11 +2768,15 @@ def _consume_training_segment_support(
         if len(fields) != 5 or fields[0] != "D":
             raise RuntimeError("Invalid bundle host-role-support row.")
         _kind, piece_key, role, host_key, value = fields
-        piece_host_role_support[(piece_key, role, host_key)] += float.fromhex(
-            value
+        host_blob = pack_host_key(host_key)
+        record_host_dictionary((host_blob,), (len(host_key.encode("utf-8")),))
+        diagnostic_batch.append(
+            (piece_key, role, host_blob, float.fromhex(value))
         )
-        consumed += 1
-    return consumed
+        if len(diagnostic_batch) == _REDUCER_ACCUMULATION_BATCH:
+            accumulate_roles(diagnostic_batch)
+    accumulate_roles(diagnostic_batch)
+    return finish()
 
 
 def _coalesce_training_bundle_shards(
@@ -2556,8 +2801,7 @@ def _coalesce_training_bundle_shards(
     topology_temporary = topology_path.with_suffix(topology_path.suffix + ".tmp")
     counts: Counter[str] = Counter()
     piece_counts: Counter[str] = Counter()
-    piece_host_support: Counter[tuple[str, str]] = Counter()
-    piece_host_role_support: Counter[tuple[str, str, str]] = Counter()
+    piece_support = _CompactSupportAccumulator()
     metrics = PassMetrics()
     line_count = 0
     last_line_number: int | None = None
@@ -2571,8 +2815,8 @@ def _coalesce_training_bundle_shards(
         if (
             not counts
             and not piece_counts
-            and not piece_host_support
-            and not piece_host_role_support
+            and not piece_support.pooled
+            and not piece_support.roles
         ):
             return
         for form_key, value in sorted(counts.items()):
@@ -2581,22 +2825,23 @@ def _coalesce_training_bundle_shards(
         for piece_key, value in sorted(piece_counts.items()):
             handle.write(f"P\t{piece_key}\t{float(value).hex()}\n")
             row_count += 1
-        for (piece_key, host_key), value in sorted(piece_host_support.items()):
+        for piece_id, host_id in piece_support.sorted_pooled_keys():
             handle.write(
-                f"H\t{piece_key}\t{host_key}\t{float(value).hex()}\n"
+                f"H\t{piece_support.piece_keys[piece_id]}\t"
+                f"{host_blob_to_key(piece_support.host_blobs[host_id])}\t"
+                f"{float(piece_support.pooled[(piece_id, host_id)]).hex()}\n"
             )
             row_count += 1
-        for (piece_key, role, host_key), value in sorted(
-            piece_host_role_support.items()
-        ):
+        for piece_id, role, host_id in piece_support.sorted_role_keys():
             handle.write(
-                f"D\t{piece_key}\t{role}\t{host_key}\t{float(value).hex()}\n"
+                f"D\t{piece_support.piece_keys[piece_id]}\t{role}\t"
+                f"{host_blob_to_key(piece_support.host_blobs[host_id])}\t"
+                f"{float(piece_support.roles[(piece_id, role, host_id)]).hex()}\n"
             )
             row_count += 1
         counts.clear()
         piece_counts.clear()
-        piece_host_support.clear()
-        piece_host_role_support.clear()
+        piece_support.clear()
 
     topology_writer: TopologyArchiveWriter | None = None
     try:
@@ -2637,6 +2882,7 @@ def _coalesce_training_bundle_shards(
                                 "sktlm-s1m2-training-segment-result/v2",
                                 "sktlm-s1m2-training-segment-result/v3",
                                 "sktlm-s1m2-training-segment-result/v4",
+                                "sktlm-s1m2-training-segment-result/v5",
                             }:
                                 raise RuntimeError(
                                     f"Invalid bundle segment record: {paths['segments']}"
@@ -2659,8 +2905,8 @@ def _coalesce_training_bundle_shards(
                                 _consume_training_segment_support(
                                     record,
                                     support_source,
-                                    piece_host_support,
-                                    piece_host_role_support,
+                                    piece_support,
+                                    engineering,
                                 )
                             )
                             metrics = metrics.merged(
@@ -2677,8 +2923,8 @@ def _coalesce_training_bundle_shards(
                             if (
                                 len(counts)
                                 + len(piece_counts)
-                                + len(piece_host_support)
-                                + len(piece_host_role_support)
+                                + len(piece_support.pooled)
+                                + len(piece_support.roles)
                                 >= config.flush_types
                             ):
                                 flush(handle)
@@ -2827,8 +3073,7 @@ def _apply_compact_training_bundle_shards(
     document_index = bundles[0].document_index
     lexical_counts: Counter[str] = Counter()
     piece_counts: Counter[str] = Counter()
-    piece_host_support: Counter[tuple[str, str]] = Counter()
-    piece_host_role_support: Counter[tuple[str, str, str]] = Counter()
+    piece_support = _CompactSupportAccumulator()
     document_metrics = PassMetrics()
     line_count = 0
     last_line_number: int | None = None
@@ -2847,26 +3092,47 @@ def _apply_compact_training_bundle_shards(
                 iter(sorted(piece_counts.items()))
             )
             piece_counts.clear()
-        if piece_host_support:
+        if piece_support.pooled or piece_support.roles:
+            sort_started = time.perf_counter()
+            pooled_keys = piece_support.sorted_pooled_keys()
+            role_keys = piece_support.sorted_role_keys()
+            telemetry.elapsed("training_reducer_sort", sort_started)
+        else:
+            pooled_keys = []
+            role_keys = []
+        if pooled_keys:
+            flush_started = time.perf_counter()
             store.add_document_piece_host_support_keys(
                 (
-                    (piece_key, host_key, value)
-                    for (piece_key, host_key), value in sorted(
-                        piece_host_support.items()
+                    (
+                        piece_support.piece_keys[piece_id],
+                        piece_support.host_blobs[host_id],
+                        piece_support.pooled[(piece_id, host_id)],
                     )
+                    for piece_id, host_id in pooled_keys
                 )
             )
-            piece_host_support.clear()
-        if piece_host_role_support:
+            telemetry.elapsed("training_reducer_flush", flush_started)
+            telemetry.increment("training_reducer_flush_calls")
+            telemetry.increment(
+                "training_reducer_rows_flushed", len(pooled_keys)
+            )
+        if role_keys:
+            flush_started = time.perf_counter()
             store.add_document_piece_host_role_support_keys(
                 (
-                    (piece_key, role, host_key, value)
-                    for (piece_key, role, host_key), value in sorted(
-                        piece_host_role_support.items()
+                    (
+                        piece_support.piece_keys[piece_id],
+                        role,
+                        host_blob_to_key(piece_support.host_blobs[host_id]),
+                        piece_support.roles[(piece_id, role, host_id)],
                     )
+                    for piece_id, role, host_id in role_keys
                 )
             )
-            piece_host_role_support.clear()
+            telemetry.elapsed("training_reducer_flush", flush_started)
+            telemetry.increment("training_reducer_role_rows_flushed", len(role_keys))
+        piece_support.clear()
 
     store.begin_document_counts()
     try:
@@ -2890,6 +3156,7 @@ def _apply_compact_training_bundle_shards(
                         "sktlm-s1m2-training-segment-result/v2",
                         "sktlm-s1m2-training-segment-result/v3",
                         "sktlm-s1m2-training-segment-result/v4",
+                        "sktlm-s1m2-training-segment-result/v5",
                     }:
                         raise RuntimeError(
                             f"Invalid bundle segment record: {paths['segments']}"
@@ -2911,8 +3178,8 @@ def _apply_compact_training_bundle_shards(
                     support_rows_consumed += _consume_training_segment_support(
                         record,
                         support_source,
-                        piece_host_support,
-                        piece_host_role_support,
+                        piece_support,
+                        telemetry,
                     )
                     document_metrics = document_metrics.merged(
                         _metrics_from_exact_payload(record["metrics"])
@@ -2921,8 +3188,8 @@ def _apply_compact_training_bundle_shards(
                     if (
                         len(lexical_counts)
                         + len(piece_counts)
-                        + len(piece_host_support)
-                        + len(piece_host_role_support)
+                        + len(piece_support.pooled)
+                        + len(piece_support.roles)
                         >= config.flush_types
                     ):
                         flush()

@@ -68,6 +68,70 @@ class Phoneme(str, Enum):
     ANUNASIKA = "M_ANUNASIKA"
 
 
+# Stable transient-storage encoding.  This table is deliberately explicit and
+# ordered by the canonical Phoneme.value bytes; it is not derived from Enum
+# declaration order.  Codes start at one so zero remains an invalid/corrupt
+# payload byte.  Keeping this order also makes equal-version packed forms sort
+# exactly like their dot-separated canonical keys.
+HOST_BLOB_CODEC_VERSION = 1
+_HOST_BLOB_CODE_TO_PHONEME: tuple[Phoneme, ...] = (
+    Phoneme.B,
+    Phoneme.BH,
+    Phoneme.C,
+    Phoneme.CH,
+    Phoneme.D,
+    Phoneme.DD,
+    Phoneme.DDH,
+    Phoneme.DH,
+    Phoneme.G,
+    Phoneme.GH,
+    Phoneme.H,
+    Phoneme.J,
+    Phoneme.JH,
+    Phoneme.K,
+    Phoneme.KH,
+    Phoneme.L,
+    Phoneme.M,
+    Phoneme.N,
+    Phoneme.NG,
+    Phoneme.NN,
+    Phoneme.NY,
+    Phoneme.P,
+    Phoneme.PH,
+    Phoneme.R,
+    Phoneme.S,
+    Phoneme.SH,
+    Phoneme.SS,
+    Phoneme.T,
+    Phoneme.TH,
+    Phoneme.TT,
+    Phoneme.TTH,
+    Phoneme.V,
+    Phoneme.Y,
+    Phoneme.ANUNASIKA,
+    Phoneme.ANUSVARA,
+    Phoneme.VISARGA,
+    Phoneme.A,
+    Phoneme.AA,
+    Phoneme.AI,
+    Phoneme.AU,
+    Phoneme.E,
+    Phoneme.I,
+    Phoneme.II,
+    Phoneme.VOCALIC_L,
+    Phoneme.VOCALIC_LL,
+    Phoneme.O,
+    Phoneme.VOCALIC_R,
+    Phoneme.VOCALIC_RR,
+    Phoneme.U,
+    Phoneme.UU,
+)
+_HOST_BLOB_PHONEME_TO_CODE = {
+    phoneme: code
+    for code, phoneme in enumerate(_HOST_BLOB_CODE_TO_PHONEME, start=1)
+}
+
+
 IAST_TO_PHONEME: dict[str, Phoneme] = {
     "ai": Phoneme.AI,
     "au": Phoneme.AU,
@@ -214,3 +278,59 @@ def parse_iast_form(text: str) -> PhonologicalForm:
 
 def form_from_symbols(symbols: Iterable[Phoneme]) -> PhonologicalForm:
     return PhonologicalForm(tuple(symbols))
+
+
+def pack_phonological_form(form: PhonologicalForm) -> bytes:
+    """Return the versioned, bijective transient-storage identity for ``form``."""
+
+    return bytes(
+        (HOST_BLOB_CODEC_VERSION,)
+        + tuple(_HOST_BLOB_PHONEME_TO_CODE[symbol] for symbol in form.symbols)
+    )
+
+
+def pack_host_key(key: str) -> bytes:
+    """Pack one canonical phonological-form key, rejecting malformed input."""
+
+    return pack_phonological_form(PhonologicalForm.from_key(key))
+
+
+def _host_blob_phonemes(payload: bytes) -> tuple[Phoneme, ...]:
+    if len(payload) < 2:
+        raise ValueError("Packed host identity is truncated or empty.")
+    if payload[0] != HOST_BLOB_CODEC_VERSION:
+        raise ValueError(
+            f"Unsupported packed host identity version: {payload[0]!r}."
+        )
+    try:
+        symbols = tuple(
+            _HOST_BLOB_CODE_TO_PHONEME[code - 1] for code in payload[1:]
+        )
+    except IndexError as error:
+        raise ValueError("Packed host identity contains an invalid phoneme code.") from error
+    if any(code == 0 for code in payload[1:]):
+        raise ValueError("Packed host identity contains an invalid phoneme code.")
+    return symbols
+
+
+def validate_host_blob(payload: bytes) -> None:
+    """Validate a compact identity without constructing a canonical string."""
+
+    _host_blob_phonemes(payload)
+
+
+def unpack_host_blob(payload: bytes) -> PhonologicalForm:
+    """Decode one exact host identity and fail closed on any corrupt byte."""
+
+    return PhonologicalForm(_host_blob_phonemes(payload))
+
+
+def host_blob_to_key(payload: bytes) -> str:
+    return unpack_host_blob(payload).key
+
+
+def canonical_host_key_utf8_length(payload: bytes) -> int:
+    """Measure the legacy canonical key without materializing that string."""
+
+    symbols = _host_blob_phonemes(payload)
+    return sum(len(symbol.value) for symbol in symbols) + len(symbols) - 1
