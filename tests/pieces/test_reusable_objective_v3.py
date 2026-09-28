@@ -435,3 +435,55 @@ def test_default_v3_host_support_consumes_source_once_and_streams_rows(tmp_path)
     assert observed == sorted(
         [(hosts[0].key, 1.0), (hosts[1].key, 2.0)]
     )
+
+
+def test_raw_key_store_apis_match_object_apis_exactly(tmp_path) -> None:
+    piece = PieceIdentity(parse_iast_form("ti"), PieceRole.RIGHT)
+    host = parse_iast_form("gacchati")
+
+    def populate(store: LexiconStore, *, raw: bool) -> tuple[tuple[object, ...], ...]:
+        checkpoint = {"history": [{}]}
+        store.begin_piece_count_pass(
+            resume=False,
+            checkpoint=checkpoint,
+            objective_model=S1M2_REUSABLE_PIECES_V3,
+            collect_role_diagnostics=True,
+        )
+        store.begin_document_counts()
+        if raw:
+            store.add_document_lexical_diagnostic_keys([(host.key, 1.25)])
+            store.add_document_piece_count_keys([(piece.key, 2.5)])
+            store.add_document_piece_host_support_keys(
+                [(piece.key, host.key, 2.5)]
+            )
+            store.add_document_piece_host_role_support_keys(
+                [(piece.key, piece.role.value, host.key, 2.5)]
+            )
+        else:
+            store.add_document_lexical_diagnostics([(host, 1.25)])
+            store.add_document_piece_counts([(piece, 2.5)])
+            store.add_document_piece_host_support([(piece, host, 2.5)])
+            store.add_document_piece_host_role_support([(piece, host, 2.5)])
+        rows: list[tuple[object, ...]] = []
+        for table in (
+            "lexical_diagnostics_next",
+            "piece_counts_next",
+            "piece_host_support_next",
+            "piece_host_role_support_next",
+        ):
+            rows.extend(
+                (table, *row)
+                for row in store.connection.execute(
+                    f"SELECT * FROM {table} ORDER BY 1, 2"
+                )
+            )
+        store.rollback_document()
+        return tuple(rows)
+
+    object_store = LexiconStore(tmp_path / "objects.sqlite")
+    raw_store = LexiconStore(tmp_path / "keys.sqlite")
+    try:
+        assert populate(raw_store, raw=True) == populate(object_store, raw=False)
+    finally:
+        raw_store.close()
+        object_store.close()

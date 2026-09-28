@@ -2533,29 +2533,19 @@ def _apply_compact_training_bundle_shards(
 
     def flush() -> None:
         if lexical_counts:
-            store.add_document_lexical_diagnostics(
-                (
-                    (PhonologicalForm.from_key(key), value)
-                    for key, value in sorted(lexical_counts.items())
-                )
+            store.add_document_lexical_diagnostic_keys(
+                iter(sorted(lexical_counts.items()))
             )
             lexical_counts.clear()
         if piece_counts:
-            store.add_document_piece_counts(
-                (
-                    (PieceIdentity.from_key(key), value)
-                    for key, value in sorted(piece_counts.items())
-                )
+            store.add_document_piece_count_keys(
+                iter(sorted(piece_counts.items()))
             )
             piece_counts.clear()
         if piece_host_support:
-            store.add_document_piece_host_support(
+            store.add_document_piece_host_support_keys(
                 (
-                    (
-                        PieceIdentity.from_key(piece_key),
-                        PhonologicalForm.from_key(host_key),
-                        value,
-                    )
+                    (piece_key, host_key, value)
                     for (piece_key, host_key), value in sorted(
                         piece_host_support.items()
                     )
@@ -2563,16 +2553,9 @@ def _apply_compact_training_bundle_shards(
             )
             piece_host_support.clear()
         if piece_host_role_support:
-            store.add_document_piece_host_role_support(
+            store.add_document_piece_host_role_support_keys(
                 (
-                    (
-                        PieceIdentity(
-                            PhonologicalForm.from_key(piece_key),
-                            PieceRole(role),
-                        ),
-                        PhonologicalForm.from_key(host_key),
-                        value,
-                    )
+                    (piece_key, role, host_key, value)
                     for (piece_key, role, host_key), value in sorted(
                         piece_host_role_support.items()
                     )

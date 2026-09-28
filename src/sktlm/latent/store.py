@@ -569,16 +569,26 @@ class LexiconStore:
         self,
         counts: Iterable[tuple[PieceIdentity, float]],
     ) -> None:
+        self.add_document_piece_count_keys(
+            (identity.key, value) for identity, value in counts
+        )
+
+    def add_document_piece_count_keys(
+        self,
+        counts: Iterable[tuple[str, float]],
+    ) -> None:
+        """Add canonical piece keys without reconstructing scientific objects."""
+
         if not self.connection.in_transaction:
             raise RuntimeError("Document piece counts require an open transaction.")
         row_count = 0
 
         def rows() -> Iterable[tuple[str, float]]:
             nonlocal row_count
-            for identity, value in counts:
+            for key, value in counts:
                 if value > 0.0:
                     row_count += 1
-                    yield identity.key, float(value)
+                    yield key, float(value)
 
         started = time.perf_counter()
         self.connection.executemany(
@@ -603,70 +613,101 @@ class LexiconStore:
 
         if not self.connection.in_transaction:
             raise RuntimeError("Piece host support requires an open transaction.")
+        if not collect_roles:
+            self.add_document_piece_host_support_keys(
+                (identity.key, host.key, value)
+                for identity, host, value in support
+            )
+            return
         row_count = 0
 
-        def pooled_rows() -> Iterable[tuple[str, str, float]]:
-            nonlocal row_count
-            for identity, host, value in support:
-                numeric = float(value)
-                if numeric > 0.0:
-                    row_count += 1
-                    yield identity.key, host.key, numeric
-
         started = time.perf_counter()
-        if collect_roles:
-            # Role diagnostics consume the same source a second time. They are
-            # opt-in and deliberately retain the old bounded-by-caller copy;
-            # the production V3 path keeps diagnostics disabled and streams.
-            source_rows = [
-                (identity, host, float(value))
-                for identity, host, value in support
-                if value > 0.0
-            ]
-            row_count = len(source_rows)
-            pooled_source: Iterable[tuple[str, str, float]] = (
-                (identity.key, host.key, value)
-                for identity, host, value in source_rows
-            )
-        else:
-            source_rows = None
-            pooled_source = pooled_rows()
+        # Role diagnostics consume the same source a second time. They are
+        # opt-in and deliberately retain the old bounded-by-caller copy; the
+        # production V3 path keeps diagnostics disabled and streams raw keys.
+        source_rows = [
+            (identity, host, float(value))
+            for identity, host, value in support
+            if value > 0.0
+        ]
+        row_count = len(source_rows)
         self.connection.executemany(
             "INSERT INTO piece_host_support_next(piece_key, host_key, support) "
             "VALUES (?, ?, ?) ON CONFLICT(piece_key, host_key) DO UPDATE SET "
             "support = support + excluded.support",
-            pooled_source,
+            (
+                (identity.key, host.key, value)
+                for identity, host, value in source_rows
+            ),
         )
         self.telemetry.elapsed("sqlite_piece_host_support_upsert", started)
         self.telemetry.increment("sqlite_piece_host_support_upsert_calls")
         self.telemetry.increment(
             "sqlite_piece_host_support_upsert_rows", row_count
         )
-        if collect_roles:
-            assert source_rows is not None
-            if not self.has_table("piece_host_role_support_next"):
-                raise RuntimeError("Role-diagnostic collection table is unavailable.")
-            role_started = time.perf_counter()
-            self.connection.executemany(
-                "INSERT INTO piece_host_role_support_next("
-                "piece_key, host_key, role, support) VALUES (?, ?, ?, ?) "
-                "ON CONFLICT(piece_key, host_key, role) DO UPDATE SET "
-                "support = support + excluded.support",
-                (
-                    (identity.key, host.key, identity.role.value, value)
-                    for identity, host, value in source_rows
-                ),
-            )
-            self.telemetry.elapsed("sqlite_piece_host_role_support_upsert", role_started)
-            self.telemetry.increment(
-                "sqlite_piece_host_role_support_upsert_rows", len(source_rows)
-            )
+        if not self.has_table("piece_host_role_support_next"):
+            raise RuntimeError("Role-diagnostic collection table is unavailable.")
+        role_started = time.perf_counter()
+        self.connection.executemany(
+            "INSERT INTO piece_host_role_support_next("
+            "piece_key, host_key, role, support) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(piece_key, host_key, role) DO UPDATE SET "
+            "support = support + excluded.support",
+            (
+                (identity.key, host.key, identity.role.value, value)
+                for identity, host, value in source_rows
+            ),
+        )
+        self.telemetry.elapsed("sqlite_piece_host_role_support_upsert", role_started)
+        self.telemetry.increment(
+            "sqlite_piece_host_role_support_upsert_rows", len(source_rows)
+        )
+
+    def add_document_piece_host_support_keys(
+        self,
+        support: Iterable[tuple[str, str, float]],
+    ) -> None:
+        """Stream canonical pooled piece/host keys into the active document."""
+
+        if not self.connection.in_transaction:
+            raise RuntimeError("Piece host support requires an open transaction.")
+        row_count = 0
+
+        def rows() -> Iterable[tuple[str, str, float]]:
+            nonlocal row_count
+            for piece_key, host_key, value in support:
+                numeric = float(value)
+                if numeric > 0.0:
+                    row_count += 1
+                    yield piece_key, host_key, numeric
+
+        started = time.perf_counter()
+        self.connection.executemany(
+            "INSERT INTO piece_host_support_next(piece_key, host_key, support) "
+            "VALUES (?, ?, ?) ON CONFLICT(piece_key, host_key) DO UPDATE SET "
+            "support = support + excluded.support",
+            rows(),
+        )
+        self.telemetry.elapsed("sqlite_piece_host_support_upsert", started)
+        self.telemetry.increment("sqlite_piece_host_support_upsert_calls")
+        self.telemetry.increment(
+            "sqlite_piece_host_support_upsert_rows", row_count
+        )
 
     def add_document_piece_host_role_support(
         self,
         support: Iterable[tuple[PieceIdentity, PhonologicalForm, float]],
     ) -> None:
-        """Add optional role-bearing support already separated from pooled rows."""
+        self.add_document_piece_host_role_support_keys(
+            (identity.key, identity.role.value, host.key, value)
+            for identity, host, value in support
+        )
+
+    def add_document_piece_host_role_support_keys(
+        self,
+        support: Iterable[tuple[str, str, str, float]],
+    ) -> None:
+        """Add canonical role-bearing keys without object reconstruction."""
 
         if not self.connection.in_transaction:
             raise RuntimeError("Piece host-role support requires an open transaction.")
@@ -676,13 +717,13 @@ class LexiconStore:
 
         def rows() -> Iterable[tuple[str, str, str, float]]:
             nonlocal row_count
-            for identity, host, value in support:
+            for piece_key, role, host_key, value in support:
                 if value > 0.0:
                     row_count += 1
                     yield (
-                        identity.key,
-                        host.key,
-                        identity.role.value,
+                        piece_key,
+                        host_key,
+                        role,
                         float(value),
                     )
 
@@ -703,6 +744,16 @@ class LexiconStore:
         self,
         counts: Iterable[tuple[PhonologicalForm, float]],
     ) -> None:
+        self.add_document_lexical_diagnostic_keys(
+            (form.key, value) for form, value in counts
+        )
+
+    def add_document_lexical_diagnostic_keys(
+        self,
+        counts: Iterable[tuple[str, float]],
+    ) -> None:
+        """Add canonical lexical-form keys without object reconstruction."""
+
         if not self.connection.in_transaction:
             raise RuntimeError(
                 "Document lexical diagnostics require an open transaction."
@@ -711,10 +762,10 @@ class LexiconStore:
 
         def rows() -> Iterable[tuple[str, float]]:
             nonlocal row_count
-            for form, value in counts:
+            for key, value in counts:
                 if value > 0.0:
                     row_count += 1
-                    yield form.key, float(value)
+                    yield key, float(value)
 
         started = time.perf_counter()
         self.connection.executemany(
@@ -755,17 +806,31 @@ class LexiconStore:
             raise ValueError("Piece count pass produced an empty inventory.")
         self.connection.execute("BEGIN IMMEDIATE")
         with self.connection:
+            self.connection.execute("DROP TABLE IF EXISTS temp.piece_host_moments")
+            self.connection.execute(
+                "CREATE TEMP TABLE piece_host_moments ("
+                "piece_key TEXT PRIMARY KEY, "
+                "max_support REAL NOT NULL, "
+                "sum_support_squared REAL NOT NULL"
+                ") WITHOUT ROWID"
+            )
+            self.connection.execute(
+                "INSERT INTO piece_host_moments("
+                "piece_key, max_support, sum_support_squared) "
+                "SELECT piece_key, MAX(support), SUM(support * support) "
+                "FROM piece_host_support_next GROUP BY piece_key"
+            )
             self.connection.execute(
                 "UPDATE piece_counts_next SET max_host_expected_usage = "
-                "COALESCE((SELECT MAX(h.support) FROM piece_host_support_next h "
-                "WHERE h.piece_key = piece_counts_next.form_key), 0.0)"
+                "COALESCE((SELECT m.max_support FROM piece_host_moments m "
+                "WHERE m.piece_key = piece_counts_next.form_key), 0.0)"
             )
             if objective_model == S1M2_REUSABLE_PIECES_V3:
                 self.connection.execute(
                     "UPDATE piece_counts_next SET sum_host_support_squared = "
-                    "COALESCE((SELECT SUM(h.support * h.support) "
-                    "FROM piece_host_support_next h "
-                    "WHERE h.piece_key = piece_counts_next.form_key), 0.0)"
+                    "COALESCE((SELECT m.sum_support_squared "
+                    "FROM piece_host_moments m "
+                    "WHERE m.piece_key = piece_counts_next.form_key), 0.0)"
                 )
                 self._validate_cross_host_moment_source(
                     "SELECT form_key AS state_key, expected_count AS c, "
@@ -787,6 +852,7 @@ class LexiconStore:
                 raise ValueError(
                     f"unsupported reusable-piece objective: {objective_model}"
                 )
+            self.connection.execute("DROP TABLE temp.piece_host_moments")
             if self.has_table("piece_host_role_support_next"):
                 role_moments = (
                     "SELECT piece_key || ':' || role AS state_key, "
