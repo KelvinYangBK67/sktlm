@@ -1456,6 +1456,75 @@ def test_composed_piece_store_prefetch_matches_scalar_route_exactly() -> None:
     assert scalar_scorer.scalar_fallbacks > 0
 
 
+def test_compact_piece_store_uses_aligned_bulk_scores_with_tiny_lru() -> None:
+    connection = sqlite3.connect(":memory:")
+    connection.execute(
+        "CREATE TABLE piece_lexicon (form_key TEXT PRIMARY KEY, "
+        "raw_expected_count REAL NOT NULL, "
+        "max_host_expected_usage REAL NOT NULL, "
+        "reusable_count REAL NOT NULL)"
+    )
+
+    def build_scorer() -> PieceStoreScorer:
+        return PieceStoreScorer(
+            connection,
+            alpha=0.1,
+            complexity_weight=0.5,
+            complexity_kappa=1.0,
+            complexity_beta=0.25,
+            complexity_tau=1.0,
+            base_stop_probability=0.5,
+            cache_size=1,
+            telemetry=RuntimeTelemetry(),
+        )
+
+    class ScalarRoute:
+        piece_scores_are_role_neutral = True
+
+        def __init__(self, scorer: PieceStoreScorer) -> None:
+            self.scorer = scorer
+
+        def score(self, piece: PhonologicalForm) -> float:
+            return self.scorer.score(piece)
+
+    graph = build_lazy_candidate_graph(
+        next(iter_observed_segments("tattvamasi")),
+        StructuredSandhiGrammar.from_default_inventory(),
+    )
+    config = PieceModelConfig(max_piece_length=3, rho=0.37)
+    bulk_scorer = build_scorer()
+    scalar_scorer = build_scorer()
+
+    bulk = infer_composed_segment(
+        graph,
+        ComposedPieceInference(bulk_scorer, model_config=config),
+        whitespace_merge_penalty=8.0,
+    )
+    scalar = infer_composed_segment(
+        graph,
+        ComposedPieceInference(
+            ScalarRoute(scalar_scorer), model_config=config
+        ),
+        whitespace_merge_penalty=8.0,
+    )
+
+    assert bulk.log_partition == pytest.approx(
+        scalar.log_partition, rel=1e-10, abs=1e-12
+    )
+    assert bulk.lexical_expected_counts == pytest.approx(
+        scalar.lexical_expected_counts, rel=1e-10, abs=1e-12
+    )
+    assert bulk.piece_expected_counts == pytest.approx(
+        scalar.piece_expected_counts, rel=1e-10, abs=1e-12
+    )
+    assert bulk.piece_host_support == pytest.approx(
+        scalar.piece_host_support, rel=1e-10, abs=1e-12
+    )
+    assert bulk_scorer.bulk_calls > 0
+    assert bulk_scorer.scalar_fallbacks == 0
+    assert scalar_scorer.scalar_fallbacks > 0
+
+
 def test_shared_inspection_piece_reference_bound_falls_back() -> None:
     grammar = StructuredSandhiGrammar.from_default_inventory()
     segment = next(iter_observed_segments("devo'pi"))

@@ -433,6 +433,7 @@ class _SharedFormScore:
 class _SharedFormBatch:
     topology: CompiledSharedFormTopology
     pieces: tuple[PhonologicalForm, ...]
+    piece_scores: array | None
     transition_raw_scores: array
     prior_alpha: list[float]
     alpha: list[float]
@@ -482,6 +483,8 @@ class _CompactEndpointScore:
 class _CompactSharedFormBatch:
     topology: _CompactSharedFormTopology
     pieces: tuple[PhonologicalForm, ...]
+    piece_scores: array | None
+    endpoint_whole_scores: array | None
     transition_raw_scores: array
     prior_alpha: list[float]
     alpha: list[float]
@@ -1078,6 +1081,37 @@ class ComposedPieceInference:
         for symbols, piece in missing.items():
             self._remember_piece_score(symbols, piece, float(scores[piece.key]))
 
+    def _bulk_role_neutral_piece_scores(
+        self,
+        pieces: tuple[PhonologicalForm, ...],
+    ) -> array | None:
+        """Return bounded-query, batch-local scores aligned with unique pieces."""
+
+        if self._all_piece_scores_zero or not self._piece_scores_are_role_neutral:
+            return None
+        score_many = getattr(self.scorer, "score_many", None)
+        if score_many is None:
+            return None
+        aligned = array("d")
+        for offset in range(0, len(pieces), 900):
+            chunk = pieces[offset : offset + 900]
+            scores = score_many(chunk)
+            aligned.extend(float(scores[piece.key]) for piece in chunk)
+        self._events["piece_score_calls"] += len(pieces)
+        return aligned
+
+    def _indexed_piece_score(
+        self,
+        pieces: tuple[PhonologicalForm, ...],
+        aligned_scores: array | None,
+        piece_id: int,
+        role: PieceRole,
+    ) -> float:
+        if aligned_scores is not None:
+            return aligned_scores[piece_id]
+        piece = pieces[piece_id]
+        return self._piece_and_score(piece.symbols, role)[1]
+
     def evaluate_form(self, form: PhonologicalForm) -> FormPieceEvaluation:
         """Evaluate the complete P0 support directly, with no P0 lattice."""
 
@@ -1608,7 +1642,7 @@ class ComposedPieceInference:
 
         transition_started = time.perf_counter()
         pieces = tuple(PhonologicalForm(symbols) for symbols in topology.pieces)
-        self._prefetch_piece_scores(pieces)
+        piece_scores = self._bulk_role_neutral_piece_scores(pieces)
         transition_raw_scores = array("d")
 
         forward_started = time.perf_counter()
@@ -1662,8 +1696,13 @@ class ComposedPieceInference:
                         if topology.depth[source] == 0
                         else PieceRole.INTERNAL
                     )
-                    piece = pieces[topology.transition_piece_ids[transition_index]]
-                    raw = prior + self._piece_and_score(piece.symbols, role)[1]
+                    piece_id = topology.transition_piece_ids[transition_index]
+                    raw = prior + self._indexed_piece_score(
+                        pieces,
+                        piece_scores,
+                        piece_id,
+                        role,
+                    )
                     transition_raw_scores.append(raw)
                     node_prior_alpha = logaddexp(
                         node_prior_alpha,
@@ -1686,6 +1725,27 @@ class ComposedPieceInference:
                 )
         self.add_timing("inner_piece_forward_seconds", forward_started)
 
+        endpoint_whole_scores: array | None = None
+        if piece_scores is not None:
+            endpoint_whole_scores = array("d")
+            batch_size = self.cache_config.host_adjoint_endpoint_batch_size
+            for batch_start in range(
+                0, len(topology.endpoint_nodes), batch_size
+            ):
+                endpoint_forms = tuple(
+                    self._compact_form(topology, endpoint_id)
+                    for endpoint_id in range(
+                        batch_start,
+                        min(
+                            len(topology.endpoint_nodes),
+                            batch_start + batch_size,
+                        ),
+                    )
+                )
+                scores = self._bulk_role_neutral_piece_scores(endpoint_forms)
+                assert scores is not None
+                endpoint_whole_scores.extend(scores)
+
         endpoint_scores: list[_CompactEndpointScore] = []
         long_whole_count = 0
         for endpoint_id, node_index in enumerate(topology.endpoint_nodes):
@@ -1694,7 +1754,13 @@ class ComposedPieceInference:
             piece_score = (
                 0.0
                 if self._all_piece_scores_zero
-                else self._piece_and_score(form_symbols, PieceRole.WHOLE)[1]
+                else (
+                    endpoint_whole_scores[endpoint_id]
+                    if endpoint_whole_scores is not None
+                    else self._piece_and_score(
+                        form_symbols, PieceRole.WHOLE
+                    )[1]
+                )
             )
             whole_prior = self._piece_prior(0, node_depth)
             whole_raw = whole_prior + piece_score
@@ -1712,14 +1778,14 @@ class ComposedPieceInference:
                     role = (
                         PieceRole.WHOLE if source_depth == 0 else PieceRole.RIGHT
                     )
-                    piece = pieces[
-                        topology.transition_piece_ids[transition_index]
-                    ]
+                    piece_id = topology.transition_piece_ids[transition_index]
                     prior = self._piece_prior(source_depth, node_depth)
-                    terminal_raw = prior + self._piece_and_score(
-                        piece.symbols,
+                    terminal_raw = prior + self._indexed_piece_score(
+                        pieces,
+                        piece_scores,
+                        piece_id,
                         role,
-                    )[1]
+                    )
                     terminal_raw_z = logaddexp(
                         terminal_raw_z,
                         alpha[source] + terminal_raw,
@@ -1796,6 +1862,8 @@ class ComposedPieceInference:
         return _CompactSharedFormBatch(
             topology=topology,
             pieces=pieces,
+            piece_scores=piece_scores,
+            endpoint_whole_scores=endpoint_whole_scores,
             transition_raw_scores=transition_raw_scores,
             prior_alpha=prior_alpha,
             alpha=alpha,
@@ -1844,16 +1912,20 @@ class ComposedPieceInference:
                 role = (
                     PieceRole.WHOLE if source_depth == 0 else PieceRole.RIGHT
                 )
-                piece = batch.pieces[
-                    topology.transition_piece_ids[transition_index]
-                ]
+                piece_id = topology.transition_piece_ids[transition_index]
+                piece = batch.pieces[piece_id]
                 raw_score = self._piece_prior(
                     source_depth,
                     topology.depth[score.node],
                 ) + (
                     0.0
                     if self._all_piece_scores_zero
-                    else self._piece_and_score(piece.symbols, role)[1]
+                    else self._indexed_piece_score(
+                        batch.pieces,
+                        batch.piece_scores,
+                        piece_id,
+                        role,
+                    )
                 )
                 contribution = math.exp(
                     seed + batch.alpha[source] + raw_score
@@ -1942,16 +2014,20 @@ class ComposedPieceInference:
                         if source_depth == 0
                         else PieceRole.RIGHT
                     )
-                    piece = batch.pieces[
-                        topology.transition_piece_ids[transition_index]
-                    ]
+                    piece_id = topology.transition_piece_ids[transition_index]
+                    piece = batch.pieces[piece_id]
                     raw_score = self._piece_prior(
                         source_depth,
                         topology.depth[score.node],
                     ) + (
                         0.0
                         if self._all_piece_scores_zero
-                        else self._piece_and_score(piece.symbols, role)[1]
+                        else self._indexed_piece_score(
+                            batch.pieces,
+                            batch.piece_scores,
+                            piece_id,
+                            role,
+                        )
                     )
                     contribution = math.exp(
                         seed + batch.alpha[source] + raw_score
@@ -2078,16 +2154,20 @@ class ComposedPieceInference:
             source = topology.transition_sources[transition_index]
             source_depth = topology.depth[source]
             role = PieceRole.WHOLE if source_depth == 0 else PieceRole.RIGHT
-            piece = batch.pieces[
-                topology.transition_piece_ids[transition_index]
-            ]
+            piece_id = topology.transition_piece_ids[transition_index]
+            piece = batch.pieces[piece_id]
             raw_score = self._piece_prior(
                 source_depth,
                 topology.depth[score.node],
             ) + (
                 0.0
                 if self._all_piece_scores_zero
-                else self._piece_and_score(piece.symbols, role)[1]
+                else self._indexed_piece_score(
+                    batch.pieces,
+                    batch.piece_scores,
+                    piece_id,
+                    role,
+                )
             )
             candidates.extend(
                 _SharedInnerPath(
@@ -2168,7 +2248,7 @@ class ComposedPieceInference:
 
         reweight_started = time.perf_counter()
         pieces = tuple(PhonologicalForm(symbols) for symbols in topology.pieces)
-        self._prefetch_piece_scores((*pieces, *forms))
+        piece_scores = self._bulk_role_neutral_piece_scores(pieces)
         transition_raw_scores = array("d")
 
         forward_started = time.perf_counter()
@@ -2220,8 +2300,13 @@ class ComposedPieceInference:
                         if topology.depth[source] == 0
                         else PieceRole.INTERNAL
                     )
-                    piece = pieces[topology.transition_piece_ids[transition_index]]
-                    raw = prior + self._piece_and_score(piece.symbols, role)[1]
+                    piece_id = topology.transition_piece_ids[transition_index]
+                    raw = prior + self._indexed_piece_score(
+                        pieces,
+                        piece_scores,
+                        piece_id,
+                        role,
+                    )
                     transition_raw_scores.append(raw)
                     node_prior_alpha = logaddexp(
                         node_prior_alpha,
@@ -2253,8 +2338,12 @@ class ComposedPieceInference:
                 whole_piece = form
                 piece_score = 0.0
             else:
-                whole_piece, piece_score = self._piece_and_score(
-                    form.symbols,
+                whole_piece_id = topology.whole_piece_ids[form_index]
+                whole_piece = pieces[whole_piece_id]
+                piece_score = self._indexed_piece_score(
+                    pieces,
+                    piece_scores,
+                    whole_piece_id,
                     PieceRole.WHOLE,
                 )
             whole_prior = self._piece_prior(0, len(form.symbols))
@@ -2274,13 +2363,16 @@ class ComposedPieceInference:
                     role = (
                         PieceRole.WHOLE if source_depth == 0 else PieceRole.RIGHT
                     )
-                    piece = pieces[
-                        topology.transition_piece_ids[transition_index]
-                    ]
+                    piece_id = topology.transition_piece_ids[transition_index]
                     terminal_raw = self._piece_prior(
                         source_depth,
                         node_depth,
-                    ) + self._piece_and_score(piece.symbols, role)[1]
+                    ) + self._indexed_piece_score(
+                        pieces,
+                        piece_scores,
+                        piece_id,
+                        role,
+                    )
                     terminal_raw_z = logaddexp(
                         terminal_raw_z,
                         alpha[source] + terminal_raw,
@@ -2355,6 +2447,7 @@ class ComposedPieceInference:
         return _SharedFormBatch(
             topology=topology,
             pieces=pieces,
+            piece_scores=piece_scores,
             transition_raw_scores=transition_raw_scores,
             prior_alpha=prior_alpha,
             alpha=alpha,
@@ -2401,16 +2494,20 @@ class ComposedPieceInference:
                 role = (
                     PieceRole.WHOLE if source_depth == 0 else PieceRole.RIGHT
                 )
-                piece = batch.pieces[
-                    topology.transition_piece_ids[transition_index]
-                ]
+                piece_id = topology.transition_piece_ids[transition_index]
+                piece = batch.pieces[piece_id]
                 raw_score = self._piece_prior(
                     source_depth,
                     topology.depth[score.node],
                 ) + (
                     0.0
                     if self._all_piece_scores_zero
-                    else self._piece_and_score(piece.symbols, role)[1]
+                    else self._indexed_piece_score(
+                        batch.pieces,
+                        batch.piece_scores,
+                        piece_id,
+                        role,
+                    )
                 )
                 contribution = math.exp(
                     seed + batch.alpha[source] + raw_score
@@ -2494,16 +2591,20 @@ class ComposedPieceInference:
                         if source_depth == 0
                         else PieceRole.RIGHT
                     )
-                    piece = batch.pieces[
-                        topology.transition_piece_ids[transition_index]
-                    ]
+                    piece_id = topology.transition_piece_ids[transition_index]
+                    piece = batch.pieces[piece_id]
                     raw_score = self._piece_prior(
                         source_depth,
                         topology.depth[score.node],
                     ) + (
                         0.0
                         if self._all_piece_scores_zero
-                        else self._piece_and_score(piece.symbols, role)[1]
+                        else self._indexed_piece_score(
+                            batch.pieces,
+                            batch.piece_scores,
+                            piece_id,
+                            role,
+                        )
                     )
                     contribution = math.exp(
                         seed + batch.alpha[source] + raw_score
@@ -2653,16 +2754,20 @@ class ComposedPieceInference:
             source = topology.transition_sources[transition_index]
             source_depth = topology.depth[source]
             role = PieceRole.WHOLE if source_depth == 0 else PieceRole.RIGHT
-            piece = batch.pieces[
-                topology.transition_piece_ids[transition_index]
-            ]
+            piece_id = topology.transition_piece_ids[transition_index]
+            piece = batch.pieces[piece_id]
             raw_score = self._piece_prior(
                 source_depth,
                 topology.depth[score.node],
             ) + (
                 0.0
                 if self._all_piece_scores_zero
-                else self._piece_and_score(piece.symbols, role)[1]
+                else self._indexed_piece_score(
+                    batch.pieces,
+                    batch.piece_scores,
+                    piece_id,
+                    role,
+                )
             )
             candidates.extend(
                 _SharedInnerPath(
