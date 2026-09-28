@@ -44,9 +44,14 @@ TSV_NUMERIC_COLUMNS = frozenset(
         "length",
         "model_log_score",
         "model_probability",
+        "probability",
         "number_of_contexts",
         "number_of_surface_variants",
         "host_type_support",
+        "raw_expected_count_inspection",
+        "raw_expected_count_training",
+        "max_host_expected_usage_training",
+        "reusable_count_training",
         "value",
     }
 )

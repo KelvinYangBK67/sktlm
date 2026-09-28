@@ -136,6 +136,36 @@ def test_streaming_comparator_preserves_tolerance_and_contract(tmp_path: Path) -
     assert mismatch.returncode != 0
     assert "identity" in mismatch.stderr
 
+
+def test_streaming_comparator_treats_v3_piece_columns_as_numeric(
+    tmp_path: Path,
+) -> None:
+    reference = tmp_path / "reference"
+    candidate = tmp_path / "candidate"
+    _write_fixture(reference, delta=0.0, traversal_count=10)
+    _write_fixture(candidate, delta=0.0, traversal_count=2)
+    header = (
+        "piece_key\traw_expected_count_inspection\t"
+        "raw_expected_count_training\tmax_host_expected_usage_training\t"
+        "reusable_count_training\tmodel_probability\n"
+    )
+    (reference / "piece_inventory.tsv").write_text(
+        header + "V_A\t1.0\t2.0\t1.0\t1.0\t0.5\n",
+        encoding="utf-8",
+    )
+    (candidate / "piece_inventory.tsv").write_text(
+        header
+        + "V_A\t1.0000000000001\t2.0000000000001\t"
+        "1.0000000000001\t1.0000000000001\t0.5000000000001\n",
+        encoding="utf-8",
+    )
+
+    result = _run(reference, candidate)
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["status"] == "PASS"
+
+
 def test_streaming_comparator_preserves_matching_nan(tmp_path: Path) -> None:
     reference = tmp_path / "reference"
     candidate = tmp_path / "candidate"

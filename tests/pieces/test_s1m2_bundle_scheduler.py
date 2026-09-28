@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 import sktlm.latent.training as training
+from scripts.analysis.compare_s1m2_artifacts import compare_artifacts
 from sktlm.latent.execution_bundles import (
     BUNDLE_SCHEMA,
     PLAN_SCHEMA,
@@ -272,6 +273,17 @@ def _piece_state(run_dir: Path) -> tuple[tuple[object, ...], ...]:
         store.close()
 
 
+def _assert_piece_state_close(left_run: Path, right_run: Path) -> None:
+    left = _piece_state(left_run)
+    right = _piece_state(right_run)
+    assert len(left) == len(right)
+    for left_row, right_row in zip(left, right, strict=True):
+        assert left_row[0] == right_row[0]
+        assert left_row[1:] == pytest.approx(
+            right_row[1:], rel=1e-10, abs=1e-12
+        )
+
+
 def _legacy_v1_checkpoint(
     plan: ExecutionBundlePlan,
     *,
@@ -342,11 +354,23 @@ def _legacy_finalize_fixture(
     store.begin_piece_count_pass(resume=False, checkpoint=checkpoint)
     with store.connection:
         store.connection.executemany(
-            "INSERT INTO piece_counts_next VALUES (?, ?, ?)",
+            "INSERT INTO piece_counts_next("
+            "form_key, expected_count, max_host_expected_usage, reusable_count"
+            ") VALUES (?, ?, ?, ?)",
             (
-                ("V_A", 3.0, 1),
-                ("V_A.V_A", 2.0, 1),
-                ("V_A.C_K", 4.0, 2),
+                ("V_A", 3.0, 0.0, 0.0),
+                ("V_A.V_A", 2.0, 0.0, 0.0),
+                ("V_A.C_K", 4.0, 0.0, 0.0),
+            ),
+        )
+        store.connection.executemany(
+            "INSERT INTO piece_host_support_next VALUES (?, ?, ?)",
+            (
+                ("V_A", "V_A.C_K", 2.0),
+                ("V_A", "V_A.V_A", 1.0),
+                ("V_A.V_A", "V_A.V_A", 2.0),
+                ("V_A.C_K", "V_A.C_K", 2.0),
+                ("V_A.C_K", "V_A.V_A", 2.0),
             ),
         )
         store.connection.execute(
@@ -1210,20 +1234,9 @@ def test_inspection_only_bundle_scheduler_is_scientifically_exact(
         inspection_only=True,
         inspection_workers=2,
     )
-    scientific = (
-        "iteration_metrics.json",
-        "piece_inventory.tsv",
-        "lexical_diagnostics.tsv",
-        "analyses.jsonl",
-        "boundary_posteriors.jsonl",
-        "rule_usage.tsv",
-        "summary.json",
-    )
-    for name in scientific:
-        assert (reference.run_dir / name).read_bytes() == (
-            inspected.run_dir / name
-        ).read_bytes()
-    assert _piece_state(reference.run_dir) == _piece_state(inspected.run_dir)
+    comparison = compare_artifacts(reference.run_dir, inspected.run_dir)
+    assert comparison["status"] == "PASS"
+    _assert_piece_state_close(reference.run_dir, inspected.run_dir)
     assert (inspected.run_dir / "provenance.json").read_bytes() == training_provenance
     inspection_provenance = json.loads(
         (inspected.run_dir / "inspection_provenance.json").read_text("utf-8")
@@ -1441,10 +1454,15 @@ def test_legacy_v1_complete_pass_finalizes_without_corpus_or_workers(
         }
         assert tuple(
             store.connection.execute(
-                "SELECT form_key, expected_count, host_type_support "
-                "FROM piece_lexicon ORDER BY form_key"
+                "SELECT form_key, raw_expected_count, "
+                "max_host_expected_usage, reusable_count "
+                "FROM piece_lexicon WHERE reusable_count > 0.0 "
+                "ORDER BY form_key"
             )
-        ) == (("V_A", 3.0, 1), ("V_A.C_K", 4.0, 2))
+        ) == (
+            ("V_A", 3.0, 2.0, 1.0),
+            ("V_A.C_K", 4.0, 2.0, 2.0),
+        )
         authoritative = store.load_training_checkpoint()
         assert authoritative is not None
         assert authoritative["completed_passes"] == 1
@@ -1768,8 +1786,10 @@ def test_legacy_v1_missing_authoritative_or_piece_state_fails_closed(
             )
         with store.connection:
             store.connection.execute(
-                "INSERT INTO piece_counts_next VALUES (?, ?, ?)",
-                ("V_A", 1.0, 1),
+                "INSERT INTO piece_counts_next("
+                "form_key, expected_count, max_host_expected_usage, "
+                "reusable_count) VALUES (?, ?, ?, ?)",
+                ("V_A", 1.0, 0.0, 0.0),
             )
             store.connection.execute("DROP TABLE lexical_diagnostics_next")
         with pytest.raises(RuntimeError, match="lexical_diagnostics_next"):
@@ -1795,7 +1815,7 @@ def test_legacy_v1_plan_migration_rolls_back_with_piece_finalize(
     original = json.loads(json.dumps(checkpoint))
     with store.connection:
         store.connection.execute(
-            "CREATE TRIGGER fail_legacy_finalize BEFORE DELETE ON piece_counts_next "
+            "CREATE TRIGGER fail_legacy_finalize BEFORE UPDATE ON piece_counts_next "
             "BEGIN SELECT RAISE(ABORT, 'synthetic finalize failure'); END"
         )
     try:

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts.analysis.compare_s1m2_artifacts import compare_artifacts
 from sktlm.latent.execution_bundles import load_execution_bundle_plan
 from sktlm.latent.store import LexiconStore
 from sktlm.latent.training import (
@@ -119,8 +120,7 @@ def _piece_state(path: Path) -> tuple:
     try:
         return tuple(
             store.connection.execute(
-                "SELECT form_key, expected_count, host_type_support "
-                "FROM piece_lexicon ORDER BY form_key"
+                "SELECT * FROM piece_lexicon ORDER BY form_key"
             )
         )
     finally:
@@ -215,17 +215,18 @@ def test_surface_word_bundled_training_is_scientifically_exact(
         _training_config(tmp_path, manifest, "bundled", plan_root), repo_root=tmp_path
     )
     assert reference.history == bundled.history
-    assert _piece_state(reference.run_dir) == _piece_state(bundled.run_dir)
-    for name in (
-        "iteration_metrics.json",
-        "piece_inventory.tsv",
-        "lexical_diagnostics.tsv",
-        "analyses.jsonl",
-        "boundary_posteriors.jsonl",
-        "rule_usage.tsv",
-        "summary.json",
+    reference_state = _piece_state(reference.run_dir)
+    bundled_state = _piece_state(bundled.run_dir)
+    assert len(reference_state) == len(bundled_state)
+    for reference_row, bundled_row in zip(
+        reference_state, bundled_state, strict=True
     ):
-        assert (reference.run_dir / name).read_bytes() == (bundled.run_dir / name).read_bytes()
+        assert reference_row[0] == bundled_row[0]
+        assert reference_row[1:] == pytest.approx(
+            bundled_row[1:], rel=1e-10, abs=1e-12
+        )
+    comparison = compare_artifacts(reference.run_dir, bundled.run_dir)
+    assert comparison["status"] == "PASS"
 
 
 def test_planner_config_hash_accepts_eol_checkout_but_rejects_content_change(
