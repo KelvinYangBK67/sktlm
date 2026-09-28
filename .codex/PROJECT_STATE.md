@@ -1,3 +1,61 @@
+## S1M2 V3 runtime/storage Round 3B/3C closure candidate (2026-09-28)
+
+The authorized engineering reopen now has benchmark code candidate
+`464e4dc4050e15bd9a233ae04f543211e7798ac7` on
+`exp/s1m2-runtime-reopen`. It responds to the first Core-11 smoke, which
+reduced main-process RSS from about 1.54 GiB to about 287 MiB but left roughly
+61 GiB of transient storage and all 39 completed bundle sidecars retained
+while the serialized parent reducer was busy. This is not yet a measured
+runtime/storage PASS and does not requalify Full M0.
+
+Round 3B is closed with immediate post-validation bundle retirement inside
+the still-open document transaction; crash-before-commit recomputation from
+the unchanged document checkpoint; execution-only host-relative byte
+backpressure with deadlock-safe canonical progress; raw canonical-key store
+APIs; removal of full fsync from reconstructible payload spools; and packed
+binary host-support schema v3 / segment schema v4 using deterministic
+segment-local dictionaries and exact IEEE-754 binary64 rows. Legacy v1/v2
+readers remain, and corrupt/truncated/count/checksum/identity mismatches fail
+closed.
+
+Round 3C adds an exact bounded Pass-1 positional posterior template keyed by
+host length, including short and distinct long-whole cases; Passes 2/3 use
+chunked bulk `PieceStore` lookup and batch-local aligned score arrays for both
+topology pieces and compact endpoint whole forms; V3 finalization obtains M
+and Q from one grouped SQLite scan; and telemetry histogram bucketing is O(1).
+The compact hot path has a focused one-entry-LRU regression proving zero
+scalar fallbacks while matching the scalar reference at the unchanged
+`rtol=1e-10`, `atol=1e-12` contract.
+
+Compact-topology persistence and integer/BLOB transient SQLite identities
+were evaluated but not implemented. Both require new packed identity and
+ordering/recovery contracts and could recreate storage pressure; they remain
+evidence-driven follow-up after Core-11. No scientific decision changed, so
+`.codex/DECISIONS.md` is unchanged.
+
+Short validation is green: the final combined selection passed 139 tests in
+45.66 seconds; component runs included 84 composed/training/V3 tests, 53
+scheduler/planner/production-wiring/metrics/comparator tests, and the focused
+13-test cache/bundle/comparator selection. No test or benchmark over five
+minutes, VM/SSH/cloud action, representative/stress workload, Passes 2/3
+benchmark, or Full M0 run occurred. Core-07 through Core-10 were untouched.
+
+Authority and the exact researcher-operated Core-11 baseline/candidate/
+comparator commands are in
+`reports/core_methods/reusable_pieces/s1m2_runtime_reopen_core11_benchmark_20260928.md`.
+The candidate command fixes the execution-only ready-spool limit at 4 GiB for
+the 32 GiB W12 host. Comparator PASS is mandatory before interpreting wall,
+RSS, storage, reducer, template, or bulk-lookup telemetry.
+
+```text
+S1M2_V3_SCIENTIFIC_SEMANTICS=FROZEN
+RUNTIME_REOPEN_CANDIDATE=464e4dc4050e15bd9a233ae04f543211e7798ac7
+PERFORMANCE_RESULT=NOT_YET_REMEASURED_ON_CORE_11
+FULL_M0_RUNTIME_VIABLE=NOT_REQUALIFIED
+CORE_07_TO_10_TOUCHED=NO
+NEXT_ACTION=RESEARCHER_RUNS_UPDATED_CORE_11_BASELINE_CANDIDATE_AND_COMPARATOR_COMMANDS
+```
+
 ## S1M2 V3 runtime/RSS engineering reopen candidate (2026-09-28)
 
 The production-blocking Full M0 scaling evidence authorized a narrow
