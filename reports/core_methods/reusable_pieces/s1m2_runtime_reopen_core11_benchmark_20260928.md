@@ -6,7 +6,7 @@ Date: 2026-09-28
 
 This engineering reopen starts from production-deployment commit
 `5ec5d5c33a59abe06fadc9bde84f48b380b7fe39` and prepares the candidate at
-`464e4dc4050e15bd9a233ae04f543211e7798ac7` on
+`38557dab9bff522dfb886452b4786da04e627458` on
 `exp/s1m2-runtime-reopen`.
 
 The candidate is ready for a researcher-operated before/after benchmark on
@@ -195,7 +195,7 @@ than inferring them only from the slow Full runs:
 - The power-of-two telemetry histogram now selects its bucket in O(1) with
   integer bit length.
 
-### Evaluated but not implemented
+### Evaluated but not implemented in Round 3B/3C
 
 - Compact-topology persistence across passes was not added. The production
   compact object includes factor-local hypothesis and optional occurrence
@@ -203,12 +203,44 @@ than inferring them only from the slow Full runs:
   corruption/reconstruction contract. Without a Core-11 compile-versus-I/O
   profile it could recreate the large spool pressure this round removes.
 - Integer-ID or packed-BLOB SQLite keys for `piece_host_support_next` were not
-  added. Maintaining canonical grouping and floating accumulation order would
-  require pass-local dictionaries plus fail-closed migration/finalization
-  logic. The packed sidecar removes the dominant repeated wire keys first;
-  the remaining SQLite redesign is left for evidence-driven follow-up.
+  added in that closure. They were subsequently implemented by the separately
+  authorized Round 3D work below after Core-11 exposed the TEXT reducer/table
+  and giant document WAL as live bottlenecks.
 - `PassMetrics` was not refactored into a mutable accumulator, and grammar
   matching received no speculative rewrite.
+
+### Round 3D reducer and transient-SQLite closure
+
+- The parent reducer now interns pieces and versioned compact hosts into
+  flush-local integer IDs. Its pooled hot state is an integer-pair Counter;
+  flush sorting uses canonical ranks, not ID assignment or Python hash order.
+- Host BLOB codec v1 has one explicit version byte and one fixed byte per
+  phoneme. The explicit table is independent of Enum ordinal stability and is
+  ordered so BLOB lexicographic order exactly matches the old canonical dotted
+  host keys.
+- New bundle schema v4 / segment schema v5 carries compact host dictionaries
+  directly. Embedded, TSV, and prior packed-string readers remain fail-closed
+  resume paths.
+- New active passes use `piece_host_support_next.host_key BLOB` and record
+  `s1m2_transient_support_schema=host_blob_v1`. Existing active TEXT passes
+  resume through an explicit compatibility boundary; unknown or conflicting
+  engineering schema fails closed without invalidating scientific identity.
+- Piece-count, pooled-support, lexical-diagnostic, and optional role-support
+  writes use ordered bounded multi-row UPSERT statements with at most 900 bind
+  parameters. Input remains streaming and statement batches are 450, 300, or
+  225 rows according to row width.
+- A 16.96-second local synthetic journal benchmark found essentially no peak
+  storage advantage for DELETE/TRUNCATE and a much slower transaction phase
+  than WAL. Production remains WAL + NORMAL; this is an engineering strategy
+  decision, not Core-11 performance qualification.
+- Append-only external support runs were designed but not implemented because
+  their cross-filesystem document-manifest, orphan, recovery, and pass-final
+  merge-order contract is materially larger. Reconsider only if the updated
+  Core-11 telemetry still identifies SQLite support flush as the dominant tail.
+
+Round 3D authority and microbenchmark evidence are in
+`s1m2_runtime_reopen_round3d_20260928.md` and
+`evidence/s1m2_round3d_sqlite_journal_microbenchmark_20260928.json`.
 
 ### Changed files in the Round 3B/3C closure
 
@@ -262,6 +294,9 @@ Short local validation remained well below five minutes:
   unchanged `rtol=1e-10`, `atol=1e-12` contract and still compares identities
   exactly. The earlier tiny end-to-end maximum absolute difference remains
   `1.7763568394002505e-15`.
+- Round 3D added 63 focused codec/V3/bundle passes in 14.16 seconds and a
+  broader 98-test storage/comparator/V2/V3/training/bundle/Round-3 selection in
+  36.48 seconds. The corrected synthetic journal benchmark took 16.96 seconds.
 
 Touched Python modules compile and `git diff --check` passes. No tolerance was
 widened, and no production-size or performance workload was executed.
@@ -274,9 +309,9 @@ The candidate deliberately stops before speculative secondary work:
   overlap removes avoidable waiting but cannot remove their intrinsic cost;
 - non-neutral Passes 2/3 still use bounded host-adjoint reverse batches and may
   trade RSS for recomputation wall time;
-- `piece_host_support_next` still indexes canonical TEXT piece/host keys, so
-  SQLite B-tree/WAL size and compare cost may remain material even though the
-  wire sidecar is now packed and the parent no longer reconstructs objects;
+- `piece_host_support_next` now uses compact BLOB hosts and batched statements,
+  but it remains a transient random-update B-tree inside one giant document
+  transaction, so serialized SQLite and WAL growth may remain material;
 - compact trie/topology construction and Python candidate objects may still
   dominate giant-token RSS;
 - compact topology is still rebuilt instead of reused across passes;
@@ -323,7 +358,7 @@ set -euo pipefail
 SOURCE_REPO=/root/sktlm
 BENCH_ROOT=/root/sktlm-runtime-reopen
 BASE_SHA=5ec5d5c33a59abe06fadc9bde84f48b380b7fe39
-CANDIDATE_SHA=464e4dc4050e15bd9a233ae04f543211e7798ac7
+CANDIDATE_SHA=38557dab9bff522dfb886452b4786da04e627458
 
 git -C "$SOURCE_REPO" fetch origin exp/s1m2-runtime-reopen
 git -C "$SOURCE_REPO" cat-file -e "${BASE_SHA}^{commit}"
@@ -591,6 +626,11 @@ Compare both `training_runtime.json` files. The candidate adds or sharpens:
   `sqlite_piece_host_support_upsert_rows`, and `sqlite_document_commit`;
 - `training_bundle_host_support_rows` and
   `training_bundle_host_support_bytes`;
+- `training_reducer_support_rows`, decode/accumulate/sort/flush seconds, flush
+  calls/rows, peak unique piece/host/pair counts, and canonical/compact/avoided
+  host bytes;
+- `sqlite_{piece_count,piece_host_support,lexical_diagnostic}_batch_{calls,rows}`
+  and their maximum batch rows, plus runtime journal/synchronous/schema labels;
 - `training_bundle_ready_shard_bytes_{current,peak}`,
   `training_bundle_inflight_shard_bytes_{current,peak}`,
   `training_bundle_backpressure_waits`,
@@ -618,6 +658,7 @@ ac0224b perf: bulk reusable-piece score lookups
 b0780a3 perf: reuse exact neutral host templates
 2b2c99f test: compare bundled V3 outputs at frozen tolerance
 464e4dc perf: align compact batch piece scores
+38557da perf: compact S1M2 reducer storage keys
 ```
 
 ## Deliberately unexecuted work

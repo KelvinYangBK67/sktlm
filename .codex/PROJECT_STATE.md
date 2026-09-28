@@ -1,3 +1,78 @@
+## S1M2 V3 runtime/storage Round 3D closure candidate (2026-09-28)
+
+The authorized reducer/transient-SQLite response is code candidate
+`38557dab9bff522dfb886452b4786da04e627458` on
+`exp/s1m2-runtime-reopen`. It follows live Core-11 evidence that all 39 first-
+document bundles had completed while the parent reducer remained single-core,
+the main process held about 10 GiB RSS, training spools exceeded 60 GiB, and
+the open document transaction had produced about 11 GiB of WAL. This remains
+an unqualified engineering candidate: no candidate Core-11 run or Full M0
+requalification has occurred.
+
+Round 3D gives the production reducer flush-local piece/host integer interners
+and an integer-pair Counter, while preserving rowwise input addition and the
+old `(piece_key, host_key)` flush order. A fixed explicit host codec uses one
+version byte plus one byte per phoneme; codes are independent of Enum order or
+Python hash and ordered to preserve canonical host-key lexicographic order.
+New bundle schema v4 / segment schema v5 carries host BLOB dictionaries
+directly. Embedded-v1, TSV-v2, and packed-string-v3 readers remain available.
+
+New active passes use BLOB `host_key` in `piece_host_support_next` and record
+engineering metadata `s1m2_transient_support_schema=host_blob_v1`. Resume
+inspects both metadata and declared column type. Legacy active TEXT passes are
+explicitly compatible and decode only at their store boundary; mismatched or
+unknown engineering schema fails closed without changing the scientific
+checkpoint or configuration identity.
+
+Piece counts, pooled host support, lexical diagnostics, and optional role
+support now use ordered multi-row UPSERT batches capped at 900 bind parameters
+(450/300/225 rows by row width). Focused tests prove exact equality to ordered
+single-row stepping, including repeated conflicts within and across batches.
+Reducer telemetry now exposes decode/accumulate/sort/flush time, raw and
+flushed support rows, flush calls, peak piece/host/pair cardinalities, and
+canonical-versus-compact host dictionary bytes. Store telemetry adds batch
+calls/rows/max rows and explicit journal/synchronous/schema labels.
+
+A 16.96-second local temporary-directory benchmark compared WAL, DELETE, and
+TRUNCATE with NORMAL synchronous mode over compact hosts and 160,000 input
+rows. All passed rollback, committed reopen, and quick-check semantics. Peak
+total bytes were 4,028,808 for WAL and 4,008,960 for both rollback modes, while
+precommit transaction time was 2.410 seconds for WAL versus 6.331/7.046
+seconds. This small local result is engineering-strategy evidence only and did
+not justify a production change; WAL + NORMAL remains active.
+
+Append-only external support runs were designed but not implemented. Exact
+use would require durable per-document manifests, orphan handling, explicit
+document/flush/key sequence identity, and a pass-final merge preserving each
+key's original flushwise addition. That new cross-filesystem recovery contract
+is deferred unless the next Core-11 evidence shows the compact/batched B-tree
+path still dominates.
+
+Short validation is green: 63 focused codec/V3/bundle tests passed in 14.16
+seconds; 98 selected phonology/storage/comparator/V2/V3/training/bundle/
+Round-3 tests passed in 36.48 seconds; touched modules compile and `git diff
+--check` passes. The synthetic benchmark took 16.96 seconds. A separate
+112-test selection had 111 passes and one unrelated Round-4 fixture failure
+whose monkeypatched lambda does not accept the existing `repo_root=` keyword;
+Round-4 code was untouched.
+
+Authority:
+`reports/core_methods/reusable_pieces/s1m2_runtime_reopen_round3d_20260928.md`.
+Machine evidence:
+`reports/core_methods/reusable_pieces/evidence/s1m2_round3d_sqlite_journal_microbenchmark_20260928.json`.
+Updated researcher-operated Core-11 commands remain in
+`reports/core_methods/reusable_pieces/s1m2_runtime_reopen_core11_benchmark_20260928.md`.
+
+```text
+S1M2_V3_SCIENTIFIC_SEMANTICS=FROZEN
+RUNTIME_REOPEN_CANDIDATE=38557dab9bff522dfb886452b4786da04e627458
+PERFORMANCE_RESULT=NOT_YET_REMEASURED_ON_CORE_11
+FULL_M0_RUNTIME_VIABLE=NOT_REQUALIFIED
+PRODUCTION_JOURNAL_MODE=WAL_NORMAL_UNCHANGED
+CORE_07_TO_11_TOUCHED=NO
+NEXT_ACTION=RESEARCHER_RUNS_UPDATED_CORE_11_BASELINE_CANDIDATE_AND_COMPARATOR_COMMANDS
+```
+
 ## S1M2 V3 runtime/storage Round 3B/3C closure candidate (2026-09-28)
 
 The authorized engineering reopen now has benchmark code candidate

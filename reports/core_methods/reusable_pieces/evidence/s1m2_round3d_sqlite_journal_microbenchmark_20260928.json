@@ -1,0 +1,107 @@
+{
+  "batch_rows": 300,
+  "candidate_sha": "38557dab9bff522dfb886452b4786da04e627458",
+  "command": "python scripts/analysis/benchmark_s1m2_sqlite_journal.py",
+  "platform": "Windows-10-10.0.26200-SP0",
+  "python": "3.11.9",
+  "qualification_scope": "engineering_strategy_only_not_performance_qualification",
+  "results": [
+    {
+      "commit_seconds": 0.014156199999888486,
+      "commit_state_complete": true,
+      "committed_bytes": {
+        "database": 802816,
+        "rollback_journal": 0,
+        "total": 4028808,
+        "wal": 3225992
+      },
+      "committed_row_count": 40000,
+      "committed_support_sum": 74375.25,
+      "conflict_rounds": 4,
+      "input_rows": 160000,
+      "journal_mode": "wal",
+      "peak_bytes": {
+        "database": 802816,
+        "rollback_journal": 0,
+        "total": 4028808,
+        "wal": 3225992
+      },
+      "quick_check": "ok",
+      "reopen_journal_mode": "wal",
+      "rollback_preserved_committed_state": true,
+      "rollback_uncommitted_absent": true,
+      "seed_rows": 10000,
+      "statement_calls": 536,
+      "synchronous": "normal",
+      "transaction_seconds_before_commit": 2.4102226999998493,
+      "unique_rows": 40000,
+      "wall_seconds": 2.5048682000001463
+    },
+    {
+      "commit_seconds": 0.022266399999807618,
+      "commit_state_complete": true,
+      "committed_bytes": {
+        "database": 3203072,
+        "rollback_journal": 0,
+        "total": 3203072,
+        "wal": 0
+      },
+      "committed_row_count": 40000,
+      "committed_support_sum": 74375.25,
+      "conflict_rounds": 4,
+      "input_rows": 160000,
+      "journal_mode": "delete",
+      "peak_bytes": {
+        "database": 3203072,
+        "rollback_journal": 805888,
+        "total": 4008960,
+        "wal": 0
+      },
+      "quick_check": "ok",
+      "reopen_journal_mode": "delete",
+      "rollback_preserved_committed_state": true,
+      "rollback_uncommitted_absent": true,
+      "seed_rows": 10000,
+      "statement_calls": 536,
+      "synchronous": "normal",
+      "transaction_seconds_before_commit": 6.331419900000128,
+      "unique_rows": 40000,
+      "wall_seconds": 6.437372000000323
+    },
+    {
+      "commit_seconds": 0.01909369999975752,
+      "commit_state_complete": true,
+      "committed_bytes": {
+        "database": 3203072,
+        "rollback_journal": 0,
+        "total": 3203072,
+        "wal": 0
+      },
+      "committed_row_count": 40000,
+      "committed_support_sum": 74375.25,
+      "conflict_rounds": 4,
+      "input_rows": 160000,
+      "journal_mode": "truncate",
+      "peak_bytes": {
+        "database": 3203072,
+        "rollback_journal": 805888,
+        "total": 4008960,
+        "wal": 0
+      },
+      "quick_check": "ok",
+      "reopen_journal_mode": "truncate",
+      "rollback_preserved_committed_state": true,
+      "rollback_uncommitted_absent": true,
+      "seed_rows": 10000,
+      "statement_calls": 536,
+      "synchronous": "normal",
+      "transaction_seconds_before_commit": 7.0461600999997245,
+      "unique_rows": 40000,
+      "wall_seconds": 7.14295119999997
+    }
+  ],
+  "safe_bind_parameters": 900,
+  "schema_version": "sktlm-s1m2-round3d-journal-benchmark/v1",
+  "sqlite": "3.45.1",
+  "total_wall_seconds": 16.961543299999903
+}
