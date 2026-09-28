@@ -158,10 +158,9 @@ def test_fixed_piece_priors_are_precomputed_bit_exactly() -> None:
 
     for noninitial in (False, True):
         for length in range(1, config.max_piece_length + 1):
-            expected = composed_module._raw_prior_score(
-                int(noninitial),
-                int(noninitial) + length,
-                rho=config.rho,
+            expected = (
+                int(noninitial) * math.log(config.rho)
+                + (length - 1) * math.log1p(-config.rho)
             )
             assert engine._piece_priors[noninitial][length].hex() == expected.hex()
 
@@ -178,8 +177,8 @@ def test_long_whole_form_prior_and_score_only_match_p0(text: str) -> None:
         top_k=None,
     )
 
-    expected_whole_prior = composed_module._raw_prior_score(
-        0, len(form.symbols), rho=config.rho
+    expected_whole_prior = (
+        (len(form.symbols) - 1) * math.log1p(-config.rho)
     )
     assert engine._piece_prior(0, len(form.symbols)).hex() == (
         expected_whole_prior.hex()
@@ -376,7 +375,10 @@ def _compare_outer(surface: str, *, script: str = "iast") -> None:
     assert composed.lexical_expected_counts == pytest.approx(
         reference.expected_counts, rel=1e-10, abs=1e-12
     )
-    assert composed.piece_expected_counts == pytest.approx(
+    composed_piece_counts: dict[PhonologicalForm, float] = defaultdict(float)
+    for identity, count in composed.piece_expected_counts.items():
+        composed_piece_counts[identity.piece] += count
+    assert dict(composed_piece_counts) == pytest.approx(
         expected_piece_counts, rel=1e-10, abs=1e-12
     )
     assert composed.identity_mass == pytest.approx(
@@ -1299,6 +1301,114 @@ def test_piece_store_bounded_lru_preserves_exact_scoring_equation() -> None:
     assert scorer.cache_misses == 4
     assert scorer.sqlite_selects == 4
     assert scorer.sqlite_seconds >= 0.0
+
+
+def test_piece_store_bulk_lookup_preserves_scores_and_missing_zero() -> None:
+    connection = sqlite3.connect(":memory:")
+    connection.execute(
+        "CREATE TABLE piece_lexicon (form_key TEXT PRIMARY KEY, "
+        "raw_expected_count REAL NOT NULL, "
+        "max_host_expected_usage REAL NOT NULL, "
+        "reusable_count REAL NOT NULL)"
+    )
+    active = parse_iast_form("ani")
+    second = parse_iast_form("api")
+    missing = parse_iast_form("iti")
+    connection.executemany(
+        "INSERT INTO piece_lexicon VALUES (?, ?, ?, ?)",
+        (
+            (active.key, 4.25, 1.0, 3.25),
+            (second.key, 2.5, 1.0, 1.5),
+        ),
+    )
+    scorer = PieceStoreScorer(
+        connection,
+        alpha=0.1,
+        complexity_weight=0.5,
+        complexity_kappa=1.0,
+        complexity_beta=0.25,
+        complexity_tau=1.0,
+        base_stop_probability=0.5,
+        cache_size=8,
+        telemetry=RuntimeTelemetry(),
+    )
+
+    scores = scorer.score_many((active, missing, second, active))
+    reference = {active.key: 3.25, second.key: 1.5}
+    assert scores == {
+        piece.key: scorer.score_from_count_and_length(
+            reference.get(piece.key, 0.0), len(piece.symbols)
+        )
+        for piece in (active, missing, second)
+    }
+    assert scorer.lookup_many((missing.key, active.key)) == {
+        missing.key: 0.0,
+        active.key: 3.25,
+    }
+    assert scorer.bulk_calls == 2
+    assert scorer.bulk_rows_fetched == 2
+    assert scorer.sqlite_selects == 1
+    assert scorer.scalar_fallbacks == 0
+
+
+def test_composed_piece_store_prefetch_matches_scalar_route_exactly() -> None:
+    connection = sqlite3.connect(":memory:")
+    connection.execute(
+        "CREATE TABLE piece_lexicon (form_key TEXT PRIMARY KEY, "
+        "raw_expected_count REAL NOT NULL, "
+        "max_host_expected_usage REAL NOT NULL, "
+        "reusable_count REAL NOT NULL)"
+    )
+    active = parse_iast_form("ani")
+    second = parse_iast_form("api")
+    connection.executemany(
+        "INSERT INTO piece_lexicon VALUES (?, ?, ?, ?)",
+        (
+            (active.key, 4.25, 1.0, 3.25),
+            (second.key, 2.5, 1.0, 1.5),
+        ),
+    )
+
+    def build_scorer() -> PieceStoreScorer:
+        return PieceStoreScorer(
+            connection,
+            alpha=0.1,
+            complexity_weight=0.5,
+            complexity_kappa=1.0,
+            complexity_beta=0.25,
+            complexity_tau=1.0,
+            base_stop_probability=0.5,
+            cache_size=128,
+            telemetry=RuntimeTelemetry(),
+        )
+
+    class ScalarRoute:
+        piece_scores_are_role_neutral = True
+
+        def __init__(self, scorer: PieceStoreScorer) -> None:
+            self.scorer = scorer
+
+        def score(self, piece: PhonologicalForm) -> float:
+            return self.scorer.score(piece)
+
+    bulk_scorer = build_scorer()
+    scalar_scorer = build_scorer()
+    config = PieceModelConfig(max_piece_length=3, rho=0.37)
+    form = parse_iast_form("aniapi")
+
+    bulk = ComposedPieceInference(
+        bulk_scorer,
+        model_config=config,
+    ).evaluate_form(form)
+    scalar = ComposedPieceInference(
+        ScalarRoute(scalar_scorer),
+        model_config=config,
+    ).evaluate_form(form)
+
+    assert bulk == scalar
+    assert bulk_scorer.bulk_calls == 1
+    assert bulk_scorer.scalar_fallbacks == 0
+    assert scalar_scorer.scalar_fallbacks > 0
 
 
 def test_shared_inspection_piece_reference_bound_falls_back() -> None:

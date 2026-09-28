@@ -210,6 +210,9 @@ class PieceStoreScorer:
         self.sqlite_selects = 0
         self.store_lookups = 0
         self.sqlite_seconds = 0.0
+        self.bulk_calls = 0
+        self.bulk_rows_fetched = 0
+        self.scalar_fallbacks = 0
         row = connection.execute(
             "SELECT COALESCE(SUM(CASE WHEN reusable_count > 0.0 THEN 1 ELSE 0 END), 0), "
             "COALESCE(SUM(reusable_count), 0.0) "
@@ -228,6 +231,7 @@ class PieceStoreScorer:
             self._cache.move_to_end(key)
             return cached
         self.cache_misses += 1
+        self.scalar_fallbacks += 1
         started = time.perf_counter()
         row = self.connection.execute(
             "SELECT reusable_count FROM piece_lexicon WHERE form_key = ?",
@@ -240,6 +244,65 @@ class PieceStoreScorer:
         if len(self._cache) > self.cache_size:
             self._cache.popitem(last=False)
         return count
+
+    def lookup_many(self, keys: Iterable[str]) -> dict[str, float]:
+        """Resolve unique keys with bounded chunked SQL and deterministic output."""
+
+        ordered = tuple(dict.fromkeys(keys))
+        self.bulk_calls += 1
+        self.store_lookups += len(ordered)
+        result: dict[str, float] = {}
+        missing: list[str] = []
+        for key in ordered:
+            cached = self._cache.get(key)
+            if cached is None:
+                self.cache_misses += 1
+                missing.append(key)
+            else:
+                self.cache_hits += 1
+                self._cache.move_to_end(key)
+                result[key] = cached
+
+        fetched: dict[str, float] = {}
+        started = time.perf_counter()
+        for offset in range(0, len(missing), 900):
+            chunk = missing[offset : offset + 900]
+            placeholders = ",".join("?" for _ in chunk)
+            rows = self.connection.execute(
+                "SELECT form_key, reusable_count FROM piece_lexicon "
+                f"WHERE form_key IN ({placeholders})",
+                chunk,
+            ).fetchall()
+            self.sqlite_selects += 1
+            self.bulk_rows_fetched += len(rows)
+            fetched.update((str(key), float(value)) for key, value in rows)
+        self.sqlite_seconds += time.perf_counter() - started
+
+        for key in missing:
+            count = fetched.get(key, 0.0)
+            result[key] = count
+            self._cache[key] = count
+            self._cache.move_to_end(key)
+            if len(self._cache) > self.cache_size:
+                self._cache.popitem(last=False)
+        return {key: result[key] for key in ordered}
+
+    def score_many(
+        self, pieces: Iterable[PhonologicalForm]
+    ) -> dict[str, float]:
+        """Bulk-score unique role-neutral pieces under the unchanged equation."""
+
+        ordered: dict[str, PhonologicalForm] = {}
+        for piece in pieces:
+            ordered.setdefault(piece.key, piece)
+        counts = self.lookup_many(ordered)
+        self.score_calls += len(ordered)
+        return {
+            key: self.score_from_count_and_length(
+                counts[key], len(piece.symbols)
+            )
+            for key, piece in ordered.items()
+        }
 
     def probability(self, piece: PhonologicalForm, count: float) -> float:
         return (
@@ -1340,6 +1403,9 @@ class LexiconStore:
                 "sqlite_selects": scorer.sqlite_selects,
                 "sqlite_seconds": scorer.sqlite_seconds,
                 "store_lookups": scorer.store_lookups,
+                "bulk_calls": scorer.bulk_calls,
+                "bulk_rows_fetched": scorer.bulk_rows_fetched,
+                "scalar_fallbacks": scorer.scalar_fallbacks,
                 "cache_size": scorer.cache_size,
                 "cache_entries": len(scorer._cache),
                 "active_piece_types": scorer.active_piece_types,

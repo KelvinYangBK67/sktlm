@@ -2042,6 +2042,11 @@ def _write_training_bundle_shard(
     scorer_calls_before = int(getattr(active_scorer, "score_calls", 0))
     sqlite_selects_before = int(getattr(active_scorer, "sqlite_selects", 0))
     sqlite_seconds_before = float(getattr(active_scorer, "sqlite_seconds", 0.0))
+    bulk_calls_before = int(getattr(active_scorer, "bulk_calls", 0))
+    bulk_rows_before = int(getattr(active_scorer, "bulk_rows_fetched", 0))
+    scalar_fallbacks_before = int(
+        getattr(active_scorer, "scalar_fallbacks", 0)
+    )
     piece_counters_before = _WORKER_PIECE_ENGINE.counter_snapshot()
     engineering = RuntimeTelemetry()
     grammar_cache_before = _WORKER_GRAMMAR.cache_statistics()["internal_matches"]
@@ -2310,6 +2315,18 @@ def _write_training_bundle_shard(
                 "sqlite_seconds": (
                     float(getattr(active_scorer, "sqlite_seconds", 0.0))
                     - sqlite_seconds_before
+                ),
+                "piece_store_bulk_calls": (
+                    int(getattr(active_scorer, "bulk_calls", 0))
+                    - bulk_calls_before
+                ),
+                "piece_store_bulk_rows_fetched": (
+                    int(getattr(active_scorer, "bulk_rows_fetched", 0))
+                    - bulk_rows_before
+                ),
+                "piece_store_scalar_fallbacks": (
+                    int(getattr(active_scorer, "scalar_fallbacks", 0))
+                    - scalar_fallbacks_before
                 ),
                 "composed_counters": asdict(
                     _WORKER_PIECE_ENGINE.counter_delta(piece_counters_before)
@@ -2697,6 +2714,12 @@ def _coalesce_training_bundle_shards(
                     "sqlite_seconds",
                 ):
                     runtime_totals[label] += runtime[label]
+                for label in (
+                    "piece_store_bulk_calls",
+                    "piece_store_bulk_rows_fetched",
+                    "piece_store_scalar_fallbacks",
+                ):
+                    runtime_totals[label] += runtime.get(label, 0)
                 _merge_composed_counter_payload(
                     composed_totals,
                     runtime.get("composed_counters", {}),
@@ -2747,6 +2770,15 @@ def _coalesce_training_bundle_shards(
                     runtime_totals["lexical_score_calls"]
                 ),
                 "sqlite_selects": int(runtime_totals["sqlite_selects"]),
+                "piece_store_bulk_calls": int(
+                    runtime_totals["piece_store_bulk_calls"]
+                ),
+                "piece_store_bulk_rows_fetched": int(
+                    runtime_totals["piece_store_bulk_rows_fetched"]
+                ),
+                "piece_store_scalar_fallbacks": int(
+                    runtime_totals["piece_store_scalar_fallbacks"]
+                ),
                 "composed_counters": dict(composed_totals),
                 "engineering_telemetry": engineering.payload(),
             },
@@ -2921,6 +2953,12 @@ def _apply_compact_training_bundle_shards(
                 "sqlite_seconds",
             ):
                 runtime_totals[label] += runtime[label]
+            for label in (
+                "piece_store_bulk_calls",
+                "piece_store_bulk_rows_fetched",
+                "piece_store_scalar_fallbacks",
+            ):
+                runtime_totals[label] += runtime.get(label, 0)
             _merge_composed_counter_payload(
                 composed_totals,
                 runtime.get("composed_counters", {}),
@@ -2971,6 +3009,18 @@ def _apply_compact_training_bundle_shards(
     )
     telemetry.add_seconds(
         "training_worker_sqlite", float(runtime_totals["sqlite_seconds"])
+    )
+    telemetry.increment(
+        "training_piece_store_bulk_calls",
+        int(runtime_totals["piece_store_bulk_calls"]),
+    )
+    telemetry.increment(
+        "training_piece_store_bulk_rows_fetched",
+        int(runtime_totals["piece_store_bulk_rows_fetched"]),
+    )
+    telemetry.increment(
+        "training_piece_store_scalar_fallbacks",
+        int(runtime_totals["piece_store_scalar_fallbacks"]),
     )
     if composed_totals:
         _record_composed_telemetry(

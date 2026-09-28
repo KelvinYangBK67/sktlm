@@ -15,6 +15,7 @@ import time
 from array import array
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass, field, replace
+from typing import Iterable
 
 from sktlm.latent.candidates import LexicalBoundary
 from sktlm.latent.inference import BoundaryPosterior, logaddexp
@@ -875,10 +876,19 @@ class ComposedPieceInference:
         self._events["piece_score_cache_misses"] += 1
         piece = PhonologicalForm(symbols)
         score = score_positional_piece(self.scorer, piece, role)
+        self._remember_piece_score(cache_key, piece, score)
+        return piece, score
+
+    def _remember_piece_score(
+        self,
+        cache_key: object,
+        piece: PhonologicalForm,
+        score: float,
+    ) -> None:
         size = 64 + _estimated_form_bytes(piece)
         if size > self.cache_config.piece_score_bytes:
             self._events["piece_score_cache_oversize"] += 1
-            return piece, score
+            return
         while self._piece_scores and (
             len(self._piece_scores) >= self.cache_config.piece_score_entries
             or self._piece_score_bytes + size > self.cache_config.piece_score_bytes
@@ -890,7 +900,27 @@ class ComposedPieceInference:
             self._events["piece_score_cache_evictions"] += 1
         self._piece_scores[cache_key] = (piece, score, size)
         self._piece_score_bytes += size
-        return piece, score
+
+    def _prefetch_piece_scores(
+        self,
+        pieces: Iterable[PhonologicalForm],
+    ) -> None:
+        """Fill the bounded role-neutral score cache through optional bulk SQL."""
+
+        if self._all_piece_scores_zero or not self._piece_scores_are_role_neutral:
+            return
+        score_many = getattr(self.scorer, "score_many", None)
+        if score_many is None:
+            return
+        missing: dict[tuple[Phoneme, ...], PhonologicalForm] = {}
+        for piece in pieces:
+            if piece.symbols not in self._piece_scores:
+                missing.setdefault(piece.symbols, piece)
+        if not missing:
+            return
+        scores = score_many(missing.values())
+        for symbols, piece in missing.items():
+            self._remember_piece_score(symbols, piece, float(scores[piece.key]))
 
     def evaluate_form(self, form: PhonologicalForm) -> FormPieceEvaluation:
         """Evaluate the complete P0 support directly, with no P0 lattice."""
@@ -902,6 +932,8 @@ class ComposedPieceInference:
             self._forms.move_to_end(form_key)
             return cached[0]
         self._events["form_cache_misses"] += 1
+
+        self._prefetch_piece_scores(self._legal_pieces(form))
 
         length = len(form.symbols)
         evaluation_started = time.perf_counter()
@@ -1420,6 +1452,7 @@ class ComposedPieceInference:
 
         transition_started = time.perf_counter()
         pieces = tuple(PhonologicalForm(symbols) for symbols in topology.pieces)
+        self._prefetch_piece_scores(pieces)
         transition_raw_scores = array("d")
 
         forward_started = time.perf_counter()
@@ -1968,6 +2001,7 @@ class ComposedPieceInference:
 
         reweight_started = time.perf_counter()
         pieces = tuple(PhonologicalForm(symbols) for symbols in topology.pieces)
+        self._prefetch_piece_scores((*pieces, *forms))
         transition_raw_scores = array("d")
 
         forward_started = time.perf_counter()
