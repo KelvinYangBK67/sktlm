@@ -664,6 +664,51 @@ def test_neutral_fast_path_matches_exact_zero_score_route_without_score_calls() 
     assert observed.counters.neutral_prior_fast_path_forms > 0
     assert observed.counters.neutral_prior_fast_path_nodes > 0
     assert observed.counters.neutral_prior_fast_path_transitions > 0
+    assert observed.counters.neutral_host_template_compiles > 0
+    assert observed.counters.neutral_host_template_endpoints > 0
+    assert observed.counters.host_adjoint_endpoints == 0
+    assert reference.counters.host_adjoint_endpoints > 0
+
+
+def test_neutral_host_template_reuses_length_and_matches_form_dp() -> None:
+    config = PieceModelConfig(max_piece_length=3, rho=0.41)
+    engine = ComposedPieceInference(
+        _ExplodingNeutralPieceScorer(),
+        model_config=config,
+    )
+    rama = parse_iast_form("rama")
+    nara = parse_iast_form("nara")
+    api = parse_iast_form("api")
+    endpoints = ((rama, 0.25), (nara, 0.75), (api, 0.5))
+
+    observed = engine._aggregate_neutral_host_support(endpoints)
+    reference_engine = ComposedPieceInference(
+        _LegacyZeroPieceScorer(),
+        model_config=config,
+    )
+    expected: dict[tuple[PieceIdentity, PhonologicalForm], float] = {}
+    for host, mass in endpoints:
+        evaluation = reference_engine.evaluate_form(host)
+        for identity, conditional_count in evaluation.expected_piece_counts.items():
+            expected[(identity, host)] = mass * conditional_count
+
+    assert observed == pytest.approx(expected, rel=1e-10, abs=1e-12)
+    counters = engine.counter_snapshot()
+    assert counters.neutral_host_template_compiles == 2
+    assert counters.neutral_host_template_cache_hits == 1
+    assert counters.neutral_host_template_endpoints == 3
+    assert (
+        engine._neutral_prior_templates[
+            len(rama.symbols)
+        ].long_whole_log_posterior
+        is not None
+    )
+    assert (
+        engine._neutral_prior_templates[
+            len(api.symbols)
+        ].long_whole_log_posterior
+        is None
+    )
 
 
 def test_legal_piece_host_support_uses_inner_posterior_not_host_mass() -> None:

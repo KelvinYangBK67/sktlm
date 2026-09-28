@@ -132,6 +132,11 @@ class ComposedInferenceCounters:
     neutral_prior_fast_path_forms: int = 0
     neutral_prior_fast_path_nodes: int = 0
     neutral_prior_fast_path_transitions: int = 0
+    neutral_host_template_compiles: int = 0
+    neutral_host_template_cache_hits: int = 0
+    neutral_host_template_cache_evictions: int = 0
+    neutral_host_template_endpoints: int = 0
+    neutral_host_template_edges: int = 0
     host_adjoint_batches: int = 0
     host_adjoint_endpoints: int = 0
     host_adjoint_peak_entries: int = 0
@@ -196,6 +201,11 @@ _EVENT_COUNTERS = (
     "neutral_prior_fast_path_forms",
     "neutral_prior_fast_path_nodes",
     "neutral_prior_fast_path_transitions",
+    "neutral_host_template_compiles",
+    "neutral_host_template_cache_hits",
+    "neutral_host_template_cache_evictions",
+    "neutral_host_template_endpoints",
+    "neutral_host_template_edges",
     "host_adjoint_batches",
     "host_adjoint_endpoints",
 )
@@ -480,6 +490,22 @@ class _CompactSharedFormBatch:
     endpoint_scores: tuple[_CompactEndpointScore, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class _NeutralPriorTemplate:
+    """Exact score-free edge posteriors shared by every host of one length."""
+
+    starts: array
+    ends: array
+    log_posteriors: array
+    terminal_edges: int
+    long_whole_log_posterior: float | None
+    estimated_bytes: int
+
+
+_NEUTRAL_TEMPLATE_CACHE_ENTRIES = 4_096
+_NEUTRAL_TEMPLATE_CACHE_BYTES = 16 * 1024 * 1024
+
+
 def _shared_inner_pieces(
     path: _SharedInnerPath,
 ) -> tuple[PhonologicalForm, ...]:
@@ -729,6 +755,10 @@ class ComposedPieceInference:
         )
         self._neutral_prior_alpha_by_depth = [0.0]
         self._neutral_singleton_score_by_depth = [0.0]
+        self._neutral_prior_templates: OrderedDict[
+            int, _NeutralPriorTemplate
+        ] = OrderedDict()
+        self._neutral_prior_template_bytes = 0
         self._piece_scores: OrderedDict[
             tuple[Phoneme, ...]
             | tuple[tuple[Phoneme, ...], PieceRole],
@@ -786,6 +816,132 @@ class ComposedPieceInference:
             self._neutral_prior_alpha_by_depth,
             self._neutral_singleton_score_by_depth,
         )
+
+    def _neutral_prior_template(self, length: int) -> _NeutralPriorTemplate:
+        """Compile exact normalized P0 edge posteriors for one host length."""
+
+        cached = self._neutral_prior_templates.get(length)
+        if cached is not None:
+            self._events["neutral_host_template_cache_hits"] += 1
+            self._neutral_prior_templates.move_to_end(length)
+            return cached
+
+        self._events["neutral_host_template_compiles"] += 1
+        prior_alpha, _singleton = self._neutral_prior_states(length)
+        beta = [-math.inf] * (length + 1)
+        beta[length] = 0.0
+        max_piece_length = self.model_config.max_piece_length
+        for start in range(length - 1, -1, -1):
+            value = -math.inf
+            for end in range(
+                start + 1,
+                min(length, start + max_piece_length) + 1,
+            ):
+                value = logaddexp(
+                    value,
+                    self._piece_prior(start, end) + beta[end],
+                )
+            beta[start] = value
+
+        bounded_log_z = prior_alpha[length]
+        long_whole_log_posterior: float | None = None
+        if length > max_piece_length:
+            whole_prior = self._piece_prior(0, length)
+            log_z = logaddexp(whole_prior, bounded_log_z)
+            long_whole_log_posterior = whole_prior - log_z
+        else:
+            log_z = bounded_log_z
+
+        starts = array("I")
+        ends = array("I")
+        log_posteriors = array("d")
+
+        def append_end(end: int) -> None:
+            for start in range(max(0, end - max_piece_length), end):
+                starts.append(start)
+                ends.append(end)
+                log_posteriors.append(
+                    prior_alpha[start]
+                    + self._piece_prior(start, end)
+                    + beta[end]
+                    - log_z
+                )
+
+        # Preserve the host-adjoint accumulation order: terminal edges first,
+        # then the distinct long whole edge, then interior ends in reverse.
+        append_end(length)
+        terminal_edges = len(starts)
+        for end in range(length - 1, 0, -1):
+            append_end(end)
+
+        estimated_bytes = 128 + 16 * len(starts)
+        template = _NeutralPriorTemplate(
+            starts=starts,
+            ends=ends,
+            log_posteriors=log_posteriors,
+            terminal_edges=terminal_edges,
+            long_whole_log_posterior=long_whole_log_posterior,
+            estimated_bytes=estimated_bytes,
+        )
+        if estimated_bytes <= _NEUTRAL_TEMPLATE_CACHE_BYTES:
+            while self._neutral_prior_templates and (
+                len(self._neutral_prior_templates)
+                >= _NEUTRAL_TEMPLATE_CACHE_ENTRIES
+                or self._neutral_prior_template_bytes + estimated_bytes
+                > _NEUTRAL_TEMPLATE_CACHE_BYTES
+            ):
+                _old_length, old = self._neutral_prior_templates.popitem(
+                    last=False
+                )
+                self._neutral_prior_template_bytes -= old.estimated_bytes
+                self._events["neutral_host_template_cache_evictions"] += 1
+            self._neutral_prior_templates[length] = template
+            self._neutral_prior_template_bytes += estimated_bytes
+        return template
+
+    def _aggregate_neutral_host_support(
+        self,
+        endpoints: Iterable[tuple[PhonologicalForm, float]],
+    ) -> dict[tuple[PieceIdentity, PhonologicalForm], float]:
+        """Apply score-free conditional P0 templates in endpoint order."""
+
+        support: dict[tuple[PieceIdentity, PhonologicalForm], float] = {}
+        for host, mass in endpoints:
+            template = self._neutral_prior_template(len(host.symbols))
+            log_mass = math.log(mass)
+            edge_count = len(template.starts)
+
+            def add_edges(first: int, stop: int) -> None:
+                for edge_index in range(first, stop):
+                    start = template.starts[edge_index]
+                    end = template.ends[edge_index]
+                    piece = PhonologicalForm(host.symbols[start:end])
+                    identity = PieceIdentity(
+                        piece,
+                        piece_role(start, end, len(host.symbols)),
+                    )
+                    host_key = (identity, host)
+                    contribution = math.exp(
+                        log_mass + template.log_posteriors[edge_index]
+                    )
+                    support[host_key] = (
+                        support.get(host_key, 0.0) + contribution
+                    )
+
+            add_edges(0, template.terminal_edges)
+            if template.long_whole_log_posterior is not None:
+                identity = PieceIdentity(host, PieceRole.WHOLE)
+                host_key = (identity, host)
+                contribution = math.exp(
+                    log_mass + template.long_whole_log_posterior
+                )
+                support[host_key] = support.get(host_key, 0.0) + contribution
+            add_edges(template.terminal_edges, edge_count)
+            self._events["neutral_host_template_endpoints"] += 1
+            self._events["neutral_host_template_edges"] += edge_count + int(
+                template.long_whole_log_posterior is not None
+            )
+        return support
 
     def counter_snapshot(self) -> ComposedInferenceCounters:
         payload = {name: self._events[name] for name in _EVENT_COUNTERS}
@@ -1749,6 +1905,17 @@ class ComposedPieceInference:
                     log_adjoint[source], adjoint + raw_score
                 )
 
+        if self._all_piece_scores_zero:
+            piece_host_support = self._aggregate_neutral_host_support(
+                (
+                    (self._compact_form(topology, endpoint_id), mass)
+                    for endpoint_id, mass in active_endpoints
+                )
+            )
+            self.add_timing("inner_piece_backward_seconds", started)
+            self.add_timing("inner_piece_posterior_seconds", started)
+            return piece_counts, expected_raw_score, piece_host_support
+
         batch_size = self.cache_config.host_adjoint_endpoint_batch_size
         for batch_start in range(0, len(active_endpoints), batch_size):
             endpoint_batch = active_endpoints[batch_start : batch_start + batch_size]
@@ -2293,6 +2460,15 @@ class ComposedPieceInference:
                 log_adjoint[source] = logaddexp(
                     log_adjoint[source], adjoint + raw_score
                 )
+
+        if self._all_piece_scores_zero:
+            piece_host_support = self._aggregate_neutral_host_support(
+                (batch.forms[form_key].form, mass)
+                for form_key, mass in active_endpoints
+            )
+            self.add_timing("inner_piece_backward_seconds", started)
+            self.add_timing("inner_piece_posterior_seconds", started)
+            return piece_counts, expected_raw_score, piece_host_support
 
         batch_size = self.cache_config.host_adjoint_endpoint_batch_size
         for batch_start in range(0, len(active_endpoints), batch_size):
