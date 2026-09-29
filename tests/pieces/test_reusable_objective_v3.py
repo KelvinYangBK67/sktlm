@@ -10,6 +10,7 @@ import pytest
 from sktlm.latent.phonology import host_blob_to_key, pack_host_key, parse_iast_form
 from sktlm.latent.store import (
     TRANSIENT_SUPPORT_BLOB_V1,
+    TRANSIENT_SUPPORT_BLOB_V2,
     TRANSIENT_SUPPORT_SCHEMA_KEY,
     TRANSIENT_SUPPORT_TEXT_V1,
     LexiconStore,
@@ -202,6 +203,9 @@ def test_v3_roles_pool_for_learned_identity_and_remain_diagnostic(tmp_path) -> N
             ("RIGHT", 16.0, 136.0, 7.5),
         ]
         assert sum(row[1] for row in role_rows) == pytest.approx(20)
+        assert not store.telemetry.counters[
+            "sqlite_moment_support_fallback_checks"
+        ]
 
         scorer = store.piece_scorer(
             alpha=0.1,
@@ -269,7 +273,11 @@ def test_v3_sqlite_finalization_accepts_only_roundoff_clamping(tmp_path) -> None
             store.connection.execute(
                 "INSERT INTO piece_host_support_next(piece_key, host_key, support) "
                 "VALUES (?, ?, ?)",
-                (piece.key, host.key, math.nextafter(1.0, math.inf)),
+                (
+                    pack_host_key(piece.key),
+                    pack_host_key(host.key),
+                    math.nextafter(1.0, math.inf),
+                ),
             )
         store.finalize_piece_count_pass(
             checkpoint=checkpoint,
@@ -279,6 +287,194 @@ def test_v3_sqlite_finalization_accepts_only_roundoff_clamping(tmp_path) -> None
             "SELECT raw_expected_count, sum_host_support_squared, reusable_count "
             "FROM piece_lexicon"
         ).fetchone() == pytest.approx((1.0, 1.0000000000000004, 0.0))
+    finally:
+        store.close()
+
+
+def test_v3_finalization_rechecks_production_scale_summation_drift(tmp_path) -> None:
+    raw = 6.394964438799327e-09
+    squared = 4.089557017350827e-17
+    support = math.sqrt(squared)
+    assert support * support == squared
+    assert raw - squared / raw < -8.0 * math.ulp(raw)
+    checkpoint = {
+        "history": [
+            {
+                "characters": 195_480,
+                "candidate_edges": 0,
+                "lazy_span_traversals": 0,
+            }
+        ]
+    }
+    piece = (
+        "C_B.C_R.V_A.C_H.C_M.V_A.C_C.V_AA.C_R.V_I.C_NN.V_A."
+        "C_M.V_E.C_V.V_A.C_N.V_A.C_S.V_A.M_ANUSVARA.C_P.C_R.V_A."
+        "C_D.V_A.C_D.V_A"
+    )
+    host = "C_G.V_A.C_C.C_CH.V_A.C_T.V_I"
+    store = LexiconStore(tmp_path / "production-drift.sqlite")
+    try:
+        store.begin_piece_count_pass(
+            resume=False,
+            checkpoint=checkpoint,
+            objective_model=S1M2_REUSABLE_PIECES_V3,
+        )
+        store.begin_document_counts()
+        store.add_document_piece_count_keys([(piece, raw)])
+        store.add_document_piece_host_support_keys([(piece, host, support)])
+        store.commit_document(checkpoint)
+        store.finalize_piece_count_pass(
+            checkpoint=checkpoint,
+            objective_model=S1M2_REUSABLE_PIECES_V3,
+        )
+        row = store.connection.execute(
+            "SELECT raw_expected_count, sum_host_support_squared, reusable_count "
+            "FROM piece_lexicon WHERE form_key = ?",
+            (piece,),
+        ).fetchone()
+        assert row == (raw, squared, 0.0)
+        assert store.telemetry.counters[
+            "sqlite_moment_support_fallback_acceptances"
+        ] == 1
+    finally:
+        store.close()
+
+
+def test_v3_support_fallback_rejects_material_c_mismatch_and_q_corruption(
+    tmp_path,
+) -> None:
+    store = LexiconStore(tmp_path / "fallback-reject.sqlite")
+    checkpoint = {"history": [{"characters": 200_000}]}
+    piece = "C_T.V_I"
+    host = "C_G.V_A.C_C.C_CH.V_A.C_T.V_I"
+    try:
+        store.begin_piece_count_pass(
+            resume=False,
+            checkpoint=checkpoint,
+            objective_model=S1M2_REUSABLE_PIECES_V3,
+        )
+        store.begin_document_counts()
+        store.add_document_piece_count_keys([(piece, 0.99)])
+        store.add_document_piece_host_support_keys([(piece, host, 1.0)])
+        store.commit_document(checkpoint)
+        with pytest.raises(ValueError, match="Invalid V3 piece moments"):
+            store.finalize_piece_count_pass(
+                checkpoint=checkpoint,
+                objective_model=S1M2_REUSABLE_PIECES_V3,
+            )
+
+        store.connection.execute(
+            "CREATE TEMP TABLE fallback_fixture(state_key TEXT, c REAL, q REAL)"
+        )
+        store.connection.execute(
+            "INSERT INTO fallback_fixture VALUES (?, ?, ?)",
+            (piece, 1.0, 2.0),
+        )
+        with pytest.raises(ValueError, match="Invalid fallback fixture moments"):
+            store._validate_cross_host_moment_source(
+                "SELECT state_key, c, q FROM fallback_fixture",
+                state_name="fallback fixture",
+                support_table="piece_host_support_next",
+                summation_terms_upper_bound=200_000,
+            )
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize(
+    ("raw_count", "support_value"),
+    [(0.0, -1.0), (1.0, math.inf), (-1.0, "not-a-number")],
+)
+def test_v3_support_fallback_rejects_illegitimate_persisted_support(
+    tmp_path, raw_count: float, support_value: object
+) -> None:
+    store = LexiconStore(tmp_path / "invalid-support.sqlite")
+    checkpoint = {"history": [{"characters": 200_000}]}
+    piece = "C_T.V_I"
+    try:
+        store.begin_piece_count_pass(
+            resume=False,
+            checkpoint=checkpoint,
+            objective_model=S1M2_REUSABLE_PIECES_V3,
+        )
+        with store.connection:
+            store.connection.executemany(
+                "INSERT INTO piece_counts_next(form_key, expected_count) VALUES (?, ?)",
+                ((piece, raw_count), ("V_A", 2.0)),
+            )
+            store.connection.execute(
+                "INSERT INTO piece_host_support_next VALUES (?, ?, ?)",
+                (
+                    pack_host_key(piece),
+                    pack_host_key("C_G.V_A.C_C.C_CH.V_A.C_T.V_I"),
+                    support_value,
+                ),
+            )
+        with pytest.raises(ValueError, match="Invalid V3 piece moments"):
+            store.finalize_piece_count_pass(
+                checkpoint=checkpoint,
+                objective_model=S1M2_REUSABLE_PIECES_V3,
+            )
+    finally:
+        store.close()
+
+
+def test_sqlite_rejects_nan_persisted_support_as_null(tmp_path) -> None:
+    store = LexiconStore(tmp_path / "nan-support.sqlite")
+    checkpoint = {"history": [{}]}
+    try:
+        store.begin_piece_count_pass(
+            resume=False,
+            checkpoint=checkpoint,
+            objective_model=S1M2_REUSABLE_PIECES_V3,
+        )
+        with pytest.raises(sqlite3.IntegrityError, match="NOT NULL"):
+            store.connection.execute(
+                "INSERT INTO piece_host_support_next VALUES (?, ?, ?)",
+                (pack_host_key("V_A"), pack_host_key("V_A"), math.nan),
+            )
+    finally:
+        store.close()
+
+
+def test_v3_role_support_fallback_uses_piece_and_role_identity(tmp_path) -> None:
+    raw = 6.394964438799327e-09
+    squared = 4.089557017350827e-17
+    support = math.sqrt(squared)
+    store = LexiconStore(tmp_path / "role-fallback.sqlite")
+    checkpoint = {"history": [{"characters": 195_480}]}
+    piece = "C_T.V_I"
+    role = PieceRole.RIGHT.value
+    try:
+        store.begin_piece_count_pass(
+            resume=False,
+            checkpoint=checkpoint,
+            objective_model=S1M2_REUSABLE_PIECES_V3,
+            collect_role_diagnostics=True,
+        )
+        store.begin_document_counts()
+        store.add_document_piece_host_role_support_keys(
+            [(piece, role, "C_G.V_A.C_C.C_CH.V_A.C_T.V_I", support)]
+        )
+        store.commit_document(checkpoint)
+        store.connection.execute(
+            "CREATE TEMP TABLE role_fixture("
+            "state_key TEXT, support_role TEXT, c REAL, q REAL)"
+        )
+        store.connection.execute(
+            "INSERT INTO role_fixture VALUES (?, ?, ?, ?)",
+            (piece, role, raw, squared),
+        )
+        store._validate_cross_host_moment_source(
+            "SELECT state_key, support_role, c, q FROM role_fixture",
+            state_name="role fixture",
+            support_table="piece_host_role_support_next",
+            role_state=True,
+            summation_terms_upper_bound=195_480,
+        )
+        assert store.telemetry.counters[
+            "sqlite_moment_support_fallback_acceptances"
+        ] == 1
     finally:
         store.close()
 
@@ -315,7 +511,11 @@ def test_v3_sqlite_finalization_rejects_invalid_moments(
                 store.connection.execute(
                     "INSERT INTO piece_host_support_next(piece_key, host_key, support) "
                     "VALUES (?, ?, ?)",
-                    (piece.key, host.key, host_support),
+                        (
+                            pack_host_key(piece.key),
+                            pack_host_key(host.key),
+                            host_support,
+                        ),
                 )
         with pytest.raises(ValueError, match="Invalid V3 piece moments"):
             store.finalize_piece_count_pass(
@@ -328,7 +528,16 @@ def test_v3_sqlite_finalization_rejects_invalid_moments(
 
 @pytest.mark.parametrize(
     ("raw_count", "squared_sum"),
-    [(-1.0, 0.0), (1.0, -1.0), (0.0, 1.0), (1.0, 2.0), (1.0, math.inf)],
+    [
+        (-1.0, 0.0),
+        (1.0, -1.0),
+        (0.0, 1.0),
+        (1.0, 2.0),
+        (1.0, math.inf),
+        (math.inf, 0.0),
+        (math.nan, 0.0),
+        (1.0, math.nan),
+    ],
 )
 def test_sqlite_moment_validator_rejects_corrupt_direct_state(
     tmp_path, raw_count: float, squared_sum: float
@@ -515,8 +724,9 @@ def test_transient_blob_schema_rolls_back_commits_reopens_and_resumes(tmp_path) 
             )
         }
         assert schema["host_key"] == "BLOB"
+        assert schema["piece_key"] == "BLOB"
         assert store.get_metadata(TRANSIENT_SUPPORT_SCHEMA_KEY) == (
-            TRANSIENT_SUPPORT_BLOB_V1
+            TRANSIENT_SUPPORT_BLOB_V2
         )
 
         store.begin_document_counts()
@@ -541,10 +751,16 @@ def test_transient_blob_schema_rolls_back_commits_reopens_and_resumes(tmp_path) 
             objective_model=S1M2_REUSABLE_PIECES_V3,
         )
         row = reopened.connection.execute(
-            "SELECT host_key, support, typeof(host_key) "
+            "SELECT piece_key, host_key, support, typeof(piece_key), typeof(host_key) "
             "FROM piece_host_support_next"
         ).fetchone()
-        assert row == (pack_host_key(host), 2.5, "blob")
+        assert row == (
+            pack_host_key(piece),
+            pack_host_key(host),
+            2.5,
+            "blob",
+            "blob",
+        )
         assert reopened.load_training_checkpoint() == committed
         assert reopened.runtime_payload()["sqlite_journal_mode"] == "wal"
         assert reopened.runtime_payload()["sqlite_synchronous"] == "normal"
@@ -552,7 +768,28 @@ def test_transient_blob_schema_rolls_back_commits_reopens_and_resumes(tmp_path) 
         reopened.close()
 
 
-def test_transient_schema_metadata_mismatch_fails_closed(tmp_path) -> None:
+def test_piece_blob_codec_is_bijective_prefix_ordered_and_hash_independent() -> None:
+    keys = (
+        "V_A",
+        "V_A.C_K",
+        "V_A.C_K.V_A",
+        "V_AA",
+        "C_K",
+        "C_K.V_A",
+    )
+    encoded = tuple(pack_host_key(key) for key in keys)
+    assert len(set(encoded)) == len(keys)
+    assert tuple(host_blob_to_key(payload) for payload in encoded) == keys
+    assert [host_blob_to_key(payload) for payload in sorted(encoded)] == sorted(keys)
+    assert pack_host_key("V_A.C_K").startswith(pack_host_key("V_A"))
+
+
+@pytest.mark.parametrize(
+    "metadata", (TRANSIENT_SUPPORT_TEXT_V1, "unknown_transient_layout_v99")
+)
+def test_transient_schema_metadata_mismatch_or_unknown_fails_closed(
+    tmp_path, metadata: str
+) -> None:
     path = tmp_path / "mismatch.sqlite"
     checkpoint = {"history": [{}]}
     store = LexiconStore(path)
@@ -562,7 +799,7 @@ def test_transient_schema_metadata_mismatch_fails_closed(tmp_path) -> None:
             checkpoint=checkpoint,
             objective_model=S1M2_REUSABLE_PIECES_V3,
         )
-        store.set_metadata(TRANSIENT_SUPPORT_SCHEMA_KEY, TRANSIENT_SUPPORT_TEXT_V1)
+        store.set_metadata(TRANSIENT_SUPPORT_SCHEMA_KEY, metadata)
     finally:
         store.close()
 
@@ -578,47 +815,66 @@ def test_transient_schema_metadata_mismatch_fails_closed(tmp_path) -> None:
         reopened.close()
 
 
-def test_legacy_text_transient_schema_resumes_explicitly_and_matches_blob_final_state(
+def test_transient_resume_matrix_matches_final_piece_state(
     tmp_path,
 ) -> None:
     piece = "C_T.V_I"
     hosts = ("C_G.V_A.C_C.C_CH.V_A.C_T.V_I", "C_BH.V_A.C_V.V_A.C_T.V_I")
     checkpoint = {"history": [{}]}
 
-    def prepare(path, *, legacy_text: bool) -> LexiconStore:
+    def prepare(path, *, layout: str) -> LexiconStore:
         store = LexiconStore(path)
         store.begin_piece_count_pass(
             resume=False,
             checkpoint=checkpoint,
             objective_model=S1M2_REUSABLE_PIECES_V3,
         )
-        if legacy_text:
+        if layout != "blob_blob":
             with store.connection:
                 store.connection.execute("DROP TABLE piece_host_support_next")
-                store.connection.execute(
-                    "CREATE TABLE piece_host_support_next ("
-                    "piece_key TEXT NOT NULL, host_key TEXT NOT NULL, "
-                    "support REAL NOT NULL, PRIMARY KEY(piece_key, host_key)"
-                    ") WITHOUT ROWID"
-                )
-                store.connection.execute(
-                    "DELETE FROM metadata WHERE key = ?",
-                    (TRANSIENT_SUPPORT_SCHEMA_KEY,),
-                )
+                if layout == "text_blob":
+                    store.connection.execute(
+                        "CREATE TABLE piece_host_support_next ("
+                        "piece_key TEXT NOT NULL, host_key BLOB NOT NULL, "
+                        "support REAL NOT NULL, PRIMARY KEY(piece_key, host_key)"
+                        ") WITHOUT ROWID"
+                    )
+                    store.connection.execute(
+                        "UPDATE metadata SET value = ? WHERE key = ?",
+                        (TRANSIENT_SUPPORT_BLOB_V1, TRANSIENT_SUPPORT_SCHEMA_KEY),
+                    )
+                elif layout == "text_text":
+                    store.connection.execute(
+                        "CREATE TABLE piece_host_support_next ("
+                        "piece_key TEXT NOT NULL, host_key TEXT NOT NULL, "
+                        "support REAL NOT NULL, PRIMARY KEY(piece_key, host_key)"
+                        ") WITHOUT ROWID"
+                    )
+                    store.connection.execute(
+                        "DELETE FROM metadata WHERE key = ?",
+                        (TRANSIENT_SUPPORT_SCHEMA_KEY,),
+                    )
+                else:
+                    raise AssertionError(layout)
             store.begin_piece_count_pass(
                 resume=True,
                 checkpoint=checkpoint,
                 objective_model=S1M2_REUSABLE_PIECES_V3,
             )
-            assert store.get_metadata(TRANSIENT_SUPPORT_SCHEMA_KEY) == (
-                TRANSIENT_SUPPORT_TEXT_V1
+            expected = (
+                TRANSIENT_SUPPORT_BLOB_V1
+                if layout == "text_blob"
+                else TRANSIENT_SUPPORT_TEXT_V1
             )
+            assert store.get_metadata(TRANSIENT_SUPPORT_SCHEMA_KEY) == expected
         return store
 
-    blob = prepare(tmp_path / "blob.sqlite", legacy_text=False)
-    text = prepare(tmp_path / "text.sqlite", legacy_text=True)
+    blob_blob = prepare(tmp_path / "blob-blob.sqlite", layout="blob_blob")
+    text_blob = prepare(tmp_path / "text-blob.sqlite", layout="text_blob")
+    text_text = prepare(tmp_path / "text-text.sqlite", layout="text_text")
     try:
-        for store in (blob, text):
+        stores = (blob_blob, text_blob, text_text)
+        for store in stores:
             store.begin_document_counts()
             store.add_document_piece_count_keys([(piece, 10.0)])
             store.add_document_piece_host_support_keys(
@@ -632,13 +888,57 @@ def test_legacy_text_transient_schema_resumes_explicitly_and_matches_blob_final_
                 checkpoint=checkpoint,
                 objective_model=S1M2_REUSABLE_PIECES_V3,
             )
-        assert tuple(blob.connection.execute("SELECT * FROM piece_lexicon")) == tuple(
-            text.connection.execute("SELECT * FROM piece_lexicon")
+        final_states = [
+            tuple(store.connection.execute("SELECT * FROM piece_lexicon"))
+            for store in stores
+        ]
+        assert final_states[0] == final_states[1] == final_states[2]
+        assert (
+            blob_blob.load_training_checkpoint()
+            == text_blob.load_training_checkpoint()
+            == text_text.load_training_checkpoint()
         )
-        assert blob.load_training_checkpoint() == text.load_training_checkpoint()
     finally:
-        blob.close()
-        text.close()
+        blob_blob.close()
+        text_blob.close()
+        text_text.close()
+
+
+def test_round3d_text_blob_resume_requires_explicit_matching_metadata(tmp_path) -> None:
+    path = tmp_path / "round3d-missing-metadata.sqlite"
+    checkpoint = {"history": [{}]}
+    store = LexiconStore(path)
+    try:
+        store.begin_piece_count_pass(
+            resume=False,
+            checkpoint=checkpoint,
+            objective_model=S1M2_REUSABLE_PIECES_V3,
+        )
+        with store.connection:
+            store.connection.execute("DROP TABLE piece_host_support_next")
+            store.connection.execute(
+                "CREATE TABLE piece_host_support_next("
+                "piece_key TEXT NOT NULL, host_key BLOB NOT NULL, "
+                "support REAL NOT NULL, PRIMARY KEY(piece_key, host_key)) WITHOUT ROWID"
+            )
+            store.connection.execute(
+                "DELETE FROM metadata WHERE key = ?",
+                (TRANSIENT_SUPPORT_SCHEMA_KEY,),
+            )
+        with pytest.raises(RuntimeError, match="metadata conflicts"):
+            store.begin_piece_count_pass(
+                resume=True,
+                checkpoint=checkpoint,
+                objective_model=S1M2_REUSABLE_PIECES_V3,
+            )
+        store.set_metadata(TRANSIENT_SUPPORT_SCHEMA_KEY, TRANSIENT_SUPPORT_BLOB_V1)
+        store.begin_piece_count_pass(
+            resume=True,
+            checkpoint=checkpoint,
+            objective_model=S1M2_REUSABLE_PIECES_V3,
+        )
+    finally:
+        store.close()
 
 
 def test_bounded_multirow_upserts_match_ordered_executemany_across_batches(
@@ -656,13 +956,13 @@ def test_bounded_multirow_upserts_match_ordered_executemany_across_batches(
         reference.executescript(
             "CREATE TABLE piece_counts_next(form_key TEXT PRIMARY KEY, expected_count REAL NOT NULL) WITHOUT ROWID;"
             "CREATE TABLE lexical_diagnostics_next(form_key TEXT PRIMARY KEY, expected_count REAL NOT NULL) WITHOUT ROWID;"
-            "CREATE TABLE piece_host_support_next(piece_key TEXT NOT NULL, host_key BLOB NOT NULL, support REAL NOT NULL, PRIMARY KEY(piece_key, host_key)) WITHOUT ROWID;"
+            "CREATE TABLE piece_host_support_next(piece_key BLOB NOT NULL, host_key BLOB NOT NULL, support REAL NOT NULL, PRIMARY KEY(piece_key, host_key)) WITHOUT ROWID;"
         )
         piece_rows = [(f"piece-{index % 470:04d}", float(index % 7 + 1)) for index in range(940)]
         lexical_rows = [(f"host-{index % 460:04d}", float(index % 5 + 1)) for index in range(920)]
         host_rows = [
             (
-                f"piece-{index % 310:04d}",
+                pack_host_key(".".join(["C_K"] * (index % 310 + 1))),
                 pack_host_key("V_A" if index % 2 else "C_K.V_A"),
                 float(index % 11 + 1),
             )
@@ -697,11 +997,14 @@ def test_bounded_multirow_upserts_match_ordered_executemany_across_batches(
             assert tuple(store.connection.execute(f"SELECT {columns} FROM {table} ORDER BY {order}")) == tuple(
                 reference.execute(f"SELECT {columns} FROM {table} ORDER BY {order}")
             )
-        assert store.telemetry.counters["sqlite_piece_count_batch_calls"] == 3
-        assert store.telemetry.counters["sqlite_lexical_diagnostic_batch_calls"] == 3
-        assert store.telemetry.counters["sqlite_piece_host_support_batch_calls"] == 4
-        assert store.telemetry.gauges["sqlite_piece_count_batch_max_rows"] == 450
-        assert store.telemetry.gauges["sqlite_piece_host_support_batch_max_rows"] == 300
+        assert store.telemetry.counters["sqlite_piece_count_batch_calls"] == 1
+        assert store.telemetry.counters["sqlite_lexical_diagnostic_batch_calls"] == 1
+        assert store.telemetry.counters["sqlite_piece_host_support_batch_calls"] == 1
+        assert store.telemetry.gauges["sqlite_piece_count_batch_max_rows"] == 940
+        assert store.telemetry.gauges["sqlite_piece_host_support_batch_max_rows"] == 930
+        runtime = store.runtime_payload()
+        assert runtime["sqlite_variable_number_limit"] >= 3_600
+        assert runtime["sqlite_bind_parameter_cap"] == 3_600
     finally:
         reference.close()
         store.close()

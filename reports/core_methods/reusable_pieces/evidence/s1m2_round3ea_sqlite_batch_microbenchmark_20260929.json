@@ -1,0 +1,90 @@
+{
+  "bind_cap": 3600,
+  "cache_size": "sqlite_default_unchanged",
+  "cases": [
+    {
+      "effective_batch_rows": 300,
+      "final_files_bytes": {
+        "database": 4096,
+        "shm": 32768,
+        "total": 1091616,
+        "wal": 1054752
+      },
+      "input_rows": 120000,
+      "journal_mode": "wal",
+      "logical_rows": 40000,
+      "peak_files_bytes": {
+        "database": 4096,
+        "shm": 32768,
+        "total": 1091616,
+        "wal": 1054752
+      },
+      "quick_check": "ok",
+      "requested_batch_rows": 300,
+      "rows_per_second": 419627.8111000664,
+      "sqlite_variable_limit": 32766,
+      "statement_calls": 400,
+      "support_sum": 63528.17647058824,
+      "variable_limit_source": "connection.getlimit(SQLITE_LIMIT_VARIABLE_NUMBER)",
+      "wall_seconds": 0.2859677000087686
+    },
+    {
+      "effective_batch_rows": 600,
+      "final_files_bytes": {
+        "database": 4096,
+        "shm": 32768,
+        "total": 1091616,
+        "wal": 1054752
+      },
+      "input_rows": 120000,
+      "journal_mode": "wal",
+      "logical_rows": 40000,
+      "peak_files_bytes": {
+        "database": 4096,
+        "shm": 32768,
+        "total": 1091616,
+        "wal": 1054752
+      },
+      "quick_check": "ok",
+      "requested_batch_rows": 600,
+      "rows_per_second": 437083.15471247095,
+      "sqlite_variable_limit": 32766,
+      "statement_calls": 200,
+      "support_sum": 63528.17647058824,
+      "variable_limit_source": "connection.getlimit(SQLITE_LIMIT_VARIABLE_NUMBER)",
+      "wall_seconds": 0.274547299995902
+    },
+    {
+      "effective_batch_rows": 1200,
+      "final_files_bytes": {
+        "database": 4096,
+        "shm": 32768,
+        "total": 1091616,
+        "wal": 1054752
+      },
+      "input_rows": 120000,
+      "journal_mode": "wal",
+      "logical_rows": 40000,
+      "peak_files_bytes": {
+        "database": 4096,
+        "shm": 32768,
+        "total": 1091616,
+        "wal": 1054752
+      },
+      "quick_check": "ok",
+      "requested_batch_rows": 1200,
+      "rows_per_second": 511740.82714874705,
+      "sqlite_variable_limit": 32766,
+      "statement_calls": 100,
+      "support_sum": 63528.17647058824,
+      "variable_limit_source": "connection.getlimit(SQLITE_LIMIT_VARIABLE_NUMBER)",
+      "wall_seconds": 0.23449370000162162
+    }
+  ],
+  "purpose": "engineering strategy evidence only; not scientific qualification",
+  "row_count_per_case": 120000,
+  "rss": "not sampled; no dependency-free exact peak RSS source used",
+  "schema_version": "sktlm-s1m2-sqlite-batch-benchmark/v1",
+  "total_wall_seconds": 0.9164239999954589,
+  "unique_rows": 40000
+}

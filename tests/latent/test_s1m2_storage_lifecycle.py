@@ -4,6 +4,7 @@ import inspect
 from pathlib import Path
 
 from sktlm.latent import training
+from sktlm.latent.phonology import pack_host_key
 from sktlm.latent.store import LexiconStore
 
 
@@ -37,7 +38,11 @@ def _populate_pass(store: LexiconStore, checkpoint: dict[str, object]) -> None:
             "INSERT INTO piece_host_support_next("
             "piece_key, host_key, support) VALUES (?, ?, ?)",
             (
-                (key, f"HOST_{index}", count / support)
+                (
+                    pack_host_key(key),
+                    pack_host_key(".".join(["V_A"] * (index + 1))),
+                    count / support,
+                )
                 for key, count, support in PIECE_ROWS
                 for index in range(support)
             ),

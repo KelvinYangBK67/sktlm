@@ -52,6 +52,7 @@ from sktlm.latent.phonology import (
     canonical_host_key_utf8_length,
     host_blob_to_key,
     pack_host_key,
+    validate_host_blob,
 )
 from sktlm.latent.store import LexiconScorer, LexiconStore, PieceStoreScorer
 from sktlm.latent.telemetry import RuntimeTelemetry
@@ -147,19 +148,21 @@ class _CompactSupportAccumulator:
     )
 
     def __init__(self) -> None:
-        self.piece_ids: dict[str, int] = {}
-        self.piece_keys: list[str] = []
+        self.piece_ids: dict[bytes, int] = {}
+        self.piece_keys: list[bytes] = []
         self.host_ids: dict[bytes, int] = {}
         self.host_blobs: list[bytes] = []
         self.pooled: Counter[tuple[int, int]] = Counter()
         self.roles: Counter[tuple[int, str, int]] = Counter()
 
-    def _piece_id(self, key: str) -> int:
-        identifier = self.piece_ids.get(key)
+    def _piece_id(self, key: str | bytes) -> int:
+        payload = pack_host_key(key) if isinstance(key, str) else bytes(key)
+        validate_host_blob(payload)
+        identifier = self.piece_ids.get(payload)
         if identifier is None:
             identifier = len(self.piece_keys)
-            self.piece_ids[key] = identifier
-            self.piece_keys.append(key)
+            self.piece_ids[payload] = identifier
+            self.piece_keys.append(payload)
         return identifier
 
     def _host_id(self, payload: bytes) -> int:
@@ -170,11 +173,13 @@ class _CompactSupportAccumulator:
             self.host_blobs.append(payload)
         return identifier
 
-    def add_pooled(self, piece_key: str, host_blob: bytes, value: float) -> None:
+    def add_pooled(
+        self, piece_key: str | bytes, host_blob: bytes, value: float
+    ) -> None:
         self.pooled[(self._piece_id(piece_key), self._host_id(host_blob))] += value
 
     def add_role(
-        self, piece_key: str, role: str, host_blob: bytes, value: float
+        self, piece_key: str | bytes, role: str, host_blob: bytes, value: float
     ) -> None:
         self.roles[
             (self._piece_id(piece_key), role, self._host_id(host_blob))
@@ -995,6 +1000,53 @@ def _write_json(path: Path, value: Any) -> None:
         newline="",
     )
     _replace_file(temporary, path)
+
+
+def _write_partial_timing_metrics(
+    *,
+    run_dir: Path,
+    store: LexiconStore,
+    lifecycle: str,
+    error: BaseException | None = None,
+) -> None:
+    """Atomically publish non-authoritative telemetry at a durable boundary."""
+
+    runtime = store.runtime_payload()
+    durable_checkpoint = store.load_training_checkpoint()
+    runtime["partial_timing_metrics"] = {
+        "schema_version": "sktlm-timing-metrics-partial/v1",
+        "authority": "engineering_telemetry_only",
+        "comparator_authority": False,
+        "lifecycle": lifecycle,
+        "durable_checkpoint": durable_checkpoint,
+        "sqlite_storage_bytes": store.storage_bytes(),
+        "exception": (
+            None
+            if error is None
+            else {"type": type(error).__name__, "message": str(error)}
+        ),
+    }
+    _write_json(run_dir / "timing_metrics.partial.json", runtime)
+
+
+def _try_write_partial_timing_metrics(
+    *,
+    run_dir: Path,
+    store: LexiconStore,
+    lifecycle: str,
+    error: BaseException | None = None,
+) -> None:
+    """Never let observability failure replace a training/finalization result."""
+
+    try:
+        _write_partial_timing_metrics(
+            run_dir=run_dir,
+            store=store,
+            lifecycle=lifecycle,
+            error=error,
+        )
+    except Exception:
+        store.telemetry.increment("partial_timing_metrics_write_failures")
 
 
 def _pending_vocabulary_payload(budget: int) -> dict[str, object]:
@@ -2559,7 +2611,7 @@ def _consume_training_segment_support(
     pooled_rows = 0
     role_rows = 0
 
-    def accumulate_pooled(rows: list[tuple[str, bytes, float]]) -> None:
+    def accumulate_pooled(rows: list[tuple[str | bytes, bytes, float]]) -> None:
         nonlocal accumulation_seconds, pooled_rows
         if not rows:
             return
@@ -2570,7 +2622,9 @@ def _consume_training_segment_support(
         pooled_rows += len(rows)
         rows.clear()
 
-    def accumulate_roles(rows: list[tuple[str, str, bytes, float]]) -> None:
+    def accumulate_roles(
+        rows: list[tuple[str | bytes, str, bytes, float]]
+    ) -> None:
         nonlocal accumulation_seconds, role_rows
         if not rows:
             return
@@ -2671,6 +2725,10 @@ def _consume_training_segment_support(
         ):
             raise RuntimeError("Packed host-support segment identity mismatch.")
         piece_keys = tuple(_read_wire_key(support_handle) for _ in range(piece_count))
+        try:
+            piece_blobs = tuple(pack_host_key(key) for key in piece_keys)
+        except ValueError as error:
+            raise RuntimeError("Invalid packed piece identity.") from error
         if schema == "sktlm-s1m2-training-segment-result/v5":
             host_blobs = tuple(
                 _read_wire_bytes(support_handle) for _ in range(host_count)
@@ -2689,7 +2747,7 @@ def _consume_training_segment_support(
             host_blobs = tuple(pack_host_key(key) for key in host_keys)
             canonical_lengths = tuple(len(key.encode("utf-8")) for key in host_keys)
         record_host_dictionary(host_blobs, canonical_lengths)
-        if len(set(piece_keys)) != len(piece_keys) or len(set(host_blobs)) != len(
+        if len(set(piece_blobs)) != len(piece_blobs) or len(set(host_blobs)) != len(
             host_blobs
         ):
             raise RuntimeError("Duplicate packed host-support dictionary key.")
@@ -2705,7 +2763,7 @@ def _consume_training_segment_support(
             if piece_id >= piece_count or host_id >= host_count:
                 raise RuntimeError("Packed host-support row ID is out of range.")
             pooled_batch.append(
-                (piece_keys[piece_id], host_blobs[host_id], value)
+                (piece_blobs[piece_id], host_blobs[host_id], value)
             )
             if len(pooled_batch) == _REDUCER_ACCUMULATION_BATCH:
                 accumulate_pooled(pooled_batch)
@@ -2729,7 +2787,9 @@ def _consume_training_segment_support(
                 )
             diagnostic_batch.append(
                 (
-                    piece_keys[piece_id],
+                    piece_blobs[piece_id],
+                    # Role state remains canonical TEXT and is decoded only at
+                    # its opt-in store boundary; the reducer identity stays BLOB.
                     _WIRE_ROLES[role_id],
                     host_blobs[host_id],
                     value,
@@ -2827,14 +2887,14 @@ def _coalesce_training_bundle_shards(
             row_count += 1
         for piece_id, host_id in piece_support.sorted_pooled_keys():
             handle.write(
-                f"H\t{piece_support.piece_keys[piece_id]}\t"
+                f"H\t{host_blob_to_key(piece_support.piece_keys[piece_id])}\t"
                 f"{host_blob_to_key(piece_support.host_blobs[host_id])}\t"
                 f"{float(piece_support.pooled[(piece_id, host_id)]).hex()}\n"
             )
             row_count += 1
         for piece_id, role, host_id in piece_support.sorted_role_keys():
             handle.write(
-                f"D\t{piece_support.piece_keys[piece_id]}\t{role}\t"
+                f"D\t{host_blob_to_key(piece_support.piece_keys[piece_id])}\t{role}\t"
                 f"{host_blob_to_key(piece_support.host_blobs[host_id])}\t"
                 f"{float(piece_support.roles[(piece_id, role, host_id)]).hex()}\n"
             )
@@ -3124,7 +3184,7 @@ def _apply_compact_training_bundle_shards(
                     (
                         piece_support.piece_keys[piece_id],
                         role,
-                        host_blob_to_key(piece_support.host_blobs[host_id]),
+                        piece_support.host_blobs[host_id],
                         piece_support.roles[(piece_id, role, host_id)],
                     )
                     for piece_id, role, host_id in role_keys
@@ -3296,6 +3356,11 @@ def _apply_compact_training_bundle_shards(
             phase="training",
         )
     telemetry.merge_payload(engineering.payload())
+    _try_write_partial_timing_metrics(
+        run_dir=run_dir,
+        store=store,
+        lifecycle="document_committed",
+    )
     _timed_checkpoint(run_dir, checkpoint, telemetry)
     return next_metrics
 
@@ -3494,6 +3559,12 @@ def _apply_training_shard(
         )
     if runtime.get("engineering_telemetry"):
         telemetry.merge_payload(runtime["engineering_telemetry"])
+    if config.model in S1M2_MODELS:
+        _try_write_partial_timing_metrics(
+            run_dir=run_dir,
+            store=store,
+            lifecycle="document_committed",
+        )
     _timed_checkpoint(run_dir, checkpoint, telemetry)
     shard_path.unlink()
     marker_path.unlink()
@@ -4299,6 +4370,12 @@ def _training_pass(
         metrics = next_metrics
         checkpoint.update(next_checkpoint)
         telemetry.elapsed('training_document_total', document_started)
+        if config.model in S1M2_MODELS:
+            _try_write_partial_timing_metrics(
+                run_dir=run_dir,
+                store=store,
+                lifecycle="document_committed",
+            )
         _timed_checkpoint(run_dir, checkpoint, telemetry)
 
     if config.vocab_budget is not None:
@@ -4357,10 +4434,20 @@ def _training_pass(
         )
         telemetry.elapsed('lexicon_finalize', started)
     else:
-        all_types, active_types, active_total = store.finalize_piece_count_pass(
-            checkpoint=checkpoint,
-            objective_model=config.model,
-        )
+        try:
+            all_types, active_types, active_total = store.finalize_piece_count_pass(
+                checkpoint=checkpoint,
+                objective_model=config.model,
+            )
+        except BaseException as error:
+            telemetry.elapsed('piece_finalize', started)
+            _try_write_partial_timing_metrics(
+                run_dir=run_dir,
+                store=store,
+                lifecycle="pass_finalize_exception",
+                error=error,
+            )
+            raise
         summary["piece_types"] = all_types
         summary["active_piece_types"] = active_types
         summary["active_piece_count_total"] = active_total
@@ -4385,6 +4472,11 @@ def _training_pass(
             telemetry,
             "after_wal_truncate",
             wal_checkpoint["after_bytes"],
+        )
+        _try_write_partial_timing_metrics(
+            run_dir=run_dir,
+            store=store,
+            lifecycle="pass_finalized",
         )
     _timed_checkpoint(run_dir, checkpoint, telemetry)
     return summary

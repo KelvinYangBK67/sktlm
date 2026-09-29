@@ -367,11 +367,11 @@ def _legacy_finalize_fixture(
         store.connection.executemany(
             "INSERT INTO piece_host_support_next VALUES (?, ?, ?)",
             (
-                ("V_A", "V_A.C_K", 2.0),
-                ("V_A", "V_A.V_A", 1.0),
-                ("V_A.V_A", "V_A.V_A", 2.0),
-                ("V_A.C_K", "V_A.C_K", 2.0),
-                ("V_A.C_K", "V_A.V_A", 2.0),
+                (training.pack_host_key("V_A"), training.pack_host_key("V_A.C_K"), 2.0),
+                (training.pack_host_key("V_A"), training.pack_host_key("V_A.V_A"), 1.0),
+                (training.pack_host_key("V_A.V_A"), training.pack_host_key("V_A.V_A"), 2.0),
+                (training.pack_host_key("V_A.C_K"), training.pack_host_key("V_A.C_K"), 2.0),
+                (training.pack_host_key("V_A.C_K"), training.pack_host_key("V_A.V_A"), 2.0),
             ),
         )
         store.connection.execute(
@@ -721,9 +721,9 @@ def test_bundle_scheduler_refills_while_canonical_first_bundle_waits(
 def test_streaming_bundle_host_support_rows_decode_without_json_materialization() -> None:
     support = training._CompactSupportAccumulator()
     stream = io.StringIO(
-        "H\tpiece-a\tV_A\t0x1.0000000000000p-2\n"
-        "H\tpiece-b\tC_K.V_A\t0x1.0000000000000p-1\n"
-        "D\tpiece-a\tLEFT\tV_A\t0x1.0000000000000p-2\n"
+        "H\tC_T.V_I\tV_A\t0x1.0000000000000p-2\n"
+        "H\tV_A\tC_K.V_A\t0x1.0000000000000p-1\n"
+        "D\tC_T.V_I\tLEFT\tV_A\t0x1.0000000000000p-2\n"
     )
 
     consumed = training._consume_training_segment_support(
@@ -738,27 +738,27 @@ def test_streaming_bundle_host_support_rows_decode_without_json_materialization(
 
     assert consumed == 3
     assert {
-        (support.piece_keys[piece_id], host_blob_to_key(support.host_blobs[host_id])): value
+        (host_blob_to_key(support.piece_keys[piece_id]), host_blob_to_key(support.host_blobs[host_id])): value
         for (piece_id, host_id), value in support.pooled.items()
-    } == {("piece-a", "V_A"): 0.25, ("piece-b", "C_K.V_A"): 0.5}
+    } == {("C_T.V_I", "V_A"): 0.25, ("V_A", "C_K.V_A"): 0.5}
     assert {
         (
-            support.piece_keys[piece_id],
+            host_blob_to_key(support.piece_keys[piece_id]),
             role,
             host_blob_to_key(support.host_blobs[host_id]),
         ): value
         for (piece_id, role, host_id), value in support.roles.items()
-    } == {("piece-a", "LEFT", "V_A"): 0.25}
+    } == {("C_T.V_I", "LEFT", "V_A"): 0.25}
     assert stream.readline() == ""
 
 
 def test_packed_host_support_round_trips_exact_rows_and_fails_closed() -> None:
     pooled_rows = (
-        ("piece-a", "V_A", 0.25),
-        ("piece-b", "V_A", 0.5),
-        ("piece-a", "C_K.V_A", float.fromhex("0x1.0000000000001p-3")),
+        ("C_T.V_I", "V_A", 0.25),
+        ("V_A", "V_A", 0.5),
+        ("C_T.V_I", "C_K.V_A", float.fromhex("0x1.0000000000001p-3")),
     )
-    role_rows = (("piece-a", "LEFT", "V_A", 0.25),)
+    role_rows = (("C_T.V_I", "LEFT", "V_A", 0.25),)
 
     def encoded() -> tuple[bytes, str]:
         stream = io.BytesIO()
@@ -798,21 +798,21 @@ def test_packed_host_support_round_trips_exact_rows_and_fails_closed() -> None:
     ) == 4
     assert stream.read() == b""
     assert {
-        (support.piece_keys[piece_id], host_blob_to_key(support.host_blobs[host_id])): value
+        (host_blob_to_key(support.piece_keys[piece_id]), host_blob_to_key(support.host_blobs[host_id])): value
         for (piece_id, host_id), value in support.pooled.items()
     } == {
-        ("piece-a", "V_A"): 0.25,
-        ("piece-b", "V_A"): 0.5,
-        ("piece-a", "C_K.V_A"): float.fromhex("0x1.0000000000001p-3"),
+        ("C_T.V_I", "V_A"): 0.25,
+        ("V_A", "V_A"): 0.5,
+        ("C_T.V_I", "C_K.V_A"): float.fromhex("0x1.0000000000001p-3"),
     }
     assert {
         (
-            support.piece_keys[piece_id],
+            host_blob_to_key(support.piece_keys[piece_id]),
             role,
             host_blob_to_key(support.host_blobs[host_id]),
         ): value
         for (piece_id, role, host_id), value in support.roles.items()
-    } == {("piece-a", "LEFT", "V_A"): 0.25}
+    } == {("C_T.V_I", "LEFT", "V_A"): 0.25}
 
     truncated = io.BytesIO(payload[:-1])
     truncated.read(len(training._HOST_SUPPORT_MAGIC))
@@ -846,7 +846,7 @@ def test_compact_support_reducer_matches_string_counter_order_and_floats_across_
             [
                 (
                     (
-                        compact.piece_keys[piece_id],
+                        host_blob_to_key(compact.piece_keys[piece_id]),
                         host_blob_to_key(compact.host_blobs[host_id]),
                     ),
                     compact.pooled[(piece_id, host_id)],
@@ -867,6 +867,46 @@ def test_compact_support_reducer_matches_string_counter_order_and_floats_across_
         flush()
 
     assert compact_flushes == reference_flushes
+
+
+def test_compact_piece_flush_keeps_blob_identity_without_string_reconstruction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    compact = training._CompactSupportAccumulator()
+    compact.add_pooled("C_T.V_I", training.pack_host_key("V_A"), 0.5)
+    piece_id, host_id = compact.sorted_pooled_keys()[0]
+    assert isinstance(compact.piece_keys[piece_id], bytes)
+
+    def forbidden_decode(_payload: bytes) -> str:
+        raise AssertionError("hot compact flush reconstructed a canonical key")
+
+    monkeypatch.setattr(training, "host_blob_to_key", forbidden_decode)
+    store = LexiconStore(tmp_path / "blob-flush.sqlite")
+    checkpoint = {"history": [{}]}
+    try:
+        store.begin_piece_count_pass(
+            resume=False,
+            checkpoint=checkpoint,
+            objective_model=training.S1M2_REUSABLE_PIECES_V3,
+        )
+        store.begin_document_counts()
+        store.add_document_piece_host_support_keys(
+            [
+                (
+                    compact.piece_keys[piece_id],
+                    compact.host_blobs[host_id],
+                    compact.pooled[(piece_id, host_id)],
+                )
+            ]
+        )
+        assert store.connection.execute(
+            "SELECT typeof(piece_key), typeof(host_key), support "
+            "FROM piece_host_support_next"
+        ).fetchone() == ("blob", "blob", 0.5)
+        store.rollback_document()
+    finally:
+        store.close()
 
 
 def test_legacy_packed_string_dictionary_remains_resume_readable() -> None:
@@ -901,7 +941,7 @@ def test_legacy_packed_string_dictionary_remains_resume_readable() -> None:
     ) == 1
     assert [
         (
-            support.piece_keys[piece_id],
+            host_blob_to_key(support.piece_keys[piece_id]),
             host_blob_to_key(support.host_blobs[host_id]),
             value,
         )
@@ -1599,6 +1639,92 @@ def test_legacy_v1_complete_pass_finalizes_without_corpus_or_workers(
             is None
         )
         assert authoritative["execution_bundle_plan"] == plan.checkpoint_payload()
+    finally:
+        store.close()
+
+
+def test_finalize_exception_keeps_original_error_and_writes_partial_timing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, documents, plan, store, run_dir, checkpoint = _legacy_finalize_fixture(
+        tmp_path
+    )
+
+    def fail_finalize(**_kwargs: object) -> tuple[int, int, float]:
+        raise ValueError("original finalize failure")
+
+    monkeypatch.setattr(store, "finalize_piece_count_pass", fail_finalize)
+    try:
+        with pytest.raises(ValueError, match="^original finalize failure$"):
+            training._training_pass(
+                pass_index=1,
+                documents=documents,
+                grammar=training.StructuredSandhiGrammar.from_default_inventory(),
+                store=store,
+                config=config,
+                run_dir=run_dir,
+                checkpoint=checkpoint,
+                telemetry=store.telemetry,
+                execution_plan=plan,
+                legacy_finalize_only_migration=(
+                    training._prepare_legacy_v1_finalize_only_migration(
+                        config=config,
+                        continuing=True,
+                        checkpoint=checkpoint,
+                        database_checkpoint=store.load_training_checkpoint(),
+                        documents=documents,
+                        store=store,
+                        execution_plan=plan,
+                    )
+                ),
+            )
+        partial = json.loads(
+            (run_dir / "timing_metrics.partial.json").read_text(encoding="utf-8")
+        )
+        marker = partial["partial_timing_metrics"]
+        assert marker["lifecycle"] == "pass_finalize_exception"
+        assert marker["authority"] == "engineering_telemetry_only"
+        assert marker["comparator_authority"] is False
+        assert marker["exception"] == {
+            "type": "ValueError",
+            "message": "original finalize failure",
+        }
+        assert marker["durable_checkpoint"]["completed_passes"] == 0
+        assert marker["durable_checkpoint"]["active_pass"] == 1
+        assert partial["sqlite_journal_mode"] == "wal"
+        assert "timings_seconds" in partial
+        assert "counters" in partial
+        assert not (run_dir / "timing_metrics.json").exists()
+    finally:
+        store.close()
+
+
+def test_partial_timing_write_failure_cannot_mask_original_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = LexiconStore(tmp_path / "partial-write-failure.sqlite")
+
+    def fail_write(*_args: object, **_kwargs: object) -> None:
+        raise OSError("telemetry disk failure")
+
+    monkeypatch.setattr(training, "_write_json", fail_write)
+    try:
+        with pytest.raises(ValueError, match="^scientific failure$"):
+            try:
+                raise ValueError("scientific failure")
+            except BaseException as error:
+                training._try_write_partial_timing_metrics(
+                    run_dir=tmp_path,
+                    store=store,
+                    lifecycle="pass_finalize_exception",
+                    error=error,
+                )
+                raise
+        assert store.telemetry.counters[
+            "partial_timing_metrics_write_failures"
+        ] == 1
     finally:
         store.close()
 

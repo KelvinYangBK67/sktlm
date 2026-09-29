@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from sktlm.latent.phonology import parse_iast_form
+from sktlm.latent.phonology import pack_host_key, parse_iast_form
 from sktlm.latent.store import LexiconStore
 from sktlm.latent.training import S1M2_MODEL, TrainingConfig
 from sktlm.pieces import (
@@ -98,7 +98,7 @@ def test_sqlite_finalization_stores_c_m_r_and_scores_rolelessly(tmp_path) -> Non
             ])
         assert store.connection.execute(
             "SELECT SUM(support) FROM piece_host_support_next WHERE piece_key=?",
-            (piece.key,),
+            (pack_host_key(piece.key),),
         ).fetchone()[0] == 1001
         assert store.finalize_piece_count_pass(checkpoint=checkpoint) == (1, 1, 1)
         row = store.connection.execute(

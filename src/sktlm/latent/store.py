@@ -50,9 +50,12 @@ S1M2_PASS_DIAGNOSTIC_TABLES = (
     "lexical_diagnostics_next",
 )
 TRANSIENT_SUPPORT_SCHEMA_KEY = "s1m2_transient_support_schema"
+# Round 3D's published TEXT/BLOB layout retains its exact metadata identity.
 TRANSIENT_SUPPORT_BLOB_V1 = "host_blob_v1"
+TRANSIENT_SUPPORT_BLOB_V2 = "piece_host_blob_v2"
 TRANSIENT_SUPPORT_TEXT_V1 = "host_text_v1_legacy"
-_SQLITE_SAFE_BIND_PARAMETERS = 900
+_SQLITE_FALLBACK_BIND_PARAMETERS = 900
+_SQLITE_PRODUCTION_BIND_CAP = 3_600
 
 
 def _bounded_batches(
@@ -78,6 +81,27 @@ def _sqlite_cross_host_moments_valid(raw_count: object, squared_sum: object) -> 
     except (TypeError, ValueError, OverflowError):
         return 0
     return 1
+
+
+def _sqlite_phonological_key(payload: object) -> str:
+    """Decode one validated compact identity at the finalization boundary."""
+
+    if not isinstance(payload, bytes):
+        raise ValueError("Compact phonological identity must be a BLOB.")
+    return host_blob_to_key(payload)
+
+
+def _sqlite_variable_limit(connection: sqlite3.Connection) -> tuple[int, str]:
+    """Read the runtime bind limit when the Python sqlite3 API exposes it."""
+
+    getlimit = getattr(connection, "getlimit", None)
+    category = getattr(sqlite3, "SQLITE_LIMIT_VARIABLE_NUMBER", None)
+    if getlimit is None or category is None:
+        return _SQLITE_FALLBACK_BIND_PARAMETERS, "python_api_unavailable_fallback"
+    limit = int(getlimit(category))
+    if limit <= 0:
+        raise RuntimeError(f"Invalid SQLite variable-number limit: {limit}")
+    return limit, "connection.getlimit(SQLITE_LIMIT_VARIABLE_NUMBER)"
 
 
 class LexiconScorer:
@@ -381,6 +405,19 @@ class LexiconStore:
             _sqlite_cross_host_moments_valid,
             deterministic=True,
         )
+        self.connection.create_function(
+            "sktlm_phonological_key",
+            1,
+            _sqlite_phonological_key,
+            deterministic=True,
+        )
+        self.sqlite_variable_limit, self.sqlite_variable_limit_source = (
+            _sqlite_variable_limit(self.connection)
+        )
+        self.sqlite_bind_parameter_cap = min(
+            self.sqlite_variable_limit,
+            _SQLITE_PRODUCTION_BIND_CAP,
+        )
         journal_row = self.connection.execute("PRAGMA journal_mode=WAL").fetchone()
         if journal_row is None or str(journal_row[0]).lower() != "wal":
             raise RuntimeError(f"Failed to enable SQLite WAL mode: {journal_row!r}")
@@ -510,9 +547,13 @@ class LexiconStore:
         conflict_sql: str,
         telemetry_prefix: str,
     ) -> int:
-        """Execute ordered multi-row UPSERT statements below 900 bind values."""
+        """Execute ordered UPSERT batches below the measured runtime bind cap."""
 
-        batch_size = _SQLITE_SAFE_BIND_PARAMETERS // columns_per_row
+        batch_size = self.sqlite_bind_parameter_cap // columns_per_row
+        if batch_size <= 0:
+            raise RuntimeError(
+                "SQLite variable-number limit is smaller than one UPSERT row."
+            )
         total = 0
         for batch in _bounded_batches(rows, batch_size):
             placeholders = ",".join(
@@ -532,12 +573,61 @@ class LexiconStore:
 
     def _transient_host_storage_key(self, host: str | bytes) -> str | bytes:
         schema = self._piece_host_support_schema
-        if schema == TRANSIENT_SUPPORT_BLOB_V1:
+        if schema in (TRANSIENT_SUPPORT_BLOB_V1, TRANSIENT_SUPPORT_BLOB_V2):
             payload = pack_host_key(host) if isinstance(host, str) else bytes(host)
             validate_host_blob(payload)
             return payload
         if schema == TRANSIENT_SUPPORT_TEXT_V1:
             return host if isinstance(host, str) else host_blob_to_key(bytes(host))
+        raise RuntimeError("Transient piece/host support schema is not initialized.")
+
+    def _transient_piece_storage_key(self, piece: str | bytes) -> str | bytes:
+        schema = self._piece_host_support_schema
+        if schema == TRANSIENT_SUPPORT_BLOB_V2:
+            payload = pack_host_key(piece) if isinstance(piece, str) else bytes(piece)
+            validate_host_blob(payload)
+            return payload
+        if schema in (TRANSIENT_SUPPORT_BLOB_V1, TRANSIENT_SUPPORT_TEXT_V1):
+            return piece if isinstance(piece, str) else host_blob_to_key(bytes(piece))
+        raise RuntimeError("Transient piece/host support schema is not initialized.")
+
+    def _transient_piece_group_expression(self) -> str:
+        if self._piece_host_support_schema is None:
+            declared_types = {
+                str(row[1]): str(row[2]).upper()
+                for row in self.connection.execute(
+                    "PRAGMA table_info(piece_host_support_next)"
+                )
+            }
+            layout = (
+                declared_types.get("piece_key"),
+                declared_types.get("host_key"),
+            )
+            metadata = self.get_metadata(TRANSIENT_SUPPORT_SCHEMA_KEY)
+            if layout == ("BLOB", "BLOB") and metadata == TRANSIENT_SUPPORT_BLOB_V2:
+                self._piece_host_support_schema = TRANSIENT_SUPPORT_BLOB_V2
+            elif layout == ("TEXT", "BLOB") and metadata == TRANSIENT_SUPPORT_BLOB_V1:
+                self._piece_host_support_schema = TRANSIENT_SUPPORT_BLOB_V1
+            elif layout == ("TEXT", "TEXT") and metadata in (
+                None,
+                TRANSIENT_SUPPORT_TEXT_V1,
+            ):
+                self._piece_host_support_schema = TRANSIENT_SUPPORT_TEXT_V1
+                self._set_metadata(
+                    TRANSIENT_SUPPORT_SCHEMA_KEY, TRANSIENT_SUPPORT_TEXT_V1
+                )
+            else:
+                raise RuntimeError(
+                    "Transient support schema metadata conflicts with its "
+                    f"declared key layout {layout!r}."
+                )
+        if self._piece_host_support_schema == TRANSIENT_SUPPORT_BLOB_V2:
+            return "sktlm_phonological_key(piece_key)"
+        if self._piece_host_support_schema in (
+            TRANSIENT_SUPPORT_BLOB_V1,
+            TRANSIENT_SUPPORT_TEXT_V1,
+        ):
+            return "piece_key"
         raise RuntimeError("Transient piece/host support schema is not initialized.")
 
     def has_lexicon(self) -> bool:
@@ -665,50 +755,67 @@ class LexiconStore:
             if has_squared != (objective_model == S1M2_REUSABLE_PIECES_V3):
                 raise RuntimeError("Active piece-count schema does not match objective model.")
             if not self.has_table("piece_host_support_next"):
+                if resume:
+                    raise RuntimeError(
+                        "Resumed piece-count pass is missing transient support state."
+                    )
                 self.connection.execute(
                     "CREATE TABLE piece_host_support_next ("
-                    "piece_key TEXT NOT NULL, "
+                    "piece_key BLOB NOT NULL, "
                     "host_key BLOB NOT NULL, "
                     "support REAL NOT NULL, "
                     "PRIMARY KEY(piece_key, host_key)"
                     ") WITHOUT ROWID"
                 )
-            host_columns = tuple(
+                self._set_metadata(
+                    TRANSIENT_SUPPORT_SCHEMA_KEY, TRANSIENT_SUPPORT_BLOB_V2
+                )
+            support_columns = tuple(
                 self.connection.execute(
                     "PRAGMA table_info(piece_host_support_next)"
                 )
             )
-            host_column = next(
-                (row for row in host_columns if str(row[1]) == "host_key"), None
-            )
-            if host_column is None:
+            declared_types = {
+                str(row[1]): str(row[2]).upper() for row in support_columns
+            }
+            if "piece_key" not in declared_types or "host_key" not in declared_types:
                 raise RuntimeError(
-                    "Active transient support schema has no host_key column."
+                    "Active transient support schema lacks a piece_key or host_key column."
                 )
-            declared_host_type = str(host_column[2]).upper()
+            declared_layout = (
+                declared_types["piece_key"], declared_types["host_key"]
+            )
             stored_support_schema = self.get_metadata(TRANSIENT_SUPPORT_SCHEMA_KEY)
-            if declared_host_type == "BLOB":
-                if stored_support_schema not in (None, TRANSIENT_SUPPORT_BLOB_V1):
+            if declared_layout == ("BLOB", "BLOB"):
+                if stored_support_schema != TRANSIENT_SUPPORT_BLOB_V2:
                     raise RuntimeError(
-                        "Transient support schema metadata conflicts with its BLOB table."
+                        "Transient support schema metadata conflicts with its "
+                        "BLOB/BLOB table."
+                    )
+                self._piece_host_support_schema = TRANSIENT_SUPPORT_BLOB_V2
+            elif declared_layout == ("TEXT", "BLOB") and resume:
+                if stored_support_schema != TRANSIENT_SUPPORT_BLOB_V1:
+                    raise RuntimeError(
+                        "Transient support schema metadata conflicts with its "
+                        "Round 3D TEXT/BLOB table."
                     )
                 self._piece_host_support_schema = TRANSIENT_SUPPORT_BLOB_V1
-                self._set_metadata(
-                    TRANSIENT_SUPPORT_SCHEMA_KEY, TRANSIENT_SUPPORT_BLOB_V1
-                )
-            elif declared_host_type == "TEXT" and resume:
+            elif declared_layout == ("TEXT", "TEXT") and resume:
                 if stored_support_schema not in (None, TRANSIENT_SUPPORT_TEXT_V1):
                     raise RuntimeError(
-                        "Transient support schema metadata conflicts with its legacy TEXT table."
+                        "Transient support schema metadata conflicts with its "
+                        "legacy TEXT/TEXT table."
                     )
                 self._piece_host_support_schema = TRANSIENT_SUPPORT_TEXT_V1
+                # Pre-Round-3D active passes had no engineering schema metadata.
+                # The exact declared legacy layout is their compatibility identity.
                 self._set_metadata(
                     TRANSIENT_SUPPORT_SCHEMA_KEY, TRANSIENT_SUPPORT_TEXT_V1
                 )
             else:
                 raise RuntimeError(
-                    "Unsupported transient support host schema "
-                    f"{declared_host_type!r}; restart the active engineering pass."
+                    "Unsupported transient support key schema "
+                    f"{declared_layout!r}; restart the active engineering pass."
                 )
             if collect_role_diagnostics:
                 if resume and not self.has_table("piece_host_role_support_next"):
@@ -808,7 +915,7 @@ class LexiconStore:
         row_count = self._execute_bounded_upsert(
             (
                 (
-                    identity.key,
+                    self._transient_piece_storage_key(identity.key),
                     self._transient_host_storage_key(pack_phonological_form(host)),
                     value,
                 )
@@ -855,7 +962,7 @@ class LexiconStore:
 
     def add_document_piece_host_support_keys(
         self,
-        support: Iterable[tuple[str, str | bytes, float]],
+        support: Iterable[tuple[str | bytes, str | bytes, float]],
     ) -> None:
         """Stream canonical pieces and compact/legacy hosts into the document."""
 
@@ -863,14 +970,14 @@ class LexiconStore:
             raise RuntimeError("Piece host support requires an open transaction.")
         row_count = 0
 
-        def rows() -> Iterable[tuple[str, str | bytes, float]]:
+        def rows() -> Iterable[tuple[str | bytes, str | bytes, float]]:
             nonlocal row_count
             for piece_key, host_key, value in support:
                 numeric = float(value)
                 if numeric > 0.0:
                     row_count += 1
                     yield (
-                        piece_key,
+                        self._transient_piece_storage_key(piece_key),
                         self._transient_host_storage_key(host_key),
                         numeric,
                     )
@@ -905,7 +1012,7 @@ class LexiconStore:
 
     def add_document_piece_host_role_support_keys(
         self,
-        support: Iterable[tuple[str, str, str, float]],
+        support: Iterable[tuple[str | bytes, str, str | bytes, float]],
     ) -> None:
         """Add canonical role-bearing keys without object reconstruction."""
 
@@ -921,8 +1028,12 @@ class LexiconStore:
                 if value > 0.0:
                     row_count += 1
                     yield (
-                        piece_key,
-                        host_key,
+                        piece_key
+                        if isinstance(piece_key, str)
+                        else host_blob_to_key(bytes(piece_key)),
+                        host_key
+                        if isinstance(host_key, str)
+                        else host_blob_to_key(bytes(host_key)),
                         role,
                         float(value),
                     )
@@ -1018,6 +1129,7 @@ class LexiconStore:
             raise ValueError("Piece count pass produced an empty inventory.")
         self.connection.execute("BEGIN IMMEDIATE")
         with self.connection:
+            piece_group_expression = self._transient_piece_group_expression()
             self.connection.execute("DROP TABLE IF EXISTS temp.piece_host_moments")
             self.connection.execute(
                 "CREATE TEMP TABLE piece_host_moments ("
@@ -1029,8 +1141,9 @@ class LexiconStore:
             self.connection.execute(
                 "INSERT INTO piece_host_moments("
                 "piece_key, max_support, sum_support_squared) "
-                "SELECT piece_key, MAX(support), SUM(support * support) "
-                "FROM piece_host_support_next GROUP BY piece_key"
+                f"SELECT {piece_group_expression}, MAX(support), "
+                "SUM(support * support) FROM piece_host_support_next "
+                "GROUP BY piece_key"
             )
             self.connection.execute(
                 "UPDATE piece_counts_next SET max_host_expected_usage = "
@@ -1048,6 +1161,10 @@ class LexiconStore:
                     "SELECT form_key AS state_key, expected_count AS c, "
                     "sum_host_support_squared AS q FROM piece_counts_next",
                     state_name="V3 piece",
+                    support_table="piece_host_support_next",
+                    summation_terms_upper_bound=self._moment_summation_term_bound(
+                        checkpoint
+                    ),
                 )
                 self.connection.execute(
                     "UPDATE piece_counts_next SET reusable_count = CASE "
@@ -1067,13 +1184,18 @@ class LexiconStore:
             self.connection.execute("DROP TABLE temp.piece_host_moments")
             if self.has_table("piece_host_role_support_next"):
                 role_moments = (
-                    "SELECT piece_key || ':' || role AS state_key, "
+                    "SELECT piece_key AS state_key, role AS support_role, "
                     "SUM(support) AS c, SUM(support * support) AS q "
                     "FROM piece_host_role_support_next GROUP BY piece_key, role"
                 )
                 self._validate_cross_host_moment_source(
                     role_moments,
                     state_name="V3 role-diagnostic",
+                    support_table="piece_host_role_support_next",
+                    role_state=True,
+                    summation_terms_upper_bound=self._moment_summation_term_bound(
+                        checkpoint
+                    ),
                 )
                 self.connection.execute("DROP TABLE IF EXISTS piece_role_diagnostics")
                 self.connection.execute(
@@ -1141,16 +1263,25 @@ class LexiconStore:
         source_sql: str,
         *,
         state_name: str,
+        support_table: str | None = None,
+        role_state: bool = False,
+        summation_terms_upper_bound: int = 1,
     ) -> None:
         """Fail closed on invalid C/Q rows without materializing the inventory.
 
         SQLite handles the ordinary finite in-range rows. Only an out-of-range
-        result near zero reaches the authoritative Python helper, which admits
-        the same eight-ULP roundoff band used by diagnostics and tests.
+        result reaches Python. The ordinary authoritative eight-ULP helper is
+        unchanged; a production-scale summation suspect may additionally be
+        proved from its persisted canonical-order support rows.
         """
 
+        selected_columns = (
+            "state_key, support_role, c, q"
+            if role_state
+            else "state_key, c, q"
+        )
         invalid = self.connection.execute(
-            "SELECT state_key, c, q FROM (" + source_sql + ") WHERE CASE "
+            "SELECT " + selected_columns + " FROM (" + source_sql + ") WHERE CASE "
             "WHEN c IS NULL OR q IS NULL THEN 1 "
             "WHEN typeof(c) NOT IN ('integer', 'real') "
             "OR typeof(q) NOT IN ('integer', 'real') THEN 1 "
@@ -1162,11 +1293,181 @@ class LexiconStore:
             "LIMIT 1",
             (float.fromhex("0x1.fffffffffffffp+1023"),) * 2,
         ).fetchone()
-        if invalid is not None:
-            raise ValueError(
-                f"Invalid {state_name} moments for {invalid[0]!r}: "
-                f"C={invalid[1]!r}, Q={invalid[2]!r}."
+        if invalid is None:
+            return
+
+        if role_state:
+            state_key, role, raw_count, squared_sum = invalid
+        else:
+            state_key, raw_count, squared_sum = invalid
+            role = None
+        accepted = False
+        if support_table is not None:
+            accepted = self._validate_persisted_support_moment(
+                support_table=support_table,
+                piece_key=state_key,
+                role=role,
+                raw_count=raw_count,
+                squared_sum=squared_sum,
+                summation_terms_upper_bound=summation_terms_upper_bound,
             )
+        if accepted:
+            return
+        state_label = repr(state_key)
+        if role is not None:
+            state_label = f"{state_label}, role={role!r}"
+        raise ValueError(
+            f"Invalid {state_name} moments for {state_label}: "
+            f"C={raw_count!r}, Q={squared_sum!r}."
+        )
+
+    @staticmethod
+    def _moment_summation_term_bound(checkpoint: dict[str, Any]) -> int:
+        """Return a durable upper bound for positive posterior additions."""
+
+        history = checkpoint.get("history")
+        if not isinstance(history, list) or not history:
+            return 1
+        summary = history[-1]
+        if not isinstance(summary, dict):
+            return 1
+        candidates = ("characters", "candidate_edges", "lazy_span_traversals")
+        values = []
+        for key in candidates:
+            try:
+                values.append(max(0, int(summary.get(key, 0))))
+            except (TypeError, ValueError):
+                continue
+        return max((1, *values))
+
+    @staticmethod
+    def _positive_summation_drift_explainable(
+        left: float,
+        right: float,
+        *,
+        terms_upper_bound: int,
+    ) -> bool:
+        """Apply the standard binary64 forward-error bound to two sums.
+
+        For positive inputs, a sequential sum of at most ``n`` terms differs
+        from the exact sum by at most ``gamma_n``. C and sum_h S take distinct
+        parenthesizations, so their separation is bounded by both errors. The
+        eight-ULP floor is the already-authoritative local roundoff allowance.
+        """
+
+        if not math.isfinite(left) or not math.isfinite(right):
+            return False
+        if left < 0.0 or right < 0.0:
+            return False
+        if left == right:
+            return True
+        n = max(1, int(terms_upper_bound))
+        unit_roundoff = 2.0**-53
+        product = n * unit_roundoff
+        if product >= 0.5:
+            return False
+        gamma = product / (1.0 - product)
+        scale = max(left, right)
+        ulp_floor = 8.0 * max(math.ulp(left), math.ulp(right))
+        envelope = (2.0 * gamma * scale) / (1.0 - gamma) + ulp_floor
+        return abs(left - right) <= envelope
+
+    def _validate_persisted_support_moment(
+        self,
+        *,
+        support_table: str,
+        piece_key: object,
+        role: object | None,
+        raw_count: object,
+        squared_sum: object,
+        summation_terms_upper_bound: int,
+    ) -> bool:
+        """Rare canonical-order proof for one SQL moment suspect."""
+
+        if support_table not in {
+            "piece_host_support_next",
+            "piece_host_role_support_next",
+        }:
+            raise RuntimeError(f"Unsupported support fallback table: {support_table}")
+        self.telemetry.increment("sqlite_moment_support_fallback_checks")
+        try:
+            raw = float(raw_count)
+            squared = float(squared_sum)
+        except (TypeError, ValueError, OverflowError):
+            self.telemetry.increment("sqlite_moment_support_fallback_rejections")
+            return False
+        if not math.isfinite(raw) or not math.isfinite(squared):
+            self.telemetry.increment("sqlite_moment_support_fallback_rejections")
+            return False
+        if raw < 0.0 or squared < 0.0 or (raw == 0.0 and squared != 0.0):
+            self.telemetry.increment("sqlite_moment_support_fallback_rejections")
+            return False
+
+        if support_table == "piece_host_support_next":
+            if not isinstance(piece_key, str):
+                self.telemetry.increment("sqlite_moment_support_fallback_rejections")
+                return False
+            stored_piece = self._transient_piece_storage_key(piece_key)
+        else:
+            if not isinstance(piece_key, str):
+                self.telemetry.increment("sqlite_moment_support_fallback_rejections")
+                return False
+            stored_piece = piece_key
+        where = "piece_key = ?"
+        parameters: tuple[object, ...] = (stored_piece,)
+        if role is not None:
+            if support_table != "piece_host_role_support_next" or not isinstance(
+                role, str
+            ):
+                self.telemetry.increment("sqlite_moment_support_fallback_rejections")
+                return False
+            where += " AND role = ?"
+            parameters += (role,)
+
+        query = (
+            f"SELECT typeof(support), support FROM {support_table} "
+            f"WHERE {where} ORDER BY host_key"
+        )
+
+        def support_values() -> Iterator[float]:
+            for storage_type, value in self.connection.execute(query, parameters):
+                if storage_type not in ("integer", "real"):
+                    raise ValueError("Persisted support is not numeric.")
+                numeric = float(value)
+                if not math.isfinite(numeric) or numeric < 0.0:
+                    raise ValueError("Persisted support is not finite and nonnegative.")
+                yield numeric
+
+        try:
+            support_count = int(
+                self.connection.execute(
+                    f"SELECT COUNT(*) FROM {support_table} WHERE {where}",
+                    parameters,
+                ).fetchone()[0]
+            )
+            support_raw = math.fsum(support_values())
+            support_squared = math.fsum(value * value for value in support_values())
+            sql_squared_row = self.connection.execute(
+                f"SELECT SUM(support * support) FROM {support_table} WHERE {where}",
+                parameters,
+            ).fetchone()
+            sql_squared = 0.0 if sql_squared_row[0] is None else float(sql_squared_row[0])
+            if sql_squared != squared:
+                raise ValueError("Stored Q is not the SQL moment of persisted support.")
+            cross_host_reusable_count(support_raw, support_squared)
+            terms = max(support_count, summation_terms_upper_bound)
+            if not self._positive_summation_drift_explainable(
+                raw,
+                support_raw,
+                terms_upper_bound=terms,
+            ):
+                raise ValueError("C does not fit the positive-summation error envelope.")
+        except (ArithmeticError, TypeError, ValueError, sqlite3.Error):
+            self.telemetry.increment("sqlite_moment_support_fallback_rejections")
+            return False
+
+        self.telemetry.increment("sqlite_moment_support_fallback_acceptances")
+        return True
 
     def piece_scorer(
         self,
@@ -1538,6 +1839,9 @@ class LexiconStore:
         payload["sqlite_transient_support_schema"] = (
             self._piece_host_support_schema
         )
+        payload["sqlite_variable_number_limit"] = self.sqlite_variable_limit
+        payload["sqlite_variable_limit_source"] = self.sqlite_variable_limit_source
+        payload["sqlite_bind_parameter_cap"] = self.sqlite_bind_parameter_cap
         payload['lexical_scorers'] = [
             {
                 'score_calls': scorer.score_calls,
