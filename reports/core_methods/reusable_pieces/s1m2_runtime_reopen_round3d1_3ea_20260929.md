@@ -18,6 +18,10 @@ keys and raises the ordered UPSERT bind cap only after one bounded local
 benchmark. External sorted runs/LSM and bundle-wire changes remain out of
 scope.
 
+The implementation candidate is
+`ddd5e0dd34d9cc9ff15d43776821691c11855f2d`, based on the Round 3D handoff at
+`9b4950cad98778fd53f5f360eb468573c7f55d11`.
+
 ## Production evidence and root cause
 
 The Round 3D candidate completed the first Devanagari continuous document on

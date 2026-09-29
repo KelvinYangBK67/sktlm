@@ -1,65 +1,74 @@
-DATE=2026-09-28
+DATE=2026-09-29
 BRANCH=exp/s1m2-runtime-reopen
-STATUS=S1M2_V3_ROUND3D_CANDIDATE_AWAITING_CORE11_BENCHMARK
+STATUS=S1M2_V3_ROUND3D1_3EA_CANDIDATE_AWAITING_CORE08_VM_GATE
 
 BASELINE_SHA=5ec5d5c33a59abe06fadc9bde84f48b380b7fe39
-BENCHMARK_CANDIDATE_SHA=38557dab9bff522dfb886452b4786da04e627458
+ROUND3D_SHA=38557dab9bff522dfb886452b4786da04e627458
+ROUND3D_HANDOFF_SHA=9b4950cad98778fd53f5f360eb468573c7f55d11
+ROUND3D1_3EA_CANDIDATE_SHA=ddd5e0dd34d9cc9ff15d43776821691c11855f2d
 SCIENTIFIC_SEMANTICS=FROZEN
-PERFORMANCE_RESULT=NOT_YET_REMEASURED_ON_CORE_11
+ROUND3D1_STATUS=PASS
+ROUND3EA_STATUS=PASS
+PERFORMANCE_RESULT=LOCAL_MICROBENCH_ONLY
 FULL_M0_RUNTIME_VIABLE=NOT_REQUALIFIED
 PRODUCTION_JOURNAL_MODE=WAL_NORMAL_UNCHANGED
 
-Round 3D is locally complete. The compact production reducer now uses
-flush-local piece/host integer identities and an integer-pair Counter. New
-bundle v4 / segment v5 host dictionaries carry a fixed versioned phoneme BLOB
-without reconstructing canonical host strings in the parent hot path. New
-transient SQLite support tables use BLOB hosts; active legacy TEXT passes have
-an explicit compatible resume path, and schema conflicts fail closed.
+Core-08 completed and durably committed the complete first Devanagari
+continuous document under Round 3D, then failed V3 finalization on one
+production-scale C/Q row. Peak process-tree RSS was 9,328,275,456 bytes with
+zero swap and all bundle shards retired; transient SQLite/WAL and the single
+writer are now dominant. The durable checkpoint remains active Pass 1 at next
+document index 1, with no completed pass.
 
-Piece-count, pooled-support, lexical-diagnostic, and optional role writes use
-ordered bounded multi-row UPSERTs under a fixed 900-bind ceiling. Canonical
-document/bundle/segment/row order, per-key floating addition sequence, flush
-boundaries, V3 final moments, checkpoint meaning, and frozen comparator
-tolerances are unchanged.
+Round 3D.1 keeps the normal SQL validator and authoritative eight-ULP helper
+unchanged. A suspect row alone re-reads persisted supports in canonical order,
+uses math.fsum for C/Q, validates Q provenance and support legitimacy, applies
+the authoritative helper to support-derived moments, and admits C drift only
+under the standard positive binary64 summation-error envelope. Material
+mismatch and corrupt/nonfinite/negative/zero-inconsistent state fail closed.
+Optional role diagnostics use the same mechanism.
 
-The 16.96-second local synthetic journal benchmark found no meaningful peak-
-storage benefit for DELETE/TRUNCATE and materially slower transaction phases,
-so production remains WAL + NORMAL. Append-only external support runs were
-designed but deferred because they require a new cross-filesystem manifest,
-orphan, recovery, and ordered external-merge contract.
+Atomic timing_metrics.partial.json is written after durable document commits,
+pass-final success, and pass-final exceptions. It is engineering-only,
+non-comparator telemetry and cannot mask an original exception. Formal timing
+metrics and checkpoint semantics remain unchanged.
+
+Round 3E-A uses the fixed phonological BLOB codec for both transient piece and
+host keys. Persistent piece_lexicon keys remain TEXT. Resume admits only
+metadata/type-consistent BLOB/BLOB v2, Round 3D TEXT/BLOB v1, and historical
+TEXT/TEXT layouts. The bundle wire is unchanged and compact hot flushes do not
+reconstruct piece strings.
+
+Runtime SQLITE_LIMIT_VARIABLE_NUMBER is queried when available. A single
+0.916-second benchmark compared 300/600/1200 support rows per statement;
+1,200 rows reduced wall time about 18% with exact equal results and no observed
+storage increase. Production uses min(runtime limit, 3600 binds). WAL, page
+cache, and transactions are unchanged. Direct final-table construction was
+audited and deferred.
 
 Validation completed locally:
 
-- touched modules and journal benchmark script compile;
-- 63 focused codec/V3/bundle tests passed in 14.16 seconds;
-- 98 selected storage/comparator/V2/V3/training/bundle/Round-3 tests passed in
-  36.48 seconds;
-- corrected synthetic SQLite journal benchmark passed in 16.96 seconds;
-- git diff --check passed.
+- 73 focused tests passed in 11.17 seconds;
+- 38 adjacent tests passed in 20.69 seconds;
+- final combined selection passed 116 tests in 33.59 seconds;
+- touched modules compile, evidence JSON parses, and git diff --check passes.
 
 No representative/stress workload, Passes 2/3 production benchmark, Full M0,
-VM/cloud/SSH action, or operation on Core-07 through Core-11 was performed.
+VM/cloud/SSH action, push, fetch, or pull occurred. DECISIONS.md is unchanged
+because no research/scientific decision changed.
 
-NEXT_ACTION=RESEARCHER_RUNS_UPDATED_CORE11_BASELINE_CANDIDATE_AND_COMPARATOR
+NEXT_ACTION=RESEARCHER_OPERATES_CORE08_VM_GATE
+NEXT_VM_GATE=CORE08_RESUME_DURABLE_ROUND3D_PASS1_FINALIZATION_THEN_COMPARE_WITH_ONE_CLEAN_ROUND3EA_FIRST_DOCUMENT_RUN
 
-Use the exact commands in:
-`reports/core_methods/reusable_pieces/s1m2_runtime_reopen_core11_benchmark_20260928.md`
+Authority:
+`reports/core_methods/reusable_pieces/s1m2_runtime_reopen_round3d1_3ea_20260929.md`
 
-The protocol remains idle Core-11, the complete first Devanagari continuous
-document, W12, Pass 1, historical baseline then Round 3D candidate, followed
-first by the training-state comparator. Do not interpret performance unless it
-reports PASS under unchanged `rtol=1e-10`, `atol=1e-12`.
+Local revalidation command:
 
-First-document identity:
-`1_veda/2_bra/gopbra_u.txt`, 5315 segments, 195480 phonemes, pressure
-10579072, 39 bundles, plan SHA-256
-`e66b0363d19ea53b8023653ba33e27367466dbeaa8b3e30eaf103c31ab7d4d81`.
-
-After comparator PASS, inspect reducer decode/accumulate/sort/flush timing,
-support batch counts/rows, compact-versus-canonical host bytes, main RSS,
-SQLite/WAL/storage high-water, and the bundle timeline. If SQLite support flush
-still dominates, use the external-run design conditions in the Round 3D report
-as the next engineering audit; do not implement it speculatively.
+```powershell
+python -m pytest tests\latent\test_phonology.py tests\pieces\test_reusable_objective_v2.py tests\pieces\test_reusable_objective_v3.py tests\pieces\test_s1m2_bundle_scheduler.py tests\latent\test_s1m2_storage_lifecycle.py tests\pieces\test_s1m2_training.py tests\latent\test_training.py tests\latent\test_s1m2_artifact_comparison.py -q
+```
 
 Do not launch VM/cloud/Full M0 automatically. Do not touch Core-07 through
-Core-10 or their run/checkpoint/artifact state.
+Core-10 or any live run/checkpoint/artifact state without a new explicit
+researcher instruction.

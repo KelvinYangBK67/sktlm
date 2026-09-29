@@ -1,3 +1,71 @@
+## S1M2 V3 Round 3D.1 / 3E-A closure candidate (2026-09-29)
+
+The local engineering candidate is
+`ddd5e0dd34d9cc9ff15d43776821691c11855f2d` on
+`exp/s1m2-runtime-reopen`, based on Round 3D handoff
+`9b4950cad98778fd53f5f360eb468573c7f55d11`. No push or VM action occurred.
+
+Researcher-operated Core-08 evidence established that Round 3D completed the
+first Devanagari continuous document (5,315 segments, 195,480 phonemes, 39
+bundles, W12, Pass 1), durably committed document index 1, held peak process-
+tree RSS to 9,328,275,456 bytes with zero swap, and retired bundle shards to
+zero. Finalization then rejected one V3 row at
+`C=6.394964438799327e-09`, `Q=4.089557017350827e-17`; the implied reusable
+count was -54 ULP(C). SQLite/WAL and the serialized writer are now the dominant
+measured cost, with about 22.11/22.24 GB database/WAL peaks and about 181.19 GB
+of process writes.
+
+Round 3D.1 preserves the ordinary SQL path, the authoritative helper, and its
+eight-ULP rule. Only a suspect row re-reads persisted supports in canonical
+host order, rejects corrupt values, recomputes C/Q with `math.fsum`, requires
+stored Q to match the persisted SQL moment, validates support-derived moments
+with the authoritative helper, and admits C drift only inside the standard
+positive binary64 summation forward-error envelope derived from durable pass
+work measures. The same proof is available for optional role diagnostics.
+
+Atomic non-authoritative `timing_metrics.partial.json` snapshots now follow
+durable document commits, successful pass finalization, and pass-final
+exceptions. They carry reducer/store/storage/schema lifecycle telemetry and
+the durable SQLite checkpoint; write failure cannot mask the original error.
+Formal `timing_metrics.json`, scientific artifacts, and checkpoint semantics
+are unchanged.
+
+Round 3E-A gives new transient support tables BLOB piece and host keys under
+metadata `piece_host_blob_v2`. The fixed phonological codec remains bijective,
+prefix/order preserving, and independent of Enum/hash order. Persistent
+`piece_lexicon` keys remain canonical TEXT. Resume explicitly supports new
+BLOB/BLOB, Round 3D TEXT/BLOB, and older TEXT/TEXT layouts; unknown or
+conflicting metadata/type pairs fail closed. Bundle wire format is unchanged.
+
+The runtime SQLite variable-number limit is queried through the Python API
+when available, with the old 900-bind fallback. One 0.916-second local
+benchmark found 1,200-row support batches about 18% lower wall time than 300
+rows with identical exact rows/totals and observed storage, so production now
+uses a conservative `min(runtime_limit, 3600)` bind cap. WAL + NORMAL, default
+page cache, and transaction boundaries are unchanged. Direct final-table
+construction was audited and deferred as insufficiently small/risk-free.
+
+Validation: 73 focused tests passed in 11.17 seconds; 38 adjacent tests passed
+in 20.69 seconds; the final combined selection including the artifact
+comparator passed 116 tests in 33.59 seconds. Touched Python compiles,
+benchmark JSON parsing, and `git diff --check` passed. No workload exceeded
+five minutes; no representative/stress, Passes 2/3 production, Full M0,
+VM/cloud/SSH, push, fetch, or pull occurred.
+
+Authority:
+`reports/core_methods/reusable_pieces/s1m2_runtime_reopen_round3d1_3ea_20260929.md`.
+Machine evidence:
+`reports/core_methods/reusable_pieces/evidence/s1m2_round3ea_sqlite_batch_microbenchmark_20260929.json`.
+
+```text
+S1M2_V3_SCIENTIFIC_SEMANTICS=FROZEN
+ROUND3D1_STATUS=PASS
+ROUND3EA_STATUS=PASS
+VM_REQUIRED=YES
+FULL_M0_RUNTIME_VIABLE=NOT_REQUALIFIED
+NEXT_VM_GATE=CORE08_RESUME_DURABLE_ROUND3D_PASS1_FINALIZATION_THEN_COMPARE_WITH_ONE_CLEAN_ROUND3EA_FIRST_DOCUMENT_RUN
+```
+
 ## S1M2 V3 runtime/storage Round 3D closure candidate (2026-09-28)
 
 The authorized reducer/transient-SQLite response is code candidate
