@@ -4178,3 +4178,58 @@ FULL_M0_RUN=NO
 FULL_M0_AUTHORIZED=NO
 NEXT_ACTION=PUBLISH_NARROW_TRANSFORMATION_COST
 ```
+
+## S1M2 repository/CI closure and budget pause - 2026-10-01
+
+The project is formally paused because the cloud-compute budget is exhausted;
+this is not a scientific failure or implementation abandonment. The retained
+official branch is `exp/s1m2-reusable-pieces`. After a fresh remote audit, its
+head `5ec5d5c33a59abe06fadc9bde84f48b380b7fe39` was the merge base and strict
+ancestor of `exp/s1m2-runtime-reopen` at
+`6b930abd27423987f92de4a2896a25b0730392b8`, with ahead/behind `0/19`, no
+official-only commits, and no true divergence.
+
+Five CI failures were closed without changing production implementation or
+frozen science: the continuous benchmark JSON was migrated from stale V1 to
+the exact V2 harness model; two reference tests were aligned to the formal
+role-aware lattice key and role-collapsed learned key; the Round4 monkeypatch
+accepted the necessary `repo_root` keyword; and the SQLite batch test now
+derives counts from the runtime bind cap, including Python 3.10's 900-bind
+fallback. CI preinstalls the official CPU torch wheel and uses a cache key that
+does not restore the prior approximately 2.8 GB CUDA cache, while the package
+dependency contract remains unchanged.
+
+Direct failures passed 5/5, related modules passed 69/69, and the full 920-test
+suite completed with exit 0 both before and after branch closure (919 passed,
+1 environment-specific skip). Runtime GitHub Actions run `36882867992` passed
+on Python 3.10/3.11/3.12. Repair commit
+`56bdde306a9d60d3f84edd66d22ad0fa56df37d0` was published on runtime and
+fast-forwarded locally into the official branch with no merge commit or
+history rewrite. Production V3 remains `reusable_pieces_v3`, three passes,
+exact composed marginals, gamma 1, rho 0.4, max piece length 8, support epsilon
+0, script-neutral piece/latent host identity, and comparator tolerances
+`rtol=1e-10`, `atol=1e-12`.
+
+Round 3D.1 and 3E-A are local PASS only. Their VM resume proof, clean 3E-A
+first-document production qualification, frozen comparator, and possible 3E-B
+work are pending due to budget pause. The small rescue remains untouched at
+`D:\sktlm_cloud_rescue_20261001` / `/mnt/d/sktlm_cloud_rescue_20261001`, with
+manifest `small_artifact_manifest.json`, 162 files, and 53,587,795 bytes.
+
+The authoritative pause handoff is
+`reports/core_methods/reusable_pieces/s1m2_project_pause_20261001.md`.
+`DECISIONS.md` is unchanged because no scientific/research decision changed.
+
+```text
+PROJECT_STATUS=PAUSED_DUE_TO_BUDGET
+PAUSE_REASON=cloud_compute_budget_exhausted
+ROUND3D1_STATUS=LOCAL_PASS
+ROUND3EA_STATUS=LOCAL_PASS
+ROUND3D1_VM_QUALIFICATION=PENDING_DUE_TO_BUDGET_PAUSE
+ROUND3EA_VM_QUALIFICATION=PENDING_DUE_TO_BUDGET_PAUSE
+SCIENTIFIC_COMPARATOR=PENDING_DUE_TO_BUDGET_PAUSE
+ROUND3EB_STATUS=PENDING_DUE_TO_BUDGET_PAUSE
+VM_QUALIFICATION=PENDING_DUE_TO_BUDGET_PAUSE
+REMAINING_LIKELY_BOTTLENECK=transient SQLite support B-tree / WAL / single-writer reducer
+NEXT_RESEARCH_GATE=Round3D1 VM resume proof -> clean Round3EA first-document production qualification -> frozen comparator
+```
