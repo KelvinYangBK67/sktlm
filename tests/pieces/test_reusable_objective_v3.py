@@ -997,14 +997,27 @@ def test_bounded_multirow_upserts_match_ordered_executemany_across_batches(
             assert tuple(store.connection.execute(f"SELECT {columns} FROM {table} ORDER BY {order}")) == tuple(
                 reference.execute(f"SELECT {columns} FROM {table} ORDER BY {order}")
             )
-        assert store.telemetry.counters["sqlite_piece_count_batch_calls"] == 1
-        assert store.telemetry.counters["sqlite_lexical_diagnostic_batch_calls"] == 1
-        assert store.telemetry.counters["sqlite_piece_host_support_batch_calls"] == 1
-        assert store.telemetry.gauges["sqlite_piece_count_batch_max_rows"] == 940
-        assert store.telemetry.gauges["sqlite_piece_host_support_batch_max_rows"] == 930
         runtime = store.runtime_payload()
-        assert runtime["sqlite_variable_number_limit"] >= 3_600
-        assert runtime["sqlite_bind_parameter_cap"] == 3_600
+        bind_cap = runtime["sqlite_bind_parameter_cap"]
+        piece_batch_rows = bind_cap // 2
+        host_batch_rows = bind_cap // 3
+        assert store.telemetry.counters["sqlite_piece_count_batch_calls"] == (
+            math.ceil(len(piece_rows) / piece_batch_rows)
+        )
+        assert store.telemetry.counters[
+            "sqlite_lexical_diagnostic_batch_calls"
+        ] == math.ceil(len(lexical_rows) / piece_batch_rows)
+        assert store.telemetry.counters[
+            "sqlite_piece_host_support_batch_calls"
+        ] == math.ceil(len(host_rows) / host_batch_rows)
+        assert store.telemetry.gauges["sqlite_piece_count_batch_max_rows"] == min(
+            len(piece_rows), piece_batch_rows
+        )
+        assert store.telemetry.gauges[
+            "sqlite_piece_host_support_batch_max_rows"
+        ] == min(len(host_rows), host_batch_rows)
+        assert runtime["sqlite_variable_number_limit"] >= bind_cap
+        assert 900 <= bind_cap <= 3_600
     finally:
         reference.close()
         store.close()

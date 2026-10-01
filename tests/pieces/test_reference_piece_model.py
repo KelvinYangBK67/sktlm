@@ -16,8 +16,10 @@ from sktlm.latent.phonology import PhonologicalForm, parse_iast_form
 from sktlm.pieces import (
     ExpectedCountPieceScorer,
     NeutralPieceScorer,
+    PieceIdentity,
     PieceModel,
     PieceModelConfig,
+    PieceRole,
     build_piece_lattice,
     evaluate_piece_lattice,
     fit_reference_piece_model,
@@ -114,10 +116,10 @@ def test_forward_backward_matches_brute_force_partition_and_counts() -> None:
     prior_log_z = _logsumexp(raw_prior)
     raw_log_z = _logsumexp(raw_scores)
     probabilities = [math.exp(value - raw_log_z) for value in raw_scores]
-    brute_counts: dict[PhonologicalForm, float] = defaultdict(float)
+    brute_counts: dict[PieceIdentity, float] = defaultdict(float)
     for path, probability in zip(paths, probabilities):
         for edge in path:
-            brute_counts[edge.piece] += probability
+            brute_counts[PieceIdentity(edge.piece, edge.role)] += probability
 
     evaluation = evaluate_piece_lattice(
         lattice,
@@ -129,6 +131,17 @@ def test_forward_backward_matches_brute_force_partition_and_counts() -> None:
     assert evaluation.prior_log_normalizer == pytest.approx(prior_log_z)
     assert evaluation.log_score == pytest.approx(raw_log_z - prior_log_z)
     assert evaluation.expected_piece_counts == pytest.approx(brute_counts)
+    repeated_form = parse_iast_form("a")
+    assert PieceIdentity(repeated_form, PieceRole.INTERNAL) in (
+        evaluation.expected_piece_counts
+    )
+    assert PieceIdentity(repeated_form, PieceRole.RIGHT) in (
+        evaluation.expected_piece_counts
+    )
+    assert all(
+        isinstance(identity, PieceIdentity)
+        for identity in evaluation.expected_piece_counts
+    )
     brute_probabilities = {
         tuple(edge.piece for edge in path): probability
         for path, probability in zip(paths, probabilities)
@@ -237,12 +250,13 @@ def test_piece_model_replaces_outer_scorer_and_composes_exact_counts() -> None:
     for form, outer_mass in outer.expected_counts.items():
         if outer_mass <= 0.0:
             continue
-        for piece, inner_count in model.evaluate(form).expected_piece_counts.items():
-            manual[piece] += outer_mass * inner_count
+        for identity, inner_count in model.evaluate(form).expected_piece_counts.items():
+            manual[identity.piece] += outer_mass * inner_count
 
     assert candidate_graph_fingerprint(graph) == graph_before
     assert outer.log_partition == pytest.approx(baseline.log_partition)
     assert outer.expected_counts == pytest.approx(baseline.expected_counts)
     assert outer.identity_mass + outer.latent_mass == pytest.approx(1.0)
     assert piece_counts == pytest.approx(manual)
+    assert all(isinstance(piece, PhonologicalForm) for piece in piece_counts)
     assert model.cache_hits > 0
